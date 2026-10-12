@@ -1,0 +1,20 @@
+[package]
+name = "verrou-cli"
+description = "Verrou en ligne de commande."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "verrou"
+path = "src/main.rs"
+
+[dependencies]
+verrou-core.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
