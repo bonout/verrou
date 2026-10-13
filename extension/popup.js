@@ -70,17 +70,74 @@ async function renderUnlocked() {
     });
     list.append(row);
   }
+  const other = element("button", { className: "link", textContent: "Remplir avec un autre identifiant…" });
+  other.addEventListener("click", () => renderOtherLogin());
   const scan = element("button", { className: "secondary", textContent: "Ajouter le QR code affiché" });
   scan.addEventListener("click", () => scanQrCode(items));
   const manual = element("button", { className: "link", textContent: "ou saisir la clé à la main" });
   manual.addEventListener("click", () => enterKey(items));
   show(
     items.length ? list : element("p", { textContent: "Aucun identifiant pour ce site." }),
+    other,
     element("div", { className: "section" },
       element("div", { className: "section-title", textContent: "Double authentification" }),
       element("p", { textContent: "Le site affiche un QR code pour une app d'authentification : Verrou peut le garder et générer les codes." }),
       scan, manual),
     unpairLink(),
+  );
+}
+
+// MARK: Autre identifiant
+
+// Un site que Verrou ne relie à aucun identifiant (nouveau domaine, site de
+// connexion unique…) : on en choisit un, Verrou lui ajoute ce site, puis
+// remplit comme d'habitude. Le site reste ensuite associé.
+async function renderOtherLogin() {
+  const tab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  let host = "";
+  try {
+    host = new URL(tab?.url ?? "").hostname;
+  } catch {
+    // Page sans adresse (onglet système) : rien à relier.
+  }
+  const input = element("input", { type: "text", placeholder: "Rechercher un identifiant", autocomplete: "off", spellcheck: false });
+  const results = element("ul");
+  const search = async () => {
+    const reply = await send({ kind: "searchLogins", query: input.value });
+    results.replaceChildren(...(reply.items ?? []).map((item) => {
+      const row = element("li", {},
+        element("div", { className: "badge", textContent: (item.title.trim()[0] ?? "?").toUpperCase() }),
+        element("div", {},
+          element("div", { className: "title", textContent: item.title }),
+          element("div", { className: "sub", textContent: item.username })));
+      row.addEventListener("click", () => confirmLink(item, host));
+      return row;
+    }));
+  };
+  let debounce;
+  input.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(search, 150);
+  });
+  show(
+    element("p", { textContent: `Choisissez l'identifiant à utiliser sur ${host || "ce site"}.` }),
+    input, results, backLink(),
+  );
+  input.focus();
+  search();
+}
+
+function confirmLink(item, host) {
+  const go = element("button", { textContent: "Ajouter et remplir" });
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    const result = await send({ kind: "linkSiteTab", item: item.id });
+    if (result?.ok) window.close();
+    else show(element("p", { className: "error", textContent: `Impossible : ${result?.reason ?? "Verrou ne répond pas"}` }), backLink());
+  });
+  show(
+    element("p", { textContent: `Ajouter ${host} à « ${item.title} » ? Verrou le proposera ensuite sur ce site. Vérifiez bien l'adresse : un site d'hameçonnage imite souvent celui qu'il vise.` }),
+    go, backLink(),
   );
 }
 

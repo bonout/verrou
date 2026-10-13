@@ -652,8 +652,11 @@ impl VaultSession {
                 username,
                 password,
                 totp,
+                uri,
             } => {
-                let decrypted = open.amend_login(&item, username, password, totp).await?;
+                let decrypted = open
+                    .amend_login(&item, username, password, totp, uri)
+                    .await?;
                 (item, decrypted)
             }
         };
@@ -1067,6 +1070,8 @@ impl VaultSession {
             let fields = item
                 .fields
                 .iter()
+                // Morceaux d'adresse : pour remplir les formulaires, pas à afficher.
+                .filter(|f| !f.id.starts_with("part:"))
                 .map(|f| {
                     let secret = f.kind.is_secret();
                     FieldView {
@@ -1406,6 +1411,18 @@ impl Backend for SessionBackend {
                 })
                 .is_ok()
         })
+    }
+
+    fn gate(&self, item: &Item) -> bool {
+        let Some(session) = self.session.upgrade() else {
+            return false;
+        };
+        if session.is_authorized(item) {
+            return true;
+        }
+        self.delegate
+            .reprompt_requested(item.id.clone(), item.title.clone());
+        false
     }
 
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {

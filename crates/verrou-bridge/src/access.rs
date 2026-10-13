@@ -24,7 +24,8 @@ use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault};
 
 use crate::protocol::{
-    ClientKind, Command, Credentials, FieldView, ItemSummary, ItemView, SaveAction, Suggestion,
+    ClientKind, Command, Credentials, FieldView, FormData, FormSuggestion, ItemSummary, ItemView,
+    SaveAction, Suggestion,
 };
 
 /// Résultats rendus au plus par une recherche du terminal.
@@ -39,7 +40,11 @@ pub fn allowed(kind: ClientKind, command: &Command) -> bool {
         | Command::Fill { .. }
         | Command::Check { .. }
         | Command::Save { .. }
-        | Command::SetTotp { .. } => kind == ClientKind::Browser,
+        | Command::SetTotp { .. }
+        | Command::Forms { .. }
+        | Command::FillForm { .. }
+        | Command::LinkSite { .. }
+        | Command::SearchLogins { .. } => kind == ClientKind::Browser,
         Command::VaultSearch { .. }
         | Command::VaultItem { .. }
         | Command::Reveal { .. }
@@ -319,6 +324,8 @@ pub enum Write {
         username: Option<String>,
         password: Option<SecretString>,
         totp: Option<SecretString>,
+        /// Site ajouté à l'élément (`LinkSite`).
+        uri: Option<String>,
     },
 }
 
@@ -355,6 +362,7 @@ pub fn plan_save(
             username: username.filter(|_| username_of(item).is_none()),
             password,
             totp: None,
+            uri: None,
         });
     }
     let (title, uri) = new_site(page_url)?;
@@ -389,6 +397,7 @@ pub fn plan_totp(
             username: None,
             password: None,
             totp: seed,
+            uri: None,
         });
     }
     let (title, uri) = new_site(page_url)?;
@@ -445,6 +454,134 @@ pub fn credentials(
         username: value(FieldKind::Username).or_else(|| value(FieldKind::Email)),
         password: value(FieldKind::Password),
         totp,
+    })
+}
+
+// MARK: Cartes et identités
+
+/// Cartes et identités actives, proposées sur une page sûre ; aucun secret.
+pub fn form_suggestions(
+    vault: &Vault,
+    page_url: &str,
+) -> (Vec<FormSuggestion>, Vec<FormSuggestion>) {
+    if !page_allowed(page_url) {
+        return (Vec::new(), Vec::new());
+    }
+    let of_kind = |kind| {
+        let mut list: Vec<FormSuggestion> = vault
+            .items()
+            .iter()
+            .filter(|i| i.kind == kind && i.is_active())
+            .map(|i| FormSuggestion {
+                id: i.id.clone(),
+                title: i.title.clone(),
+                subtitle: i.subtitle.clone(),
+            })
+            .collect();
+        list.sort_by_key(|s| s.title.to_lowercase());
+        list
+    };
+    (of_kind(ItemKind::Card), of_kind(ItemKind::Identity))
+}
+
+/// La carte ou l'identité `item`, champ par champ, pour la page `url`.
+pub fn form_data(vault: &Vault, item_id: &str, page_url: &str) -> Result<FormData, String> {
+    if !page_allowed(page_url) {
+        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+    }
+    let item = vault
+        .get(item_id)
+        .filter(|i| i.is_active())
+        .ok_or_else(|| "élément introuvable".to_owned())?;
+    let value = |id: &str| {
+        item.field(id)
+            .map(|f| f.value.expose().trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    match item.kind {
+        ItemKind::Card => {
+            let (exp_month, exp_year) = value("expiry")
+                .and_then(|e| {
+                    let (m, y) = e.split_once('/')?;
+                    let y = y.trim();
+                    let year = if y.len() == 2 {
+                        format!("20{y}")
+                    } else {
+                        y.to_owned()
+                    };
+                    Some((format!("{:0>2}", m.trim()), year))
+                })
+                .unzip();
+            // Pas de `..Default::default()` : `FormData` s'efface à la libération.
+            let mut data = FormData::default();
+            "card".clone_into(&mut data.kind);
+            data.cardholder = value("cardholder");
+            data.number = value("number").map(|n| n.chars().filter(char::is_ascii_digit).collect());
+            data.exp_month = exp_month;
+            data.exp_year = exp_year;
+            data.code = value("code");
+            data.brand = value("brand");
+            Ok(data)
+        }
+        ItemKind::Identity => {
+            let first_name = value("first_name");
+            let last_name = value("last_name");
+            let full_name = [&first_name, &value("middle_name"), &last_name]
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let mut data = FormData::default();
+            "identity".clone_into(&mut data.kind);
+            data.first_name = first_name;
+            data.last_name = last_name;
+            data.full_name = (!full_name.is_empty()).then_some(full_name);
+            data.company = value("company");
+            data.email = value("email");
+            data.phone = value("phone");
+            data.address1 = value("part:address1");
+            data.address2 = value("part:address2");
+            data.postal_code = value("part:postal_code");
+            data.city = value("part:city");
+            data.state = value("part:state");
+            data.country = value("part:country");
+            Ok(data)
+        }
+        _ => Err("ni une carte, ni une identité".to_owned()),
+    }
+}
+
+/// Identifiants qui répondent à `query` (20 au plus), sans secret.
+pub fn search_logins(vault: &Vault, query: &str) -> Vec<Suggestion> {
+    vault
+        .search(query, &Filter::Kind(ItemKind::Login), Sort::Relevance)
+        .into_iter()
+        .take(20)
+        .map(|hit| suggestion(&vault.items()[hit.index]))
+        .collect()
+}
+
+/// Ajouter le site de la page à l'identifiant `item`, choisi par
+/// l'utilisateur dans la fenêtre de l'extension.
+pub fn plan_link_site(vault: &Vault, page_url: &str, item_id: &str) -> Result<Write, String> {
+    if !page_allowed(page_url) {
+        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+    }
+    let item = vault
+        .get(item_id)
+        .filter(|i| i.kind == ItemKind::Login && i.is_active())
+        .ok_or_else(|| "identifiant introuvable".to_owned())?;
+    if logins_for(vault, page_url).iter().any(|i| i.id == item.id) {
+        return Err("cet identifiant correspond déjà à ce site".to_owned());
+    }
+    let (_, origin) = new_site(page_url)?;
+    Ok(Write::Update {
+        item: item.id.clone(),
+        username: None,
+        password: None,
+        totp: None,
+        uri: Some(origin),
     })
 }
 
@@ -508,8 +645,10 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
             username,
             password,
             totp,
+            uri,
         } => {
             if let Some(item) = items.iter_mut().find(|i| i.id == id) {
+                item.urls.extend(uri);
                 set(
                     item,
                     FieldKind::Username,

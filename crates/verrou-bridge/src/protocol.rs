@@ -167,6 +167,28 @@ pub enum Command {
         #[serde(default)]
         flags: u32,
     },
+    /// Cartes et identités proposées pour un formulaire de paiement ou
+    /// d'adresse de la page `url` (titres et sous-titres masqués seulement).
+    Forms {
+        url: String,
+    },
+    /// Les champs de la carte ou de l'identité `item`, pour la page `url`.
+    FillForm {
+        url: String,
+        item: String,
+    },
+    /// Recherche parmi les identifiants (titre et identifiant affiché, aucun
+    /// secret), pour en rattacher un à un site qui n'en a pas.
+    SearchLogins {
+        query: String,
+    },
+    /// Ajoute le site de la page `url` à l'identifiant `item` (choisi par
+    /// l'utilisateur dans la fenêtre de l'extension) : il y correspond
+    /// ensuite, et se remplit comme les autres.
+    LinkSite {
+        url: String,
+        item: String,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -222,6 +244,11 @@ pub enum ReplyResult {
     SshKeys {
         keys: Vec<SshIdentity>,
     },
+    Forms {
+        cards: Vec<FormSuggestion>,
+        identities: Vec<FormSuggestion>,
+    },
+    Form(Box<FormData>),
     /// Signature au format de l'agent SSH (algorithme et signature), base64.
     Signature {
         signature: String,
@@ -296,6 +323,45 @@ pub struct Suggestion {
     pub title: String,
     pub username: String,
     pub has_totp: bool,
+}
+
+/// Une carte ou une identité proposée dans le menu : aucun secret
+/// (« Visa •••• 4242 », l'e-mail de l'identité).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct FormSuggestion {
+    pub id: String,
+    pub title: String,
+    pub subtitle: String,
+}
+
+/// Les champs d'une carte (`kind` = `card`) ou d'une identité (`identity`),
+/// au moment du remplissage. Absents : vides dans le coffre.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct FormData {
+    pub kind: String,
+    // Carte
+    pub cardholder: Option<String>,
+    /// Chiffres seuls.
+    pub number: Option<String>,
+    /// `MM`.
+    pub exp_month: Option<String>,
+    /// `AAAA`.
+    pub exp_year: Option<String>,
+    pub code: Option<String>,
+    pub brand: Option<String>,
+    // Identité
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub full_name: Option<String>,
+    pub company: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub address1: Option<String>,
+    pub address2: Option<String>,
+    pub postal_code: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]

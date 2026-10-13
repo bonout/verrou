@@ -85,6 +85,12 @@ pub trait Backend: Send + Sync + 'static {
     /// Demander à l'utilisateur d'autoriser un accès du terminal (Touch ID,
     /// ou le mot de passe de la session). `true` : accordé.
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool>;
+    /// Les secrets de `item` peuvent-ils sortir vers le navigateur ? Un
+    /// élément protégé (« redemander le mot de passe principal ») attend une
+    /// confirmation : l'app la demande, et la réponse est `false` d'ici là.
+    fn gate(&self, item: &verrou_core::Item) -> bool {
+        !item.reprompt
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -398,6 +404,10 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
             Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
             Some(Err(reason)) => ReplyResult::Denied { reason },
         },
+        command @ (Command::Forms { .. }
+        | Command::FillForm { .. }
+        | Command::LinkSite { .. }
+        | Command::SearchLogins { .. }) => forms(&**backend, command).await,
         Command::Unlock => {
             backend.request_unlock();
             ReplyResult::Done
@@ -620,5 +630,49 @@ fn written(outcome: Option<Result<String, String>>) -> ReplyResult {
         None => ReplyResult::Locked,
         Some(Ok(item)) => ReplyResult::Saved { item },
         Some(Err(reason)) => ReplyResult::Denied { reason },
+    }
+}
+
+/// Cartes, identités et rattachement d'un site (navigateur).
+async fn forms(backend: &dyn Backend, command: Command) -> ReplyResult {
+    match command {
+        Command::Forms { url } => match read(backend, |v| access::form_suggestions(v, &url)) {
+            None => ReplyResult::Locked,
+            Some((cards, identities)) => ReplyResult::Forms { cards, identities },
+        },
+        Command::FillForm { url, item } => {
+            let outcome = read(backend, |v| {
+                access::form_data(v, &item, &url).and_then(|data| {
+                    let allowed = v.get(&item).is_some_and(|i| backend.gate(i));
+                    if allowed {
+                        Ok(data)
+                    } else {
+                        Err(CONFIRM_IN_APP.to_owned())
+                    }
+                })
+            });
+            match outcome {
+                None => ReplyResult::Locked,
+                Some(Ok(data)) => ReplyResult::Form(Box::new(data)),
+                Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
+                Some(Err(reason)) => ReplyResult::Denied { reason },
+            }
+        }
+        Command::LinkSite { url, item } => written(
+            backend
+                .write(Box::new(move |vault| {
+                    access::plan_link_site(vault, &url, &item)
+                }))
+                .await,
+        ),
+        Command::SearchLogins { query } => {
+            match read(backend, |v| access::search_logins(v, &query)) {
+                None => ReplyResult::Locked,
+                Some(items) => ReplyResult::Suggestions { items },
+            }
+        }
+        _ => ReplyResult::Denied {
+            reason: "commande inattendue".to_owned(),
+        },
     }
 }

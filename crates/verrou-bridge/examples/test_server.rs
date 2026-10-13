@@ -121,6 +121,43 @@ impl Backend for Fake {
     }
 }
 
+/// Une carte et une identité, pour les formulaires de paiement et d'adresse.
+fn card() -> Item {
+    let mut item = login("visa", "Visa perso", "", "", "");
+    item.kind = ItemKind::Card;
+    item.urls.clear();
+    "Visa •••• 4242".clone_into(&mut item.subtitle);
+    item.fields = vec![
+        Field::new("cardholder", "Titulaire", FieldKind::Text, "CAMILLE MARTIN"),
+        Field::new(
+            "number",
+            "Numéro",
+            FieldKind::CardNumber,
+            "4242 4242 4242 4242",
+        ),
+        Field::new("expiry", "Expiration", FieldKind::Expiry, "09/29"),
+        Field::new("code", "Cryptogramme", FieldKind::Pin, "123"),
+    ];
+    item
+}
+
+fn identity() -> Item {
+    let mut item = login("moi", "Moi", "", "", "");
+    item.kind = ItemKind::Identity;
+    item.urls.clear();
+    "camille@exemple.fr".clone_into(&mut item.subtitle);
+    item.fields = vec![
+        Field::new("first_name", "Prénom", FieldKind::Text, "Camille"),
+        Field::new("last_name", "Nom", FieldKind::Text, "Martin"),
+        Field::new("email", "E-mail", FieldKind::Email, "camille@exemple.fr"),
+        Field::new("part:address1", "", FieldKind::Text, "12 rue des Lilas"),
+        Field::new("part:postal_code", "", FieldKind::Text, "74000"),
+        Field::new("part:city", "", FieldKind::Text, "Annecy"),
+        Field::new("part:country", "", FieldKind::Text, "France"),
+    ];
+    item
+}
+
 fn login(id: &str, title: &str, url: &str, username: &str, password: &str) -> Item {
     Item {
         id: id.to_owned(),
@@ -199,6 +236,8 @@ fn main() {
             "mot-de-passe-local",
         ),
         ssh_key(),
+        card(),
+        identity(),
     ]);
     let file = std::env::temp_dir().join(format!("verrou-bridge-test-{}.json", std::process::id()));
     let bridge = Bridge::start(

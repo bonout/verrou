@@ -81,6 +81,125 @@
   }
 
   const roleOf = (input) => passwordRoles(scopeOf(input)).get(input) ?? null;
+
+  // MARK: Cartes et adresses
+
+  // Rôle d'un champ de carte ou d'adresse : d'abord `autocomplete`, sinon les
+  // indices (nom, libellé…), en français et en anglais.
+  const CARD_AUTOCOMPLETE = {
+    "cc-name": "cardholder", "cc-number": "number", "cc-exp": "exp",
+    "cc-exp-month": "exp_month", "cc-exp-year": "exp_year", "cc-csc": "code",
+  };
+  const CARD_HINTS = [
+    ["exp", /mm\s*\/\s*(yy|aa)/i],
+    ["number", /card.?num|cc.?num|num[ée]ro.*carte|carte.*num|cardnumber|n°.?de.?carte/i],
+    ["code", /cvc|cvv|csc|cryptogramme|security.?code|code.?de.?s[ée]curit/i],
+    ["exp_month", /exp.*(month|\bmm\b|mois)|mois.*exp/i],
+    ["exp_year", /exp.*(year|\byy\b|\baa\b|ann[ée]e)|ann[ée]e.*exp/i],
+    ["exp", /expir|exp.?date|date.?d.?exp/i],
+    ["cardholder", /card.?holder|name.?on.?card|titulaire|nom.*carte|cc.?name/i],
+  ];
+  const IDENTITY_AUTOCOMPLETE = {
+    "given-name": "first_name", "family-name": "last_name", name: "full_name", email: "email",
+    tel: "phone", "tel-national": "phone", organization: "company", "street-address": "address1",
+    "address-line1": "address1", "address-line2": "address2", "postal-code": "postal_code",
+    "address-level2": "city", "address-level1": "state", country: "country", "country-name": "country",
+  };
+  const IDENTITY_HINTS = [
+    ["address2", /address.?(2|line.?2)|compl[ée]ment|appartement|\bapt\b/i],
+    ["address1", /address|adresse|street|\brue\b/i],
+    ["postal_code", /zip|postal|\bcp\b|postcode/i],
+    ["city", /city|ville|town|locality|commune/i],
+    ["state", /state|province|r[ée]gion|county/i],
+    ["country", /country|pays/i],
+    ["first_name", /first.?name|pr[ée]nom|given/i],
+    ["last_name", /last.?name|surname|family|nom.?de.?famille/i],
+    ["full_name", /full.?name|nom.?complet|^\s*(name|nom)\s*$/i],
+    ["company", /company|soci[ée]t[ée]|organi[sz]ation|entreprise/i],
+    ["phone", /phone|t[ée]l[ée]phone|mobile|portable/i],
+    ["email", /e-?mail|courriel/i],
+  ];
+
+  function fieldRole(element, table, hints) {
+    const autocomplete = (element.getAttribute("autocomplete") ?? "").toLowerCase().trim().split(/\s+/).pop();
+    if (table[autocomplete]) return table[autocomplete];
+    const hint = hintOf(element);
+    for (const [role, pattern] of hints) if (pattern.test(hint)) return role;
+    if (table === IDENTITY_AUTOCOMPLETE && element instanceof HTMLInputElement) {
+      if (typeOf(element) === "email") return "email";
+      if (typeOf(element) === "tel") return "phone";
+    }
+    return null;
+  }
+
+  // Champs à remplir d'un formulaire : saisies visibles et listes déroulantes.
+  function formFields(scope) {
+    return [...scope.querySelectorAll("input, select")].filter((element) =>
+      !element.disabled && (element instanceof HTMLSelectElement ? visible(element) : usable(element))
+      && (element instanceof HTMLSelectElement || !["hidden", "password", "checkbox", "radio", "submit", "button"].includes(typeOf(element))));
+  }
+
+  // « card » ou « identity » (avec le rôle du champ), ou null.
+  function formKindOf(input) {
+    const card = fieldRole(input, CARD_AUTOCOMPLETE, CARD_HINTS);
+    if (card) return { kind: "card", role: card };
+    const scope = scopeOf(input);
+    // Un formulaire de connexion reste un formulaire de connexion.
+    if (scope.querySelector("input[type=password]")) return null;
+    const role = fieldRole(input, IDENTITY_AUTOCOMPLETE, IDENTITY_HINTS);
+    if (!role) return null;
+    // Une adresse, pas un simple champ e-mail : trois champs d'identité au moins.
+    const count = formFields(scope).filter((f) => fieldRole(f, IDENTITY_AUTOCOMPLETE, IDENTITY_HINTS)).length;
+    return count >= 3 ? { kind: "identity", role } : null;
+  }
+
+  const MONTHS = ["jan", "f", "mar", "av|apr", "mai|may", "juin|jun", "juil|jul", "ao|aug", "sep", "oct", "nov", "d"];
+
+  // Choisit l'option qui correspond à `value` (mois, année, pays…).
+  function selectOption(select, role, value) {
+    const wanted = String(value).trim().toLowerCase();
+    const options = [...select.options];
+    const matches = (option) => {
+      const text = option.text.trim().toLowerCase();
+      const optionValue = option.value.trim().toLowerCase();
+      if (role === "exp_month") {
+        const month = Number(wanted);
+        return Number(optionValue) === month || Number(text) === month
+          || new RegExp(`^(${MONTHS[month - 1]})`).test(text);
+      }
+      if (role === "exp_year") return optionValue.slice(-2) === wanted.slice(-2) || text.slice(-2) === wanted.slice(-2);
+      return optionValue === wanted || text === wanted || (wanted.length > 3 && text.startsWith(wanted));
+    };
+    const option = options.find(matches);
+    if (!option) return;
+    select.value = option.value;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+    select.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // Remplit le formulaire de `anchor` avec une carte ou une identité.
+  function applyForm(data, anchor) {
+    withFilling(() => {
+      const [table, hints] = data.kind === "card"
+        ? [CARD_AUTOCOMPLETE, CARD_HINTS] : [IDENTITY_AUTOCOMPLETE, IDENTITY_HINTS];
+      const values = {
+        ...data,
+        exp: data.exp_month && data.exp_year ? `${data.exp_month}/${data.exp_year.slice(-2)}` : null,
+      };
+      for (const field of formFields(scopeOf(anchor))) {
+        const role = fieldRole(field, table, hints);
+        let value = role ? values[role] : null;
+        if (!value) continue;
+        if (field instanceof HTMLSelectElement) {
+          selectOption(field, role, value);
+          continue;
+        }
+        if (role === "exp_year" && field.maxLength === 2) value = value.slice(-2);
+        setValue(field, value);
+      }
+      anchor.focus({ preventScroll: true });
+    });
+  }
   const isLoginPassword = (input) => typeOf(input) === "password" && roleOf(input) === "current";
 
   // « username », « password », « new », « otp » ou null.
@@ -89,6 +208,8 @@
     const type = typeOf(input);
     const autocomplete = (input.autocomplete || "").toLowerCase();
     if (type === "password") return roleOf(input) === "new" ? "new" : "password";
+    const form = formKindOf(input);
+    if (form) return form.kind;
     if (!isText(input)) return null;
     if (autocomplete.includes("one-time-code")) return "otp";
     if (/\b(username|email)\b/.test(autocomplete) && !autocomplete.includes("new")) return "username";
@@ -323,6 +444,17 @@
       const row = this.rows[index];
       const anchor = this.anchor;
       if (!row || !anchor) return;
+      if (row.form) {
+        let reply = await send({ kind: "fillForm", item: row.id });
+        if (reply?.state === "confirm") {
+          this.rows = [{ badge: "🔐", title: "Confirmez dans Verrou", subtitle: `« ${row.title} » est protégé` }];
+          this.render();
+          reply = await this.retryUntilConfirmed(row.id, anchor, "fillForm");
+        }
+        this.hide();
+        if (reply?.ok) applyForm(reply.data, anchor);
+        return;
+      }
       if (row.action === "generate") {
         this.hide();
         applyGenerated(row.password, anchor);
@@ -347,10 +479,10 @@
       if (credentials?.ok) apply(credentials, anchor);
     },
 
-    async retryUntilConfirmed(item, anchor) {
+    async retryUntilConfirmed(item, anchor, kind = "fill") {
       for (let tries = 0; tries < 60 && this.anchor === anchor; tries += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        const reply = await send({ kind: "fill", item });
+        const reply = await send({ kind, item });
         if (reply?.state !== "confirm") return reply;
       }
       return null;
@@ -366,9 +498,15 @@
           clearInterval(this.poll);
           return;
         }
-        const reply = await send({ kind: "suggest" });
+        const form = kind === "card" || kind === "identity";
+        const reply = await send({ kind: form ? "forms" : "suggest" });
         if (reply.state === "unlocked") {
           clearInterval(this.poll);
+          if (form) {
+            this.hide();
+            if (document.activeElement === anchor) offer(anchor);
+            return;
+          }
           const rows = rowsFor(reply, kind);
           if (rows.length && this.anchor === anchor) this.show(anchor, kind, rows);
           else this.hide();
@@ -404,6 +542,21 @@
       // Proposé même coffre verrouillé : rien ne sort de Verrou. Seulement
       // sur un champ vide, pour ne pas écraser ce que l'utilisateur tape.
       if (!input.value) menu.show(input, kind, [generatorRow()]);
+      return;
+    }
+    if (kind === "card" || kind === "identity") {
+      const reply = await send({ kind: "forms" });
+      if (document.activeElement !== input) return;
+      if (reply.state === "locked") {
+        menu.show(input, kind, [{ action: "unlock", badge: "🔒", title: "Déverrouiller Verrou",
+          subtitle: kind === "card" ? "pour remplir la carte" : "pour remplir l'adresse" }]);
+        return;
+      }
+      const list = (kind === "card" ? reply.cards : reply.identities) ?? [];
+      const rows = list.map((item) => ({ form: true, id: item.id, badge: kind === "card" ? "💳" : "👤",
+        title: item.title, subtitle: item.subtitle }));
+      if (rows.length) menu.show(input, kind, rows);
+      else menu.hide();
       return;
     }
     const reply = await send({ kind: "suggest" });

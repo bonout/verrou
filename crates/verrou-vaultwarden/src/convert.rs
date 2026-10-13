@@ -234,6 +234,19 @@ fn identity(view: &CipherView, item: &mut Item) {
     for (key, label, kind, value) in fields {
         push(item, key, label, kind, value.as_ref());
     }
+    // L'adresse en morceaux, pour remplir les formulaires champ par champ
+    // (`part:…` : jamais affichés, l'adresse complète l'est déjà).
+    let parts = [
+        ("part:address1", &id.address1),
+        ("part:address2", &id.address2),
+        ("part:postal_code", &id.postal_code),
+        ("part:city", &id.city),
+        ("part:state", &id.state),
+        ("part:country", &id.country),
+    ];
+    for (key, value) in parts {
+        push(item, key, key, FieldKind::Text, value.as_ref());
+    }
 }
 
 /// Les parties non vides, séparées par `separator`.

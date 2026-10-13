@@ -831,7 +831,7 @@ async fn create_edit_and_trash() {
     assert_eq!(card.title, "Visa Premier");
     assert!(matches!(
         connection
-            .amend_login(&visa, None, Some(SecretString::new("x")), None)
+            .amend_login(&visa, None, Some(SecretString::new("x")), None, None)
             .await,
         Err(Error::Invalid(_))
     ));
@@ -873,6 +873,7 @@ async fn amend_like_the_extension(
             Some(SecretString::new(
                 "otpauth://totp/GitHub:camille?secret=GEZDGNBVGY3TQOJQ",
             )),
+            Some("https://github.example".to_owned()),
         )
         .await
         .unwrap();
@@ -881,6 +882,7 @@ async fn amend_like_the_extension(
         github.field("password").unwrap().value.expose(),
         "depuis-brave"
     );
+    assert!(github.urls.iter().any(|u| u == "https://github.example"));
     assert_eq!(
         github
             .field_of_kind(verrou_core::FieldKind::Username)

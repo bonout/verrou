@@ -110,6 +110,43 @@ impl Backend for FakeBackend {
     }
 }
 
+fn visa() -> Item {
+    let mut item = github();
+    "visa".clone_into(&mut item.id);
+    "Visa".clone_into(&mut item.title);
+    item.kind = ItemKind::Card;
+    item.urls.clear();
+    item.fields = vec![
+        Field::new("cardholder", "Titulaire", FieldKind::Text, "CAMILLE MARTIN"),
+        Field::new(
+            "number",
+            "Numéro",
+            FieldKind::CardNumber,
+            "4242 4242 4242 4242",
+        ),
+        Field::new("expiry", "Expiration", FieldKind::Expiry, "09/29"),
+        Field::new("code", "Cryptogramme", FieldKind::Pin, "123"),
+    ];
+    item
+}
+
+fn me() -> Item {
+    let mut item = github();
+    "moi".clone_into(&mut item.id);
+    "Moi".clone_into(&mut item.title);
+    item.kind = ItemKind::Identity;
+    item.urls.clear();
+    item.fields = vec![
+        Field::new("first_name", "Prénom", FieldKind::Text, "Camille"),
+        Field::new("last_name", "Nom", FieldKind::Text, "Martin"),
+        Field::new("email", "E-mail", FieldKind::Email, "camille@exemple.fr"),
+        Field::new("part:address1", "", FieldKind::Text, "12 rue des Lilas"),
+        Field::new("part:postal_code", "", FieldKind::Text, "74000"),
+        Field::new("part:city", "", FieldKind::Text, "Annecy"),
+    ];
+    item
+}
+
 /// Un identifiant « redemander le mot de passe principal ».
 fn protected_bank() -> Item {
     let mut item = github();
@@ -210,7 +247,7 @@ fn start() -> (
 ) {
     let (sender, receiver) = mpsc::channel();
     let backend = Arc::new(FakeBackend {
-        vault: Mutex::new(Vault::new(vec![github(), protected_bank()])),
+        vault: Mutex::new(Vault::new(vec![github(), protected_bank(), visa(), me()])),
         unlocked: AtomicBool::new(true),
         unlock_requested: AtomicBool::new(false),
         confirmed: AtomicBool::new(false),
@@ -390,6 +427,8 @@ fn pairing_then_fill_for_the_matching_site_only() {
     let suggestions =
         client.request(&json!({ "cmd": "suggest", "url": "https://github.com/login" }));
     assert_eq!(suggestions["items"][0]["has_totp"], true);
+
+    forms_and_site_linking(&mut client);
 
     // Élément protégé : Verrou demande confirmation, puis livre.
     let protected =
@@ -686,4 +725,47 @@ fn ssh_agent_commands_sign_inside_verrou() {
     );
     assert_eq!(cli.request(&sign)["result"], "locked");
     let _ = std::fs::remove_file(file);
+}
+
+/// Cartes, identités, et rattachement d'un site à un identifiant.
+fn forms_and_site_linking(client: &mut Client) {
+    // Formulaires de paiement et d'adresse : propositions sans secret, puis
+    // les champs de l'élément choisi.
+    let forms =
+        client.request(&json!({ "cmd": "forms", "url": "https://boutique.example/paiement" }));
+    assert_eq!(forms["cards"][0]["id"], "visa");
+    assert!(forms["cards"][0].get("number").is_none());
+    assert_eq!(forms["identities"][0]["id"], "moi");
+    let card = client.request(
+        &json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": "visa" }),
+    );
+    assert_eq!(card["result"], "form");
+    assert_eq!(card["number"], "4242424242424242");
+    assert_eq!(
+        (card["exp_month"].as_str(), card["exp_year"].as_str()),
+        (Some("09"), Some("2029"))
+    );
+    let address = client
+        .request(&json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": "moi" }));
+    assert_eq!(address["full_name"], "Camille Martin");
+    assert_eq!(address["city"], "Annecy");
+    assert_eq!(
+        client.request(&json!({ "cmd": "forms", "url": "http://boutique.example/" }))["cards"],
+        json!([])
+    );
+
+    // Un site sans identifiant : l'utilisateur rattache GitHub, qui s'y propose ensuite.
+    let found = client.request(&json!({ "cmd": "search_logins", "query": "git" }));
+    assert_eq!(found["items"][0]["id"], "github");
+    assert!(found["items"][0].get("password").is_none());
+    let linked = client.request(
+        &json!({ "cmd": "link_site", "url": "https://github.example/login", "item": "github" }),
+    );
+    assert_eq!(linked["result"], "saved");
+    let found = client.request(&json!({ "cmd": "suggest", "url": "https://github.example/login" }));
+    assert_eq!(found["items"][0]["id"], "github");
+    let again = client.request(
+        &json!({ "cmd": "link_site", "url": "https://github.example/", "item": "github" }),
+    );
+    assert_eq!(again["result"], "denied");
 }

@@ -92,6 +92,7 @@ impl Connection {
         username: Option<String>,
         password: Option<SecretString>,
         totp: Option<SecretString>,
+        uri: Option<String>,
     ) -> Result<Decrypted, Error> {
         let mut draft = self.draft(id).await?;
         let Some(login) = draft.login.as_mut() else {
@@ -107,6 +108,9 @@ impl Connection {
         }
         if totp.is_some() {
             login.totp = totp;
+        }
+        if let Some(uri) = uri.filter(|u| !login.uris.contains(u)) {
+            login.uris.push(uri);
         }
         self.update(id, draft).await
     }

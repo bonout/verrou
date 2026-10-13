@@ -121,6 +121,17 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   seulement après ce clic) est lue par le lecteur de codes-barres de Brave,
   dans l'extension ; l'image n'est ni gardée ni envoyée. Seule l'URI
   `otpauth://` part vers Verrou, pour l'identifiant choisi.
+- **Cartes et identités** : le menu d'un formulaire de paiement ou
+  d'adresse ne reçoit que des titres et des sous-titres masqués (« Visa ••••
+  4242 ») ; les champs ne sortent qu'au choix d'un élément, vers une page en
+  HTTPS, et un élément protégé attend la confirmation dans Verrou. Une carte
+  n'étant liée à aucun site, toute page sûre peut la proposer : c'est
+  l'utilisateur qui choisit de la remplir.
+- **Relier un site à un identifiant** : seulement depuis la fenêtre de
+  l'extension, jamais depuis une page. La recherche n'y montre que titres et
+  identifiants ; choisir un élément lui ajoute l'origine de l'onglet (après un
+  avertissement sur l'hameçonnage), et le remplissage suit la règle habituelle
+  du même site.
 - **Dans la page** : le menu et le bandeau vivent dans un shadow DOM fermé et
   n'obéissent qu'aux événements réels (`isTrusted`) ; la page ne peut ni les
   lire ni les déclencher. Les secrets n'arrivent qu'au remplissage, pour
