@@ -33,6 +33,12 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   a banner offers to save the account or update its password. A two-factor QR
   code shown by a site can be added to the login from the extension's popup
   (or its secret key, typed by hand).
+- **Security audit**: reused, weak and plain-HTTP passwords, computed
+  locally; known breaches on request through Have I Been Pwned (k-anonymity:
+  only 5 characters of each password's SHA-1 leave the Mac).
+- **Protected items**: Bitwarden's "master password re-prompt" is enforced in
+  the Rust core: secrets (reveal, copy, codes, edit, Brave fill) need Touch ID
+  or the master password, valid 5 minutes per item.
 - **Offline**: the vault stays available without network, decrypted from the
   cache (the server's response, still encrypted).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see

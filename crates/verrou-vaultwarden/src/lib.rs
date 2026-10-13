@@ -11,6 +11,7 @@
 //! SDK avant d'être envoyées.
 
 mod api;
+pub mod breach;
 mod convert;
 mod edit;
 mod error;

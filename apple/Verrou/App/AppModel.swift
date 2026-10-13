@@ -64,7 +64,16 @@ final class AppModel {
     /// La session a expiré : il faut se reconnecter (mot de passe et second facteur).
     private(set) var reloginRequired = false
 
-    var filter: SidebarFilter = .all { didSet { refresh() } }
+    var filter: SidebarFilter = .all { didSet { showAudit = false; refresh() } }
+
+    // Audit
+    /// La colonne centrale montre l'audit au lieu de la liste.
+    var showAudit = false
+    private(set) var audit: AuditReport?
+    /// `nil` : pas encore vérifié (seulement sur demande : réseau).
+    private(set) var breaches: [BreachedPassword]?
+    private(set) var checkingBreaches = false
+    var breachError: String?
     var query: String = "" { didSet { refresh() } }
     var sort: ResultOrder = .relevance { didSet { refresh() } }
     var selection: String? { didSet { if oldValue != selection { revealed.removeAll() } } }
@@ -325,6 +334,8 @@ final class AppModel {
         if mode == .demo {
             switch await Biometrics.authenticate(reason: "déverrouiller votre coffre") {
             case .success: openVault()
+            case .fallback:
+                lockState = .locked
             case .failure(let message):
                 unlockError = message
                 lockState = .locked
@@ -403,7 +414,26 @@ final class AppModel {
 
     /// Recharge résumés et compteurs (après déverrouillage ou synchronisation),
     /// en gardant la sélection si l'élément existe encore.
+    func openAudit() {
+        audit = try? session.audit()
+        showAudit = true
+    }
+
+    /// Have I Been Pwned, par k-anonymat (5 caractères d'empreinte par mot de passe).
+    func checkBreaches() async {
+        guard !checkingBreaches, lockState == .unlocked else { return }
+        checkingBreaches = true
+        breachError = nil
+        defer { checkingBreaches = false }
+        do {
+            breaches = try await session.checkBreaches()
+        } catch {
+            breachError = Self.describe(error)
+        }
+    }
+
     private func reloadVault() {
+        if showAudit { audit = try? session.audit() }
         let start = ContinuousClock.now
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
@@ -427,6 +457,10 @@ final class AppModel {
         selection = nil
         query = ""
         quickQuery = ""
+        showAudit = false
+        audit = nil
+        breaches = nil
+        breachError = nil
         // La fenêtre du coffre reste montée derrière l'écran verrouillé :
         // rien d'ouvert ne doit y survivre.
         editor = nil
@@ -510,6 +544,7 @@ final class AppModel {
         case .ReadOnly: return "Cet élément est en lecture seule pour votre compte."
         case .Invalid(let message): return message.prefix(1).uppercased() + message.dropFirst() + "."
         case .Conflict: return "L'élément a changé sur le serveur : synchronisez, puis recommencez."
+        case .RepromptRequired: return "Cet élément est protégé : confirmez d'abord votre identité."
         }
     }
 
@@ -589,6 +624,10 @@ final class AppModel {
 
     func edit(_ itemID: String) async {
         guard canEdit else { return }
+        if session.needsConfirmation(id: itemID) {
+            let title = summaries.first { $0.id == itemID }?.title ?? "cet élément"
+            guard await confirmAccess(itemID: itemID, title: title) else { return }
+        }
         editorError = nil
         do {
             editor = Editor(itemID: itemID, draft: try await session.editDraft(id: itemID))
@@ -655,6 +694,64 @@ final class AppModel {
         syncState = .idle
     }
 
+    // MARK: Éléments protégés
+
+    /// Élément protégé (« redemander le mot de passe principal ») pas encore
+    /// confirmé : demande la confirmation, puis rejoue `retry`. Rend `true`
+    /// si l'action doit attendre.
+    func awaitsConfirmation(_ itemID: String, retry: @escaping @MainActor () -> Void) -> Bool {
+        guard session.needsConfirmation(id: itemID) else { return false }
+        let title = summaries.first { $0.id == itemID }?.title ?? "cet élément"
+        Task {
+            if await confirmAccess(itemID: itemID, title: title) { retry() }
+        }
+        return true
+    }
+
+    /// Touch ID, sinon le mot de passe principal ; la confirmation vaut
+    /// 5 minutes pour cet élément (côté Rust, effacée au verrouillage).
+    func confirmAccess(itemID: String, title: String) async -> Bool {
+        if mode == .vaultwarden, canUseTouchID {
+            switch await Biometrics.authenticate(reason: "afficher « \(title) »") {
+            case .success:
+                session.authorizeItem(id: itemID)
+                return true
+            case .failure:
+                return false
+            case .fallback:
+                break
+            }
+        }
+        guard mode == .vaultwarden else {
+            // Coffre fictif : pas de mot de passe principal à vérifier.
+            session.authorizeItem(id: itemID)
+            return true
+        }
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "« \(title) » est protégé"
+        alert.informativeText = "Saisissez votre mot de passe principal pour afficher ses secrets."
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Confirmer")
+        alert.addButton(withTitle: "Annuler")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn, !field.stringValue.isEmpty else { return false }
+        let password = field.stringValue
+        field.stringValue = ""
+        do {
+            guard try await session.verifyMasterPassword(password: password) else {
+                toast = Toast(message: "Mot de passe principal incorrect", detail: nil, failure: true)
+                return false
+            }
+            session.authorizeItem(id: itemID)
+            return true
+        } catch {
+            toast = Toast(message: "Confirmation impossible", detail: Self.describe(error), failure: true)
+            return false
+        }
+    }
+
     // MARK: Secrets
 
     func reveal(_ fieldID: String, of itemID: String) -> String? {
@@ -668,8 +765,20 @@ final class AppModel {
         if revealed[fieldID] != nil {
             revealed[fieldID] = nil
         } else {
+            if awaitsConfirmation(itemID, retry: { [weak self] in self?.toggleReveal(fieldID, of: itemID) }) { return }
             _ = reveal(fieldID, of: itemID)
         }
+    }
+
+    /// Code à usage unique du moment, s'il est accessible sans confirmation.
+    func totpCode(of itemID: String, at date: Date = Date()) -> TotpView? {
+        try? session.totp(id: itemID, unixTime: UInt64(date.timeIntervalSince1970))
+    }
+
+    func copyCode(of itemID: String) {
+        if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyCode(of: itemID) }) { return }
+        guard let code = totpCode(of: itemID) else { return }
+        copy(code.code, label: "Code", secret: true)
     }
 
     func copy(_ value: String, label: String, secret: Bool) {
@@ -681,10 +790,11 @@ final class AppModel {
 
     func copyField(_ field: FieldView, of itemID: String) {
         if field.fieldType == .totp {
-            guard let code = try? session.totp(id: itemID, unixTime: UInt64(Date().timeIntervalSince1970)) else { return }
-            copy(code.code, label: "Code", secret: true)
+            copyCode(of: itemID)
             return
         }
+        if field.secret,
+           awaitsConfirmation(itemID, retry: { [weak self] in self?.copyField(field, of: itemID) }) { return }
         let value = field.secret ? reveal(field.id, of: itemID) : field.value
         guard let value else { return }
         // Le numéro de carte se copie sans espaces : c'est ce qu'attendent les
@@ -695,6 +805,7 @@ final class AppModel {
     }
 
     func copyPassword(of itemID: String) {
+        if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyPassword(of: itemID) }) { return }
         guard let value = try? session.reveal(id: itemID, fieldId: "password") else { return }
         copy(value, label: "Mot de passe", secret: true)
     }

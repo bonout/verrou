@@ -58,8 +58,15 @@ async function renderUnlocked() {
         element("div", { className: "title", textContent: item.title }),
         element("div", { className: "sub", textContent: item.username })));
     row.addEventListener("click", async () => {
-      const result = await send({ kind: "fillTab", item: item.id });
+      let result = await send({ kind: "fillTab", item: item.id });
+      // Élément protégé : confirmation dans Verrou, puis nouvel essai.
+      for (let tries = 0; result?.state === "confirm" && tries < 60; tries += 1) {
+        stateLabel.textContent = "Confirmez dans Verrou…";
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        result = await send({ kind: "fillTab", item: item.id });
+      }
       if (result?.ok) window.close();
+      else stateLabel.textContent = "Déverrouillé";
     });
     list.append(row);
   }

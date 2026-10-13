@@ -17,6 +17,8 @@ final class BrowserBridge {
     private(set) var running = false
     private(set) var error: String?
     private(set) var clients: [BridgeClient] = []
+    /// Confirmations en cours : l'extension réessaie chaque seconde.
+    @ObservationIgnored private var confirming: Set<String> = []
 
     var enabled: Bool = UserDefaults.standard.bool(forKey: "braveBridge") {
         didSet {
@@ -103,6 +105,17 @@ final class BrowserBridge {
         model.didSaveFromBrowser(title: title)
     }
 
+    /// Brave veut remplir un élément protégé : la confirmation se fait ici ;
+    /// l'extension réessaie d'elle-même.
+    fileprivate func repromptRequested(item: String, title: String) {
+        guard !confirming.contains(item) else { return }
+        confirming.insert(item)
+        Task {
+            _ = await model.confirmAccess(itemID: item, title: title)
+            confirming.remove(item)
+        }
+    }
+
     // MARK: Déclaration au navigateur
 
     /// `NativeMessagingHosts/app.verrou.bridge.json` : le navigateur n'accepte
@@ -174,6 +187,12 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
     func vaultChanged(item: String, title: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated { bridge?.vaultChanged(item: item, title: title) }
+        }
+    }
+
+    func repromptRequested(item: String, title: String) {
+        DispatchQueue.main.async { [weak bridge] in
+            MainActor.assumeIsolated { bridge?.repromptRequested(item: item, title: title) }
         }
     }
 }

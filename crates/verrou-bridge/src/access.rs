@@ -251,6 +251,11 @@ fn otpauth_account(totp: &str) -> Option<String> {
 
 /// Identifiant, mot de passe et code du moment, si l'élément correspond à
 /// la page. `Err` : la raison du refus, à afficher.
+/// L'élément `item` demande-t-il une confirmation avant de livrer ses secrets ?
+pub fn needs_confirmation(vault: &Vault, item: &str) -> bool {
+    vault.get(item).is_some_and(|i| i.reprompt)
+}
+
 pub fn credentials(
     vault: &Vault,
     item_id: &str,
@@ -314,6 +319,7 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 modified: 0,
                 fields: Vec::new(),
                 notes: None,
+                reprompt: false,
             };
             set(
                 &mut item,
@@ -384,6 +390,7 @@ mod tests {
                 Field::new("totp", "Code", FieldKind::Totp, "JBSWY3DPEHPK3PXP"),
             ],
             notes: None,
+            reprompt: false,
         }
     }
 

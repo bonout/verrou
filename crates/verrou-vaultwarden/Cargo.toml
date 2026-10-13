@@ -14,7 +14,9 @@ bitwarden-vault.workspace = true
 bitwarden-api-api.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 data-encoding.workspace = true
+sha1.workspace = true
 sha2.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true

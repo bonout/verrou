@@ -137,6 +137,23 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   la clé du canal (comme les cookies) ; l'extension se charge en mode
   développeur (pas de Chrome Web Store).
 
+## Éléments protégés et audit
+
+- **« Redemander le mot de passe principal »** (réglage Bitwarden d'un
+  élément) : le cœur Rust refuse ses secrets (`reveal`, codes, brouillon de
+  modification, remplissage dans Brave) tant que l'utilisateur n'a pas
+  confirmé, par Touch ID ou par le mot de passe principal (vérifié hors ligne
+  sur le cache). Une confirmation vaut 5 minutes pour cet élément et
+  s'efface au verrouillage. Depuis Brave, Verrou demande la confirmation et
+  l'extension réessaie : elle ne reçoit rien avant.
+- **Audit** : mots de passe réutilisés, faibles (entropie estimée sous
+  60 bits), sites en HTTP, calculés localement ; seuls des résumés sortent du
+  cœur Rust.
+- **Fuites connues** (sur demande) : API « Pwned Passwords » de Have I Been
+  Pwned par k-anonymat. Seuls les 5 premiers caractères hexadécimaux du SHA-1
+  de chaque mot de passe partent, avec du remplissage dans les réponses ; la
+  comparaison se fait sur le Mac.
+
 ## Touch ID
 
 La clé de l'utilisateur est scellée par une clé d'accord P-256 **créée dans le

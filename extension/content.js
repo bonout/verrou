@@ -335,9 +335,25 @@
         this.waitForUnlock(anchor, this.kind);
         return;
       }
-      const credentials = await send({ kind: "fill", item: row.id });
+      let credentials = await send({ kind: "fill", item: row.id });
+      if (credentials?.state === "confirm") {
+        // Élément protégé : Verrou demande Touch ID (ou le mot de passe
+        // principal) ; on réessaie jusqu'à la confirmation.
+        this.rows = [{ badge: "🔐", title: "Confirmez dans Verrou", subtitle: `« ${row.title} » est protégé` }];
+        this.render();
+        credentials = await this.retryUntilConfirmed(row.id, anchor);
+      }
       this.hide();
       if (credentials?.ok) apply(credentials, anchor);
+    },
+
+    async retryUntilConfirmed(item, anchor) {
+      for (let tries = 0; tries < 60 && this.anchor === anchor; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const reply = await send({ kind: "fill", item });
+        if (reply?.state !== "confirm") return reply;
+      }
+      return null;
     },
 
     // Après « Déverrouiller » : les identifiants apparaissent dès que Verrou est ouvert.
