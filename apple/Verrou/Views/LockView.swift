@@ -70,6 +70,8 @@ struct LockView: View {
         }
         .frame(minWidth: 520, minHeight: 460)
         .onAppear {
+            Perf.log.notice("écran verrouillé affiché à +\(Perf.msSinceLaunch) ms du lancement")
+            model.activatedAt = .now
             if model.canUseTouchID {
                 Task { await model.promptTouchIDIfPossible() }
             } else {
@@ -77,6 +79,8 @@ struct LockView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.activatedAt = .now
+            Biometrics.refresh()
             Task { await model.promptTouchIDIfPossible() }
         }
     }

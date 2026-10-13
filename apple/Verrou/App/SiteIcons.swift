@@ -37,6 +37,9 @@ final class SiteIcons {
         return nil
     }
 
+    /// Sites déjà demandés (mesures).
+    var requestedCount: Int { requested.count }
+
     func clear() {
         images.removeAll()
         requested.removeAll()

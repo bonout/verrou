@@ -59,7 +59,18 @@ struct MainView: View {
             EditItemView(editor: editor)
                 .environment(model)
         }
-        .onAppear { searchFocused = true }
+        // La vue reste montée derrière l'écran verrouillé (voir RootView) :
+        // c'est le déverrouillage qui lui rend la main.
+        .onAppear { searchFocused = model.lockState == .unlocked }
+        .onChange(of: model.lockState) { _, state in
+            searchFocused = state == .unlocked
+            guard state == .unlocked, let start = model.unlockStartedAt else { return }
+            model.unlockStartedAt = nil
+            // Prochain tour de boucle : la liste est dessinée.
+            DispatchQueue.main.async {
+                Perf.log.notice("coffre affiché à +\(Perf.ms(since: start)) ms de la clé reçue")
+            }
+        }
         .onKeyPress(.escape) {
             if !model.query.isEmpty { model.query = ""; return .handled }
             return .ignored
@@ -213,22 +224,30 @@ struct ItemListView: View {
             .padding(.bottom, 6)
             Divider()
 
-            if model.results.isEmpty {
+            if model.rows.isEmpty {
                 NoResultsView(query: model.query)
             } else {
+                // Pile paresseuse plutôt que `List` : la liste de macOS calcule la
+                // hauteur de toutes ses lignes, donc les construit toutes (et
+                // demande toutes les icônes) dès que les résultats changent.
                 ScrollViewReader { proxy in
-                    List(selection: $model.selection) {
-                        ForEach(model.results, id: \.id) { hit in
-                            if let summary = model.summary(for: hit) {
-                                ItemRow(summary: summary, highlights: hit.highlights)
-                                    .tag(summary.id)
-                                    .id(summary.id)
-                                    .contextMenu { RowMenu(summary: summary) }
+                    ScrollView {
+                        LazyVStack(spacing: 2) {
+                            ForEach(model.rows) { row in
+                                let selected = row.id == model.selection
+                                ItemRow(summary: row.summary, highlights: row.highlights, selected: selected)
+                                    .padding(.horizontal, 8)
+                                    .background(selected ? Theme.accent : .clear,
+                                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { model.selection = row.id }
+                                    .contextMenu { RowMenu(summary: row.summary) }
+                                    .id(row.id)
                             }
                         }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
                     }
-                    .listStyle(.inset)
-                    .scrollContentBackground(.hidden)
                     .onChange(of: model.selection) { _, id in
                         if let id { proxy.scrollTo(id) }
                     }
@@ -285,13 +304,19 @@ struct SearchField: View {
 struct ItemRow: View {
     let summary: ItemSummary
     let highlights: [UInt32]
+    /// Sur fond d'accent : texte blanc.
+    var selected = false
 
     var body: some View {
+        #if DEBUG || BENCH
+        let _ = BenchDriver.rowsBuilt += 1
+        #endif
         HStack(spacing: 11) {
             ItemIcon(summary: summary, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
-                    HighlightedText(text: summary.title, highlights: highlights)
+                    HighlightedText(text: summary.title, highlights: highlights,
+                                    tint: selected ? nil : Theme.accent)
                         .lineLimit(1)
                     if summary.favorite {
                         Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow)
@@ -299,18 +324,19 @@ struct ItemRow: View {
                 }
                 Text(summary.subtitle)
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
             if summary.hasTotp {
                 Image(systemName: "clock.badge.checkmark")
                     .font(.caption)
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(selected ? .white : .teal)
                     .help("Code à usage unique")
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .foregroundStyle(selected ? Color.white : Color.primary)
         .contentShape(Rectangle())
     }
 }

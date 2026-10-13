@@ -73,6 +73,8 @@ enum BiometricVault {
               let sealed = try? JSONDecoder().decode(Sealed.self, from: data) else { throw Failure.invalidated }
         let context = LAContext()
         context.localizedFallbackTitle = ""
+        let prompted = ContinuousClock.now
+        defer { Perf.log.notice("Touch ID (attente du doigt comprise) : \(Perf.ms(since: prompted)) ms") }
         do {
             try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
         } catch let error as LAError where [.userCancel, .appCancel, .systemCancel, .userFallback].contains(error.code) {
@@ -80,6 +82,8 @@ enum BiometricVault {
         } catch let error as LAError where [.biometryNotAvailable, .biometryNotEnrolled, .biometryLockout].contains(error.code) {
             throw Failure.unavailable
         }
+        let enclave = ContinuousClock.now
+        defer { Perf.log.notice("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms") }
         do {
             // Le contexte déjà authentifié évite une seconde demande.
             let enclaveKey = try SecureEnclave.P256.KeyAgreement.PrivateKey(

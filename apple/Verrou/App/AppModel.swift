@@ -40,6 +40,10 @@ final class AppModel {
     private(set) var account: AccountInfo?
     private(set) var summaries: [ItemSummary] = []
     private(set) var results: [SearchHit] = []
+    /// Les résultats prêts à afficher, une ligne par élément : la liste de
+    /// SwiftUI ne construit alors que les lignes visibles (avec un `if` par
+    /// ligne, elle les construisait toutes à chaque frappe).
+    private(set) var rows: [ResultRow] = []
     private(set) var counts: SidebarCounts?
     private(set) var lastSearchDuration: Duration = .zero
     private(set) var syncState: SyncState = .idle
@@ -68,7 +72,10 @@ final class AppModel {
     var revealed: [String: String] = [:]
     var toast: Toast?
     /// Requête de la fenêtre d'accès rapide, indépendante de la fenêtre principale.
-    var quickQuery = ""
+    var quickQuery = "" { didSet { refreshQuick() } }
+    /// Les 8 meilleurs résultats de l'accès rapide, calculés une fois par
+    /// frappe (et non à chaque rendu du panneau).
+    private(set) var quickRows: [ResultRow] = []
     /// Incrémenté à chaque ouverture de l'accès rapide : la fenêtre est
     /// réutilisée, son `onAppear` ne revient pas.
     private(set) var quickAccessOpenings = 0
@@ -155,7 +162,15 @@ final class AppModel {
                 loginEmail = account.email
             }
         }
+        // Préchauffe la réponse de LocalAuthentication avant le premier rendu.
+        Biometrics.refresh()
+        Perf.log.notice("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
     }
+
+    /// Début du dernier déverrouillage, et dernière activation de l'app : pour
+    /// mesurer ce que l'utilisateur attend.
+    @ObservationIgnored var unlockStartedAt: ContinuousClock.Instant?
+    @ObservationIgnored var activatedAt: ContinuousClock.Instant?
 
     /// Pas de compte sur ce Mac, ou session expirée : écran de connexion.
     var needsLogin: Bool {
@@ -302,6 +317,9 @@ final class AppModel {
 
     func unlockWithBiometrics() async {
         defer { lastBiometricPrompt = Date() }
+        if let activatedAt {
+            Perf.log.notice("Touch ID demandé à +\(Perf.ms(since: activatedAt)) ms de l'activation")
+        }
         lockState = .unlocking
         unlockError = nil
         if mode == .demo {
@@ -315,7 +333,11 @@ final class AppModel {
         }
         do {
             let key = try await BiometricVault.open(in: dataDirectory, reason: "déverrouiller votre coffre")
-            didUnlock(failures: try await session.unlockWithUserKey(userKey: key))
+            unlockStartedAt = .now
+            let failures = try await Perf.measure("déchiffrement du coffre (Rust)") {
+                try await session.unlockWithUserKey(userKey: key)
+            }
+            didUnlock(failures: failures)
         } catch BiometricVault.Failure.cancelled {
             lockState = .locked
         } catch BiometricVault.Failure.unavailable {
@@ -341,8 +363,12 @@ final class AppModel {
         }
         lockState = .unlocking
         unlockError = nil
+        unlockStartedAt = .now
         do {
-            didUnlock(failures: try await session.unlockWithPassword(password: masterPassword))
+            let failures = try await Perf.measure("déverrouillage par mot de passe (dérivation + déchiffrement)") {
+                try await session.unlockWithPassword(password: masterPassword)
+            }
+            didUnlock(failures: failures)
             await enrollBiometricsIfWanted()
         } catch {
             unlockError = Self.describe(error)
@@ -378,6 +404,8 @@ final class AppModel {
     /// Recharge résumés et compteurs (après déverrouillage ou synchronisation),
     /// en gardant la sélection si l'élément existe encore.
     private func reloadVault() {
+        let start = ContinuousClock.now
+        defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
         counts = try? session.counts()
         refresh()
@@ -392,10 +420,17 @@ final class AppModel {
         session.lock()
         summaries = []
         results = []
+        rows = []
+        quickRows = []
         counts = nil
         revealed.removeAll()
         selection = nil
         query = ""
+        quickQuery = ""
+        // La fenêtre du coffre reste montée derrière l'écran verrouillé :
+        // rien d'ouvert ne doit y survivre.
+        editor = nil
+        editorError = nil
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked
@@ -408,12 +443,16 @@ final class AppModel {
         guard mode == .vaultwarden, lockState == .unlocked, syncState != .syncing else { return }
         syncState = .syncing
         do {
-            let failures = try await session.sync()
+            let outcome = try await Perf.measure("synchronisation (réseau + déchiffrement)") {
+                try await session.sync()
+            }
             guard lockState == .unlocked else { return }
             account = session.account()
-            reloadVault()
             syncState = .idle
-            if failures > 0 { syncState = .failed("\(failures) élément(s) illisible(s)") }
+            // Rien de nouveau : la liste affichée est à jour, on n'y touche pas.
+            guard outcome.changed else { return }
+            reloadVault()
+            if outcome.failures > 0 { syncState = .failed("\(outcome.failures) élément(s) illisible(s)") }
         } catch VerrouError.Locked {
             syncState = .idle
         } catch VerrouError.SessionExpired {
@@ -476,12 +515,25 @@ final class AppModel {
 
     // MARK: Recherche
 
+    private func refreshQuick() {
+        guard lockState == .unlocked, !quickQuery.isEmpty else {
+            quickRows = []
+            return
+        }
+        let hits = (try? session.search(query: quickQuery, filter: .all, order: .relevance)) ?? []
+        quickRows = hits.prefix(8).compactMap { hit in
+            summary(for: hit).map { ResultRow(summary: $0, highlights: hit.highlights) }
+        }
+    }
+
     private func refresh() {
+        refreshQuick()
         guard lockState == .unlocked else { return }
         let clock = ContinuousClock()
         let start = clock.now
         let effectiveSort = query.isEmpty && sort == .relevance ? ResultOrder.title : sort
         results = (try? session.search(query: query, filter: filter, order: effectiveSort)) ?? []
+        rows = results.compactMap { hit in summary(for: hit).map { ResultRow(summary: $0, highlights: hit.highlights) } }
         lastSearchDuration = clock.now - start
     }
 
@@ -661,6 +713,12 @@ final class AppModel {
     func noteActivity() {
         autoLock?.touch()
     }
+}
+
+struct ResultRow: Identifiable {
+    let summary: ItemSummary
+    let highlights: [UInt32]
+    var id: String { summary.id }
 }
 
 struct Toast: Equatable, Identifiable {
