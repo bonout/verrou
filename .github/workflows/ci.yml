@@ -16,6 +16,19 @@ jobs:
   rust:
     name: Rust (fmt, clippy, tests)
     runs-on: ubuntu-latest
+    # Vaultwarden jetable, même version que la production : les tests
+    # d'intégration y créent leurs comptes (connexion, TOTP, synchronisation).
+    services:
+      vaultwarden:
+        image: vaultwarden/server:1.37.4
+        ports: ["8099:80"]
+        env:
+          I_REALLY_WANT_VOLATILE_STORAGE: "true"
+          SIGNUPS_ALLOWED: "true"
+          LOGIN_RATELIMIT_MAX_BURST: "1000"
+          LOGIN_RATELIMIT_SECONDS: "1"
+    env:
+      VERROU_TEST_SERVER: http://localhost:8099
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

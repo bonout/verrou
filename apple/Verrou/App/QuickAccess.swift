@@ -220,12 +220,22 @@ struct QuickAccessView: View {
         VStack(spacing: 14) {
             Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
             Text("Verrou est verrouillé").font(.headline)
-            Button {
-                Task { await model.unlockWithBiometrics() }
-            } label: {
-                Label("Déverrouiller avec Touch ID", systemImage: "touchid")
+            if model.canUseTouchID {
+                Button {
+                    Task { await model.unlockWithBiometrics() }
+                } label: {
+                    Label("Déverrouiller avec Touch ID", systemImage: "touchid")
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                // Sans Touch ID, le mot de passe se saisit dans la fenêtre principale.
+                Button("Ouvrir Verrou") {
+                    close()
+                    NSApp.activate()
+                    NSApp.windows.first { !($0 is NSPanel) && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
