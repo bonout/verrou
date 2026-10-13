@@ -11,7 +11,7 @@
 # jamais touché : le parcours travaille dans un dossier temporaire.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="${1:-$ROOT/target/xcode/Build/Products/Debug/Verrou.app}"
+APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
 "$APP/Contents/MacOS/Verrou" > "$LOG" 2>/dev/null || true

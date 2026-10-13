@@ -17,12 +17,12 @@ ARCH="$(uname -m)"
 TARGETS="$TARGET" scripts/build-apple.sh
 (cd apple && xcodegen generate --quiet)
 xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Release \
-  -destination "platform=macOS,arch=$ARCH" -derivedDataPath target/xcode \
+  -destination "platform=macOS,arch=$ARCH" -derivedDataPath target/xcode.noindex \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
   CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build -quiet
 
-APP="target/xcode/Build/Products/Release/Verrou.app"
+APP="target/xcode.noindex/Build/Products/Release/Verrou.app"
 codesign --verify --strict "$APP"
 # Pas de get-task-allow : aucun débogueur ne doit pouvoir lire la mémoire du coffre.
 if codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q get-task-allow; then
