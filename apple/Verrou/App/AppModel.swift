@@ -50,6 +50,20 @@ final class AppModel {
     private(set) var biometricEnrolled = false
     var unlockError: String?
 
+    // Clés de sécurité (déverrouillage par hmac-secret)
+    /// Clés enrôlées pour déverrouiller ce coffre.
+    private(set) var unlockKeys: [UnlockKey] = []
+    /// Échange en cours avec une clé de sécurité, et pour quoi faire.
+    private(set) var keyExchange: KeyExchange?
+    /// Ce que la clé attend (contact, code PIN) ; `nil` : on attend la clé.
+    fileprivate(set) var keyPrompt: SecurityKeyPrompt?
+    var enrollError: String?
+
+    enum KeyExchange: Equatable {
+        case unlock
+        case enroll
+    }
+
     // Connexion
     /// `nil` : étape identifiants ; sinon les méthodes de second facteur.
     private(set) var twoFactorOptions: [TwoFactorOption]?
@@ -166,6 +180,7 @@ final class AppModel {
             session = VaultSession.withStorage(dataDir: dataDirectory.path)
             account = session.account()
             biometricEnrolled = BiometricVault.isEnrolled(in: dataDirectory)
+            unlockKeys = session.securityKeys()
             if let account {
                 loginServer = account.server
                 loginEmail = account.email
@@ -188,6 +203,10 @@ final class AppModel {
 
     var canUseTouchID: Bool {
         mode == .demo ? Biometrics.isAvailable : biometricEnrolled && Biometrics.isAvailable
+    }
+
+    var canUseSecurityKey: Bool {
+        mode == .vaultwarden && !unlockKeys.isEmpty
     }
 
     // MARK: Connexion
@@ -288,9 +307,11 @@ final class AppModel {
             twoFactorOptions = nil
             reloginRequired = false
             account = session.account()
-            // Une reconnexion change la clé du coffre : l'ancien Touch ID ne vaut plus.
+            // Une reconnexion change la clé du coffre : l'ancien Touch ID ne
+            // vaut plus, les clés de sécurité enrôlées non plus.
             BiometricVault.remove(in: dataDirectory)
             biometricEnrolled = false
+            removeAllUnlockKeys()
             didUnlock(failures: failures)
             await enrollBiometricsIfWanted()
         }
@@ -307,6 +328,7 @@ final class AppModel {
         try? session.logout()
         BiometricVault.remove(in: dataDirectory)
         biometricEnrolled = false
+        removeAllUnlockKeys()
         account = nil
         reloginRequired = false
         twoFactorOptions = nil
@@ -465,6 +487,8 @@ final class AppModel {
         // rien d'ouvert ne doit y survivre.
         editor = nil
         editorError = nil
+        // Un enrôlement en cours a besoin du coffre ouvert.
+        if keyExchange == .enroll { session.cancelSecurityKey() }
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked
@@ -522,6 +546,90 @@ final class AppModel {
     private func disableBiometrics() {
         BiometricVault.remove(in: dataDirectory)
         biometricEnrolled = false
+    }
+
+    // MARK: Clés de sécurité
+
+    /// Déverrouille avec une YubiKey enrôlée : on attend la clé, son code
+    /// PIN, puis le contact. Tout le reste (secret de la clé, descellement)
+    /// se passe dans Rust.
+    func unlockWithSecurityKey() async {
+        guard canUseSecurityKey, keyExchange == nil, lockState == .locked else { return }
+        lockState = .unlocking
+        unlockError = nil
+        beginKeyExchange(.unlock)
+        defer { endKeyExchange() }
+        do {
+            let failures = try await session.unlockWithSecurityKey(observer: KeyPrompts(model: self))
+            unlockStartedAt = .now
+            didUnlock(failures: failures)
+        } catch {
+            lockState = .locked
+            // Une clé périmée a retiré toutes les clés enrôlées.
+            unlockKeys = session.securityKeys()
+            if !Self.isCancellation(error) {
+                unlockError = Self.describe(error)
+            }
+        }
+    }
+
+    /// Ajoute la clé branchée aux clés qui déverrouillent ce coffre (coffre ouvert).
+    func enrollSecurityKey(label: String) async -> Bool {
+        guard mode == .vaultwarden, lockState == .unlocked, keyExchange == nil else { return false }
+        enrollError = nil
+        beginKeyExchange(.enroll)
+        defer { endKeyExchange() }
+        do {
+            let key = try await session.enrollSecurityKey(label: label, observer: KeyPrompts(model: self))
+            unlockKeys = session.securityKeys()
+            toast = Toast(message: "Clé de sécurité ajoutée", detail: key.label)
+            return true
+        } catch {
+            if !Self.isCancellation(error) {
+                enrollError = Self.describe(error)
+            }
+            return false
+        }
+    }
+
+    /// Le code PIN demandé par la clé : il passe directement à Rust.
+    func submitSecurityKeyPin(_ pin: String) {
+        guard keyExchange != nil else { return }
+        keyPrompt = nil
+        session.submitSecurityKeyPin(pin: pin)
+    }
+
+    func cancelKeyExchange() {
+        session.cancelSecurityKey()
+    }
+
+    func removeUnlockKey(_ key: UnlockKey) {
+        do {
+            try session.removeSecurityKey(id: key.id)
+        } catch {
+            toast = Toast(message: "Impossible de retirer la clé", detail: Self.describe(error), failure: true)
+        }
+        unlockKeys = session.securityKeys()
+    }
+
+    private func removeAllUnlockKeys() {
+        try? session.removeSecurityKeys()
+        unlockKeys = []
+    }
+
+    private func beginKeyExchange(_ purpose: KeyExchange) {
+        keyExchange = purpose
+        keyPrompt = nil
+    }
+
+    private func endKeyExchange() {
+        keyExchange = nil
+        keyPrompt = nil
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if case VerrouError.SecurityKey(let message) = error, message == "demande annulée" { return true }
+        return false
     }
 
     static func describe(_ error: Error) -> String {
@@ -867,6 +975,25 @@ final class AppModel {
 
     func noteActivity() {
         autoLock?.touch()
+    }
+}
+
+/// Étapes de l'échange avec la clé de sécurité, signalées depuis le fil de
+/// l'échange : on passe aussitôt la main au fil principal.
+private final class KeyPrompts: SecurityKeyObserver, @unchecked Sendable {
+    private weak var model: AppModel?
+
+    init(model: AppModel) {
+        self.model = model
+    }
+
+    func prompt(prompt: SecurityKeyPrompt) {
+        DispatchQueue.main.async { [weak model] in
+            MainActor.assumeIsolated {
+                guard let model, model.keyExchange != nil else { return }
+                model.keyPrompt = prompt
+            }
+        }
     }
 }
 

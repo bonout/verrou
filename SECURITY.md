@@ -231,6 +231,57 @@ La clé de l'utilisateur ne traverse la frontière Rust/Swift que pour
 l'enrôlement (`user_key`) et le déverrouillage ; une `String` Swift ne pouvant
 être mise à zéro, elle n'est gardée dans aucune propriété.
 
+Le SDK de Bitwarden accepte n'importe quelle clé bien formée (le coffre se
+déchiffre alors en zéro élément) : Verrou vérifie la clé rendue en déchiffrant
+avec elle le jeton de renouvellement, et la refuse sinon.
+
+## Clé de sécurité (YubiKey, `hmac-secret`)
+
+Une YubiKey (ou toute clé FIDO2 avec l'extension `hmac-secret` et un code
+PIN) peut déverrouiller le coffre, en plus de Touch ID et du mot de passe.
+
+- **Principe** : à l'enrôlement (coffre ouvert, Réglages), Verrou crée sur la
+  clé une accréditation non résidente pour l'identifiant `verrou:` — pas un
+  nom de domaine, comme le `ssh:` d'OpenSSH : aucune page web ne peut la
+  faire utiliser par un navigateur. Il tire un sel de 32 octets ; la clé
+  rend, après code PIN et contact, `HMAC-SHA-256` d'un secret qu'elle ne
+  livre jamais (le sel passe d'abord par la transformation de l'extension
+  WebAuthn PRF). HKDF-SHA256 (sel `verrou.security-key.v1`, info =
+  identifiant de l'accréditation) en tire une clé AES-256-GCM qui scelle la
+  clé de l'utilisateur ; données associées : version, identifiant de
+  l'accréditation et sel. Tout cela se fait dans Rust (`unlock_keys.rs`,
+  primitives RustCrypto) : la clé de l'utilisateur ne passe pas par Swift.
+- **Ce qui est sur le disque** (`security-keys.json`, conteneur de l'app,
+  mode 600, écriture atomique), par clé : identifiant de l'accréditation,
+  sel, clé de l'utilisateur scellée (nonce aléatoire), nom et date. Rien
+  d'utile sans la clé physique.
+- **Code PIN exigé** (vérification de l'utilisateur `required`) : il faut la
+  clé **et** son code PIN ; la clé se bloque après 8 codes faux. Une clé
+  sans code PIN est refusée, avec le message qui dit d'en définir un. C'est
+  aussi une contrainte d'`authenticator-rs` 0.5 : sans vérification de
+  l'utilisateur, il n'établit pas le secret partagé et n'envoie pas
+  l'extension `hmac-secret`. Le code PIN traverse la frontière Swift/Rust
+  une fois, va à la clé chiffré par le protocole PIN de CTAP2, et n'est
+  gardé (effacé ensuite) que le temps d'un enrôlement, pour éviter de le
+  taper deux fois. Limite : la bibliothèque le copie dans une `String` non
+  effacée.
+- **Plusieurs clés** (principale et secours) : chacune a son accréditation,
+  son sel et sa copie scellée. Au déverrouillage, toutes les accréditations
+  sont proposées (PRF `evalByCredential`) : la clé branchée ne répond que
+  pour la sienne, avec le sel qui va avec. Les mêmes accréditations ne
+  peuvent pas être enrôlées deux fois (liste d'exclusion).
+- **Avec le fichier mais sans la clé**, un attaquant n'a que des données
+  chiffrées : le secret ne sort pas de la clé, et 32 octets aléatoires ne se
+  devinent pas. **Avec la clé mais sans le code PIN**, 8 essais au plus
+  avant blocage. **Avec la clé, le code PIN et le fichier**, il ouvre le
+  coffre, comme avec le mot de passe principal : retirer la clé dans les
+  Réglages (ou se déconnecter) rend sa copie scellée inutile.
+- **Invalidation**, comme Touch ID : une reconnexion ou une déconnexion
+  efface `security-keys.json` ; une clé descellée que le coffre refuse (clé
+  du coffre changée) efface toutes les clés enrôlées. Retirer une clé
+  n'efface pas son accréditation sur la YubiKey (sans valeur sans le
+  fichier ; une YubiKey ne liste pas les accréditations non résidentes).
+
 ## Distribution
 
 `scripts/install-macos.sh` construit une version Release **signée ad hoc**

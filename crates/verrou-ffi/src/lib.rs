@@ -10,6 +10,10 @@
 //! que l'app la confie au Secure Enclave (déverrouillage par Touch ID), et
 //! `edit_draft`, qui rend les secrets d'un élément quand l'utilisateur ouvre
 //! l'écran de modification.
+//!
+//! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
+//! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
+//! traversent la frontière.
 
 // UniFFI exige des arguments possédés (`String`, énumérations) : la règle
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
@@ -26,6 +30,8 @@ use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Pu
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
+use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
+use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
 use verrou_vaultwarden::{
     Connection, Decrypted, Draft, LoginDraft, LoginStep, PendingLogin, Store, TwoFactorAnswer,
     TwoFactorMethod, Unlocked,
@@ -144,6 +150,59 @@ impl TwoFactorOption {
         }
         .provider()
     }
+}
+
+/// Une clé de sécurité enrôlée pour déverrouiller. Aucun secret.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct UnlockKey {
+    /// Identifiant de l'accréditation (base64url), pour la retirer.
+    pub id: String,
+    pub label: String,
+    /// Horodatage Unix de l'enrôlement.
+    pub created: i64,
+}
+
+impl From<&EnrolledKey> for UnlockKey {
+    fn from(key: &EnrolledKey) -> Self {
+        Self {
+            id: key.id.clone(),
+            label: key.label.clone(),
+            created: key.created,
+        }
+    }
+}
+
+/// Ce que la clé de sécurité attend de l'utilisateur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SecurityKeyPrompt {
+    /// La toucher.
+    Touch,
+    /// Saisir son code PIN, à passer à `submit_security_key_pin`. `retry` : le
+    /// précédent était faux ; `attempts_left` : essais restants, si la clé le
+    /// dit.
+    Pin {
+        retry: bool,
+        attempts_left: Option<u8>,
+    },
+}
+
+impl From<SecurityKeyStatus> for SecurityKeyPrompt {
+    fn from(status: SecurityKeyStatus) -> Self {
+        match status {
+            SecurityKeyStatus::TouchRequired => Self::Touch,
+            SecurityKeyStatus::PinRequired { retry, attempts } => Self::Pin {
+                retry,
+                attempts_left: attempts,
+            },
+        }
+    }
+}
+
+/// L'app affiche les étapes de l'échange avec la clé de sécurité. Appelé
+/// depuis le fil de l'échange : répondre vite.
+#[uniffi::export(callback_interface)]
+pub trait SecurityKeyObserver: Send + Sync {
+    fn prompt(&self, prompt: SecurityKeyPrompt);
 }
 
 #[derive(Clone, Debug, uniffi::Enum)]
@@ -493,8 +552,9 @@ pub struct VaultSession {
     /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
     connection: Mutex<Option<Arc<tokio::sync::Mutex<Connection>>>>,
     pending: Mutex<Option<PendingLogin>>,
-    #[cfg(target_os = "macos")]
-    security_key: Mutex<Option<verrou_vaultwarden::security_key::SigningSession>>,
+    /// Échange en cours avec une clé de sécurité (second facteur,
+    /// enrôlement ou déverrouillage), pour l'annuler ou lui passer le code PIN.
+    security_key: Mutex<Option<SigningSession>>,
     /// Pont vers l'extension de navigateur et le terminal, s'il est activé.
     bridge: Mutex<Option<Bridge>>,
     /// Éléments protégés confirmés récemment (Touch ID ou mot de passe
@@ -691,6 +751,29 @@ impl VaultSession {
             .clone()
             .ok_or(VerrouError::NoPendingLogin)
     }
+
+    /// Un échange avec la clé de sécurité, sur un fil à part (il bloque
+    /// jusqu'au contact), annulable par `cancel_security_key`.
+    async fn with_security_key<T: Send + 'static>(
+        &self,
+        exchange: impl FnOnce(&SigningSession) -> Result<T, verrou_vaultwarden::Error> + Send + 'static,
+    ) -> Result<T, VerrouError> {
+        let session = SigningSession::new();
+        *self
+            .security_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(session.clone());
+        let result = tokio::task::spawn_blocking(move || exchange(&session)).await;
+        self.security_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        result
+            .map_err(|e| VerrouError::SecurityKey {
+                message: e.to_string(),
+            })?
+            .map_err(Into::into)
+    }
 }
 
 /// Connexion à Vaultwarden. Ces méthodes sont asynchrones côté Swift : le
@@ -707,7 +790,6 @@ impl VaultSession {
             store: Some(Store::new(data_dir)),
             connection: Mutex::new(None),
             pending: Mutex::new(None),
-            #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),
@@ -744,39 +826,15 @@ impl VaultSession {
         let pending = self.pending()?;
         let request =
             verrou_vaultwarden::security_key::assertion_request(pending.server(), &challenge)?;
-        #[cfg(target_os = "macos")]
-        {
-            let session = verrou_vaultwarden::security_key::SigningSession::new();
-            *self
-                .security_key
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner) = Some(session.clone());
-            let signer = request.clone();
-            let response = tokio::task::spawn_blocking(move || session.sign(&signer, |_| {}))
-                .await
-                .map_err(|e| VerrouError::SecurityKey {
-                    message: e.to_string(),
-                })??;
-            self.security_key
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .take();
-            Ok(verrou_vaultwarden::security_key::token(&request, &response))
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            // Pas d'USB hors macOS ; la fonction reste asynchrone pour Swift.
-            tokio::task::yield_now().await;
-            let _ = request;
-            Err(VerrouError::SecurityKey {
-                message: "clé de sécurité en USB : macOS seulement".to_owned(),
-            })
-        }
+        let signer = request.clone();
+        let response = self
+            .with_security_key(move |session| session.sign(&signer, |_| {}))
+            .await?;
+        Ok(verrou_vaultwarden::security_key::token(&request, &response))
     }
 
     /// Interrompt l'attente de la clé de sécurité.
     pub fn cancel_security_key(&self) {
-        #[cfg(target_os = "macos")]
         if let Some(session) = self
             .security_key
             .lock()
@@ -785,6 +843,78 @@ impl VaultSession {
         {
             session.cancel();
         }
+    }
+
+    /// Le code PIN que la clé de sécurité attend (`SecurityKeyPrompt::Pin`).
+    /// Il ne fait que passer : la bibliothèque USB le transmet à la clé.
+    pub fn submit_security_key_pin(&self, pin: String) {
+        if let Some(session) = self
+            .security_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            session.submit_pin(&pin);
+        }
+    }
+
+    /// Enrôle la clé de sécurité branchée pour déverrouiller ce coffre
+    /// (coffre ouvert) : une accréditation `hmac-secret` est créée sur la
+    /// clé, puis son secret scelle la clé de l'utilisateur, qui ne quitte
+    /// pas Rust. Deux contacts ; le code PIN de la clé est exigé.
+    pub async fn enroll_security_key(
+        &self,
+        label: String,
+        observer: Box<dyn SecurityKeyObserver>,
+    ) -> Result<UnlockKey, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let existing = self.store()?.load_security_keys()?;
+        let exclude = existing
+            .iter()
+            .map(EnrolledKey::credential_id)
+            .collect::<Result<Vec<_>, _>>()?;
+        let salt = unlock_keys::new_salt();
+        let (credential_id, secret) = self
+            .with_security_key(move |session| {
+                session.enroll_for_unlock(&salt, &exclude, |status| observer.prompt(status.into()))
+            })
+            .await?;
+        let label = match label.trim() {
+            "" => format!("Clé de sécurité {}", existing.len() + 1),
+            label => label.to_owned(),
+        };
+        let key = connection
+            .lock()
+            .await
+            .enroll_security_key(&label, &credential_id, &salt, &secret)
+            .await?;
+        Ok(UnlockKey::from(&key))
+    }
+
+    /// Déverrouille avec l'une des clés de sécurité enrôlées : attend la
+    /// clé, son code PIN et un contact. Une clé périmée (la clé du coffre a
+    /// changé) retire toutes les clés enrôlées.
+    pub async fn unlock_with_security_key(
+        &self,
+        observer: Box<dyn SecurityKeyObserver>,
+    ) -> Result<u32, VerrouError> {
+        let store = self.store()?.clone();
+        let keys = store.load_security_keys()?;
+        if keys.is_empty() {
+            return Err(VerrouError::SecurityKey {
+                message: "aucune clé de sécurité n'est enregistrée".to_owned(),
+            });
+        }
+        let credentials = unlock_keys::credentials(&keys)?;
+        let (credential_id, secret) = self
+            .with_security_key(move |session| {
+                session.unlock_secret(&credentials, |status| observer.prompt(status.into()))
+            })
+            .await?;
+        let unlocked =
+            verrou_vaultwarden::unlock_with_security_key(&store, credential_id.as_deref(), &secret)
+                .await?;
+        Ok(self.install(unlocked))
     }
 
     /// Nouveau défi de second facteur (après un refus de la clé de sécurité).
@@ -952,6 +1082,30 @@ impl VaultSession {
         Ok(key.expose().to_owned())
     }
 
+    /// Clés de sécurité enrôlées pour déverrouiller ce coffre (un fichier
+    /// illisible compte pour aucune : le mot de passe reste possible).
+    pub fn security_keys(&self) -> Vec<UnlockKey> {
+        self.store
+            .as_ref()
+            .and_then(|store| store.load_security_keys().ok())
+            .unwrap_or_default()
+            .iter()
+            .map(UnlockKey::from)
+            .collect()
+    }
+
+    /// Retire une clé de sécurité enrôlée (son accréditation reste sur la
+    /// clé, inutile sans ce fichier).
+    pub fn remove_security_key(&self, id: String) -> Result<(), VerrouError> {
+        Ok(unlock_keys::remove(self.store()?, &id)?)
+    }
+
+    /// Retire toutes les clés de sécurité enrôlées : une reconnexion change
+    /// la clé du coffre, comme pour Touch ID.
+    pub fn remove_security_keys(&self) -> Result<(), VerrouError> {
+        Ok(self.store()?.delete_security_keys()?)
+    }
+
     /// Oublie le compte de ce Mac (jetons, cache) et verrouille.
     pub fn logout(&self) -> Result<(), VerrouError> {
         self.lock();
@@ -971,7 +1125,6 @@ impl VaultSession {
             store: None,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
-            #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),

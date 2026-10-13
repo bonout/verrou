@@ -19,49 +19,18 @@ struct LockView: View {
                 }
 
                 VStack(spacing: 12) {
-                    if model.canUseTouchID {
-                        Button {
-                            Task { await model.unlockWithBiometrics() }
-                        } label: {
-                            Label("Déverrouiller avec Touch ID", systemImage: Biometrics.symbolName)
-                                .font(.body.weight(.semibold))
-                                .frame(width: 280, height: 30)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(model.lockState == .unlocking)
+                    if model.keyExchange == .unlock {
+                        SecurityKeyPanel()
+                    } else {
+                        unlockMethods
                     }
-
-                    HStack(spacing: 8) {
-                        SecureField("Mot de passe principal", text: $password)
-                            .disabled(model.lockState == .unlocking)
-                            .textFieldStyle(.plain)
-                            .font(.body)
-                            .focused($passwordFocused)
-                            .onSubmit(submit)
-                        Button(action: submit) {
-                            if model.lockState == .unlocking {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(password.isEmpty)
-                        .accessibilityLabel("Déverrouiller")
-                    }
-                    .padding(.horizontal, 12)
-                    .frame(width: 280, height: 38)
-                    .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
-                    .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.accent : Color.secondary.opacity(0.25)))
 
                     if let error = model.unlockError, !error.isEmpty {
                         Text(error)
                             .font(.caption)
                             .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 360)
                             .transition(.opacity)
                     }
                 }
@@ -82,6 +51,72 @@ struct LockView: View {
             model.activatedAt = .now
             Biometrics.refresh()
             Task { await model.promptTouchIDIfPossible() }
+        }
+    }
+
+    /// Touch ID, clé de sécurité, mot de passe principal.
+    @ViewBuilder
+    private var unlockMethods: some View {
+        if model.canUseTouchID {
+            Button {
+                Task { await model.unlockWithBiometrics() }
+            } label: {
+                Label("Déverrouiller avec Touch ID", systemImage: Biometrics.symbolName)
+                    .font(.body.weight(.semibold))
+                    .frame(width: 280, height: 30)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
+            .disabled(model.lockState == .unlocking)
+        }
+
+        if model.canUseSecurityKey {
+            securityKeyButton
+        }
+
+        HStack(spacing: 8) {
+            SecureField("Mot de passe principal", text: $password)
+                .disabled(model.lockState == .unlocking)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .focused($passwordFocused)
+                .onSubmit(submit)
+            Button(action: submit) {
+                if model.lockState == .unlocking {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "arrow.right.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(password.isEmpty)
+            .accessibilityLabel("Déverrouiller")
+        }
+        .padding(.horizontal, 12)
+        .frame(width: 280, height: 38)
+        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.accent : Color.secondary.opacity(0.25)))
+    }
+
+    /// Mis en avant quand Touch ID n'est pas proposé.
+    @ViewBuilder
+    private var securityKeyButton: some View {
+        let button = Button {
+            Task { await model.unlockWithSecurityKey() }
+        } label: {
+            Label("Déverrouiller avec la clé de sécurité", systemImage: "key.horizontal.fill")
+                .font(.body.weight(.semibold))
+                .frame(width: 280, height: 30)
+        }
+        .controlSize(.large)
+        .disabled(model.lockState == .unlocking)
+        if model.canUseTouchID {
+            button.buttonStyle(.bordered)
+        } else {
+            button.buttonStyle(.borderedProminent)
         }
     }
 

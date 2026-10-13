@@ -4,7 +4,9 @@
 //! l'utilisateur y est chiffrée par sa clé principale (comme sur le serveur),
 //! le cache du coffre est la réponse de synchronisation telle que le serveur
 //! l'envoie (chiffrée), et le jeton de renouvellement est chiffré par Verrou
-//! avec la clé de l'utilisateur.
+//! avec la clé de l'utilisateur. Les clés de sécurité enrôlées
+//! (`security-keys.json`) n'y gardent la clé de l'utilisateur que scellée par
+//! un secret qui ne quitte pas la clé physique.
 
 use std::fs;
 use std::io::Write as _;
@@ -13,10 +15,21 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::Error;
+use crate::unlock_keys::EnrolledKey;
 
 const ACCOUNT_FILE: &str = "account.json";
 const DEVICE_FILE: &str = "device-id";
+/// Clés de sécurité enrôlées pour déverrouiller (voir `unlock_keys`).
+pub(crate) const SECURITY_KEYS_FILE: &str = "security-keys.json";
 const FORMAT_VERSION: u32 = 1;
+const SECURITY_KEYS_VERSION: u32 = 1;
+
+/// Contenu de `security-keys.json`.
+#[derive(Serialize, Deserialize)]
+struct SecurityKeysFile {
+    version: u32,
+    keys: Vec<EnrolledKey>,
+}
 
 /// Paramètres de dérivation du mot de passe principal, dans un format propre
 /// à Verrou : le fichier ne dépend pas de la sérialisation du SDK.
@@ -98,6 +111,45 @@ impl Store {
 
     pub fn delete_account(&self) -> Result<(), Error> {
         match fs::remove_file(self.dir.join(ACCOUNT_FILE)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(Error::storage(e)),
+        }
+    }
+
+    /// Les clés de sécurité enrôlées pour déverrouiller (aucune si le
+    /// fichier n'existe pas).
+    pub fn load_security_keys(&self) -> Result<Vec<EnrolledKey>, Error> {
+        let data = match fs::read(self.dir.join(SECURITY_KEYS_FILE)) {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(Error::storage(e)),
+        };
+        let file: SecurityKeysFile = serde_json::from_slice(&data).map_err(Error::storage)?;
+        if file.version != SECURITY_KEYS_VERSION {
+            return Err(Error::Storage(format!(
+                "format de clés de sécurité {} inconnu",
+                file.version
+            )));
+        }
+        Ok(file.keys)
+    }
+
+    /// Remplace la liste ; une liste vide supprime le fichier.
+    pub fn save_security_keys(&self, keys: &[EnrolledKey]) -> Result<(), Error> {
+        if keys.is_empty() {
+            return self.delete_security_keys();
+        }
+        let file = SecurityKeysFile {
+            version: SECURITY_KEYS_VERSION,
+            keys: keys.to_vec(),
+        };
+        let data = serde_json::to_vec(&file).map_err(Error::storage)?;
+        self.write_private(SECURITY_KEYS_FILE, &data)
+    }
+
+    pub fn delete_security_keys(&self) -> Result<(), Error> {
+        match fs::remove_file(self.dir.join(SECURITY_KEYS_FILE)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(Error::storage(e)),

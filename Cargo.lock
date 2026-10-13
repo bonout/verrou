@@ -4921,6 +4921,7 @@ dependencies = [
 name = "verrou-vaultwarden"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm 0.10.3",
  "authenticator",
  "bitwarden-api-api",
  "bitwarden-core",
@@ -4930,6 +4931,7 @@ dependencies = [
  "ciborium",
  "data-encoding",
  "futures-util",
+ "hkdf 0.12.4",
  "p256 0.13.2",
  "rand 0.8.8",
  "reqwest 0.12.28",
@@ -4941,6 +4943,7 @@ dependencies = [
  "tokio",
  "uuid",
  "verrou-core",
+ "zeroize",
 ]
 
 [[package]]
