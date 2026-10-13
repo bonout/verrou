@@ -28,8 +28,8 @@ use verrou_vaultwarden::security_key::{
     self, AssertionRequest, AssertionResponse, assertion_request,
 };
 use verrou_vaultwarden::{
-    Error, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, login, logout, unlock_with_password,
-    unlock_with_user_key,
+    Draft, Error, LoginDraft, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, login, logout,
+    unlock_with_password, unlock_with_user_key,
 };
 
 const PASSWORD: &str = "cheval correct pile agrafe";
@@ -670,5 +670,164 @@ async fn security_key_second_factor() {
     };
     let unlocked = pending.answer(&answer).await.unwrap();
     assert_eq!(unlocked.vault.items.len(), 0);
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+impl Seeder {
+    /// L'élément tel que le serveur le garde, déchiffré par un autre client.
+    async fn fetch(&self, id: &str) -> CipherView {
+        let model: bitwarden_api_api::models::CipherDetailsResponseModel = self
+            .http
+            .get(format!("{}/api/ciphers/{id}", self.server))
+            .bearer_auth(&self.access)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let cipher = bitwarden_vault::Cipher::try_from(model).unwrap();
+        self.sdk.vault().ciphers().decrypt(cipher).await.unwrap()
+    }
+}
+
+/// Crée un identifiant rangé et favori, puis une note ; rend l'identifiant
+/// de l'identifiant créé et le coffre.
+async fn create_login_and_note(
+    connection: &mut verrou_vaultwarden::Connection,
+    travail: &str,
+) -> (String, verrou_vaultwarden::Decrypted) {
+    // Création d'un identifiant, rangé et favori.
+    let (id, vault) = connection
+        .create(Draft {
+            name: "Doctolib".to_owned(),
+            folder_id: Some(travail.to_owned()),
+            favorite: true,
+            notes: Some(SecretString::new("rdv annuel")),
+            login: Some(LoginDraft {
+                username: Some("camille@exemple.fr".to_owned()),
+                password: Some(SecretString::new("premier-mot-de-passe")),
+                totp: None,
+                uris: vec!["https://www.doctolib.fr".to_owned()],
+            }),
+        })
+        .await
+        .unwrap();
+    let created = vault.items.iter().find(|i| i.id == id).unwrap();
+    assert_eq!(created.folder.as_deref(), Some("Travail"));
+    assert!(created.favorite);
+    assert_eq!(
+        created.field("password").unwrap().value.expose(),
+        "premier-mot-de-passe"
+    );
+    assert_eq!(vault.items.len(), 5);
+
+    // Une note sécurisée : un brouillon sans identifiant.
+    let (note, vault) = connection
+        .create(Draft {
+            name: "Digicode".to_owned(),
+            notes: Some(SecretString::new("4521B")),
+            ..Draft::default()
+        })
+        .await
+        .unwrap();
+    let note = vault.items.iter().find(|i| i.id == note).unwrap();
+    assert_eq!(note.kind, ItemKind::SecureNote);
+    (id, vault)
+}
+
+#[tokio::test]
+async fn create_edit_and_trash() {
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    seeder.fill().await;
+    let store = temp_store();
+    let first = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    );
+    let mut connection = first.connection;
+    let travail = first
+        .vault
+        .folders
+        .iter()
+        .find(|(_, name)| name == "Travail")
+        .map(|(id, _)| id.clone())
+        .unwrap();
+    // Une seconde session, ouverte avant les modifications : son cache vieillira.
+    let mut stale = unlock_with_password(&store, &SecretString::new(PASSWORD))
+        .await
+        .unwrap()
+        .connection;
+
+    let (id, vault) = create_login_and_note(&mut connection, &travail).await;
+
+    // Modification de GitHub : le mot de passe change, le reste est intact.
+    let github = vault.items.iter().find(|i| i.title == "GitHub").unwrap();
+    let github_id = github.id.clone();
+    let mut draft = connection.draft(&github_id).await.unwrap();
+    assert_eq!(draft.folder_id.as_deref(), Some(travail.as_str()));
+    let login_draft = draft.login.as_mut().unwrap();
+    assert_eq!(
+        login_draft.password.as_ref().unwrap().expose(),
+        "hunter2-hunter2"
+    );
+    login_draft.password = Some(SecretString::new("nouveau-mot-de-passe"));
+    login_draft.uris.push("https://gist.github.com".to_owned());
+    draft.name = "GitHub perso".to_owned();
+    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection.update(&github_id, draft.clone()).await.unwrap();
+    let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
+    assert_eq!(github.title, "GitHub perso");
+    assert_eq!(github.urls.len(), 2);
+    assert!(github.has_totp(), "la graine TOTP est gardée");
+    assert!(
+        github.fields.iter().any(|f| f.label == "PIN"),
+        "champs personnalisés gardés"
+    );
+    let stored = seeder.fetch(&github_id).await;
+    let history = stored.password_history.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].password, "hunter2-hunter2");
+    assert!(stored.login.unwrap().password_revision_date.is_some());
+
+    // Une copie périmée ne peut pas écraser la modification.
+    assert!(matches!(
+        stale.update(&github_id, draft).await,
+        Err(Error::Conflict)
+    ));
+    stale.sync().await.unwrap();
+
+    // Un autre type : seul le titre change, la carte reste entière.
+    let visa = vault
+        .items
+        .iter()
+        .find(|i| i.title == "Visa")
+        .unwrap()
+        .id
+        .clone();
+    let mut card_draft = connection.draft(&visa).await.unwrap();
+    assert!(card_draft.login.is_none());
+    card_draft.name = "Visa Premier".to_owned();
+    let vault = connection.update(&visa, card_draft).await.unwrap();
+    let card = vault.items.iter().find(|i| i.id == visa).unwrap();
+    assert_eq!(card.title, "Visa Premier");
+    assert_eq!(
+        card.field("number").unwrap().value.expose(),
+        "4242 4242 4242 4242"
+    );
+
+    // Corbeille : l'élément disparaît, le serveur le garde (restaurable).
+    let vault = connection.trash(&id).await.unwrap();
+    assert!(vault.items.iter().all(|i| i.id != id));
+    assert!(seeder.fetch(&id).await.deleted_date.is_some());
+    assert!(matches!(
+        connection.draft(&id).await,
+        Err(Error::NotFound | Error::ReadOnly)
+    ));
+
     std::fs::remove_dir_all(store.dir()).unwrap();
 }

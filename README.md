@@ -5,9 +5,9 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
 
 > **État : première version utilisable.** L'app Mac se connecte à Vaultwarden
 > (second facteur compris), déchiffre le coffre avec le SDK Rust officiel de
-> Bitwarden, le garde chiffré pour l'utiliser hors ligne, et se déverrouille
-> par Touch ID. **Lecture seule** : rien n'est modifié sur le serveur. La CLI
-> travaille encore sur le coffre fictif.
+> Bitwarden, le garde chiffré pour l'utiliser hors ligne, se déverrouille par
+> Touch ID, et crée ou modifie identifiants et notes. La CLI travaille encore
+> sur le coffre fictif.
 
 ## Ce qui marche aujourd'hui
 
@@ -15,6 +15,12 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
   second facteur par **clé de sécurité** (YubiKey en FIDO2, directement en
   USB, sans navigateur), code TOTP, YubiKey OTP ou e-mail. Synchronisation à l'ouverture puis toutes les
   5 min (⌘R pour la forcer).
+- **Création et modification** (⌘N, ⌘E) : identifiants (avec le générateur de
+  mots de passe et sa jauge de robustesse) et notes sécurisées ; titre,
+  dossier, favori et notes pour les autres types. Le reste d'un élément
+  (champs personnalisés, passkeys, pièces jointes) repart intact, l'ancien
+  mot de passe rejoint l'historique, et une modification faite ailleurs entre
+  temps n'est jamais écrasée. Corbeille restaurable depuis le coffre web.
 - **Hors ligne** : le coffre reste disponible sans réseau, déchiffré à partir
   du cache (la réponse du serveur, chiffrée).
 - **Touch ID** : la clé du coffre est scellée par le Secure Enclave (voir

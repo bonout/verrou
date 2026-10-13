@@ -14,6 +14,14 @@ pub enum Error {
     SecurityKey(String),
     #[error("aucun compte n'est configuré")]
     NoAccount,
+    #[error("élément introuvable")]
+    NotFound,
+    #[error("cet élément ne peut pas être modifié depuis ce compte")]
+    ReadOnly,
+    #[error("{0}")]
+    Invalid(String),
+    #[error("l'élément a changé sur le serveur : synchronisez, puis recommencez")]
+    Conflict,
     #[error("la session a expiré : reconnectez-vous")]
     SessionExpired,
     #[error("adresse du serveur invalide : {0}")]

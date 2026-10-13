@@ -42,6 +42,15 @@ struct ItemDetailView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbar {
             ToolbarItemGroup {
+                if model.canEdit {
+                    Button {
+                        Task { await model.edit(detail.summary.id) }
+                    } label: {
+                        Label("Modifier", systemImage: "pencil")
+                    }
+                    .help("Modifier (⌘E)")
+                    .keyboardShortcut("e", modifiers: .command)
+                }
                 if detail.summary.category == .login {
                     Button {
                         model.copyPassword(of: detail.summary.id)

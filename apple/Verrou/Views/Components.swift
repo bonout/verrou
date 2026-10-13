@@ -235,8 +235,8 @@ struct ToastView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            Image(systemName: toast.failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(toast.failure ? .orange : .green)
                 .font(.title3)
             VStack(alignment: .leading, spacing: 1) {
                 Text(toast.message).font(.callout.weight(.semibold))

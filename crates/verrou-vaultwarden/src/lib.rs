@@ -7,10 +7,12 @@
 //! - ce crate fait le reste : HTTP (`api`), cache local (`store`) et
 //!   conversion vers le modèle de Verrou (`convert`).
 //!
-//! Lecture seule : Verrou n'écrit rien sur le serveur.
+//! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
+//! SDK avant d'être envoyées.
 
 mod api;
 mod convert;
+mod edit;
 mod error;
 pub mod security_key;
 mod store;
@@ -31,6 +33,7 @@ use bitwarden_vault::{Cipher, Folder, VaultClientExt};
 use verrou_core::{Item, SecretString};
 
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
+pub use edit::{Draft, LoginDraft};
 pub use error::Error;
 pub use store::{Account, KdfSettings, Store};
 
@@ -42,6 +45,8 @@ pub struct Decrypted {
     /// Éléments que le SDK n'a pas su déchiffrer (clé d'organisation absente,
     /// format inconnu). Ils sont ignorés, mais l'interface le signale.
     pub failures: usize,
+    /// Dossiers (identifiant, nom), triés par nom : pour ranger un élément.
+    pub folders: Vec<(String, String)>,
 }
 
 /// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
@@ -274,6 +279,13 @@ impl Connection {
     /// Renouvelle le jeton d'accès, télécharge le coffre, l'enregistre comme
     /// cache et le déchiffre.
     pub async fn sync(&mut self) -> Result<Decrypted, Error> {
+        let access = self.access_token().await?;
+        self.sync_with(&access).await
+    }
+
+    /// Jeton d'accès neuf, obtenu par le jeton de renouvellement (enregistré
+    /// aussitôt si le serveur en donne un nouveau).
+    async fn access_token(&mut self) -> Result<String, Error> {
         let refresh = self
             .sdk
             .crypto()
@@ -286,8 +298,13 @@ impl Connection {
                 .crypto()
                 .encrypt_with_local_user_data_key(tokens.refresh)
                 .map_err(Error::crypto)?;
+            self.store.save_account(&self.account)?;
         }
-        let sync_json = self.api.sync(&tokens.access).await?;
+        Ok(tokens.access)
+    }
+
+    async fn sync_with(&mut self, access: &str) -> Result<Decrypted, Error> {
+        let sync_json = self.api.sync(access).await?;
         self.account.sync = Some(sync_json);
         self.account.synced_at = Some(now());
         self.store.save_account(&self.account)?;
@@ -310,6 +327,7 @@ impl Connection {
             return Ok(Decrypted {
                 items: Vec::new(),
                 failures: 0,
+                folders: Vec::new(),
             });
         };
         let sync: SyncResponseModel = serde_json::from_str(json)
@@ -347,7 +365,13 @@ impl Connection {
                 Err(_) => failures += 1,
             }
         }
-        Ok(Decrypted { items, failures })
+        let mut folders: Vec<(String, String)> = folder_names.into_iter().collect();
+        folders.sort_by_key(|(_, name)| name.to_lowercase());
+        Ok(Decrypted {
+            items,
+            failures,
+            folders,
+        })
     }
 
     async fn init_organizations(&self, sync: &SyncResponseModel) -> Result<(), Error> {

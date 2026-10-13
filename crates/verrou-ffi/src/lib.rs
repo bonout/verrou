@@ -6,8 +6,10 @@
 //! positions et des surlignages ; un mot de passe ne traverse la frontière que
 //! par `reveal`, au moment où l'utilisateur l'affiche ou le copie.
 //!
-//! Exception documentée : `user_key`, qui rend la clé de l'utilisateur pour
-//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID).
+//! Exceptions documentées : `user_key`, qui rend la clé de l'utilisateur pour
+//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID), et
+//! `edit_draft`, qui rend les secrets d'un élément quand l'utilisateur ouvre
+//! l'écran de modification.
 
 // UniFFI exige des arguments possédés (`String`, énumérations) : la règle
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
@@ -19,8 +21,8 @@ use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
 use verrou_vaultwarden::{
-    Connection, Decrypted, LoginStep, PendingLogin, Store, TwoFactorAnswer, TwoFactorMethod,
-    Unlocked,
+    Connection, Decrypted, Draft, LoginDraft, LoginStep, PendingLogin, Store, TwoFactorAnswer,
+    TwoFactorMethod, Unlocked,
 };
 
 uniffi::setup_scaffolding!();
@@ -55,6 +57,12 @@ pub enum VerrouError {
     NoPendingLogin,
     #[error("clé de sécurité : {message}")]
     SecurityKey { message: String },
+    #[error("cet élément ne peut pas être modifié depuis ce compte")]
+    ReadOnly,
+    #[error("{message}")]
+    Invalid { message: String },
+    #[error("l'élément a changé sur le serveur")]
+    Conflict,
 }
 
 impl From<verrou_vaultwarden::Error> for VerrouError {
@@ -71,6 +79,10 @@ impl From<verrou_vaultwarden::Error> for VerrouError {
             E::Crypto(message) => Self::Crypto { message },
             E::Storage(message) => Self::Storage { message },
             E::SecurityKey(message) => Self::SecurityKey { message },
+            E::NotFound => Self::NotFound,
+            E::ReadOnly => Self::ReadOnly,
+            E::Invalid(message) => Self::Invalid { message },
+            E::Conflict => Self::Conflict,
         }
     }
 }
@@ -262,11 +274,14 @@ pub struct ItemSummary {
     pub modified: i64,
 }
 
-/// Un résultat de recherche : position dans `summaries()` et caractères du
-/// titre à surligner.
+/// Un résultat de recherche : position dans `summaries()`, identifiant de
+/// l'élément (pour vérifier que la position désigne toujours le même : une
+/// synchronisation ou une écriture remplace le coffre) et caractères du titre
+/// à surligner.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SearchHit {
     pub position: u32,
+    pub id: String,
     pub highlights: Vec<u32>,
 }
 
@@ -319,6 +334,68 @@ pub struct SidebarCounts {
     pub tags: Vec<NamedCount>,
 }
 
+/// Un dossier où ranger un élément.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct FolderOption {
+    pub id: String,
+    pub name: String,
+}
+
+/// L'écran de modification. Sans `login` : une note sécurisée (seuls le
+/// titre, le dossier, le favori et les notes se modifient pour les autres
+/// types).
+#[derive(Clone, Debug, Default, uniffi::Record)]
+pub struct ItemDraft {
+    pub name: String,
+    pub folder_id: Option<String>,
+    pub favorite: bool,
+    pub notes: Option<String>,
+    pub login: Option<LoginFields>,
+}
+
+#[derive(Clone, Debug, Default, uniffi::Record)]
+pub struct LoginFields {
+    pub username: Option<String>,
+    pub password: Option<String>,
+    /// Graine TOTP (`otpauth://…` ou base32).
+    pub totp: Option<String>,
+    pub urls: Vec<String>,
+}
+
+impl From<ItemDraft> for Draft {
+    fn from(draft: ItemDraft) -> Self {
+        Self {
+            name: draft.name,
+            folder_id: draft.folder_id,
+            favorite: draft.favorite,
+            notes: draft.notes.map(SecretString::new),
+            login: draft.login.map(|login| LoginDraft {
+                username: login.username,
+                password: login.password.map(SecretString::new),
+                totp: login.totp.map(SecretString::new),
+                uris: login.urls,
+            }),
+        }
+    }
+}
+
+impl From<Draft> for ItemDraft {
+    fn from(draft: Draft) -> Self {
+        Self {
+            name: draft.name,
+            folder_id: draft.folder_id,
+            favorite: draft.favorite,
+            notes: draft.notes.map(|n| n.expose().to_owned()),
+            login: draft.login.map(|login| LoginFields {
+                username: login.username,
+                password: login.password.map(|p| p.expose().to_owned()),
+                totp: login.totp.map(|t| t.expose().to_owned()),
+                urls: login.uris,
+            }),
+        }
+    }
+}
+
 fn summary(item: &Item) -> ItemSummary {
     ItemSummary {
         id: item.id.clone(),
@@ -340,6 +417,7 @@ fn summary(item: &Item) -> ItemSummary {
 #[derive(uniffi::Object)]
 pub struct VaultSession {
     vault: RwLock<Option<Vault>>,
+    folders: RwLock<Vec<FolderOption>>,
     store: Option<Store>,
     /// Coffre Vaultwarden ouvert. Le verrou extérieur n'est tenu qu'un
     /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
@@ -375,9 +453,30 @@ impl VaultSession {
 
     fn install_vault(&self, decrypted: Decrypted) -> u32 {
         let failures = decrypted.failures as u32;
+        *self.folders.write().unwrap_or_else(PoisonError::into_inner) = decrypted
+            .folders
+            .into_iter()
+            .map(|(id, name)| FolderOption { id, name })
+            .collect();
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
             Some(Vault::new(decrypted.items));
         failures
+    }
+
+    /// Verrouillé pendant l'échange avec le serveur : ne pas rouvrir le coffre.
+    fn install_if_current(
+        &self,
+        connection: &Arc<tokio::sync::Mutex<Connection>>,
+        decrypted: Decrypted,
+    ) -> Result<(), VerrouError> {
+        let still_current = self
+            .current_connection()
+            .is_some_and(|current| Arc::ptr_eq(&current, connection));
+        if !still_current {
+            return Err(VerrouError::Locked);
+        }
+        self.install_vault(decrypted);
+        Ok(())
     }
 
     fn install(&self, unlocked: Unlocked) -> u32 {
@@ -425,6 +524,7 @@ impl VaultSession {
     pub fn with_storage(data_dir: String) -> Arc<Self> {
         Arc::new(Self {
             vault: RwLock::new(None),
+            folders: RwLock::new(Vec::new()),
             store: Some(Store::new(data_dir)),
             connection: Mutex::new(None),
             pending: Mutex::new(None),
@@ -555,14 +655,39 @@ impl VaultSession {
     pub async fn sync(&self) -> Result<u32, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.sync().await?;
-        // Verrouillé pendant la synchronisation : ne pas rouvrir le coffre.
-        let still_current = self
-            .current_connection()
-            .is_some_and(|current| Arc::ptr_eq(&current, &connection));
-        if !still_current {
-            return Err(VerrouError::Locked);
-        }
-        Ok(self.install_vault(decrypted))
+        let failures = decrypted.failures as u32;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(failures)
+    }
+
+    /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
+    /// seulement quand l'utilisateur ouvre l'écran de modification.
+    pub async fn edit_draft(&self, id: String) -> Result<ItemDraft, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let draft = connection.lock().await.draft(&id).await?;
+        Ok(draft.into())
+    }
+
+    /// Crée l'élément dans le coffre personnel et resynchronise ; rend son
+    /// identifiant. Les positions de `summaries()` changent.
+    pub async fn create_item(&self, draft: ItemDraft) -> Result<String, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (id, decrypted) = connection.lock().await.create(draft.into()).await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(id)
+    }
+
+    pub async fn update_item(&self, id: String, draft: ItemDraft) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.update(&id, draft.into()).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    /// Met l'élément à la corbeille du serveur (restaurable depuis le coffre web).
+    pub async fn trash_item(&self, id: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.trash(&id).await?;
+        self.install_if_current(&connection, decrypted)
     }
 
     /// ⚠️ Clé de l'utilisateur (base64), à confier immédiatement au Secure
@@ -588,6 +713,7 @@ impl VaultSession {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             vault: RwLock::new(None),
+            folders: RwLock::new(Vec::new()),
             store: None,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
@@ -607,6 +733,10 @@ impl VaultSession {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
+        self.folders
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         self.connection
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -641,6 +771,7 @@ impl VaultSession {
                 .into_iter()
                 .map(|hit| SearchHit {
                     position: hit.index as u32,
+                    id: v.items()[hit.index].id.clone(),
                     highlights: hit.title_indices,
                 })
                 .collect())
@@ -736,6 +867,14 @@ impl VaultSession {
                 tags: named(c.tags),
             })
         })
+    }
+
+    /// Dossiers du coffre, triés par nom.
+    pub fn folders(&self) -> Vec<FolderOption> {
+        self.folders
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     /// Identifiants correspondant à une page, du plus précis au moins précis.

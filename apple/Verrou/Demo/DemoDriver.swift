@@ -60,8 +60,8 @@ final class DemoDriver {
     }
 
     private func select(title: String) {
-        if let hit = model.results.first(where: { model.summary(for: $0).title == title }) {
-            withAnimation(.snappy) { model.selection = model.summary(for: hit).id }
+        if let hit = model.results.first(where: { model.summary(for: $0)?.title == title }) {
+            withAnimation(.snappy) { model.selection = hit.id }
         }
     }
 
