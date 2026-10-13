@@ -2,10 +2,9 @@ import LocalAuthentication
 
 /// Touch ID (et Apple Watch) via LocalAuthentication.
 ///
-/// Pour le coffre fictif, un succès suffit à l'ouvrir. Avec Vaultwarden, la
-/// clé du coffre sera rangée dans le trousseau avec un contrôle d'accès
-/// biométrique (`.biometryCurrentSet`) : c'est alors le Secure Enclave, pas ce
-/// booléen, qui décidera de la rendre.
+/// Pour le coffre fictif, un succès suffit à l'ouvrir. Avec Vaultwarden, ce
+/// n'est pas ce booléen qui décide : la clé du coffre est scellée par le
+/// Secure Enclave (`BiometricVault`), qui ne la rend qu'après Touch ID.
 enum Biometrics {
     enum Outcome {
         case success

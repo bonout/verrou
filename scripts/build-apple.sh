@@ -12,6 +12,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 PROFILE="${PROFILE:-release}"
+# Même cible que l'app (apple/project.yml) : sans elle, le code assembleur
+# des dépendances est compilé pour la version de macOS de la machine.
+export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-15.0}"
 read -r -a TARGETS <<< "${TARGETS:-aarch64-apple-darwin x86_64-apple-darwin}"
 FLAG=$([[ "$PROFILE" == release ]] && echo "--release" || echo "")
 OUT="$ROOT/apple/Frameworks"
