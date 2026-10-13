@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "Verrou",
+  "description": "Remplit vos identifiants depuis Verrou, le gestionnaire de mots de passe pour Vaultwarden.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyQmZR1Ax8wCjoyiOOneDiobQiOu44TbZ5bBnOdjyweU+IwNo6RgeaM3AQ3wtHjF560eI/MkDuHWo4NAqKrI+/2I/ly1riSv+t/zCZzCCz65vnk+LTikgO6XRSCNm0inmBsA6u59stnckqu3cOA+8KG/L7HEpyuzJoFFTjgGwIo6dmuXGi76KH3Nyrxe/kRixbiIBb22rCKVMTiCt/FxRTR4/F7DAa3fJo87KaW6jRUw6XkxcsIt8HG2mIGXH7g+VLr05K62ll6nFdHoJhGnDFmVXaHhwVEmpq46Z6L/tFMSm1661u7CZYEYhhbJYIHcbd2mbWcJGVj2PubeWZ8aHswIDAQAB",
+  "minimum_chrome_version": "120",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["nativeMessaging", "storage", "activeTab"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Verrou",
+    "default_popup": "popup.html",
+    "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

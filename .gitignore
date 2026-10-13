@@ -2,6 +2,7 @@
 # Produits par scripts/build-apple.sh et xcodegen : jamais versionnés.
 /apple/Frameworks/
 /apple/Shared/Generated/
+/apple/Helpers/
 /apple/Verrou.xcodeproj/
 xcuserdata/
 .DS_Store

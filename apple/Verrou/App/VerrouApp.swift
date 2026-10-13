@@ -169,6 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         quickAccess = QuickAccessController(model: model)
+        let environment = ProcessInfo.processInfo.environment
+        if model.mode == .vaultwarden, environment["VERROU_E2E_SERVER"] == nil {
+            let bridge = BrowserBridge(model: model)
+            model.browserBridge = bridge
+            bridge.apply()
+        }
         if launchedAtLogin {
             // Ouverture de session : Verrou attend discrètement, dans la barre
             // des menus et derrière ⌘⇧Espace, sans fenêtre ni Touch ID.

@@ -6,8 +6,8 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
 > **État : première version utilisable.** L'app Mac se connecte à Vaultwarden
 > (second facteur compris), déchiffre le coffre avec le SDK Rust officiel de
 > Bitwarden, le garde chiffré pour l'utiliser hors ligne, se déverrouille par
-> Touch ID, et crée ou modifie identifiants et notes. La CLI travaille encore
-> sur le coffre fictif.
+> Touch ID, crée ou modifie identifiants et notes, et remplit les formulaires
+> de Brave par son extension. La CLI travaille encore sur le coffre fictif.
 
 ## Ce qui marche aujourd'hui
 
@@ -21,6 +21,12 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
   (champs personnalisés, passkeys, pièces jointes) repart intact, l'ancien
   mot de passe rejoint l'historique, et une modification faite ailleurs entre
   temps n'est jamais écrasée. Corbeille restaurable depuis le coffre web.
+- **Extension Brave** : sous un champ de connexion, un menu propose les
+  identifiants de Verrou pour ce site ; Entrée ou un clic remplit identifiant
+  et mot de passe (ou le code à usage unique). Coffre verrouillé : le menu
+  propose de le déverrouiller (Touch ID). L'extension est reliée une fois à
+  l'app, en comparant un code à 6 chiffres, puis le canal est chiffré de bout
+  en bout ; elle ne reçoit que les identifiants du site ouvert, en HTTPS.
 - **Hors ligne** : le coffre reste disponible sans réseau, déchiffré à partir
   du cache (la réponse du serveur, chiffrée).
 - **Touch ID** : la clé du coffre est scellée par le Secure Enclave (voir
@@ -48,7 +54,9 @@ crates/
   verrou-core         modèle, recherche, correspondance de sites (PSL), TOTP, générateur, coffre fictif
   verrou-vaultwarden  connexion, second facteur, cache, déchiffrement (SDK Rust de Bitwarden)
   verrou-ffi          interface UniFFI vers Swift (aucun secret sans demande explicite)
+  verrou-bridge       pont vers l'extension : appairage, canal chiffré, hôte Native Messaging
   verrou-cli    binaire `verrou`
+extension/      extension Brave (Manifest V3), livrée dans l'app
 apple/
   Verrou/       app macOS SwiftUI (xcodegen : apple/project.yml)
   Shared/       liaison Swift générée (non versionnée)
@@ -78,6 +86,23 @@ premier lancement, indiquer l'adresse du serveur, l'e-mail et le mot de passe
 principal, puis le second facteur. Réinstaller garde le compte ; pour
 l'oublier : Réglages (⌘,) → *Se déconnecter de ce Mac*.
 
+## Extension Brave
+
+1. Dans Verrou : Réglages (⌘,) → *Remplissage dans Brave*. Verrou déclare son
+   hôte Native Messaging à Brave et copie le chemin de l'extension.
+2. Dans Brave : `brave://extensions`, *Mode développeur*, *Charger l'extension
+   non empaquetée*, ⌘⇧G et coller le chemin (elle est livrée dans
+   `Verrou.app` et se met à jour avec l'app).
+3. Cliquer sur l'icône Verrou de Brave, *Relier à Verrou*, vérifier que Verrou
+   affiche le même code, et accepter.
+
+```sh
+node --test extension/test/bridge.test.mjs   # protocole de l'extension contre le vrai pont
+node extension/e2e/brave.mjs                  # parcours dans un vrai Brave (profil jetable)
+```
+
+(Les deux demandent `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)
+
 ## Construire
 
 Prérequis : Rust stable (`rustup`), Xcode 26, `xcodegen` (`brew install xcodegen`).
@@ -102,7 +127,7 @@ Vaultwarden), `VERROU_MOCK_SIZE=10000` (gros coffre fictif), `VERROU_DEMO=1`
 
 1. ✅ Cœur, recherche, app macOS et CLI sur coffre fictif
 2. ✅ Connexion Vaultwarden : SDK Rust Bitwarden, second facteur, déchiffrement, synchro, cache chiffré hors ligne, Touch ID par le Secure Enclave
-3. Extension Brave : menu dans les champs, formulaires en plusieurs étapes, cartes, adresses, codes
+3. Extension Brave : ✅ menu dans les champs, formulaires en plusieurs étapes, codes ; enregistrement des nouveaux comptes, générateur, cartes, adresses
 4. iPhone et iPad : Face ID, extension de remplissage automatique du système
 5. YubiKey : ✅ connexion FIDO2 en USB ; déverrouillage `hmac-secret`
 

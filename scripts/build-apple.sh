@@ -7,6 +7,7 @@
 # Produit :
 #   apple/Frameworks/VerrouFFI.xcframework   bibliothèque statique + en-têtes C
 #   apple/Shared/Generated/verrou_ffi.swift  liaison Swift générée par UniFFI
+#   apple/Helpers/verrou-native-host         hôte Native Messaging (extension)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,12 +25,17 @@ TMP="$ROOT/target/apple"
 for target in "${TARGETS[@]}"; do
   rustup target add "$target" >/dev/null 2>&1 || true
   cargo build -p verrou-ffi --lib $FLAG --target "$target"
+  cargo build -p verrou-bridge --bin verrou-native-host $FLAG --target "$target"
 done
 
 rm -rf "$TMP" && mkdir -p "$TMP/include" "$GEN" "$OUT"
 LIBS=()
 for target in "${TARGETS[@]}"; do LIBS+=("target/$target/$PROFILE/libverrou_ffi.a"); done
 lipo -create "${LIBS[@]}" -output "$TMP/libverrou_ffi.a"
+HOSTS=()
+for target in "${TARGETS[@]}"; do HOSTS+=("target/$target/$PROFILE/verrou-native-host"); done
+mkdir -p "$ROOT/apple/Helpers"
+lipo -create "${HOSTS[@]}" -output "$ROOT/apple/Helpers/verrou-native-host"
 
 # La liaison se génère depuis la bibliothèque dynamique de l'hôte, qui porte
 # les métadonnées UniFFI.

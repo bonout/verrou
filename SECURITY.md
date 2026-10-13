@@ -25,7 +25,7 @@ PR qui touche à l'un de ces points le dit dans sa description.
 6. **Écritures prudentes** : chiffrées par le SDK, envoyées avec la date de
    révision connue (le serveur refuse d'écraser une version plus récente),
    en ne touchant qu'aux champs que l'écran d'édition montre.
-7. **App sandboxée**, runtime renforcé, réseau sortant uniquement.
+7. **App sandboxée**, runtime renforcé ; en entrée, seulement le pont vers l'extension, sur `127.0.0.1`.
 
 ## Connexion à Vaultwarden
 
@@ -75,6 +75,49 @@ PR qui touche à l'un de ces points le dit dans sa description.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne
   sont pas affichées.
+
+## Extension de navigateur
+
+```
+extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1──▶ Verrou
+```
+
+- **Pourquoi TCP** : le sandbox de macOS refuse à l'app (signée localement,
+  sans équipe de développeur) tout socket Unix hors de son conteneur, en
+  écoute comme en connexion ; il permet l'écoute sur `127.0.0.1`
+  (`com.apple.security.network.server`). Ce port est joignable par tout
+  programme de la machine : rien n'y circule en clair, et rien n'y est servi
+  sans appairage.
+- **Appairage** : l'extension crée une clé ECDH P-256 (WebCrypto, non
+  exportable) ; Verrou répond avec une clé éphémère ; HKDF-SHA256 en tire la
+  clé du canal. Les deux côtés affichent un code à 6 chiffres dérivé de cette
+  clé : l'utilisateur l'accepte dans Verrou s'il est identique (« Refuser »
+  est le bouton par défaut). Une demande à la fois, trois secondes au moins
+  entre deux, deux minutes pour répondre.
+- **Canal** : AES-256-GCM, nonce aléatoire, données associées = client et sens
+  du message ; chaque requête porte un horodatage (± 2 min) contre le rejeu.
+  L'hôte Native Messaging relaie des octets chiffrés sans les lire.
+- **Ce que l'extension obtient** (`verrou-bridge/src/access.rs`) : la liste des
+  identifiants (titre, identifiant) qui correspondent au site de la page, et
+  les secrets d'un identifiant seulement s'il correspond à ce site — même
+  domaine enregistrable, comme Bitwarden — et si la page est en HTTPS (HTTP
+  seulement vers `localhost`). L'adresse vient du navigateur (`sender.url`),
+  jamais de la page. Coffre verrouillé : rien, sinon la demande de
+  déverrouillage. Une extension appairée ne peut donc pas vider le coffre.
+- **Dans la page** : le menu vit dans un shadow DOM fermé et n'obéit qu'aux
+  événements réels (`isTrusted`) ; la page ne peut ni le lire ni le
+  déclencher. Les secrets n'arrivent qu'au remplissage, pour l'élément choisi.
+- **Ce qui est sur le disque** : côté Verrou, `bridge-clients.json` (conteneur
+  de l'app, mode 600) garde la clé de chaque extension appairée ; côté Brave,
+  la clé AES non exportable dans IndexedDB. Ces clés ne donnent que ce que
+  donne l'extension. Réglages → *Délier* révoque un client.
+- **Déclaration au navigateur** : `NativeMessagingHosts/app.verrou.bridge.json`
+  n'autorise que l'identifiant de l'extension de Verrou (fixé par la clé de
+  son manifeste ; un test vérifie la concordance). Droits du sandbox limités
+  aux dossiers `NativeMessagingHosts` de Brave et de Chrome.
+- **Limites connues** : un programme qui lit le profil de Brave peut en tirer
+  la clé du canal (comme les cookies) ; l'extension se charge en mode
+  développeur (pas de Chrome Web Store).
 
 ## Touch ID
 

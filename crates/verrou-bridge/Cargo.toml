@@ -1,0 +1,32 @@
+[package]
+name = "verrou-bridge"
+description = "Pont entre Verrou et l'extension de navigateur : appairage, canal chiffré, relais Native Messaging."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+verrou-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+data-encoding.workspace = true
+sha2.workspace = true
+rand.workspace = true
+url.workspace = true
+uuid.workspace = true
+zeroize.workspace = true
+tokio = { workspace = true, features = ["net", "io-util", "time"] }
+# Accord de clé et chiffrement du canal : les mêmes primitives que WebCrypto
+# côté extension (ECDH P-256, HKDF-SHA256, AES-256-GCM).
+p256 = { version = "0.13", features = ["ecdh"] }
+hkdf = "0.12"
+aes-gcm = "0.10"
+
+[[bin]]
+name = "verrou-native-host"
+path = "src/bin/native_host.rs"
+
+[lints]
+workspace = true

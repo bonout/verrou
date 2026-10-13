@@ -90,6 +90,9 @@ final class AppModel {
         let draft: ItemDraft
     }
 
+    /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
+    var browserBridge: BrowserBridge?
+
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
 
@@ -634,6 +637,17 @@ final class AppModel {
     func copyPassword(of itemID: String) {
         guard let value = try? session.reveal(id: itemID, fieldId: "password") else { return }
         copy(value, label: "Mot de passe", secret: true)
+    }
+
+    /// Fenêtre principale au premier plan. Fermée (lancement à l'ouverture
+    /// de session), un « rouvrir » la recrée, comme un clic sur le Dock.
+    func showMainWindow() {
+        NSApp.activate()
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            window.makeKeyAndOrderFront(nil)
+        } else {
+            NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     func noteActivity() {
