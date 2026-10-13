@@ -124,9 +124,14 @@ struct QuickAccessView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 AppMark(size: 26)
-                TextField("Rechercher un identifiant, une carte, un code…", text: $model.quickQuery)
+                // Le texte indicatif ne prend pas la police du champ : sans la
+                // lui donner, ni une hauteur explicite, il est coupé en bas.
+                TextField("", text: $model.quickQuery,
+                          prompt: Text("Rechercher un identifiant, une carte, un code…")
+                              .font(.system(size: 22, weight: .regular)))
                     .textFieldStyle(.plain)
                     .font(.system(size: 22, weight: .regular))
+                    .frame(height: 30)
                     .focused($focused)
                     .onSubmit(primaryAction)
             }
