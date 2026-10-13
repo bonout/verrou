@@ -50,44 +50,6 @@ struct ItemDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .toolbar {
-            ToolbarItemGroup {
-                if model.canEdit, detail.summary.state == .active {
-                    Button {
-                        Task { await model.setArchived(detail.summary.id, true) }
-                    } label: {
-                        Label("Archiver", systemImage: "archivebox")
-                    }
-                    .help("Archiver : garder l'élément hors du chemin")
-                }
-                if model.canEdit, detail.summary.state != .trashed {
-                    Button {
-                        Task { await model.edit(detail.summary.id) }
-                    } label: {
-                        Label("Modifier", systemImage: "pencil")
-                    }
-                    .help("Modifier (⌘E)")
-                    .keyboardShortcut("e", modifiers: .command)
-                }
-                if detail.summary.category == .login {
-                    Button {
-                        model.copyPassword(of: detail.summary.id)
-                    } label: {
-                        Label("Copier le mot de passe", systemImage: "key")
-                    }
-                    .help("Copier le mot de passe (⇧⌘C)")
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
-                }
-                if let host = detail.summary.host, let url = URL(string: "https://\(host)") {
-                    Button {
-                        NSWorkspace.shared.open(url)
-                    } label: {
-                        Label("Ouvrir le site", systemImage: "safari")
-                    }
-                    .help("Ouvrir \(host)")
-                }
-            }
-        }
     }
 
     private var header: some View {

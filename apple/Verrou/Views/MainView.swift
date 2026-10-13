@@ -49,6 +49,44 @@ struct MainView: View {
                 .help("Verrouiller le coffre (⌃⌘L)")
                 .keyboardShortcut("l", modifiers: [.command, .control])
             }
+            // Actions de l'élément sélectionné : toujours les mêmes boutons,
+            // grisés quand ils ne s'appliquent pas. Ici plutôt que dans la
+            // fiche, recréée à chaque sélection : la barre ne clignote plus.
+            ToolbarItemGroup(placement: .primaryAction) {
+                let item = model.selectedSummary
+                Button {
+                    if let item { Task { await model.setArchived(item.id, true) } }
+                } label: {
+                    Label("Archiver", systemImage: "archivebox")
+                }
+                .help("Archiver : garder l'élément hors du chemin")
+                .disabled(!model.canEdit || item?.state != .active)
+                Button {
+                    if let item { Task { await model.edit(item.id) } }
+                } label: {
+                    Label("Modifier", systemImage: "pencil")
+                }
+                .help("Modifier (⌘E)")
+                .keyboardShortcut("e", modifiers: .command)
+                .disabled(!model.canEdit || item == nil || item?.state == .trashed)
+                Button {
+                    if let item { model.copyPassword(of: item.id) }
+                } label: {
+                    Label("Copier le mot de passe", systemImage: "key")
+                }
+                .help("Copier le mot de passe (⇧⌘C)")
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(item?.category != .login)
+                Button {
+                    if let host = item?.host, let url = URL(string: "https://\(host)") {
+                        NSWorkspace.shared.open(url)
+                    }
+                } label: {
+                    Label("Ouvrir le site", systemImage: "safari")
+                }
+                .help(item?.host.map { "Ouvrir \($0)" } ?? "Ouvrir le site")
+                .disabled(item?.host == nil)
+            }
         }
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
