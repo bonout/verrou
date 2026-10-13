@@ -1,0 +1,28 @@
+[package]
+name = "verrou-core"
+description = "Cœur de Verrou : modèle du coffre, recherche locale, codes TOTP, générateur."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+nucleo-matcher.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+zeroize.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+sha2.workspace = true
+data-encoding.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true
+url.workspace = true
+psl.workspace = true
+unicode-normalization.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
