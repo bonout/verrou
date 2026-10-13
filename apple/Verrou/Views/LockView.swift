@@ -7,19 +7,19 @@ struct LockView: View {
 
     var body: some View {
         ZStack {
-            background
+            LockBackground()
             VStack(spacing: 22) {
                 AppMark(size: 84)
                 VStack(spacing: 6) {
                     Text("Verrou")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text("Coffre fictif · données de démonstration")
+                    Text(subtitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
 
                 VStack(spacing: 12) {
-                    if Biometrics.isAvailable {
+                    if model.canUseTouchID {
                         Button {
                             Task { await model.unlockWithBiometrics() }
                         } label: {
@@ -35,14 +35,19 @@ struct LockView: View {
 
                     HStack(spacing: 8) {
                         SecureField("Mot de passe principal", text: $password)
+                            .disabled(model.lockState == .unlocking)
                             .textFieldStyle(.plain)
                             .font(.body)
                             .focused($passwordFocused)
                             .onSubmit(submit)
                         Button(action: submit) {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
+                            if model.lockState == .unlocking {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
+                            }
                         }
                         .buttonStyle(.plain)
                         .disabled(password.isEmpty)
@@ -64,15 +69,27 @@ struct LockView: View {
             .padding(48)
         }
         .frame(minWidth: 520, minHeight: 460)
-        .onAppear { if !Biometrics.isAvailable { passwordFocused = true } }
+        .onAppear { if !model.canUseTouchID { passwordFocused = true } }
+    }
+
+    private var subtitle: String {
+        guard model.mode == .vaultwarden, let account = model.account else {
+            return "Coffre fictif · données de démonstration"
+        }
+        let host = URL(string: account.server)?.host() ?? account.server
+        return "\(account.email) · \(host)"
     }
 
     private func submit() {
-        model.unlock(masterPassword: password)
+        let typed = password
         password = ""
+        Task { await model.unlock(masterPassword: typed) }
     }
+}
 
-    private var background: some View {
+/// Fond des écrans verrouillé et de connexion.
+struct LockBackground: View {
+    var body: some View {
         ZStack {
             Color(nsColor: .windowBackgroundColor)
             RadialGradient(colors: [Theme.accent.opacity(0.18), .clear], center: .top, startRadius: 10, endRadius: 520)

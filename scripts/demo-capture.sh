@@ -9,7 +9,7 @@
 # doit avoir l'autorisation « Enregistrement de l'écran ».
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP="${1:-$ROOT/target/xcode/Build/Products/Debug/Verrou.app}"
+APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"
 MEDIA="$ROOT/docs/media"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT

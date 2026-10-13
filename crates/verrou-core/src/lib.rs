@@ -2,8 +2,8 @@
 //!
 //! Ce crate ne fait aucune entrée-sortie : il reçoit des éléments déjà
 //! déchiffrés, les indexe et y cherche. Le déchiffrement et la synchronisation
-//! avec Vaultwarden viendront d'un crate dédié, construit sur le SDK Rust de
-//! Bitwarden.
+//! avec Vaultwarden sont dans `verrou-vaultwarden`, construit sur le SDK Rust
+//! de Bitwarden.
 
 pub mod generator;
 pub mod matching;
