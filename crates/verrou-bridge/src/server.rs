@@ -5,7 +5,14 @@
 //! l'appairage et le chiffrement de chaque message : sans clé de client, on ne
 //! peut que demander un appairage, que l'utilisateur doit accepter dans
 //! Verrou après avoir comparé le code.
+//!
+//! Deux natures de clients : l'extension de navigateur et le terminal
+//! (`verrou`). Chacune n'a que ses commandes ([`crate::access::allowed`]).
+//! Pour le terminal, un secret ou une signature SSH attend l'accord de
+//! l'utilisateur ([`Backend::confirm`]), gardé [`APPROVAL_TTL`] pour ce
+//! client et cet élément.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::path::PathBuf;
@@ -14,19 +21,22 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use data_encoding::BASE64;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
+use verrou_core::Vault;
 use zeroize::Zeroize as _;
 
-use crate::access::Write;
+use crate::access::{self, Write};
 use crate::clients::{ClientInfo, ClientStore};
 use crate::crypto::{Direction, KeyPair};
 use crate::protocol::{
-    CONFIRM_IN_APP, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS, MAX_FRAME,
-    Outgoing, Reply, ReplyResult, Request, SaveAction, Suggestion,
+    CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
+    MAX_FRAME, Outgoing, Reply, ReplyResult, Request, SaveAction, SecretValue, Suggestion,
 };
+use crate::ssh;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -38,6 +48,12 @@ const PAIRING_TIMEOUT: Duration = Duration::from_secs(120);
 /// Écart minimal entre deux demandes d'appairage : un programme ne peut pas
 /// noyer l'utilisateur sous les fenêtres.
 const PAIRING_INTERVAL: Duration = Duration::from_secs(3);
+/// Durée pendant laquelle l'accord de l'utilisateur vaut pour un client et
+/// un élément : `verrou get` puis `verrou totp`, ou plusieurs connexions SSH
+/// de suite, sans redemander Touch ID.
+pub const APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
+/// Le temps laissé à l'utilisateur pour répondre à une demande d'accord.
+const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Ce que l'app fournit au pont.
 pub trait Backend: Send + Sync + 'static {
@@ -63,22 +79,53 @@ pub trait Backend: Send + Sync + 'static {
     /// Demande d'appairage : afficher `code` et demander l'accord, puis
     /// répondre par [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
+    /// Lecture du coffre déverrouillé, pour le terminal : `reader` est
+    /// appelé une fois. `false` : coffre verrouillé.
+    fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool;
+    /// Demander à l'utilisateur d'autoriser un accès du terminal (Touch ID,
+    /// ou le mot de passe de la session). `true` : accordé.
+    fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PairingRequest {
     pub id: String,
-    /// Nom annoncé par l'extension (« Brave »). Déclaratif : seul le code
+    /// Nom annoncé par le client (« Brave »). Déclaratif : seul le code
     /// prouve quelque chose.
     pub name: String,
     pub code: String,
+    /// Ce que le client pourra faire une fois relié.
+    pub kind: ClientKind,
 }
+
+/// Ce que le terminal demande, à faire confirmer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Purpose {
+    /// Lire un secret de l'élément (champ masqué, notes, code à usage unique).
+    Reveal,
+    /// Signer avec la clé SSH de l'élément.
+    Ssh,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Confirmation {
+    pub client: String,
+    pub client_name: String,
+    pub purpose: Purpose,
+    pub item: String,
+    /// Titre de l'élément, à montrer.
+    pub title: String,
+}
+
+/// Accords en cours de validité : (client, objet, élément) → date de l'accord.
+type Approvals = HashMap<(String, Purpose, String), Instant>;
 
 struct Shared {
     backend: Arc<dyn Backend>,
     clients: Mutex<ClientStore>,
     pending: Mutex<Option<(String, oneshot::Sender<bool>)>>,
     last_pairing: Mutex<Option<Instant>>,
+    approvals: Mutex<Approvals>,
 }
 
 /// Le pont en marche. Le libérer l'arrête.
@@ -100,6 +147,7 @@ impl Bridge {
             clients: Mutex::new(ClientStore::open(clients_file)),
             pending: Mutex::new(None),
             last_pairing: Mutex::new(None),
+            approvals: Mutex::new(HashMap::new()),
         });
         let (shutdown, mut stop) = oneshot::channel::<()>();
         let state = Arc::clone(&shared);
@@ -161,6 +209,12 @@ impl Bridge {
 
     pub fn revoke(&self, id: &str) {
         lock(&self.shared.clients).remove(id);
+        lock(&self.shared.approvals).retain(|(client, _, _), _| client != id);
+    }
+
+    /// Oublie les accords donnés au terminal (au verrouillage du coffre).
+    pub fn forget_approvals(&self) {
+        lock(&self.shared.approvals).clear();
     }
 }
 
@@ -210,8 +264,8 @@ async fn write_frame(writer: &mut OwnedWriteHalf, message: &Outgoing) -> io::Res
 async fn serve(shared: Arc<Shared>, mut reader: OwnedReadHalf, mut writer: OwnedWriteHalf) {
     while let Some(frame) = read_frame(&mut reader).await {
         let reply = match serde_json::from_slice::<Incoming>(&frame) {
-            Ok(Incoming::Pair { name, key }) => {
-                if pair(&shared, &name, &key, &mut writer).await.is_err() {
+            Ok(Incoming::Pair { name, key, kind }) => {
+                if pair(&shared, &name, &key, kind, &mut writer).await.is_err() {
                     return;
                 }
                 continue;
@@ -233,6 +287,7 @@ async fn pair(
     shared: &Shared,
     name: &str,
     peer_key: &str,
+    kind: ClientKind,
     writer: &mut OwnedWriteHalf,
 ) -> io::Result<()> {
     let busy = {
@@ -280,6 +335,7 @@ async fn pair(
         id: id.clone(),
         name: name.clone(),
         code: key.pairing_code(),
+        kind,
     });
     let approved = tokio::time::timeout(PAIRING_TIMEOUT, decision)
         .await
@@ -296,7 +352,7 @@ async fn pair(
         }
     }
     if approved {
-        lock(&shared.clients).add(id, name, &key, now_ms() / 1000);
+        lock(&shared.clients).add(id, name, kind, &key, now_ms() / 1000);
         write_frame(writer, &Outgoing::Paired).await
     } else {
         write_frame(writer, &Outgoing::Refused).await
@@ -307,7 +363,8 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     let bad = Outgoing::Error {
         code: ErrorCode::BadRequest,
     };
-    let Some(key) = lock(&shared.clients).key(client) else {
+    let found = lock(&shared.clients).get(client);
+    let Some((key, info)) = found else {
         return Outgoing::Error {
             code: ErrorCode::UnknownClient,
         };
@@ -325,6 +382,9 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     }
     let backend = &shared.backend;
     let result = match request.command {
+        command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
+            reason: "commande refusée à ce client".to_owned(),
+        },
         Command::Status => ReplyResult::Status {
             unlocked: backend.is_unlocked(),
         },
@@ -371,6 +431,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
                 }))
                 .await,
         ),
+        command => terminal(shared, &info, command).await,
     };
     let Ok(mut body) = serde_json::to_vec(&Reply {
         id: request.id,
@@ -381,6 +442,177 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     let (iv, data) = key.seal(client, Direction::Response, &body);
     body.zeroize();
     Outgoing::Response { iv, data }
+}
+
+/// Lit le coffre déverrouillé ; `None` : verrouillé.
+fn read<T>(backend: &dyn Backend, f: impl FnOnce(&Vault) -> T) -> Option<T> {
+    let mut f = Some(f);
+    let mut out = None;
+    let unlocked = backend.read(&mut |vault| {
+        if let Some(f) = f.take() {
+            out = Some(f(vault));
+        }
+    });
+    if unlocked { out } else { None }
+}
+
+/// L'utilisateur autorise-t-il ce client à cet usage de l'élément ? Un
+/// accord récent pour le même trio suffit.
+async fn approved(
+    shared: &Shared,
+    client: &ClientInfo,
+    purpose: Purpose,
+    item: &str,
+    title: &str,
+) -> bool {
+    let entry = (client.id.clone(), purpose, item.to_owned());
+    {
+        let mut approvals = lock(&shared.approvals);
+        approvals.retain(|_, at| at.elapsed() < APPROVAL_TTL);
+        if approvals.contains_key(&entry) {
+            return true;
+        }
+    }
+    let request = Confirmation {
+        client: client.id.clone(),
+        client_name: client.name.clone(),
+        purpose,
+        item: item.to_owned(),
+        title: title.to_owned(),
+    };
+    let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
+        .await
+        .unwrap_or(false);
+    if granted {
+        lock(&shared.approvals).insert(entry, Instant::now());
+    }
+    granted
+}
+
+fn refused() -> ReplyResult {
+    ReplyResult::Denied {
+        reason: "refusé dans Verrou".to_owned(),
+    }
+}
+
+/// Commandes du terminal (déjà filtrées par [`access::allowed`]).
+#[allow(clippy::too_many_lines)] // une branche par commande, lisible d'un trait
+async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
+    let backend = &*shared.backend;
+    let denied = |reason: String| ReplyResult::Denied { reason };
+    match command {
+        Command::VaultSearch {
+            query,
+            kind,
+            favorites,
+            limit,
+        } => match read(backend, |v| {
+            access::search(v, &query, kind, favorites, limit)
+        }) {
+            None => ReplyResult::Locked,
+            Some((items, total)) => ReplyResult::Items {
+                items,
+                total: u32::try_from(total).unwrap_or(u32::MAX),
+            },
+        },
+        Command::VaultItem { query } => {
+            match read(backend, |v| access::find(v, &query).map(access::item_view)) {
+                None => ReplyResult::Locked,
+                Some(Ok(item)) => ReplyResult::Item { item },
+                Some(Err(reason)) => denied(reason),
+            }
+        }
+        Command::Reveal { item, field } => {
+            let check = read(backend, |v| {
+                access::field_needs_confirmation(v, &item, &field)
+                    .map(|needed| (needed, access::title_of(v, &item).unwrap_or_default()))
+            });
+            match check {
+                None => return ReplyResult::Locked,
+                Some(Err(reason)) => return denied(reason),
+                Some(Ok((true, title))) => {
+                    if !approved(shared, client, Purpose::Reveal, &item, &title).await {
+                        return refused();
+                    }
+                }
+                Some(Ok((false, _))) => {}
+            }
+            match read(backend, |v| access::field_value(v, &item, &field)) {
+                None => ReplyResult::Locked,
+                Some(Ok(value)) => ReplyResult::Secret(SecretValue { value }),
+                Some(Err(reason)) => denied(reason),
+            }
+        }
+        Command::Totp { item } => {
+            let found = read(backend, |v| {
+                v.get(&item).map(|i| (i.title.clone(), i.has_totp()))
+            });
+            let title = match found {
+                None => return ReplyResult::Locked,
+                Some(None) => return denied("élément introuvable".to_owned()),
+                Some(Some((title, false))) => {
+                    return denied(format!("« {title} » n'a pas de code à usage unique"));
+                }
+                Some(Some((title, true))) => title,
+            };
+            if !approved(shared, client, Purpose::Reveal, &item, &title).await {
+                return refused();
+            }
+            let now = u64::try_from(now_ms() / 1000).unwrap_or(0);
+            match read(backend, |v| access::totp_code(v, &item, now)) {
+                None => ReplyResult::Locked,
+                Some(Ok((code, period, remaining))) => ReplyResult::Code {
+                    code,
+                    period,
+                    remaining,
+                },
+                Some(Err(reason)) => denied(reason),
+            }
+        }
+        Command::Unlink => {
+            lock(&shared.clients).remove(&client.id);
+            lock(&shared.approvals).retain(|(id, _, _), _| *id != client.id);
+            ReplyResult::Done
+        }
+        Command::SshKeys => match read(backend, ssh::identities) {
+            None => ReplyResult::Locked,
+            Some(keys) => ReplyResult::SshKeys { keys },
+        },
+        Command::SshSign {
+            public_key,
+            data,
+            flags,
+        } => {
+            let (Ok(blob), Ok(mut data)) = (
+                BASE64.decode(public_key.as_bytes()),
+                BASE64.decode(data.as_bytes()),
+            ) else {
+                return denied("requête SSH illisible".to_owned());
+            };
+            let found = read(backend, |v| {
+                ssh::key_item(v, &blob).map(|i| (i.id.clone(), i.title.clone()))
+            });
+            let (item, title) = match found {
+                None => return ReplyResult::Locked,
+                Some(None) => return denied("clé SSH inconnue".to_owned()),
+                Some(Some(found)) => found,
+            };
+            if !approved(shared, client, Purpose::Ssh, &item, &title).await {
+                return refused();
+            }
+            let signed = read(backend, |v| ssh::sign(v, &blob, &data, flags));
+            data.zeroize();
+            match signed {
+                None => ReplyResult::Locked,
+                Some(Ok(signature)) => ReplyResult::Signature {
+                    signature: BASE64.encode(&signature),
+                },
+                Some(Err(reason)) => denied(reason),
+            }
+        }
+        // Commandes de l'extension : déjà traitées, ou refusées par `allowed`.
+        _ => denied("commande refusée à ce client".to_owned()),
+    }
 }
 
 fn written(outcome: Option<Result<String, String>>) -> ReplyResult {

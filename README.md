@@ -6,8 +6,8 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 > **Status: first usable version.** The Mac app signs in to Vaultwarden
 > (second factor included), decrypts the vault with Bitwarden's official Rust
 > SDK, keeps it encrypted for offline use, unlocks with Touch ID, creates and
-> edits logins and notes, and fills Brave forms through its extension. The CLI
-> still works on the mock vault.
+> edits logins and notes, fills Brave forms through its extension, and serves
+> the `verrou` CLI and an SSH agent from the real vault.
 >
 > The app's interface is in French.
 
@@ -56,8 +56,11 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   history apps skip them) and cleared after 90 s.
 - **Auto-lock**: after 10 min of inactivity, on sleep, and when the screen
   locks.
-- **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `bench`, `--json`
-  output.
+- **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `--json` output, on
+  the real vault served by the running app (`--mock` for the mock vault and
+  `bench`). Secrets ask for Touch ID in the app.
+- **SSH agent** (`verrou ssh-agent`): the vault's SSH keys for `ssh` and
+  `git`; the app signs, the private key never leaves it.
 
 ## Architecture
 
@@ -66,8 +69,9 @@ crates/
   verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault
   verrou-vaultwarden  sign-in, second factor, cache, decryption (Bitwarden Rust SDK)
   verrou-ffi          UniFFI interface to Swift (no secret without an explicit request)
-  verrou-bridge       bridge to the extension: pairing, encrypted channel, Native Messaging host
-  verrou-cli          `verrou` binary
+  verrou-bridge       bridge to the extension and the CLI: pairing, encrypted channel,
+                      per-client permissions, SSH signing, Native Messaging host
+  verrou-cli          `verrou` binary and its SSH agent
 extension/      Brave extension (Manifest V3), shipped inside the app
 apple/
   Verrou/       SwiftUI macOS app (xcodegen: apple/project.yml)
@@ -100,7 +104,7 @@ out of this Mac).
 
 ## Brave extension
 
-1. In Verrou: Settings (⌘,) → *Remplissage dans Brave* (fill in Brave). Verrou
+1. In Verrou: Settings (⌘,) → *Brave et le terminal* (Brave and the terminal). Verrou
    registers its Native Messaging host with Brave and copies the extension's
    path.
 2. In Brave: `brave://extensions`, *Developer mode*, *Load unpacked*, ⌘⇧G and
@@ -116,13 +120,85 @@ node extension/e2e/brave.mjs                  # walkthrough in a real Brave (thr
 
 (Both need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)
 
+## Command line and SSH agent
+
+The vault is only decrypted inside the app, so the CLI asks the running app
+for what it shows, over the same local bridge as the extension (TCP
+`127.0.0.1`, end-to-end encrypted channel). If Verrou isn't running, the CLI
+opens it in the background; if the vault is locked, Verrou asks for Touch ID
+and the CLI waits up to a minute.
+
+```sh
+cargo install --path crates/verrou-cli   # installs `verrou`
+verrou link        # once: compare the 6-digit code, accept in Verrou
+verrou status
+verrou search github            # titles, usernames, sites: never secrets
+verrou get github --field password | pbcopy
+verrou totp github
+verrou generate -l 24           # local, no app needed
+verrou unlink
+```
+
+The link (client id and channel key) is stored in `~/.config/verrou/cli.json`
+(mode 600; `VERROU_CLI_CONFIG` overrides it). Settings → *Brave et le terminal*
+must be on. Reading a secret (`get --field password`, `--reveal`, `totp`)
+asks for Touch ID (or the session password) in Verrou: *autoriser le terminal
+à lire « GitHub »*. An approval lasts 5 minutes for that item and that
+terminal, and is forgotten when the vault locks.
+
+### SSH agent
+
+```sh
+verrou ssh-agent        # foreground; prints: export SSH_AUTH_SOCK=/Users/you/.verrou/agent.sock
+```
+
+It listens on `~/.verrou/agent.sock` (`--socket PATH` to change it; directory
+700, socket 600) and offers the vault's SSH key items (Ed25519, ECDSA P-256 and
+P-384, RSA with `rsa-sha2-256`/`rsa-sha2-512`). Each signature is made **by the
+app**, after a Touch ID prompt (*autoriser ssh à utiliser la clé « … »*), cached
+5 minutes per key. Only `ssh` and `git` signing requests are served; adding or
+removing keys through the agent is refused.
+
+Use it for every host in `~/.ssh/config`:
+
+```
+Host *
+    IdentityAgent ~/.verrou/agent.sock
+```
+
+To start it at login, a LaunchAgent such as
+`~/Library/LaunchAgents/app.verrou.ssh-agent.plist` (adjust the path to
+`verrou`, then `launchctl load` it):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>app.verrou.ssh-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/you/.cargo/bin/verrou</string>
+        <string>ssh-agent</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardErrorPath</key>
+    <string>/tmp/verrou-ssh-agent.log</string>
+</dict>
+</plist>
+```
+
 ## Build
 
 Requirements: stable Rust (`rustup`), Xcode 26, `xcodegen` (`brew install xcodegen`).
 
 ```sh
-cargo test --workspace                     # core, sign-in, bindings, CLI
-cargo run -p verrou-cli -- search github   # CLI on the mock vault
+cargo test --workspace                     # core, sign-in, bindings, bridge, CLI, SSH agent
+cargo run -p verrou-cli -- --mock search github   # CLI on the mock vault
 
 # Tests against a real (throwaway) Vaultwarden: see the header of
 # crates/verrou-vaultwarden/tests/server.rs

@@ -6,33 +6,8 @@
 //! arrière-plan et attend qu'il écoute.
 
 use std::io::{self, Read as _, Write as _};
-use std::net::{Shutdown, TcpStream};
-use std::process::Command;
+use std::net::Shutdown;
 use std::thread;
-use std::time::Duration;
-
-const BUNDLE_ID: &str = "app.verrou.mac";
-
-fn connect(port: u16) -> Option<TcpStream> {
-    if let Ok(stream) = TcpStream::connect(("127.0.0.1", port)) {
-        return Some(stream);
-    }
-    // Verrou n'est pas ouvert : on le lance sans le mettre au premier plan
-    // (sauf dans les tests, qui ne doivent pas ouvrir la vraie app).
-    if std::env::var_os("VERROU_BRIDGE_NO_LAUNCH").is_some() {
-        return None;
-    }
-    let _ = Command::new("/usr/bin/open")
-        .args(["-g", "-b", BUNDLE_ID])
-        .status();
-    for _ in 0..40 {
-        thread::sleep(Duration::from_millis(250));
-        if let Ok(stream) = TcpStream::connect(("127.0.0.1", port)) {
-            return Some(stream);
-        }
-    }
-    None
-}
 
 /// Message au format Native Messaging, écrit directement au navigateur.
 fn tell_browser(json: &str) {
@@ -44,7 +19,8 @@ fn tell_browser(json: &str) {
 }
 
 fn main() {
-    let Some(stream) = connect(verrou_bridge::port_from_env()) else {
+    // Verrou n'est pas ouvert : on le lance sans le mettre au premier plan.
+    let Some(stream) = verrou_bridge::connect_to_app(verrou_bridge::port_from_env(), true) else {
         tell_browser(r#"{"type":"error","code":"app_unavailable"}"#);
         return;
     };

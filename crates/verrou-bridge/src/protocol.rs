@@ -1,9 +1,10 @@
-//! Messages échangés avec l'extension.
+//! Messages échangés avec les clients du pont (extension, terminal).
 //!
 //! En clair, l'enveloppe : demande d'appairage, ou requête chiffrée d'un
 //! client appairé. Chiffrés, la commande et sa réponse.
 
 use serde::{Deserialize, Serialize};
+use verrou_core::{FieldKind, ItemKind};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Taille maximale d'un message (Native Messaging limite à 1 Mio ce que
@@ -13,11 +14,29 @@ pub const MAX_FRAME: usize = 1024 * 1024;
 /// Écart toléré entre l'horodatage d'une requête et l'horloge de Verrou.
 pub const MAX_CLOCK_SKEW_MS: i64 = 120_000;
 
+/// Nature d'un client : elle fixe les commandes qu'il peut envoyer
+/// ([`crate::access::allowed`]).
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum ClientKind {
+    /// L'extension de navigateur : les identifiants de la page en cours.
+    #[default]
+    Browser,
+    /// Le terminal (`verrou`) : recherche, secrets après confirmation, agent SSH.
+    Cli,
+}
+
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Incoming {
-    /// `key` : clé publique P-256 de l'extension (SEC1, base64).
-    Pair { name: String, key: String },
+    /// `key` : clé publique P-256 du client (SEC1, base64). `kind` absent :
+    /// l'extension, qui ne l'envoie pas.
+    Pair {
+        name: String,
+        key: String,
+        #[serde(default)]
+        kind: ClientKind,
+    },
     Request {
         client: String,
         iv: String,
@@ -66,7 +85,7 @@ pub struct Request {
     pub command: Command,
 }
 
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
     Status,
@@ -109,6 +128,45 @@ pub enum Command {
         #[serde(default)]
         item: Option<String>,
     },
+    /// Terminal : éléments qui répondent à `query`, sans secret.
+    VaultSearch {
+        query: String,
+        #[serde(default)]
+        kind: Option<ItemKind>,
+        #[serde(default)]
+        favorites: bool,
+        #[serde(default)]
+        limit: Option<u32>,
+    },
+    /// Terminal : un élément (identifiant, sinon meilleur résultat de
+    /// recherche), sans la valeur de ses champs secrets.
+    VaultItem {
+        query: String,
+    },
+    /// Terminal : la valeur d'un champ (`notes` compris) de l'élément `item`.
+    /// Un champ secret demande l'accord de l'utilisateur dans Verrou.
+    Reveal {
+        item: String,
+        field: String,
+    },
+    /// Terminal : le code à usage unique de l'élément `item`, avec accord.
+    Totp {
+        item: String,
+    },
+    /// Terminal : oublier ce client (`verrou unlink`).
+    Unlink,
+    /// Agent SSH : les clés publiques des clés SSH du coffre.
+    SshKeys,
+    /// Agent SSH : signer `data` (base64) avec la clé dont `public_key` est
+    /// la forme binaire SSH (base64). `flags` : ceux de l'agent OpenSSH
+    /// (`rsa-sha2-256` = 2, `rsa-sha2-512` = 4). La clé privée ne sort pas
+    /// de Verrou : seule la signature revient.
+    SshSign {
+        public_key: String,
+        data: String,
+        #[serde(default)]
+        flags: u32,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -146,6 +204,76 @@ pub enum ReplyResult {
     /// Élément protégé (« redemander le mot de passe principal ») : Verrou
     /// demande confirmation ; l'extension réessaie ensuite.
     Confirm,
+    /// Résultats d'une recherche du terminal : les premiers, et leur total.
+    Items {
+        items: Vec<ItemSummary>,
+        total: u32,
+    },
+    Item {
+        item: ItemView,
+    },
+    /// Valeur d'un champ, révélée avec l'accord de l'utilisateur.
+    Secret(SecretValue),
+    Code {
+        code: String,
+        period: u64,
+        remaining: u64,
+    },
+    SshKeys {
+        keys: Vec<SshIdentity>,
+    },
+    /// Signature au format de l'agent SSH (algorithme et signature), base64.
+    Signature {
+        signature: String,
+    },
+}
+
+/// Un élément dans une liste du terminal. Aucun secret.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ItemSummary {
+    pub id: String,
+    pub kind: ItemKind,
+    pub title: String,
+    pub subtitle: String,
+    pub urls: Vec<String>,
+    pub folder: Option<String>,
+    pub tags: Vec<String>,
+    pub favorite: bool,
+    pub has_totp: bool,
+}
+
+/// Un élément pour `verrou get` : la valeur des champs secrets est absente.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ItemView {
+    #[serde(flatten)]
+    pub summary: ItemSummary,
+    pub fields: Vec<FieldView>,
+    pub has_notes: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct FieldView {
+    pub id: String,
+    pub label: String,
+    pub kind: FieldKind,
+    pub secret: bool,
+    /// Absente pour un champ secret : il faut `reveal`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct SecretValue {
+    pub value: String,
+}
+
+/// Une clé SSH du coffre, vue par l'agent : sa clé publique seulement.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct SshIdentity {
+    pub item: String,
+    pub title: String,
+    /// Forme binaire SSH de la clé publique, base64.
+    pub public_key: String,
 }
 
 /// Refus particulier de [`crate::Backend::credentials`] : l'élément attend une

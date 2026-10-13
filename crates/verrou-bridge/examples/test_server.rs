@@ -1,19 +1,26 @@
-//! Serveur du pont sur un faux coffre, pour tester l'extension sans l'app :
+//! Serveur du pont sur un faux coffre, pour tester l'extension ou le
+//! terminal sans l'app :
 //!
 //! ```sh
 //! VERROU_BRIDGE_PORT=41739 cargo run -p verrou-bridge --example test_server
+//! VERROU_BRIDGE_PORT=41739 VERROU_CLI_CONFIG=/tmp/cli.json cargo run -p verrou-cli -- link
 //! ```
 //!
 //! Les appairages sont acceptés d'office ; leur code est affiché (`CODE …`)
-//! pour que le test le compare à celui de l'extension.
+//! pour que le test le compare à celui de l'extension. Les demandes d'accord
+//! du terminal aussi (`CONFIRM …`). Le coffre contient une clé SSH ed25519,
+//! créée au démarrage, pour l'agent SSH.
 
 use std::io::Write as _;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use ssh_key::{Algorithm, LineEnding, PrivateKey};
 use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
-use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan, access};
+use verrou_bridge::{
+    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan, access,
+};
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 static BRIDGE: OnceLock<Mutex<Option<Bridge>>> = OnceLock::new();
@@ -79,6 +86,22 @@ impl Backend for Fake {
         println!("UNLOCK");
     }
 
+    fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool {
+        reader(&self.vault.lock().unwrap());
+        true
+    }
+
+    /// Accord d'office, annoncé (`CONFIRM reveal|ssh <titre>`).
+    fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
+        let purpose = match request.purpose {
+            Purpose::Reveal => "reveal",
+            Purpose::Ssh => "ssh",
+        };
+        println!("CONFIRM {purpose} {}", request.title);
+        let _ = std::io::stdout().flush();
+        Box::pin(async { true })
+    }
+
     fn pairing_requested(&self, request: PairingRequest) {
         println!("CODE {}", request.code);
         let _ = std::io::stdout().flush();
@@ -120,6 +143,43 @@ fn login(id: &str, title: &str, url: &str, username: &str, password: &str) -> It
     }
 }
 
+/// Une clé SSH ed25519 neuve, au format que Vaultwarden garde.
+fn ssh_key() -> Item {
+    let key = PrivateKey::random(
+        &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
+        Algorithm::Ed25519,
+    )
+    .unwrap();
+    Item {
+        id: "cle-ssh".to_owned(),
+        kind: ItemKind::SshKey,
+        title: "Clé SSH de test".to_owned(),
+        subtitle: key.fingerprint(ssh_key::HashAlg::Sha256).to_string(),
+        urls: Vec::new(),
+        folder: None,
+        tags: Vec::new(),
+        favorite: false,
+        created: 0,
+        modified: 0,
+        fields: vec![
+            Field::new(
+                "public_key",
+                "Clé publique",
+                FieldKind::Multiline,
+                key.public_key().to_openssh().unwrap(),
+            ),
+            Field::new(
+                "private_key",
+                "Clé privée",
+                FieldKind::Concealed,
+                key.to_openssh(LineEnding::LF).unwrap().as_str(),
+            ),
+        ],
+        notes: None,
+        reprompt: false,
+    }
+}
+
 fn main() {
     let vault = Vault::new(vec![
         login(
@@ -136,6 +196,7 @@ fn main() {
             "camille@exemple.fr",
             "mot-de-passe-local",
         ),
+        ssh_key(),
     ]);
     let file = std::env::temp_dir().join(format!("verrou-bridge-test-{}.json", std::process::id()));
     let bridge = Bridge::start(
