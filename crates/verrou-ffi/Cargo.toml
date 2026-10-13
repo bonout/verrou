@@ -16,8 +16,10 @@ path = "src/bin/uniffi-bindgen.rs"
 
 [dependencies]
 verrou-core.workspace = true
-uniffi = { workspace = true, features = ["cli"] }
+verrou-vaultwarden.workspace = true
+uniffi = { workspace = true, features = ["cli", "tokio"] }
 thiserror.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

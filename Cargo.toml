@@ -1,16 +1,22 @@
 [workspace]
 resolver = "3"
-members = ["crates/verrou-core", "crates/verrou-cli", "crates/verrou-ffi"]
+members = [
+    "crates/verrou-core",
+    "crates/verrou-vaultwarden",
+    "crates/verrou-cli",
+    "crates/verrou-ffi",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/bonout/verrou"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [workspace.dependencies]
 verrou-core = { path = "crates/verrou-core" }
+verrou-vaultwarden = { path = "crates/verrou-vaultwarden" }
 nucleo-matcher = "0.3.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,6 +33,17 @@ psl = "2"
 unicode-normalization = "0.1"
 clap = { version = "4.6", features = ["derive", "env"] }
 uniffi = "0.32"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
+uuid = { version = "1", features = ["v4"] }
+
+# SDK Rust de Bitwarden (GPL-3.0) : le code des apps officielles, épinglé sur
+# un commit. Il n'est pas publié sur crates.io ; chaque montée de version est
+# une PR à part, qui relance les tests contre un vrai Vaultwarden.
+bitwarden-core = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6", features = ["internal"] }
+bitwarden-crypto = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
+bitwarden-vault = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
+bitwarden-api-api = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

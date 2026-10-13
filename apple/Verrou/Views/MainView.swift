@@ -70,14 +70,19 @@ struct SidebarView: View {
                         count: entry.count, tint: entry.category.tint)
                 }
             }
-            Section("Dossiers") {
-                ForEach(model.counts?.folders ?? [], id: \.name) { folder in
-                    row(.folder(name: folder.name), folder.name, "folder", count: folder.count, tint: .secondary)
+            if let folders = model.counts?.folders, !folders.isEmpty {
+                Section("Dossiers") {
+                    ForEach(folders, id: \.name) { folder in
+                        row(.folder(name: folder.name), folder.name, "folder", count: folder.count, tint: .secondary)
+                    }
                 }
             }
-            Section("Étiquettes") {
-                ForEach(model.counts?.tags ?? [], id: \.name) { tag in
-                    row(.tag(name: tag.name), tag.name, "number", count: tag.count, tint: .secondary)
+            // Vaultwarden n'a pas d'étiquettes : la section n'apparaît qu'avec le coffre fictif.
+            if let tags = model.counts?.tags, !tags.isEmpty {
+                Section("Étiquettes") {
+                    ForEach(tags, id: \.name) { tag in
+                        row(.tag(name: tag.name), tag.name, "number", count: tag.count, tint: .secondary)
+                    }
                 }
             }
         }
@@ -101,20 +106,56 @@ struct SidebarView: View {
     }
 }
 
+/// Compte et état de la synchronisation. Un clic relance la synchronisation.
 struct VaultFooter: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         HStack(spacing: 8) {
-            Circle().fill(.green).frame(width: 7, height: 7)
+            if model.syncState == .syncing {
+                ProgressView().controlSize(.mini).frame(width: 7, height: 7)
+            } else {
+                Circle().fill(dotColor).frame(width: 7, height: 7)
+            }
             VStack(alignment: .leading, spacing: 0) {
-                Text("Coffre fictif").font(.caption.weight(.semibold))
-                Text("Hors ligne · données locales").font(.caption2).foregroundStyle(.secondary)
+                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+                Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
         }
+        .contentShape(Rectangle())
+        .onTapGesture { Task { await model.syncNow() } }
+        .help(model.mode == .vaultwarden ? "Synchroniser (⌘R)" : "")
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         // Sans fond, les dernières lignes de la liste défilent sous le pied.
         .background(.bar)
+    }
+
+    private var title: String {
+        model.mode == .demo ? "Coffre fictif" : model.account?.email ?? "Vaultwarden"
+    }
+
+    private var dotColor: Color {
+        switch model.syncState {
+        case .idle: .green
+        case .syncing: .secondary
+        case .offline: .orange
+        case .failed: .red
+        }
+    }
+
+    private var status: String {
+        if model.mode == .demo { return "Hors ligne · données locales" }
+        let last = model.account?.syncedAt.map { synced in
+            Date(timeIntervalSince1970: TimeInterval(synced)).formatted(date: .omitted, time: .shortened)
+        }
+        switch model.syncState {
+        case .syncing: return "Synchronisation…"
+        case .offline: return "Hors ligne · état de \(last ?? "—")"
+        case .failed(let message): return message
+        case .idle: return last.map { "Synchronisé à \($0)" } ?? "Jamais synchronisé"
+        }
     }
 }
 

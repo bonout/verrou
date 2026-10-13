@@ -44,6 +44,7 @@ final class QuickAccessController {
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         if staysOpen { panel.orderFrontRegardless() }
+        model.quickAccessOpened()
     }
 
     func close() {
@@ -124,9 +125,14 @@ struct QuickAccessView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 AppMark(size: 26)
-                TextField("Rechercher un identifiant, une carte, un code…", text: $model.quickQuery)
+                // Le texte indicatif ne prend pas la police du champ : sans la
+                // lui donner, ni une hauteur explicite, il est coupé en bas.
+                TextField("", text: $model.quickQuery,
+                          prompt: Text("Rechercher un identifiant, une carte, un code…")
+                              .font(.system(size: 22, weight: .regular)))
                     .textFieldStyle(.plain)
                     .font(.system(size: 22, weight: .regular))
+                    .frame(height: 30)
                     .focused($focused)
                     .onSubmit(primaryAction)
             }
@@ -167,7 +173,13 @@ struct QuickAccessView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+        // Le curseur dans le champ à chaque ouverture : on tape directement.
         .onAppear { focused = true; selected = 0 }
+        .onChange(of: model.quickAccessOpenings) {
+            selected = 0
+            focused = false
+            Task { focused = true }
+        }
         .onChange(of: model.quickQuery) { selected = 0 }
         .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
         .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
@@ -220,12 +232,22 @@ struct QuickAccessView: View {
         VStack(spacing: 14) {
             Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
             Text("Verrou est verrouillé").font(.headline)
-            Button {
-                Task { await model.unlockWithBiometrics() }
-            } label: {
-                Label("Déverrouiller avec Touch ID", systemImage: "touchid")
+            if model.canUseTouchID {
+                Button {
+                    Task { await model.unlockWithBiometrics() }
+                } label: {
+                    Label("Déverrouiller avec Touch ID", systemImage: "touchid")
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                // Sans Touch ID, le mot de passe se saisit dans la fenêtre principale.
+                Button("Ouvrir Verrou") {
+                    close()
+                    NSApp.activate()
+                    NSApp.windows.first { !($0 is NSPanel) && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
