@@ -116,6 +116,7 @@ fn login(id: &str, title: &str, url: &str, username: &str, password: &str) -> It
             Field::new("totp", "Code", FieldKind::Totp, "JBSWY3DPEHPK3PXP"),
         ],
         notes: None,
+        reprompt: false,
     }
 }
 

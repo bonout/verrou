@@ -15,11 +15,12 @@
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
 #![allow(clippy::needless_pass_by_value)]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use verrou_bridge::access::Write;
-use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
+use verrou_bridge::protocol::{CONFIRM_IN_APP, Credentials, SaveAction, Suggestion};
 use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
@@ -67,6 +68,10 @@ pub enum VerrouError {
     Invalid { message: String },
     #[error("l'élément a changé sur le serveur")]
     Conflict,
+    /// L'élément demande une nouvelle confirmation (Touch ID ou mot de passe
+    /// principal) avant de livrer ses secrets : `authorize_item` après coup.
+    #[error("confirmation requise pour cet élément")]
+    RepromptRequired,
 }
 
 impl From<verrou_vaultwarden::Error> for VerrouError {
@@ -276,6 +281,8 @@ pub struct ItemSummary {
     pub favorite: bool,
     pub has_totp: bool,
     pub modified: i64,
+    /// « Redemander le mot de passe principal » : confirmer avant tout secret.
+    pub reprompt: bool,
 }
 
 /// Un résultat de recherche : position dans `summaries()`, identifiant de
@@ -412,8 +419,39 @@ fn summary(item: &Item) -> ItemSummary {
         favorite: item.favorite,
         has_totp: item.has_totp(),
         modified: item.modified,
+        reprompt: item.reprompt,
     }
 }
+
+/// Audit du coffre (calculé localement) : voir `verrou_core::audit`.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct AuditReport {
+    /// Groupes d'éléments partageant un même mot de passe.
+    pub reused: Vec<Vec<ItemSummary>>,
+    pub weak: Vec<WeakPassword>,
+    /// Identifiants dont un site est en HTTP.
+    pub insecure: Vec<ItemSummary>,
+    /// Identifiants examinés (ceux qui ont un mot de passe).
+    pub checked: u32,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct WeakPassword {
+    pub item: ItemSummary,
+    /// Entropie estimée, en bits.
+    pub bits: f64,
+}
+
+/// Un identifiant dont le mot de passe figure dans des fuites connues.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct BreachedPassword {
+    pub item: ItemSummary,
+    /// Nombre d'apparitions dans les fuites recensées par Have I Been Pwned.
+    pub count: u64,
+}
+
+/// Durée pendant laquelle une confirmation vaut pour un élément protégé.
+const REPROMPT_WINDOW: Duration = Duration::from_secs(5 * 60);
 
 /// Session du coffre. Verrouiller libère le coffre, ce qui efface ses
 /// secrets de la mémoire (`SecretString` est mis à zéro à la libération), et
@@ -431,6 +469,9 @@ pub struct VaultSession {
     security_key: Mutex<Option<verrou_vaultwarden::security_key::SigningSession>>,
     /// Pont vers l'extension de navigateur, s'il est activé.
     bridge: Mutex<Option<Bridge>>,
+    /// Éléments protégés confirmés récemment (Touch ID ou mot de passe
+    /// principal), effacés au verrouillage.
+    authorized: Mutex<HashMap<String, Instant>>,
 }
 
 impl VaultSession {
@@ -554,6 +595,25 @@ impl VaultSession {
         Ok(id)
     }
 
+    fn is_authorized(&self, item: &Item) -> bool {
+        !item.reprompt
+            || self
+                .authorized
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .get(&item.id)
+                .is_some_and(|at| at.elapsed() < REPROMPT_WINDOW)
+    }
+
+    /// Les secrets d'un élément protégé ne sortent qu'après confirmation.
+    fn require_authorized(&self, item: &Item) -> Result<(), VerrouError> {
+        if self.is_authorized(item) {
+            Ok(())
+        } else {
+            Err(VerrouError::RepromptRequired)
+        }
+    }
+
     fn pending(&self) -> Result<PendingLogin, VerrouError> {
         self.pending
             .lock()
@@ -580,6 +640,7 @@ impl VaultSession {
             #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
+            authorized: Mutex::new(HashMap::new()),
         })
     }
 
@@ -721,6 +782,7 @@ impl VaultSession {
     /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
     /// seulement quand l'utilisateur ouvre l'écran de modification.
     pub async fn edit_draft(&self, id: String) -> Result<ItemDraft, VerrouError> {
+        self.with_vault(|v| self.require_authorized(Self::item(v, &id)?))?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let draft = connection.lock().await.draft(&id).await?;
         Ok(draft.into())
@@ -746,6 +808,48 @@ impl VaultSession {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.trash(&id).await?;
         self.install_if_current(&connection, decrypted)
+    }
+
+    /// Mots de passe fuités, par Have I Been Pwned (k-anonymat : seuls les 5
+    /// premiers caractères du SHA-1 de chaque mot de passe partent). Seulement
+    /// sur demande explicite de l'utilisateur.
+    pub async fn check_breaches(&self) -> Result<Vec<BreachedPassword>, VerrouError> {
+        let candidates: Vec<(String, SecretString)> = self.with_vault(|v| {
+            Ok(v.items()
+                .iter()
+                .filter_map(|i| {
+                    verrou_core::audit::password_of(i).map(|p| (i.id.clone(), SecretString::new(p)))
+                })
+                .collect())
+        })?;
+        let passwords: Vec<&str> = candidates.iter().map(|(_, p)| p.expose()).collect();
+        let counts = verrou_vaultwarden::breach::pwned_counts(&passwords).await?;
+        let mut breached: Vec<BreachedPassword> = self.with_vault(|v| {
+            Ok(candidates
+                .iter()
+                .zip(counts)
+                .filter(|(_, count)| *count > 0)
+                .filter_map(|((id, _), count)| {
+                    v.get(id).map(|i| BreachedPassword {
+                        item: summary(i),
+                        count,
+                    })
+                })
+                .collect())
+        })?;
+        breached.sort_by_key(|b| std::cmp::Reverse(b.count));
+        Ok(breached)
+    }
+
+    /// Vérifie le mot de passe principal (confirmation d'un élément protégé
+    /// sans Touch ID). Hors ligne, sur le cache.
+    pub async fn verify_master_password(&self, password: String) -> Result<bool, VerrouError> {
+        let store = self.store()?.clone();
+        match verrou_vaultwarden::unlock_with_password(&store, &SecretString::new(password)).await {
+            Ok(_) => Ok(true),
+            Err(verrou_vaultwarden::Error::WrongPassword) => Ok(false),
+            Err(error) => Err(error.into()),
+        }
     }
 
     /// ⚠️ Clé de l'utilisateur (base64), à confier immédiatement au Secure
@@ -778,6 +882,7 @@ impl VaultSession {
             #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
+            authorized: Mutex::new(HashMap::new()),
         })
     }
 
@@ -804,6 +909,26 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
+        self.authorized
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
+    /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets
+    /// attendent une confirmation (`authorize_item`).
+    pub fn needs_confirmation(&self, id: String) -> bool {
+        self.with_vault(|v| Ok(!self.is_authorized(Self::item(v, &id)?)))
+            .unwrap_or(false)
+    }
+
+    /// L'utilisateur vient de confirmer (Touch ID ou mot de passe principal)
+    /// pour cet élément protégé : ses secrets sont accessibles 5 minutes.
+    pub fn authorize_item(&self, id: String) {
+        self.authorized
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, Instant::now());
     }
 
     pub fn is_unlocked(&self) -> bool {
@@ -868,6 +993,7 @@ impl VaultSession {
     pub fn reveal(&self, id: String, field_id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
+            self.require_authorized(item)?;
             if field_id == "notes" {
                 return item
                     .notes
@@ -884,6 +1010,7 @@ impl VaultSession {
     pub fn totp(&self, id: String, unix_time: u64) -> Result<TotpView, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
+            self.require_authorized(item)?;
             let field = item
                 .field_of_kind(FieldKind::Totp)
                 .ok_or(VerrouError::NotFound)?;
@@ -936,6 +1063,32 @@ impl VaultSession {
             .clone()
     }
 
+    /// Audit du coffre : réutilisés, faibles, sites en HTTP. Aucun secret ne
+    /// sort, seulement des résumés.
+    pub fn audit(&self) -> Result<AuditReport, VerrouError> {
+        self.with_vault(|v| {
+            let report = verrou_core::audit::audit(v);
+            let summaries = |ids: &[String]| -> Vec<ItemSummary> {
+                ids.iter().filter_map(|id| v.get(id)).map(summary).collect()
+            };
+            Ok(AuditReport {
+                reused: report.reused.iter().map(|g| summaries(g)).collect(),
+                weak: report
+                    .weak
+                    .iter()
+                    .filter_map(|(id, bits)| {
+                        v.get(id).map(|i| WeakPassword {
+                            item: summary(i),
+                            bits: *bits,
+                        })
+                    })
+                    .collect(),
+                insecure: summaries(&report.insecure),
+                checked: report.checked as u32,
+            })
+        })
+    }
+
     /// Identifiants correspondant à une page, du plus précis au moins précis.
     pub fn suggestions(&self, page_url: String) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| {
@@ -960,6 +1113,9 @@ pub trait BridgeDelegate: Send + Sync {
     /// L'extension a enregistré un identifiant (ou un code) : le coffre a
     /// été resynchronisé, l'app recharge sa liste. `title` : pour le signaler.
     fn vault_changed(&self, item: String, title: String);
+    /// L'extension veut remplir un élément protégé : demander la
+    /// confirmation (Touch ID ou mot de passe principal), puis `authorize_item`.
+    fn reprompt_requested(&self, item: String, title: String);
 }
 
 /// Résultat d'une synchronisation.
@@ -1004,9 +1160,31 @@ impl Backend for SessionBackend {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        session
-            .with_vault(|v| Ok(verrou_bridge::access::credentials(v, item, page_url, now)))
-            .ok()
+        let mut confirm = None;
+        let outcome = session
+            .with_vault(|v| {
+                Ok(
+                    verrou_bridge::access::credentials(v, item, page_url, now).and_then(
+                        |credentials| {
+                            // Élément protégé : la vérification du site passe
+                            // d'abord, puis Verrou demande la confirmation ;
+                            // l'extension réessaie.
+                            match v.get(item).filter(|i| !session.is_authorized(i)) {
+                                Some(protected) => {
+                                    confirm = Some(protected.title.clone());
+                                    Err(CONFIRM_IN_APP.to_owned())
+                                }
+                                None => Ok(credentials),
+                            }
+                        },
+                    ),
+                )
+            })
+            .ok();
+        if let Some(title) = confirm {
+            self.delegate.reprompt_requested(item.to_owned(), title);
+        }
+        outcome
     }
 
     fn check_save(
@@ -1187,6 +1365,40 @@ mod tests {
                 >= 16
         );
         assert_eq!(session.totp(github.id, 59).unwrap().code.len(), 6);
+    }
+
+    #[test]
+    fn protected_items_need_a_fresh_confirmation() {
+        let session = session();
+        let card = session
+            .summaries()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.reprompt)
+            .expect("une carte protégée dans le coffre fictif");
+        assert!(matches!(
+            session.reveal(card.id.clone(), "number".to_owned()),
+            Err(VerrouError::RepromptRequired)
+        ));
+        session.authorize_item(card.id.clone());
+        assert!(session.reveal(card.id.clone(), "number".to_owned()).is_ok());
+        // Verrouiller oublie les confirmations.
+        session.lock();
+        session.unlock_mock(0, 42);
+        assert!(matches!(
+            session.reveal(card.id, "number".to_owned()),
+            Err(VerrouError::RepromptRequired)
+        ));
+    }
+
+    #[test]
+    fn audit_reports_without_secrets() {
+        let report = session().audit().unwrap();
+        assert!(report.checked > 0);
+        let issues = report.reused.iter().map(Vec::len).sum::<usize>()
+            + report.weak.len()
+            + report.insecure.len();
+        assert!(issues > 0, "le coffre fictif a des faiblesses à montrer");
     }
 
     #[test]

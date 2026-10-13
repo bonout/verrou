@@ -24,8 +24,8 @@ use crate::access::Write;
 use crate::clients::{ClientInfo, ClientStore};
 use crate::crypto::{Direction, KeyPair};
 use crate::protocol::{
-    Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS, MAX_FRAME, Outgoing, Reply,
-    ReplyResult, Request, SaveAction, Suggestion,
+    CONFIRM_IN_APP, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS, MAX_FRAME,
+    Outgoing, Reply, ReplyResult, Request, SaveAction, Suggestion,
 };
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
@@ -335,6 +335,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         Command::Fill { url, item } => match backend.credentials(&item, &url) {
             None => ReplyResult::Locked,
             Some(Ok(credentials)) => ReplyResult::Credentials(credentials),
+            Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
             Some(Err(reason)) => ReplyResult::Denied { reason },
         },
         Command::Unlock => {

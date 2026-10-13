@@ -391,16 +391,24 @@ impl Builder<'_> {
     }
 
     fn password(&mut self) -> String {
+        const HABITS: [&str; 3] = ["soleil2019", "Azerty123!", "motdepasse"];
         let length = *[16, 20, 24, 32]
             .get(self.rng.gen_range(0..4))
             .unwrap_or(&20);
-        generator::password_with(
+        let strong = generator::password_with(
             self.rng,
             &PasswordOptions {
                 length,
                 ..PasswordOptions::default()
             },
-        )
+        );
+        // Un identifiant sur treize garde une vieille habitude (faible,
+        // réutilisé) : de quoi montrer l'audit. Sans tirage de plus, pour que
+        // le reste du coffre fictif ne change pas.
+        if self.next_id % 13 == 5 {
+            return HABITS[(self.next_id / 13) as usize % HABITS.len()].to_owned();
+        }
+        strong
     }
 
     fn totp_secret(&mut self) -> String {
@@ -451,6 +459,7 @@ impl Builder<'_> {
             modified,
             fields,
             notes: None,
+            reprompt: false,
         }
     }
 
@@ -517,6 +526,8 @@ impl Builder<'_> {
                         ),
                     ],
                     notes: None,
+                    // Comme souvent dans Bitwarden : les cartes redemandent confirmation.
+                    reprompt: true,
                 }
             })
             .collect()
@@ -559,6 +570,7 @@ impl Builder<'_> {
                 ),
             ],
             notes: None,
+            reprompt: false,
         };
         let (created, modified) = self.dates();
         let passport = Item {
@@ -584,6 +596,7 @@ impl Builder<'_> {
                 ),
             ],
             notes: None,
+            reprompt: false,
         };
         vec![me, passport]
     }
@@ -634,6 +647,7 @@ impl Builder<'_> {
                     modified,
                     fields: Vec::new(),
                     notes: Some(SecretString::new(*body)),
+                    reprompt: false,
                 }
             })
             .collect()
@@ -668,6 +682,7 @@ impl Builder<'_> {
                 ),
             ],
             notes: None,
+            reprompt: false,
         }
     }
 

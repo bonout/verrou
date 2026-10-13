@@ -11,8 +11,14 @@ struct MainView: View {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } content: {
-            ItemListView(searchFocused: $searchFocused)
-                .navigationSplitViewColumnWidth(min: 280, ideal: 330, max: 440)
+            Group {
+                if model.showAudit {
+                    AuditView()
+                } else {
+                    ItemListView(searchFocused: $searchFocused)
+                }
+            }
+            .navigationSplitViewColumnWidth(min: 280, ideal: 330, max: 440)
         } detail: {
             if let detail = model.selectedDetail {
                 ItemDetailView(detail: detail)
@@ -114,7 +120,12 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) { VaultFooter() }
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 0) {
+                AuditSidebarButton()
+                VaultFooter()
+            }
+        }
     }
 
     private func row(_ filter: SidebarFilter, _ title: String, _ symbol: String, count: UInt32?, tint: Color = Theme.accent) -> some View {

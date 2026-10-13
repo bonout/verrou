@@ -105,6 +105,7 @@ async function fill(url, item) {
     if (reply.result === "credentials") {
       return { ok: true, username: reply.username, password: reply.password, totp: reply.totp };
     }
+    // « confirm » : élément protégé, Verrou demande Touch ID ; on réessaie.
     return { ok: false, state: reply.result, reason: reply.reason };
   } catch (error) {
     return { ok: false, state: stateOf(error) };

@@ -112,6 +112,9 @@ pub struct Item {
     pub modified: i64,
     pub fields: Vec<Field>,
     pub notes: Option<SecretString>,
+    /// « Redemander le mot de passe principal » (réglage Bitwarden) : ses
+    /// secrets ne sortent qu'après une nouvelle confirmation.
+    pub reprompt: bool,
 }
 
 impl Item {

@@ -271,9 +271,8 @@ struct QuickAccessView: View {
     }
 
     private func copyCode() {
-        guard let item = current, item.hasTotp,
-              let code = try? model.session.totp(id: item.id, unixTime: UInt64(Date().timeIntervalSince1970)) else { return }
-        model.copy(code.code, label: "Code", secret: true)
+        guard let item = current, item.hasTotp else { return }
+        model.copyCode(of: item.id)
         close()
     }
 }
@@ -298,8 +297,10 @@ struct QuickDetail: View {
             if summary.hasTotp {
                 labeled("Code à usage unique") {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
-                        if let code = try? model.session.totp(id: summary.id, unixTime: UInt64(context.date.timeIntervalSince1970)) {
+                        if let code = model.totpCode(of: summary.id, at: context.date) {
                             TotpCodeView(code: code, size: 18)
+                        } else {
+                            MaskedText(count: 6)
                         }
                     }
                 }

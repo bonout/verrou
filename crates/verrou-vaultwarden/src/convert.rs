@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 
-use bitwarden_vault::{CipherType, CipherView, FieldType};
+use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType};
 use verrou_core::{Field, FieldKind, Item, ItemKind, SecretString};
 
 /// `None` pour un élément à la corbeille : Verrou ne les montre pas.
@@ -39,6 +39,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
             .clone()
             .filter(|n| !n.is_empty())
             .map(SecretString::new),
+        reprompt: view.reprompt == CipherRepromptType::Password,
     };
     match view.r#type {
         CipherType::Login => login(view, &mut item),

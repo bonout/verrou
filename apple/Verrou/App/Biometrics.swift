@@ -9,6 +9,8 @@ import os
 enum Biometrics {
     enum Outcome {
         case success
+        /// L'utilisateur a choisi le mot de passe principal.
+        case fallback
         case failure(String)
     }
 
@@ -49,7 +51,9 @@ enum Biometrics {
         do {
             try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
             return .success
-        } catch let laError as LAError where laError.code == .userCancel || laError.code == .userFallback {
+        } catch let laError as LAError where laError.code == .userFallback {
+            return .fallback
+        } catch let laError as LAError where laError.code == .userCancel {
             return .failure("")
         } catch {
             return .failure(error.localizedDescription)

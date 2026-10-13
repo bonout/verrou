@@ -18,6 +18,8 @@ struct FakeBackend {
     vault: Mutex<Vault>,
     unlocked: AtomicBool,
     unlock_requested: AtomicBool,
+    /// L'utilisateur a confirmé les éléments protégés (Touch ID).
+    confirmed: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
 }
 
@@ -32,8 +34,18 @@ impl Backend for FakeBackend {
     }
 
     fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>> {
-        self.is_unlocked()
-            .then(|| access::credentials(&self.vault.lock().unwrap(), item, page_url, 59))
+        self.is_unlocked().then(|| {
+            let vault = self.vault.lock().unwrap();
+            access::credentials(&vault, item, page_url, 59).and_then(|c| {
+                if access::needs_confirmation(&vault, item)
+                    && !self.confirmed.load(Ordering::SeqCst)
+                {
+                    Err(verrou_bridge::protocol::CONFIRM_IN_APP.to_owned())
+                } else {
+                    Ok(c)
+                }
+            })
+        })
     }
 
     fn check_save(
@@ -75,6 +87,16 @@ impl Backend for FakeBackend {
     }
 }
 
+/// Un identifiant « redemander le mot de passe principal ».
+fn protected_bank() -> Item {
+    let mut item = github();
+    "banque".clone_into(&mut item.id);
+    "Banque".clone_into(&mut item.title);
+    item.urls = vec!["https://banque.fr".to_owned()];
+    item.reprompt = true;
+    item
+}
+
 fn github() -> Item {
     Item {
         id: "github".to_owned(),
@@ -92,6 +114,7 @@ fn github() -> Item {
             Field::new("password", "Mot de passe", FieldKind::Password, "hunter2"),
         ],
         notes: None,
+        reprompt: false,
     }
 }
 
@@ -103,9 +126,10 @@ fn start() -> (
 ) {
     let (sender, receiver) = mpsc::channel();
     let backend = Arc::new(FakeBackend {
-        vault: Mutex::new(Vault::new(vec![github()])),
+        vault: Mutex::new(Vault::new(vec![github(), protected_bank()])),
         unlocked: AtomicBool::new(true),
         unlock_requested: AtomicBool::new(false),
+        confirmed: AtomicBool::new(false),
         pairings: Mutex::new(sender),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
@@ -272,6 +296,16 @@ fn pairing_then_fill_for_the_matching_site_only() {
     let suggestions =
         client.request(&json!({ "cmd": "suggest", "url": "https://github.com/login" }));
     assert_eq!(suggestions["items"][0]["has_totp"], true);
+
+    // Élément protégé : Verrou demande confirmation, puis livre.
+    let protected =
+        client.request(&json!({ "cmd": "fill", "url": "https://banque.fr/", "item": "banque" }));
+    assert_eq!(protected["result"], "confirm");
+    assert!(protected.get("password").is_none());
+    backend.confirmed.store(true, Ordering::SeqCst);
+    let confirmed =
+        client.request(&json!({ "cmd": "fill", "url": "https://banque.fr/", "item": "banque" }));
+    assert_eq!(confirmed["result"], "credentials");
 
     // Requête rejouée trop tard : refusée.
     let stale = client.request_at(&json!({ "cmd": "status" }), now_ms() - 10 * 60 * 1000);

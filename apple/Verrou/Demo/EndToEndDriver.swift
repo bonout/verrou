@@ -127,6 +127,13 @@ final class EndToEndDriver {
         await model.syncNow()
         check(model.syncState == .idle, "synchronisation par jeton de renouvellement")
 
+        // Audit : calculé sur le coffre, sans réseau.
+        model.openAudit()
+        check(model.showAudit && (model.audit?.checked ?? 0) >= 5, "audit du coffre (\(model.audit?.checked ?? 0) mots de passe)")
+        await snap("23-audit")
+        model.filter = .all
+        check(!model.showAudit, "retour à la liste")
+
         // Écriture : créer, modifier, mettre à la corbeille.
         model.newItem(login: true)
         let generated = model.editor?.draft.login?.password ?? ""

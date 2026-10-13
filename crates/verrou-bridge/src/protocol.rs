@@ -143,7 +143,14 @@ pub enum ReplyResult {
     Saved {
         item: String,
     },
+    /// Élément protégé (« redemander le mot de passe principal ») : Verrou
+    /// demande confirmation ; l'extension réessaie ensuite.
+    Confirm,
 }
+
+/// Refus particulier de [`crate::Backend::credentials`] : l'élément attend une
+/// confirmation dans Verrou (renvoyé à l'extension comme [`ReplyResult::Confirm`]).
+pub const CONFIRM_IN_APP: &str = "confirmation requise dans Verrou";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

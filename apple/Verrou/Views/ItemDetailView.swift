@@ -84,6 +84,10 @@ struct ItemDetailView: View {
                     if let folder = detail.summary.folder {
                         Chip(text: folder, symbol: "folder", tint: .secondary)
                     }
+                    if detail.summary.reprompt {
+                        Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)
+                            .help("Ses secrets demandent une confirmation (Touch ID ou mot de passe principal)")
+                    }
                 }
             }
             Spacer()
@@ -192,8 +196,11 @@ struct FieldRow: View {
         switch field.fieldType {
         case .totp:
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                if let code = try? model.session.totp(id: itemID, unixTime: UInt64(context.date.timeIntervalSince1970)) {
+                if let code = model.totpCode(of: itemID, at: context.date) {
                     TotpCodeView(code: code)
+                } else {
+                    // Élément protégé : le code n'apparaît qu'après confirmation.
+                    MaskedText(count: 6)
                 }
             }
         case .password, .concealed, .pin, .cardNumber:

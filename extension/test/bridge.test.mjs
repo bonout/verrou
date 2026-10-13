@@ -138,6 +138,8 @@ test("Verrou injoignable : l'extension le sait", async () => {
     let onDisconnect = () => {};
     host.stdout.on("data", (chunk) => onMessage(JSON.parse(chunk.subarray(4).toString())));
     host.on("exit", () => onDisconnect("hôte arrêté"));
+    // L'hôte peut s'arrêter avant notre écriture (port fermé) : EPIPE attendu.
+    host.stdin.on("error", () => {});
     return {
       post: (message) => host.stdin.write(JSON.stringify(message)),
       onMessage: (callback) => { onMessage = callback; },
