@@ -7,6 +7,8 @@
 //! pièces jointes, historique) repart intact. La date de révision envoyée
 //! permet au serveur de refuser une modification faite sur une copie périmée.
 
+use std::collections::HashMap;
+
 use bitwarden_api_api::models::{CipherRequestModel, SyncResponseModel};
 use bitwarden_vault::{
     Cipher, CipherRepromptType, CipherType, CipherView, FolderId, LoginUriView, LoginView,
@@ -42,24 +44,7 @@ pub struct LoginDraft {
 impl Connection {
     /// Brouillon prérempli pour modifier un élément.
     pub async fn draft(&self, id: &str) -> Result<Draft, Error> {
-        let view = self.editable_view(id).await?;
-        Ok(Draft {
-            name: view.name,
-            folder_id: view.folder_id.map(|f| f.to_string()),
-            favorite: view.favorite,
-            notes: view.notes.filter(|n| !n.is_empty()).map(SecretString::new),
-            login: view.login.map(|login| LoginDraft {
-                username: login.username,
-                password: login.password.map(SecretString::new),
-                totp: login.totp.map(SecretString::new),
-                uris: login
-                    .uris
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|u| u.uri)
-                    .collect(),
-            }),
-        })
+        self.editable_view(id).await.map(draft_of)
     }
 
     /// Crée l'élément dans le coffre personnel ; rend son identifiant et le
@@ -151,31 +136,44 @@ impl Connection {
     }
 
     /// L'élément tel que le cache le connaît, déchiffré, s'il peut être modifié.
-    async fn editable_view(&self, id: &str) -> Result<CipherView, Error> {
+    pub(crate) async fn editable_view(&self, id: &str) -> Result<CipherView, Error> {
+        let mut views = self.editable_views(&[id.to_owned()]).await?;
+        views.pop().ok_or(Error::NotFound)
+    }
+
+    /// Plusieurs éléments, dans l'ordre demandé, en ne lisant le cache
+    /// qu'une fois. Un seul introuvable ou en lecture seule, et rien n'est
+    /// rendu.
+    pub(crate) async fn editable_views(&self, ids: &[String]) -> Result<Vec<CipherView>, Error> {
         let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
         let sync: SyncResponseModel = serde_json::from_str(json)
             .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
-        let model = sync
+        let mut models: HashMap<String, _> = sync
             .ciphers
             .unwrap_or_default()
             .into_iter()
-            .find(|c| c.id.is_some_and(|c| c.to_string() == id))
-            .ok_or(Error::NotFound)?;
-        let cipher = Cipher::try_from(model).map_err(Error::crypto)?;
-        let view = self
-            .sdk
-            .vault()
-            .ciphers()
-            .decrypt(cipher)
-            .await
-            .map_err(Error::crypto)?;
-        if !view.edit || view.partial || view.deleted_date.is_some() {
-            return Err(Error::ReadOnly);
+            .filter_map(|c| Some((c.id?.to_string(), c)))
+            .collect();
+        let mut views = Vec::with_capacity(ids.len());
+        for id in ids {
+            let model = models.remove(id).ok_or(Error::NotFound)?;
+            let cipher = Cipher::try_from(model).map_err(Error::crypto)?;
+            let view = self
+                .sdk
+                .vault()
+                .ciphers()
+                .decrypt(cipher)
+                .await
+                .map_err(Error::crypto)?;
+            if !view.edit || view.partial || view.deleted_date.is_some() {
+                return Err(Error::ReadOnly);
+            }
+            views.push(view);
         }
-        Ok(view)
+        Ok(views)
     }
 
-    async fn encrypt(&self, view: CipherView) -> Result<CipherRequestModel, Error> {
+    pub(crate) async fn encrypt(&self, view: CipherView) -> Result<CipherRequestModel, Error> {
         let encrypted = self
             .sdk
             .vault()
@@ -228,7 +226,7 @@ fn uris(list: Vec<String>, previous: &[LoginUriView]) -> Option<Vec<LoginUriView
     (!uris.is_empty()).then_some(uris)
 }
 
-fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, Error> {
+pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, Error> {
     let name = draft.name.trim().to_owned();
     if name.is_empty() {
         return Err(Error::Invalid("le titre est obligatoire".to_owned()));
@@ -291,9 +289,30 @@ fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, Error> {
     })
 }
 
+/// Ce que l'écran d'édition montre d'un élément.
+pub(crate) fn draft_of(view: CipherView) -> Draft {
+    Draft {
+        name: view.name,
+        folder_id: view.folder_id.map(|f| f.to_string()),
+        favorite: view.favorite,
+        notes: view.notes.filter(|n| !n.is_empty()).map(SecretString::new),
+        login: view.login.map(|login| LoginDraft {
+            username: login.username,
+            password: login.password.map(SecretString::new),
+            totp: login.totp.map(SecretString::new),
+            uris: login
+                .uris
+                .into_iter()
+                .flatten()
+                .filter_map(|u| u.uri)
+                .collect(),
+        }),
+    }
+}
+
 /// Reporte le brouillon sur l'élément. Un mot de passe remplacé rejoint
 /// l'historique de l'élément.
-fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> Result<(), Error> {
+pub(crate) fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> Result<(), Error> {
     let name = draft.name.trim().to_owned();
     if name.is_empty() {
         return Err(Error::Invalid("le titre est obligatoire".to_owned()));

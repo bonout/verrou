@@ -23,6 +23,11 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   kept intact, the old password goes to the item's history, and a change made
   elsewhere in the meantime is never overwritten. Trash can be restored from
   the web vault.
+- **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
+  Passwords, 1Password and Proton Pass, compared with the vault before
+  anything is written (new, already there, different password), sent in one
+  request; Vault → *Nettoyer les doublons…* moves duplicates to the trash.
+  See [Import from another password manager](#import-from-another-password-manager).
 - **Brave extension**: under a login field, a menu offers Verrou's logins for
   that site; Enter or a click fills the username and password (or the
   one-time code). Vault locked: the menu offers to unlock it (Touch ID). The
@@ -76,8 +81,10 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 
 ```
 crates/
-  verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault
-  verrou-vaultwarden  sign-in, second factor, cache, decryption (Bitwarden Rust SDK), YubiKey unlock
+  verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault,
+                      import parsers (Apple, 1Password, Proton Pass), duplicates
+  verrou-vaultwarden  sign-in, second factor, cache, decryption, writes and bulk import
+                      (Bitwarden Rust SDK), YubiKey unlock
   verrou-ffi          UniFFI interface to Swift (no secret without an explicit request)
   verrou-bridge       bridge to the extension and the CLI: pairing, encrypted channel,
                       per-client permissions, SSH signing, Native Messaging host
@@ -111,6 +118,44 @@ and it only runs on the Mac that built it. On first launch, enter the server
 address, e-mail and master password, then the second factor. Reinstalling keeps
 the account; to forget it: Settings (⌘,) → *Se déconnecter de ce Mac* (sign
 out of this Mac).
+
+## Import from another password manager
+
+Export your passwords from the other app, then in Verrou: File →
+*Importer…* (⌘⇧I) or Settings → *Importer*, and choose the file. The format
+is recognized from its content (you can pick it by hand if needed).
+
+| From | How to export | File |
+|---|---|---|
+| Apple Passwords | Passwords app → File → *Export All Passwords…* | `.csv` |
+| 1Password | File → *Export* → choose the account → **1PUX** (or CSV) | `.1pux` / `.csv` |
+| Proton Pass | Settings → *Export* → **unencrypted** ZIP (or CSV) | `.zip` / `.csv` |
+
+Before anything is written, Verrou shows a review: new items, items already
+in the vault (same site, username and password: skipped), items whose
+password differs (you choose: keep the existing one, replace it — the old
+password goes to the item's history — or import it separately), items that
+only add a one-time code, and entries that cannot be imported, with the
+reason. Secrets never appear in the review. Created items can go to a folder
+(« Import 1Password » by default), to the source app's own folders or vaults,
+or to no folder. Everything is sent in one request, followed by one sync.
+
+What is imported: logins (username, password, sites, one-time code, extra
+fields), secure notes and credit cards. Other kinds (identities, servers,
+Wi-Fi…) become secure notes with their fields in the notes. Not imported:
+attachments and passkeys, archived or trashed items, Proton Pass aliases.
+1Password tags have no equivalent in Vaultwarden and are dropped.
+
+**Delete the export file afterwards** (and empty the Finder's trash): it
+holds all your passwords in plain text. Verrou only reads it when you import
+and never copies it.
+
+Vault → *Nettoyer les doublons…* lists the logins that share a site and a
+username (`login.example.com` and `example.com` count as one site, but
+`cloud.example.com` and `vault.example.com` do not), suggests which one to
+keep (the one with a one-time code, then the most recently modified, then
+the most complete) and moves the others to the trash in one request,
+restorable from the web vault.
 
 ## Brave extension
 

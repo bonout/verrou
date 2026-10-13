@@ -120,6 +120,11 @@ final class AppModel {
         let draft: ItemDraft
     }
 
+    /// Import d'un autre gestionnaire en cours (voir `ImportFlow.swift`).
+    var importFlow: ImportFlow?
+    /// Nettoyage des doublons ouvert.
+    var duplicatesFlow: DuplicatesFlow?
+
     /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
     var browserBridge: BrowserBridge?
 
@@ -489,6 +494,8 @@ final class AppModel {
         editorError = nil
         // Un enrôlement en cours a besoin du coffre ouvert.
         if keyExchange == .enroll { session.cancelSecurityKey() }
+        importFlow = nil
+        duplicatesFlow = nil
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked
@@ -837,7 +844,7 @@ final class AppModel {
     }
 
     /// Le serveur a répondu et le coffre a été resynchronisé : on recharge.
-    private func afterWrite(select id: String?) {
+    func afterWrite(select id: String?) {
         guard lockState == .unlocked else { return }
         account = session.account()
         revealed.removeAll()

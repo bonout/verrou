@@ -1023,3 +1023,141 @@ async fn archive_restore_and_favorite(
         "depuis-brave"
     );
 }
+
+/// Export des Mots de passe d'Apple : déjà présent, nouveau mot de passe,
+/// nouveaux éléments.
+const APPLE_EXPORT: &str = "Title,URL,Username,Password,Notes,OTPAuth\n\
+    github.com (camille),https://github.com/,camille,hunter2-hunter2,,\n\
+    github.com (camille),https://github.com/login,Camille,nouveau-gh,,\n\
+    Doctolib,https://www.doctolib.fr/,camille@exemple.fr,d0ct0,,\n\
+    Forum,https://forum.fr/,cam,f0rum,\"ligne 1\nligne 2\",otpauth://totp/Forum:cam?secret=GEZDGNBVGY3TQOJQ\n";
+
+#[tokio::test]
+async fn import_in_bulk_then_clean_duplicates() {
+    use verrou_core::duplicates::{Decision, Existing, Status, classify};
+    use verrou_core::import::parse;
+    use verrou_vaultwarden::{Destination, ImportPlan};
+
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    seeder.fill().await;
+    let store = temp_store();
+    let first = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    );
+    let mut connection = first.connection;
+    let github_id = first
+        .vault
+        .items
+        .iter()
+        .find(|i| i.title == "GitHub")
+        .unwrap()
+        .id
+        .clone();
+
+    let parsed = parse(APPLE_EXPORT.as_bytes(), None).unwrap();
+    let classified = classify(&parsed.items, &first.vault.items);
+    let statuses: Vec<&Status> = classified.iter().map(|c| &c.status).collect();
+    assert_eq!(
+        statuses,
+        [
+            &Status::Exact(Existing::Vault(github_id.clone())),
+            &Status::NewPassword(Existing::Vault(github_id.clone())),
+            &Status::New,
+            &Status::New,
+        ]
+    );
+    let mut plan = ImportPlan {
+        create: Vec::new(),
+        update: Vec::new(),
+        destination: Destination::Folder("Import Apple".to_owned()),
+    };
+    for (item, class) in parsed.items.iter().zip(&classified) {
+        match (class.decision, &class.status) {
+            (Decision::Create, _) => plan.create.push(item.clone()),
+            (Decision::Update, Status::NewPassword(Existing::Vault(id))) => {
+                plan.update.push((id.clone(), item.clone()));
+            }
+            _ => {}
+        }
+    }
+    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let report = connection.import(plan).await.unwrap();
+    assert_eq!((report.created, report.updated), (2, 1));
+    assert_eq!(report.failures, Vec::new());
+    let vault = report.vault;
+    assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 6);
+    let forum = vault.items.iter().find(|i| i.title == "Forum").unwrap();
+    assert_eq!(forum.folder.as_deref(), Some("Import Apple"));
+    assert!(forum.has_totp());
+    assert_eq!(forum.notes.as_ref().unwrap().expose(), "ligne 1\nligne 2");
+    let doctolib = vault.items.iter().find(|i| i.title == "Doctolib").unwrap();
+    assert_eq!(doctolib.folder.as_deref(), Some("Import Apple"));
+    assert_eq!(doctolib.field("password").unwrap().value.expose(), "d0ct0");
+
+    // Le nouveau mot de passe remplace l'ancien, gardé dans l'historique ;
+    // le reste de l'élément (code TOTP, sites) est intact.
+    let stored = seeder.fetch(&github_id).await;
+    assert_eq!(
+        stored.password_history.unwrap()[0].password,
+        "hunter2-hunter2"
+    );
+    let github_login = stored.login.unwrap();
+    assert_eq!(github_login.password.as_deref(), Some("nouveau-gh"));
+    assert!(github_login.totp.is_some());
+    assert_eq!(
+        github_login.uris.unwrap().len(),
+        1,
+        "même hôte : pas de site en plus"
+    );
+
+    import_again_then_trash_duplicates(&mut connection, &seeder).await;
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Un second import crée un doublon, que la corbeille en masse retire.
+async fn import_again_then_trash_duplicates(
+    connection: &mut verrou_vaultwarden::Connection,
+    seeder: &Seeder,
+) {
+    use verrou_core::duplicates::find_duplicates;
+    use verrou_core::import::parse;
+    use verrou_vaultwarden::{Destination, ImportPlan};
+
+    // Vers un dossier existant : il n'est pas recréé.
+    let mut again = parse(APPLE_EXPORT.as_bytes(), None).unwrap();
+    let duplicate = again.items.remove(3);
+    let report = connection
+        .import(ImportPlan {
+            create: vec![duplicate],
+            update: Vec::new(),
+            destination: Destination::Folder("Travail".to_owned()),
+        })
+        .await
+        .unwrap();
+    assert_eq!(report.created, 1);
+    assert_eq!(report.vault.folders.len(), 2, "Travail et Import Apple");
+
+    // Les doublons : Forum, deux fois ; un seul part à la corbeille, en une
+    // requête.
+    let groups = find_duplicates(&report.vault.items);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].label, "forum.fr");
+    assert!(groups[0].same_password);
+    let extra = groups[0].items[1..].to_vec();
+    let vault = connection.trash_many(&extra).await.unwrap();
+    assert_eq!(find_duplicates(&vault.items), Vec::new());
+    assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 6);
+    assert!(seeder.fetch(&extra[0]).await.deleted_date.is_some());
+    // Un élément introuvable : rien n'est envoyé.
+    assert!(matches!(
+        connection
+            .trash_many(&[uuid::Uuid::new_v4().to_string()])
+            .await,
+        Err(Error::NotFound)
+    ));
+}

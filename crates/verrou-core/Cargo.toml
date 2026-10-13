@@ -20,9 +20,9 @@ rand_chacha.workspace = true
 url.workspace = true
 psl.workspace = true
 unicode-normalization.workspace = true
-
-[dev-dependencies]
 serde_json.workspace = true
+csv.workspace = true
+zip.workspace = true
 
 [lints]
 workspace = true

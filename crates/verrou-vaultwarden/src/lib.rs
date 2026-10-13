@@ -8,7 +8,8 @@
 //!   conversion vers le modèle de Verrou (`convert`).
 //!
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
-//! SDK avant d'être envoyées.
+//! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
+//! d'un autre gestionnaire, corbeille de plusieurs éléments.
 //!
 //! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
 //! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
@@ -18,6 +19,7 @@ pub mod breach;
 mod convert;
 mod edit;
 mod error;
+mod import;
 pub mod security_key;
 mod store;
 pub mod unlock_keys;
@@ -40,6 +42,7 @@ use verrou_core::{Item, SecretString};
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
 pub use edit::{Draft, LoginDraft};
 pub use error::Error;
+pub use import::{Destination, ImportPlan, ImportReport};
 pub use store::{Account, KdfSettings, Store};
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
@@ -407,25 +410,7 @@ impl Connection {
         let sync: SyncResponseModel = serde_json::from_str(json)
             .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
         self.init_organizations(&sync).await?;
-
-        let folders: Vec<Folder> = sync
-            .folders
-            .unwrap_or_default()
-            .into_iter()
-            .filter_map(|f| Folder::try_from(f).ok())
-            .collect();
-        // Les méthodes « de haut niveau » du SDK passent par son stockage
-        // d'état, que Verrou n'utilise pas (il garde son propre cache).
-        #[allow(deprecated)]
-        let folder_names: HashMap<String, String> = self
-            .sdk
-            .vault()
-            .folders()
-            .decrypt_list(folders)
-            .map_err(Error::crypto)?
-            .into_iter()
-            .filter_map(|f| Some((f.id?.to_string(), f.name)))
-            .collect();
+        let folder_names = self.decrypt_folders(sync.folders)?;
 
         let mut items = Vec::new();
         let mut failures = 0;
@@ -446,6 +431,41 @@ impl Connection {
             failures,
             folders,
         })
+    }
+
+    /// Dossiers de la synchronisation : identifiant → nom.
+    fn decrypt_folders(
+        &self,
+        folders: Option<Vec<bitwarden_api_api::models::FolderResponseModel>>,
+    ) -> Result<HashMap<String, String>, Error> {
+        let folders: Vec<Folder> = folders
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|f| Folder::try_from(f).ok())
+            .collect();
+        // Les méthodes « de haut niveau » du SDK passent par son stockage
+        // d'état, que Verrou n'utilise pas (il garde son propre cache).
+        #[allow(deprecated)]
+        let names = self
+            .sdk
+            .vault()
+            .folders()
+            .decrypt_list(folders)
+            .map_err(Error::crypto)?
+            .into_iter()
+            .filter_map(|f| Some((f.id?.to_string(), f.name)))
+            .collect();
+        Ok(names)
+    }
+
+    /// Dossiers du cache, sans déchiffrer les éléments.
+    pub(crate) fn cached_folders(&self) -> Result<HashMap<String, String>, Error> {
+        let Some(json) = &self.account.sync else {
+            return Ok(HashMap::new());
+        };
+        let sync: SyncResponseModel = serde_json::from_str(json)
+            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
+        self.decrypt_folders(sync.folders)
     }
 
     async fn init_organizations(&self, sync: &SyncResponseModel) -> Result<(), Error> {

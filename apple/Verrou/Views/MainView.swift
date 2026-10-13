@@ -103,6 +103,15 @@ struct MainView: View {
             EditItemView(editor: editor)
                 .environment(model)
         }
+        .sheet(item: $model.importFlow, onDismiss: { model.closeImport() }) { flow in
+            ImportView(flow: flow)
+                .environment(model)
+                .interactiveDismissDisabled()
+        }
+        .sheet(item: $model.duplicatesFlow) { flow in
+            DuplicatesView(flow: flow)
+                .environment(model)
+        }
         // La vue reste montée derrière l'écran verrouillé (voir RootView) :
         // c'est le déverrouillage qui lui rend la main.
         .onAppear { searchFocused = model.lockState == .unlocked }
@@ -167,6 +176,7 @@ struct SidebarView: View {
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 AuditSidebarButton()
+                DuplicatesSidebarButton()
                 VaultFooter()
             }
         }

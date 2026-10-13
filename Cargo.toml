@@ -38,6 +38,10 @@ uniffi = "0.32"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 uuid = { version = "1", features = ["v4"] }
+# Lecture des exports d'autres gestionnaires (Apple, 1Password, Proton Pass) :
+# CSV, et archives ZIP en lecture seule (deflate, sans chiffrement).
+csv = "1.4"
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # SDK Rust de Bitwarden (GPL-3.0) : le code des apps officielles, épinglé sur
 # un commit. Il n'est pas publié sur crates.io ; chaque montée de version est
