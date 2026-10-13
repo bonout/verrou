@@ -172,29 +172,47 @@ private struct TwoFactorStep: View {
         options[min(chosen, options.count - 1)]
     }
 
+    /// La clé se signe en USB, sans navigateur ; l'attente démarre dès que
+    /// l'écran s'affiche. La page du serveur dans Safari reste en repli.
     private func securityKey(challenge: String) -> some View {
-        VStack(spacing: 12) {
-            Image(systemName: "key.horizontal.fill")
-                .font(.system(size: 34))
-                .foregroundStyle(Theme.accent)
-            Text("Une fenêtre Safari s'ouvre : branchez votre clé, puis touchez-la.")
+        VStack(spacing: 14) {
+            ZStack {
+                Image(systemName: "key.horizontal.fill")
+                    .font(.system(size: 34))
+                    .foregroundStyle(Theme.accent)
+                    .symbolEffect(.pulse, isActive: model.securityKeyWaiting)
+            }
+            .frame(height: 44)
+            Text(model.securityKeyWaiting
+                 ? "Branchez votre YubiKey, puis touchez-la."
+                 : "Clé de sécurité")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-            Button {
-                Task { await model.useSecurityKey(challenge: challenge) }
-            } label: {
-                HStack(spacing: 8) {
-                    if model.loginBusy { ProgressView().controlSize(.small) }
-                    Text("Utiliser ma clé de sécurité")
+            if model.securityKeyWaiting || model.loginBusy {
+                ProgressView().controlSize(.small)
+            } else {
+                Button {
+                    Task { await model.useSecurityKeyNatively(challenge: challenge) }
+                } label: {
+                    Text("Réessayer avec ma YubiKey")
+                        .font(.body.weight(.semibold))
+                        .frame(width: 316, height: 30)
                 }
-                .font(.body.weight(.semibold))
-                .frame(width: 316, height: 30)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .keyboardShortcut(.defaultAction)
+            Button("Passer par le navigateur") {
+                model.cancelSecurityKey()
+                Task { await model.useSecurityKey(challenge: challenge) }
+            }
+            .buttonStyle(.link)
+            .font(.callout)
         }
+        // Un nouveau défi (après un refus) relance l'attente.
+        .task(id: challenge) { await model.useSecurityKeyNatively(challenge: challenge) }
+        .onDisappear { model.cancelSecurityKey() }
     }
 
     private func codeEntry(prompt: String, option: TwoFactorOption) -> some View {

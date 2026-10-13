@@ -13,14 +13,25 @@ bitwarden-crypto.workspace = true
 bitwarden-vault.workspace = true
 bitwarden-api-api.workspace = true
 data-encoding.workspace = true
+sha2.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
 
+# Dialogue USB avec les clés de sécurité (bibliothèque de Firefox), avec la
+# cryptographie de RustCrypto plutôt que NSS. Seulement sur macOS : la CI
+# Linux n'en a pas besoin.
+[target.'cfg(target_os = "macos")'.dependencies]
+authenticator = { version = "0.5.0", default-features = false, features = ["crypto_rust"] }
+
 [dev-dependencies]
 tokio.workspace = true
+# Clé de sécurité logicielle des tests : signe comme une YubiKey.
+p256 = { version = "0.13", features = ["ecdsa"] }
+ciborium = "0.2"
+rand.workspace = true
 
 [lints]
 workspace = true

@@ -50,6 +50,8 @@ final class AppModel {
     /// `nil` : étape identifiants ; sinon les méthodes de second facteur.
     private(set) var twoFactorOptions: [TwoFactorOption]?
     private(set) var loginBusy = false
+    /// En attente du contact sur la clé de sécurité (USB).
+    private(set) var securityKeyWaiting = false
     var loginError: String?
     /// Adresse et e-mail saisis, gardés pour le second facteur et pour
     /// préremplir une reconnexion.
@@ -78,6 +80,12 @@ final class AppModel {
     let clipboard = Clipboard()
     let mockSize: UInt32
     private var autoLock: AutoLock?
+    /// Fin de la dernière demande Touch ID : la fenêtre système fait perdre
+    /// puis reprendre le premier plan, il ne faut pas la rouvrir aussitôt.
+    private var lastBiometricPrompt: Date?
+    /// Demande Touch ID d'elle-même sur l'écran verrouillé (pas pendant les
+    /// parcours scriptés, qui n'ont personne pour toucher le capteur).
+    private let autoTouchID: Bool
     private var syncLoop: Task<Void, Never>?
 
     /// Préférence : proposer Touch ID après un déverrouillage par mot de passe.
@@ -92,6 +100,7 @@ final class AppModel {
     init() {
         let environment = ProcessInfo.processInfo.environment
         mockSize = UInt32(environment["VERROU_MOCK_SIZE"] ?? "") ?? 0
+        autoTouchID = environment["VERROU_DEMO"] == nil && environment["VERROU_E2E_SERVER"] == nil
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         var directory = support.appending(path: "Verrou", directoryHint: .isDirectory)
         #if DEBUG
@@ -154,6 +163,36 @@ final class AppModel {
         }
     }
 
+    /// Clé de sécurité branchée en USB, sans navigateur : on attend le contact.
+    func useSecurityKeyNatively(challenge: String) async {
+        guard !securityKeyWaiting, !loginBusy else { return }
+        securityKeyWaiting = true
+        loginError = nil
+        let token: String
+        do {
+            token = try await session.signWithSecurityKey(challenge: challenge)
+        } catch {
+            securityKeyWaiting = false
+            // Annulé par l'utilisateur (ou par le changement de méthode) : rien à dire.
+            if case VerrouError.SecurityKey(let message) = error, message == "demande annulée" { return }
+            loginError = Self.describe(error)
+            return
+        }
+        securityKeyWaiting = false
+        await answerTwoFactor(.securityKey(challenge: challenge), token: token)
+        if lockState != .unlocked, loginError != nil {
+            // Le serveur ne laisse qu'une tentative par défi : on en redemande un.
+            if case .twoFactorRequired(let options)? = try? await session.restartTwoFactor() {
+                twoFactorOptions = options
+            }
+        }
+    }
+
+    func cancelSecurityKey() {
+        session.cancelSecurityKey()
+    }
+
+    /// Repli : la page de connexion du serveur, dans Safari.
     func useSecurityKey(challenge: String) async {
         loginError = nil
         do {
@@ -176,6 +215,7 @@ final class AppModel {
     }
 
     func cancelTwoFactor() {
+        session.cancelSecurityKey()
         twoFactorOptions = nil
         loginError = nil
     }
@@ -221,7 +261,17 @@ final class AppModel {
 
     // MARK: Verrouillage
 
+    /// Écran verrouillé affiché ou app revenue au premier plan : Touch ID
+    /// directement, sans passer par le bouton.
+    func promptTouchIDIfPossible() async {
+        guard autoTouchID, mode == .vaultwarden, canUseTouchID, lockState == .locked, !needsLogin,
+              NSApp.isActive else { return }
+        if let last = lastBiometricPrompt, Date().timeIntervalSince(last) < 3 { return }
+        await unlockWithBiometrics()
+    }
+
     func unlockWithBiometrics() async {
+        defer { lastBiometricPrompt = Date() }
         lockState = .unlocking
         unlockError = nil
         if mode == .demo {
@@ -385,6 +435,7 @@ final class AppModel {
         case .NotFound: return "Élément introuvable."
         case .InvalidTotp(let message): return "Code à usage unique invalide : \(message)"
         case .NoPendingLogin: return "Recommencez la connexion."
+        case .SecurityKey(let message): return "Clé de sécurité : \(message)."
         }
     }
 

@@ -42,14 +42,21 @@ PR qui touche à l'un de ces points le dit dans sa description.
   la clé de l'utilisateur** : sans le mot de passe principal (ou Touch ID),
   le fichier ne permet ni de lire le coffre ni de parler au serveur. Un test
   vérifie qu'aucun secret n'y figure en clair.
-- **Second facteur par clé de sécurité** : WebAuthn lie la signature au
-  domaine du serveur. Sans domaine associé (qui exigerait une équipe de
-  développeur Apple), Verrou ouvre la page que Vaultwarden publie pour les
-  apps mobiles (`webauthn-mobile-connector.html`) dans une session Safari
-  éphémère (`ASWebAuthenticationSession`), et en récupère l'assertion. Le
-  défi vient du serveur et la page est la sienne : Verrou ne voit que le
-  résultat signé. « Se souvenir de cet appareil » n'est pas utilisé : une
-  reconnexion redemande le second facteur.
+- **Second facteur par clé de sécurité** (YubiKey en FIDO2) : Verrou parle à
+  la clé **directement en USB** (protocole CTAP2, par `authenticator-rs`, la
+  bibliothèque de Firefox ; droit `com.apple.security.device.usb`, qui ne
+  demande aucune équipe de développeur). Comme un navigateur, il écrit
+  `clientDataJSON` avec l'origine du serveur et le défi reçu ; la clé signe
+  l'empreinte du domaine et celle de `clientDataJSON` après un contact :
+  la signature ne vaut que pour ce serveur, et c'est lui qui la vérifie.
+  Aucun code PIN (le serveur demande `discouraged`) ; si la clé en exige un,
+  Verrou renvoie vers le repli. Un test d'intégration enregistre une clé
+  logicielle sur un vrai Vaultwarden et vérifie qu'il accepte la réponse de
+  Verrou et refuse une signature altérée.
+- **Repli par le navigateur** : la page que Vaultwarden publie pour les apps
+  mobiles (`webauthn-mobile-connector.html`), dans une session Safari
+  éphémère (`ASWebAuthenticationSession`). « Se souvenir de cet appareil »
+  n'est pas utilisé : une reconnexion redemande le second facteur.
 - **Lecture seule** : aucune écriture vers le serveur.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne
@@ -73,7 +80,8 @@ l'enrôlement (`user_key`) et le déverrouillage ; une `String` Swift ne pouvant
 ## Distribution
 
 `scripts/install-macos.sh` construit une version Release **signée ad hoc**
-(aucun compte de développeur), sandboxée, runtime renforcé, sans
+(aucun compte de développeur), sandboxée (réseau sortant et USB), runtime
+renforcé, sans
 `get-task-allow` (aucun débogueur ne peut s'y attacher) ; le script refuse
 d'installer un build qui l'aurait.
 

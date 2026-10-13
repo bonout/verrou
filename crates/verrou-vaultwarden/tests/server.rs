@@ -4,6 +4,7 @@
 //! docker run -d --rm --name verrou-vw -p 127.0.0.1:8099:80 \
 //!   -e I_REALLY_WANT_VOLATILE_STORAGE=true -e SIGNUPS_ALLOWED=true \
 //!   -e LOGIN_RATELIMIT_MAX_BURST=1000 -e LOGIN_RATELIMIT_SECONDS=1 \
+//!   -e DOMAIN=http://localhost:8099 \
 //!   vaultwarden/server:1.37.4
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test server
 //! ```
@@ -23,6 +24,9 @@ use bitwarden_vault::{CipherView, FolderView, VaultClientExt};
 use serde_json::{Value, json};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, ItemKind, SecretString};
+use verrou_vaultwarden::security_key::{
+    self, AssertionRequest, AssertionResponse, assertion_request,
+};
 use verrou_vaultwarden::{
     Error, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, login, logout, unlock_with_password,
     unlock_with_user_key,
@@ -460,6 +464,211 @@ async fn totp_second_factor() {
         token: code,
     };
     let unlocked = pending.answer(&right).await.unwrap();
+    assert_eq!(unlocked.vault.items.len(), 0);
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Clé de sécurité logicielle : produit, pour la même requête, exactement ce
+/// que produirait une `YubiKey` (attestation « none », signatures P-256).
+struct SoftwareKey {
+    signing: p256::ecdsa::SigningKey,
+    credential_id: Vec<u8>,
+    rp_id: String,
+}
+
+impl SoftwareKey {
+    fn new(rp_id: &str) -> Self {
+        use rand::RngCore as _;
+        let mut credential_id = vec![0u8; 32];
+        rand::rngs::OsRng.fill_bytes(&mut credential_id);
+        Self {
+            signing: p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng),
+            credential_id,
+            rp_id: rp_id.to_owned(),
+        }
+    }
+
+    fn rp_hash(&self) -> Vec<u8> {
+        use sha2::Digest as _;
+        sha2::Sha256::digest(self.rp_id.as_bytes()).to_vec()
+    }
+
+    /// Données d'authentification d'un enregistrement, avec la clé publique COSE.
+    fn attestation_object(&self) -> Vec<u8> {
+        use ciborium::Value as C;
+        let point = self.signing.verifying_key().to_encoded_point(false);
+        let cose = C::Map(vec![
+            (C::Integer(1.into()), C::Integer(2.into())),
+            (C::Integer(3.into()), C::Integer((-7).into())),
+            (C::Integer((-1).into()), C::Integer(1.into())),
+            (
+                C::Integer((-2).into()),
+                C::Bytes(point.x().unwrap().to_vec()),
+            ),
+            (
+                C::Integer((-3).into()),
+                C::Bytes(point.y().unwrap().to_vec()),
+            ),
+        ]);
+        let mut cose_bytes = Vec::new();
+        ciborium::into_writer(&cose, &mut cose_bytes).unwrap();
+        let mut auth_data = self.rp_hash();
+        auth_data.push(0x41); // présence + données attestées
+        auth_data.extend_from_slice(&0u32.to_be_bytes());
+        auth_data.extend_from_slice(&[0u8; 16]); // AAGUID
+        auth_data.extend_from_slice(
+            &u16::try_from(self.credential_id.len())
+                .unwrap()
+                .to_be_bytes(),
+        );
+        auth_data.extend_from_slice(&self.credential_id);
+        auth_data.extend_from_slice(&cose_bytes);
+        let object = C::Map(vec![
+            (C::Text("fmt".into()), C::Text("none".into())),
+            (C::Text("attStmt".into()), C::Map(Vec::new())),
+            (C::Text("authData".into()), C::Bytes(auth_data)),
+        ]);
+        let mut bytes = Vec::new();
+        ciborium::into_writer(&object, &mut bytes).unwrap();
+        bytes
+    }
+
+    /// Ce que fait la `YubiKey` quand on la touche.
+    fn sign(&self, request: &AssertionRequest) -> AssertionResponse {
+        use p256::ecdsa::signature::Signer as _;
+        assert_eq!(request.rp_id, self.rp_id);
+        assert!(request.allow_credentials.contains(&self.credential_id));
+        let mut auth_data = self.rp_hash();
+        auth_data.push(0x01); // présence de l'utilisateur
+        auth_data.extend_from_slice(&1u32.to_be_bytes());
+        let mut signed = auth_data.clone();
+        signed.extend_from_slice(&request.client_data_hash);
+        let signature: p256::ecdsa::Signature = self.signing.sign(&signed);
+        AssertionResponse {
+            credential_id: self.credential_id.clone(),
+            authenticator_data: auth_data,
+            signature: signature.to_der().as_bytes().to_vec(),
+            used_app_id: false,
+        }
+    }
+}
+
+impl Seeder {
+    /// Enregistre la clé logicielle comme second facteur `WebAuthn`.
+    async fn enable_security_key(&self, email: &str) -> SoftwareKey {
+        let options: Value = self
+            .http
+            .post(format!(
+                "{}/api/two-factor/get-webauthn-challenge",
+                self.server
+            ))
+            .bearer_auth(&self.access)
+            .json(&json!({ "masterPasswordHash": auth_hash(email) }))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let rp_id = options["rp"]["id"].as_str().expect("rp.id").to_owned();
+        let key = SoftwareKey::new(&rp_id);
+        let origin = reqwest::Url::parse(&self.server)
+            .unwrap()
+            .origin()
+            .ascii_serialization();
+        let client_data = serde_json::to_vec(&json!({
+            "type": "webauthn.create",
+            "challenge": options["challenge"],
+            "origin": origin,
+            "crossOrigin": false,
+        }))
+        .unwrap();
+        let b64 = |bytes: &[u8]| data_encoding::BASE64URL_NOPAD.encode(bytes);
+        let id = b64(&key.credential_id);
+        let response = self
+            .http
+            .put(format!("{}/api/two-factor/webauthn", self.server))
+            .bearer_auth(&self.access)
+            .json(&json!({
+                "id": 1,
+                "name": "Clé logicielle",
+                "masterPasswordHash": auth_hash(email),
+                "deviceResponse": {
+                    "id": id,
+                    "rawId": id,
+                    "type": "public-key",
+                    "response": {
+                        "attestationObject": b64(&key.attestation_object()),
+                        "clientDataJson": b64(&client_data),
+                    },
+                },
+            }))
+            .send()
+            .await
+            .unwrap();
+        let status = response.status();
+        assert!(
+            status.is_success(),
+            "enregistrement refusé : {}",
+            response.text().await.unwrap()
+        );
+        key
+    }
+}
+
+#[tokio::test]
+async fn security_key_second_factor() {
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    let key = seeder.enable_security_key(&email).await;
+    let store = temp_store();
+
+    let LoginStep::TwoFactor(pending) = login(&store, &server, &email, SecretString::new(PASSWORD))
+        .await
+        .unwrap()
+    else {
+        panic!("le second facteur aurait dû être demandé");
+    };
+    let Some(TwoFactorMethod::WebAuthn { challenge }) = pending.methods().first().cloned() else {
+        panic!(
+            "clé de sécurité absente des méthodes : {:?}",
+            pending.methods()
+        );
+    };
+
+    // La requête vient du code de Verrou ; seule la signature est logicielle.
+    let request = assertion_request(pending.server(), &challenge).unwrap();
+    let mut forged = key.sign(&request);
+    forged.signature[10] ^= 0xff;
+    let rejected = TwoFactorAnswer {
+        provider: 7,
+        token: security_key::token(&request, &forged),
+    };
+    assert!(
+        matches!(
+            pending.answer(&rejected).await,
+            Err(Error::TwoFactorRejected(_))
+        ),
+        "une signature altérée doit être refusée"
+    );
+
+    // Le serveur a consommé le défi : on en redemande un.
+    let LoginStep::TwoFactor(pending) = login(&store, &server, &email, SecretString::new(PASSWORD))
+        .await
+        .unwrap()
+    else {
+        panic!("le second facteur aurait dû être redemandé");
+    };
+    let Some(TwoFactorMethod::WebAuthn { challenge }) = pending.methods().first().cloned() else {
+        panic!("clé de sécurité absente");
+    };
+    let request = assertion_request(pending.server(), &challenge).unwrap();
+    let answer = TwoFactorAnswer {
+        provider: 7,
+        token: security_key::token(&request, &key.sign(&request)),
+    };
+    let unlocked = pending.answer(&answer).await.unwrap();
     assert_eq!(unlocked.vault.items.len(), 0);
     std::fs::remove_dir_all(store.dir()).unwrap();
 }

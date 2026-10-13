@@ -12,6 +12,7 @@
 mod api;
 mod convert;
 mod error;
+pub mod security_key;
 mod store;
 
 use std::collections::HashMap;
@@ -112,6 +113,13 @@ impl PendingLogin {
 
     pub fn server(&self) -> &str {
         self.api.server()
+    }
+
+    /// Redemande les méthodes de second facteur. Le serveur ne laisse qu'une
+    /// tentative par défi de clé de sécurité : après un refus, il en faut un
+    /// nouveau.
+    pub async fn restart(&self) -> Result<LoginStep, Error> {
+        self.request(None).await
     }
 
     /// Envoie le code par e-mail (méthode `Email`).
