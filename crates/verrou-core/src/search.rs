@@ -15,7 +15,7 @@ use nucleo_matcher::pattern::{Atom, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32String};
 use unicode_normalization::UnicodeNormalization;
 
-use crate::model::{Item, ItemKind};
+use crate::model::{Item, ItemKind, ItemState};
 
 /// Ce que montre la barre latérale.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -27,6 +27,10 @@ pub enum Filter {
     Folder(String),
     Tag(String),
     WithTotp,
+    /// Éléments archivés.
+    Archived,
+    /// Éléments à la corbeille.
+    Trash,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -231,7 +235,13 @@ impl SearchIndex {
 
 fn filter_accepts(filter: &Filter, item: &Item, entry: &Entry) -> bool {
     match filter {
-        Filter::All => true,
+        Filter::Archived => return item.state == ItemState::Archived,
+        Filter::Trash => return item.state == ItemState::Trashed,
+        _ if !item.is_active() => return false,
+        _ => {}
+    }
+    match filter {
+        Filter::All | Filter::Archived | Filter::Trash => true,
         Filter::Favorites => item.favorite,
         Filter::Kind(kind) => item.kind == *kind,
         Filter::Folder(folder) => entry.folder.as_deref() == Some(fold(folder).as_str()),

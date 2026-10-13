@@ -25,7 +25,7 @@ use verrou_bridge::protocol::{CONFIRM_IN_APP, ClientKind, Credentials, SaveActio
 use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
-use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
+use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
 use verrou_vaultwarden::{
     Connection, Decrypted, Draft, LoginDraft, LoginStep, PendingLogin, Store, TwoFactorAnswer,
     TwoFactorMethod, Unlocked,
@@ -198,6 +198,8 @@ pub enum SidebarFilter {
     Category { category: ItemCategory },
     Folder { name: String },
     Tag { name: String },
+    Archived,
+    Trash,
 }
 
 impl From<SidebarFilter> for Filter {
@@ -209,6 +211,8 @@ impl From<SidebarFilter> for Filter {
             SidebarFilter::Category { category } => Self::Kind(category.into()),
             SidebarFilter::Folder { name } => Self::Folder(name),
             SidebarFilter::Tag { name } => Self::Tag(name),
+            SidebarFilter::Archived => Self::Archived,
+            SidebarFilter::Trash => Self::Trash,
         }
     }
 }
@@ -284,6 +288,25 @@ pub struct ItemSummary {
     pub modified: i64,
     /// « Redemander le mot de passe principal » : confirmer avant tout secret.
     pub reprompt: bool,
+    pub state: ItemStatus,
+}
+
+/// Où se trouve l'élément (voir `verrou_core::ItemState`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ItemStatus {
+    Active,
+    Archived,
+    Trashed,
+}
+
+impl From<ItemState> for ItemStatus {
+    fn from(state: ItemState) -> Self {
+        match state {
+            ItemState::Active => Self::Active,
+            ItemState::Archived => Self::Archived,
+            ItemState::Trashed => Self::Trashed,
+        }
+    }
 }
 
 /// Un résultat de recherche : position dans `summaries()`, identifiant de
@@ -338,7 +361,10 @@ pub struct ItemCategoryCount {
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SidebarCounts {
+    /// Éléments actifs, comme les effectifs qui suivent (hors archives et corbeille).
     pub all: u32,
+    pub archived: u32,
+    pub trashed: u32,
     pub favorites: u32,
     pub with_totp: u32,
     pub categories: Vec<ItemCategoryCount>,
@@ -421,6 +447,7 @@ fn summary(item: &Item) -> ItemSummary {
         has_totp: item.has_totp(),
         modified: item.modified,
         reprompt: item.reprompt,
+        state: item.state.into(),
     }
 }
 
@@ -851,6 +878,26 @@ impl VaultSession {
         self.install_if_current(&connection, decrypted)
     }
 
+    /// Sort l'élément de la corbeille.
+    pub async fn restore_item(&self, id: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.restore(&id).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    /// Archive l'élément (ou le sort des archives).
+    pub async fn set_archived(&self, id: String, archived: bool) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.set_archived(&id, archived).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    pub async fn set_favorite(&self, id: String, favorite: bool) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.set_favorite(&id, favorite).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
     /// Mots de passe fuités, par Have I Been Pwned (k-anonymat : seuls les 5
     /// premiers caractères du SHA-1 de chaque mot de passe partent). Seulement
     /// sur demande explicite de l'utilisateur.
@@ -858,6 +905,7 @@ impl VaultSession {
         let candidates: Vec<(String, SecretString)> = self.with_vault(|v| {
             Ok(v.items()
                 .iter()
+                .filter(|i| i.is_active())
                 .filter_map(|i| {
                     verrou_core::audit::password_of(i).map(|p| (i.id.clone(), SecretString::new(p)))
                 })
@@ -1090,6 +1138,8 @@ impl VaultSession {
             };
             Ok(SidebarCounts {
                 all: c.all as u32,
+                archived: c.archived as u32,
+                trashed: c.trashed as u32,
                 favorites: c.favorites as u32,
                 with_totp: c.with_totp as u32,
                 categories: c

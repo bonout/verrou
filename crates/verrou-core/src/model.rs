@@ -46,6 +46,18 @@ impl ItemKind {
     }
 }
 
+/// Où se trouve un élément : seuls les éléments actifs apparaissent dans la
+/// liste principale, la recherche, le remplissage et l'audit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ItemState {
+    #[default]
+    Active,
+    /// Rangé à l'écart (archives de Bitwarden) : gardé, mais hors du chemin.
+    Archived,
+    /// À la corbeille du serveur, restaurable pendant 30 jours.
+    Trashed,
+}
+
 /// Nature d'un champ : décide de son affichage et de son caractère secret.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FieldKind {
@@ -115,9 +127,14 @@ pub struct Item {
     /// « Redemander le mot de passe principal » (réglage Bitwarden) : ses
     /// secrets ne sortent qu'après une nouvelle confirmation.
     pub reprompt: bool,
+    pub state: ItemState,
 }
 
 impl Item {
+    pub fn is_active(&self) -> bool {
+        self.state == ItemState::Active
+    }
+
     pub fn field(&self, id: &str) -> Option<&Field> {
         self.fields.iter().find(|f| f.id == id)
     }

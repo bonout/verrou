@@ -55,7 +55,7 @@ pub fn audit(vault: &Vault) -> Report {
     let mut report = Report::default();
     let mut by_password: HashMap<&str, Vec<&Item>> = HashMap::new();
     for item in vault.items() {
-        if item.kind != ItemKind::Login {
+        if item.kind != ItemKind::Login || !item.is_active() {
             continue;
         }
         if item.urls.iter().any(|u| insecure_url(u)) {
@@ -113,6 +113,7 @@ mod tests {
             )],
             notes: None,
             reprompt: false,
+            state: crate::ItemState::Active,
         }
     }
 

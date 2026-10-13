@@ -138,6 +138,7 @@ fn github() -> Item {
         ],
         notes: None,
         reprompt: false,
+        state: verrou_core::ItemState::Active,
     }
 }
 
@@ -169,6 +170,7 @@ fn ssh_item(key: &PrivateKey) -> Item {
         ],
         notes: None,
         reprompt: false,
+        state: verrou_core::ItemState::Active,
     }
 }
 
@@ -196,6 +198,7 @@ fn banque() -> Item {
         ],
         notes: Some(verrou_core::SecretString::new("question secrète : Médor")),
         reprompt: false,
+        state: verrou_core::ItemState::Active,
     }
 }
 

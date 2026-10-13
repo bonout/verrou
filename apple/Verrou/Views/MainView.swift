@@ -110,6 +110,12 @@ struct SidebarView: View {
                     }
                 }
             }
+            if let counts = model.counts, counts.archived + counts.trashed > 0 {
+                Section("Rangement") {
+                    row(.archived, "Archives", "archivebox", count: counts.archived, tint: .secondary)
+                    row(.trash, "Corbeille", "trash", count: counts.trashed, tint: .secondary)
+                }
+            }
             // Vaultwarden n'a pas d'étiquettes : la section n'apparaît qu'avec le coffre fictif.
             if let tags = model.counts?.tags, !tags.isEmpty {
                 Section("Étiquettes") {
@@ -366,7 +372,20 @@ struct RowMenu: View {
         }
         if model.canEdit {
             Divider()
-            Button("Modifier…") { Task { await model.edit(summary.id) } }
+            switch summary.state {
+            case .active:
+                Button("Modifier…") { Task { await model.edit(summary.id) } }
+                Button(summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris") {
+                    Task { await model.setFavorite(summary.id, !summary.favorite) }
+                }
+                Button("Archiver") { Task { await model.setArchived(summary.id, true) } }
+                Button("Mettre à la corbeille") { Task { await model.trash(summary.id) } }
+            case .archived:
+                Button("Sortir des archives") { Task { await model.setArchived(summary.id, false) } }
+                Button("Mettre à la corbeille") { Task { await model.trash(summary.id) } }
+            case .trashed:
+                Button("Restaurer") { Task { await model.restore(summary.id) } }
+            }
         }
     }
 }

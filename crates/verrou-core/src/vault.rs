@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::matching::{SiteMatch, site_match};
-use crate::model::{Item, ItemKind};
+use crate::model::{Item, ItemKind, ItemState};
 use crate::search::{Filter, Hit, SearchIndex, Sort, fold};
 
 pub struct Vault {
@@ -15,7 +15,10 @@ pub struct Vault {
 /// Effectifs affichés dans la barre latérale.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Counts {
+    /// Éléments actifs (ni archivés, ni à la corbeille), comme les suivants.
     pub all: usize,
+    pub archived: usize,
+    pub trashed: usize,
     pub favorites: usize,
     pub with_totp: usize,
     pub kinds: Vec<(ItemKind, usize)>,
@@ -63,7 +66,7 @@ impl Vault {
         let mut found: Vec<(SiteMatch, &Item)> = self
             .items
             .iter()
-            .filter(|item| item.kind == ItemKind::Login)
+            .filter(|item| item.kind == ItemKind::Login && item.is_active())
             .map(|item| (site_match(&item.urls, page_url), item))
             .filter(|(m, _)| *m != SiteMatch::None)
             .collect();
@@ -79,11 +82,17 @@ impl Vault {
         let mut kinds: BTreeMap<ItemKind, usize> = BTreeMap::new();
         let mut folders: BTreeMap<String, usize> = BTreeMap::new();
         let mut tags: BTreeMap<String, usize> = BTreeMap::new();
-        let mut counts = Counts {
-            all: self.items.len(),
-            ..Counts::default()
-        };
+        let mut counts = Counts::default();
         for item in &self.items {
+            match item.state {
+                ItemState::Archived => counts.archived += 1,
+                ItemState::Trashed => counts.trashed += 1,
+                ItemState::Active => {}
+            }
+            if !item.is_active() {
+                continue;
+            }
+            counts.all += 1;
             *kinds.entry(item.kind).or_default() += 1;
             if let Some(folder) = &item.folder {
                 *folders.entry(folder.clone()).or_default() += 1;

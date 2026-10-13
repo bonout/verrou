@@ -120,6 +120,32 @@ impl Connection {
         self.sync_with(&access).await
     }
 
+    /// Archive l'élément (ou le sort des archives) : il quitte la liste
+    /// principale et le remplissage, sans être supprimé.
+    pub async fn set_archived(&mut self, id: &str, archived: bool) -> Result<Decrypted, Error> {
+        self.editable_view(id).await?;
+        let access = self.access_token().await?;
+        let action = if archived { "archive" } else { "unarchive" };
+        self.api.cipher_action(&access, id, action).await?;
+        self.sync_with(&access).await
+    }
+
+    /// Sort l'élément de la corbeille.
+    pub async fn restore(&mut self, id: &str) -> Result<Decrypted, Error> {
+        let access = self.access_token().await?;
+        self.api.cipher_action(&access, id, "restore").await?;
+        self.sync_with(&access).await
+    }
+
+    pub async fn set_favorite(&mut self, id: &str, favorite: bool) -> Result<Decrypted, Error> {
+        let mut view = self.editable_view(id).await?;
+        view.favorite = favorite;
+        let request = self.encrypt(view).await?;
+        let access = self.access_token().await?;
+        self.api.update_cipher(&access, id, &request).await?;
+        self.sync_with(&access).await
+    }
+
     /// L'élément tel que le cache le connaît, déchiffré, s'il peut être modifié.
     async fn editable_view(&self, id: &str) -> Result<CipherView, Error> {
         let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;

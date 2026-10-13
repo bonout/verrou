@@ -102,6 +102,7 @@ fn ssh_item(key: &PrivateKey) -> Item {
         )],
         notes: None,
         reprompt: false,
+        state: verrou_core::ItemState::Active,
     }
 }
 
@@ -123,6 +124,7 @@ fn login() -> Item {
         ],
         notes: None,
         reprompt: false,
+        state: verrou_core::ItemState::Active,
     }
 }
 

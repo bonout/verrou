@@ -39,6 +39,9 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 - **Protected items**: Bitwarden's "master password re-prompt" is enforced in
   the Rust core: secrets (reveal, copy, codes, edit, Brave fill) need Touch ID
   or the master password, valid 5 minutes per item.
+- **Tidy up**: favorites (click the star), **archive** items (kept but out of
+  the list, search and autofill), trash with **restore**, previous passwords
+  visible in each item, configurable auto-lock delay.
 - **Offline**: the vault stays available without network, decrypted from the
   cache (the server's response, still encrypted).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
@@ -54,8 +57,8 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   **padlock in the menu bar**, and launch at login (Settings).
 - **Careful clipboard**: copied secrets are marked "concealed" (clipboard
   history apps skip them) and cleared after 90 s.
-- **Auto-lock**: after 10 min of inactivity, on sleep, and when the screen
-  locks.
+- **Auto-lock**: after 10 min of inactivity by default (1 min to never, in
+  Settings), on sleep, and when the screen locks.
 - **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `--json` output, on
   the real vault served by the running app (`--mock` for the mock vault and
   `bench`). Secrets ask for Touch ID in the app.

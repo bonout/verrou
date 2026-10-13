@@ -22,6 +22,7 @@ use bitwarden_core::{Client, ClientSettings, DeviceType};
 use bitwarden_crypto::Kdf;
 use bitwarden_vault::{CipherView, FolderView, VaultClientExt};
 use serde_json::{Value, json};
+use verrou_core::ItemState;
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, ItemKind, SecretString};
 use verrou_vaultwarden::security_key::{
@@ -344,7 +345,11 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
     );
     assert_eq!(first.vault.failures, 0);
     let items = &first.vault.items;
-    assert_eq!(items.len(), 4, "l'élément à la corbeille est ignoré");
+    assert_eq!(
+        items.iter().filter(|i| i.is_active()).count(),
+        4,
+        "l'élément à la corbeille est à part"
+    );
 
     let github = items.iter().find(|i| i.title == "GitHub").unwrap();
     assert_eq!(github.kind, ItemKind::Login);
@@ -399,7 +404,10 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
     let mut again = unlock_with_password(&store, &SecretString::new(PASSWORD))
         .await
         .unwrap();
-    assert_eq!(again.vault.items.len(), 4);
+    assert_eq!(
+        again.vault.items.iter().filter(|i| i.is_active()).count(),
+        4
+    );
 
     // Synchronisation par le jeton de renouvellement : rien n'a changé
     // depuis le cache, rien à déchiffrer de nouveau.
@@ -408,7 +416,10 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
 
     // Chemin de Touch ID : la clé de l'utilisateur suffit.
     let by_key = unlock_with_user_key(&store, &user_key).await.unwrap();
-    assert_eq!(by_key.vault.items.len(), 4);
+    assert_eq!(
+        by_key.vault.items.iter().filter(|i| i.is_active()).count(),
+        4
+    );
     assert!(matches!(
         unlock_with_user_key(&store, &SecretString::new("AAAA")).await,
         Err(Error::Crypto(_))
@@ -720,7 +731,7 @@ async fn create_login_and_note(
         created.field("password").unwrap().value.expose(),
         "premier-mot-de-passe"
     );
-    assert_eq!(vault.items.len(), 5);
+    assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 5);
 
     // Une note sécurisée : un brouillon sans identifiant.
     let (note, vault) = connection
@@ -829,14 +840,19 @@ async fn create_edit_and_trash() {
         "4242 4242 4242 4242"
     );
 
-    // Corbeille : l'élément disparaît, le serveur le garde (restaurable).
+    // Corbeille : l'élément y passe, le serveur le garde (restaurable).
     let vault = connection.trash(&id).await.unwrap();
-    assert!(vault.items.iter().all(|i| i.id != id));
+    assert_eq!(
+        vault.items.iter().find(|i| i.id == id).map(|i| i.state),
+        Some(ItemState::Trashed)
+    );
     assert!(seeder.fetch(&id).await.deleted_date.is_some());
     assert!(matches!(
         connection.draft(&id).await,
         Err(Error::NotFound | Error::ReadOnly)
     ));
+
+    archive_restore_and_favorite(&mut connection, &id, &github_id).await;
 
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
@@ -885,5 +901,46 @@ async fn amend_like_the_extension(
             .totp
             .unwrap()
             .contains("GEZDGNBVGY3TQOJQ")
+    );
+}
+
+/// Corbeille → restauration, archives aller-retour, favori, historique visible.
+async fn archive_restore_and_favorite(
+    connection: &mut verrou_vaultwarden::Connection,
+    trashed: &str,
+    github_id: &str,
+) {
+    let state = |vault: &verrou_vaultwarden::Decrypted, id: &str| {
+        vault.items.iter().find(|i| i.id == id).map(|i| i.state)
+    };
+    // L'élément à la corbeille revient.
+    let vault = connection.restore(trashed).await.unwrap();
+    assert_eq!(state(&vault, trashed), Some(ItemState::Active));
+
+    // Archives : hors de la liste et du remplissage, puis de retour.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection.set_archived(github_id, true).await.unwrap();
+    assert_eq!(state(&vault, github_id), Some(ItemState::Archived));
+    let index = verrou_core::Vault::new(vault.items);
+    assert_eq!(index.suggestions_for("https://github.com").len(), 0);
+    let vault = connection.set_archived(github_id, false).await.unwrap();
+    assert_eq!(state(&vault, github_id), Some(ItemState::Active));
+
+    // Favori, et anciens mots de passe lisibles dans l'élément.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection.set_favorite(github_id, false).await.unwrap();
+    let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
+    assert!(!github.favorite);
+    let history = github
+        .field("history-0")
+        .expect("historique des mots de passe");
+    assert_eq!(history.value.expose(), "nouveau-mot-de-passe");
+    assert_eq!(
+        github
+            .field_of_kind(verrou_core::FieldKind::Password)
+            .unwrap()
+            .value
+            .expose(),
+        "depuis-brave"
     );
 }
