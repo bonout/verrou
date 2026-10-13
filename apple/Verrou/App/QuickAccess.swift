@@ -44,6 +44,7 @@ final class QuickAccessController {
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
         if staysOpen { panel.orderFrontRegardless() }
+        model.quickAccessOpened()
     }
 
     func close() {
@@ -172,7 +173,13 @@ struct QuickAccessView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
+        // Le curseur dans le champ à chaque ouverture : on tape directement.
         .onAppear { focused = true; selected = 0 }
+        .onChange(of: model.quickAccessOpenings) {
+            selected = 0
+            focused = false
+            Task { focused = true }
+        }
         .onChange(of: model.quickQuery) { selected = 0 }
         .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
         .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
