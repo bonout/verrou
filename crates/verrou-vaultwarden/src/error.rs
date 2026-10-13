@@ -10,6 +10,8 @@ pub enum Error {
     WrongPassword,
     #[error("second facteur refusé : {0}")]
     TwoFactorRejected(String),
+    #[error("clé de sécurité : {0}")]
+    SecurityKey(String),
     #[error("aucun compte n'est configuré")]
     NoAccount,
     #[error("la session a expiré : reconnectez-vous")]

@@ -12,8 +12,8 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
 ## Ce qui marche aujourd'hui
 
 - **Connexion à Vaultwarden** : mot de passe principal (PBKDF2 ou Argon2id),
-  second facteur par **clé de sécurité** (YubiKey en FIDO2/WebAuthn), code
-  TOTP, YubiKey OTP ou e-mail. Synchronisation à l'ouverture puis toutes les
+  second facteur par **clé de sécurité** (YubiKey en FIDO2, directement en
+  USB, sans navigateur), code TOTP, YubiKey OTP ou e-mail. Synchronisation à l'ouverture puis toutes les
   5 min (⌘R pour la forcer).
 - **Hors ligne** : le coffre reste disponible sans réseau, déchiffré à partir
   du cache (la réponse du serveur, chiffrée).
@@ -96,7 +96,7 @@ Vaultwarden), `VERROU_MOCK_SIZE=10000` (gros coffre fictif), `VERROU_DEMO=1`
 2. ✅ Connexion Vaultwarden : SDK Rust Bitwarden, second facteur, déchiffrement, synchro, cache chiffré hors ligne, Touch ID par le Secure Enclave
 3. Extension Brave : menu dans les champs, formulaires en plusieurs étapes, cartes, adresses, codes
 4. iPhone et iPad : Face ID, extension de remplissage automatique du système
-5. YubiKey : connexion FIDO2, déverrouillage `hmac-secret`
+5. YubiKey : ✅ connexion FIDO2 en USB ; déverrouillage `hmac-secret`
 
 ## Licence
 

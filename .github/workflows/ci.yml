@@ -25,6 +25,8 @@ jobs:
         env:
           I_REALLY_WANT_VOLATILE_STORAGE: "true"
           SIGNUPS_ALLOWED: "true"
+          # WebAuthn (clé de sécurité) exige un nom de domaine.
+          DOMAIN: http://localhost:8099
           LOGIN_RATELIMIT_MAX_BURST: "1000"
           LOGIN_RATELIMIT_SECONDS: "1"
     env:

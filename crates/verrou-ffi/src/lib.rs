@@ -53,6 +53,8 @@ pub enum VerrouError {
     Storage { message: String },
     #[error("aucune connexion en cours")]
     NoPendingLogin,
+    #[error("clé de sécurité : {message}")]
+    SecurityKey { message: String },
 }
 
 impl From<verrou_vaultwarden::Error> for VerrouError {
@@ -68,6 +70,7 @@ impl From<verrou_vaultwarden::Error> for VerrouError {
             E::Server(message) => Self::Server { message },
             E::Crypto(message) => Self::Crypto { message },
             E::Storage(message) => Self::Storage { message },
+            E::SecurityKey(message) => Self::SecurityKey { message },
         }
     }
 }
@@ -342,6 +345,8 @@ pub struct VaultSession {
     /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
     connection: Mutex<Option<Arc<tokio::sync::Mutex<Connection>>>>,
     pending: Mutex<Option<PendingLogin>>,
+    #[cfg(target_os = "macos")]
+    security_key: Mutex<Option<verrou_vaultwarden::security_key::SigningSession>>,
 }
 
 impl VaultSession {
@@ -423,6 +428,8 @@ impl VaultSession {
             store: Some(Store::new(data_dir)),
             connection: Mutex::new(None),
             pending: Mutex::new(None),
+            #[cfg(target_os = "macos")]
+            security_key: Mutex::new(None),
         })
     }
 
@@ -445,6 +452,62 @@ impl VaultSession {
         let store = self.store()?.clone();
         let step =
             verrou_vaultwarden::login(&store, &server, &email, SecretString::new(password)).await?;
+        Ok(self.login_result(step))
+    }
+
+    /// Signe le défi avec une clé de sécurité branchée en USB, sans
+    /// navigateur. Rend le jeton à passer à `answer_two_factor`. Bloque
+    /// jusqu'au contact sur la clé, au délai, ou à `cancel_security_key`.
+    pub async fn sign_with_security_key(&self, challenge: String) -> Result<String, VerrouError> {
+        let pending = self.pending()?;
+        let request =
+            verrou_vaultwarden::security_key::assertion_request(pending.server(), &challenge)?;
+        #[cfg(target_os = "macos")]
+        {
+            let session = verrou_vaultwarden::security_key::SigningSession::new();
+            *self
+                .security_key
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner) = Some(session.clone());
+            let signer = request.clone();
+            let response = tokio::task::spawn_blocking(move || session.sign(&signer, |_| {}))
+                .await
+                .map_err(|e| VerrouError::SecurityKey {
+                    message: e.to_string(),
+                })??;
+            self.security_key
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take();
+            Ok(verrou_vaultwarden::security_key::token(&request, &response))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            // Pas d'USB hors macOS ; la fonction reste asynchrone pour Swift.
+            tokio::task::yield_now().await;
+            let _ = request;
+            Err(VerrouError::SecurityKey {
+                message: "clé de sécurité en USB : macOS seulement".to_owned(),
+            })
+        }
+    }
+
+    /// Interrompt l'attente de la clé de sécurité.
+    pub fn cancel_security_key(&self) {
+        #[cfg(target_os = "macos")]
+        if let Some(session) = self
+            .security_key
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            session.cancel();
+        }
+    }
+
+    /// Nouveau défi de second facteur (après un refus de la clé de sécurité).
+    pub async fn restart_two_factor(&self) -> Result<LoginResult, VerrouError> {
+        let step = self.pending()?.restart().await?;
         Ok(self.login_result(step))
     }
 
@@ -528,6 +591,8 @@ impl VaultSession {
             store: None,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
+            #[cfg(target_os = "macos")]
+            security_key: Mutex::new(None),
         })
     }
 

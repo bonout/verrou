@@ -69,7 +69,16 @@ struct LockView: View {
             .padding(48)
         }
         .frame(minWidth: 520, minHeight: 460)
-        .onAppear { if !model.canUseTouchID { passwordFocused = true } }
+        .onAppear {
+            if model.canUseTouchID {
+                Task { await model.promptTouchIDIfPossible() }
+            } else {
+                passwordFocused = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            Task { await model.promptTouchIDIfPossible() }
+        }
     }
 
     private var subtitle: String {
