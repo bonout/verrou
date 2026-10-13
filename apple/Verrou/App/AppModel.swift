@@ -78,6 +78,20 @@ final class AppModel {
     }
 
     let clipboard = Clipboard()
+    let siteIcons = SiteIcons()
+
+    /// Préférence : icônes des sites, demandées au serveur du compte.
+    var showSiteIcons: Bool = UserDefaults.standard.object(forKey: "showSiteIcons") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(showSiteIcons, forKey: "showSiteIcons")
+            updateSiteIcons()
+        }
+    }
+
+    private func updateSiteIcons() {
+        let wanted = mode == .vaultwarden && showSiteIcons && lockState == .unlocked
+        siteIcons.server = wanted ? account?.server : nil
+    }
     let mockSize: UInt32
     private var autoLock: AutoLock?
     /// Fin de la dernière demande Touch ID : la fenêtre système fait perdre
@@ -329,6 +343,7 @@ final class AppModel {
     private func didUnlock(failures: UInt32) {
         reloadVault()
         lockState = .unlocked
+        updateSiteIcons()
         autoLock = AutoLock { [weak self] in self?.lock() }
         if failures > 0 {
             toast = Toast(message: "\(failures) élément\(failures > 1 ? "s" : "") illisible\(failures > 1 ? "s" : "")",
@@ -368,6 +383,7 @@ final class AppModel {
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked
+        updateSiteIcons()
     }
 
     // MARK: Synchronisation

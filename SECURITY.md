@@ -57,6 +57,11 @@ PR qui touche à l'un de ces points le dit dans sa description.
   mobiles (`webauthn-mobile-connector.html`), dans une session Safari
   éphémère (`ASWebAuthenticationSession`). « Se souvenir de cet appareil »
   n'est pas utilisé : une reconnexion redemande le second facteur.
+- **Icônes des sites** : demandées au serveur du compte
+  (`/icons/<site>/icon.png`, comme les apps Bitwarden), qui ne reçoit que le
+  nom du site, sans authentification. Session réseau éphémère et cache en
+  mémoire, vidé au verrouillage : la liste des sites ne reste pas en clair sur
+  le disque. Désactivables dans les réglages.
 - **Lecture seule** : aucune écriture vers le serveur.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne

@@ -115,6 +115,13 @@ final class EndToEndDriver {
             model.toggleReveal("password", of: github.id)
             check(model.revealed["password"] == "hunter2-hunter2", "mot de passe révélé")
         }
+        if let github = model.summaries.first(where: { $0.title == "GitHub" }), let host = github.host {
+            _ = model.siteIcons.image(for: host)
+            for _ in 0..<100 where model.siteIcons.images[SiteIcons.site(of: host)] == nil {
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            check(model.siteIcons.images[SiteIcons.site(of: host)] != nil, "icône du site servie par Vaultwarden")
+        }
         await snap("22-coffre-vaultwarden")
 
         await model.syncNow()

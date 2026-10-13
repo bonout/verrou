@@ -1,12 +1,29 @@
 import SwiftUI
 
-/// Réglages (⌘,) : compte, synchronisation, Touch ID, déconnexion.
+/// Réglages (⌘,) : démarrage, apparence, compte, synchronisation, Touch ID,
+/// déconnexion.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var confirmLogout = false
+    @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
+    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchAtLoginError: String?
 
     var body: some View {
+        @Bindable var model = model
         Form {
+            Section {
+                Toggle("Ouvrir Verrou à l'ouverture de session", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { _, wanted in setLaunchAtLogin(wanted) }
+                Toggle("Afficher dans la barre des menus", isOn: $showMenuBarExtra)
+                if model.mode == .vaultwarden {
+                    Toggle("Afficher les icônes des sites", isOn: $model.showSiteIcons)
+                }
+            } footer: {
+                Text(generalFooter)
+                    .foregroundStyle(launchAtLoginError == nil ? .secondary : Color.red)
+            }
+
             if model.mode == .demo {
                 Section {
                     Text("Coffre fictif : aucun compte n'est relié en mode démonstration.")
@@ -54,6 +71,25 @@ struct SettingsView: View {
         } message: {
             Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
         }
+    }
+
+    private var generalFooter: String {
+        if let launchAtLoginError { return launchAtLoginError }
+        if LaunchAtLogin.needsApproval {
+            return "À autoriser dans Réglages Système → Général → Ouverture."
+        }
+        return "Les icônes viennent de votre serveur Vaultwarden, qui ne reçoit que le nom des sites ; elles ne sont pas gardées sur le disque."
+    }
+
+    private func setLaunchAtLogin(_ wanted: Bool) {
+        guard wanted != LaunchAtLogin.isEnabled else { return }
+        do {
+            try LaunchAtLogin.set(wanted)
+            launchAtLoginError = nil
+        } catch {
+            launchAtLoginError = "Impossible de modifier l'ouverture de session : \(error.localizedDescription)"
+        }
+        launchAtLogin = LaunchAtLogin.isEnabled || LaunchAtLogin.needsApproval
     }
 
     private var touchID: Binding<Bool> {

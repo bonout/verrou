@@ -9,7 +9,7 @@ enum Theme {
     static let symbol = Color(red: 0.93, green: 0.36, blue: 0.27)
 
     /// Teinte stable par site ou par titre : la même icône d'un lancement à
-    /// l'autre, sans aller chercher de favicon sur le réseau.
+    /// l'autre, quand le serveur n'a pas d'icône pour le site.
     static func hue(for key: String) -> Double {
         var hash: UInt64 = 1469598103934665603
         for byte in key.utf8 {
@@ -64,13 +64,24 @@ extension ItemCategory {
 // MARK: Icône d'élément
 
 struct ItemIcon: View {
+    @Environment(AppModel.self) private var model
     let summary: ItemSummary
     var size: CGFloat = 32
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
         ZStack {
-            if summary.category == .login, let initial = initial {
+            if summary.category == .login, let host = summary.host,
+               let image = model.siteIcons.image(for: host) {
+                // Fond blanc : beaucoup d'icônes sont transparentes et
+                // disparaîtraient en mode sombre.
+                shape.fill(.white)
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .padding(size * 0.14)
+            } else if summary.category == .login, let initial = initial {
                 let hue = Theme.hue(for: summary.host ?? summary.title)
                 shape.fill(
                     LinearGradient(
@@ -89,7 +100,8 @@ struct ItemIcon: View {
             }
         }
         .frame(width: size, height: size)
-        .overlay(shape.strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+        .clipShape(shape)
+        .overlay(shape.strokeBorder(.primary.opacity(0.12), lineWidth: 0.5))
         .accessibilityHidden(true)
     }
 
