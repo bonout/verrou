@@ -24,6 +24,10 @@ struct SettingsView: View {
                     .foregroundStyle(launchAtLoginError == nil ? .secondary : Color.red)
             }
 
+            if let bridge = model.browserBridge {
+                BrowserSection(bridge: bridge)
+            }
+
             if model.mode == .demo {
                 Section {
                     Text("Coffre fictif : aucun compte n'est relié en mode démonstration.")
@@ -110,5 +114,52 @@ struct SettingsView: View {
             return "S'active au prochain déverrouillage par mot de passe."
         }
         return "La clé du coffre est scellée par le Secure Enclave : ajouter ou retirer une empreinte désactive Touch ID."
+    }
+}
+
+/// Remplissage dans Brave : activation, extension à charger, extensions reliées.
+struct BrowserSection: View {
+    @Bindable var bridge: BrowserBridge
+
+    var body: some View {
+        Section {
+            Toggle("Remplissage dans Brave", isOn: $bridge.enabled)
+            if bridge.enabled, let folder = bridge.extensionFolder {
+                LabeledContent("Extension") {
+                    HStack {
+                        Button("Copier le chemin") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(folder.path, forType: .string)
+                        }
+                        Button("Afficher") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                    }
+                }
+            }
+            ForEach(bridge.clients, id: \.id) { client in
+                LabeledContent {
+                    Button("Délier", role: .destructive) { bridge.revoke(client) }
+                } label: {
+                    Text(client.name)
+                    Text("Relié le \(Date(timeIntervalSince1970: TimeInterval(client.created)).formatted(date: .abbreviated, time: .shortened))")
+                }
+            }
+        } header: {
+            Text("Navigateur")
+        } footer: {
+            Text(footer)
+                .foregroundStyle(bridge.error == nil ? Color.secondary : Color.red)
+        }
+        .onAppear { bridge.refreshClients() }
+    }
+
+    private var footer: String {
+        if let error = bridge.error { return error }
+        if !bridge.enabled {
+            return "L'extension Verrou remplit vos identifiants dans Brave, site par site. Rien ne sort du Mac."
+        }
+        if bridge.clients.isEmpty {
+            return "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Cliquez ensuite sur l'icône Verrou de Brave pour relier l'extension."
+        }
+        return "L'extension ne reçoit que les identifiants du site ouvert, en HTTPS, coffre déverrouillé."
     }
 }

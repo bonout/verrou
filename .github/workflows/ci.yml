@@ -40,6 +40,13 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      # L'extension (bridge.js, crypto.js) contre le vrai pont, à travers le
+      # vrai hôte Native Messaging.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build -p verrou-bridge --example test_server --bin verrou-native-host
+      - run: node --test extension/test/bridge.test.mjs
       # Garde-fou de performance : 10 000 éléments, moins d'une image à 60 Hz.
       - run: cargo test --release -p verrou-core --test search -- --include-ignored search_is_fast
 

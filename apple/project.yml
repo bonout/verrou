@@ -21,6 +21,17 @@ targets:
     sources:
       - path: Verrou
       - path: Shared
+      # Hôte Native Messaging, lancé par le navigateur (pas par l'app) :
+      # Contents/MacOS/verrou-native-host, signé avec l'app, sans sandbox.
+      - path: Helpers/verrou-native-host
+        buildPhase:
+          copyFiles:
+            destination: executables
+        attributes: [CodeSignOnCopy]
+      # L'extension de navigateur, livrée avec l'app (à charger dans Brave).
+      - path: ../extension
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false

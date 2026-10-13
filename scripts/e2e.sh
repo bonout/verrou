@@ -14,7 +14,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"
 LOG="$(mktemp)"
 trap 'rm -f "$LOG"' EXIT
-"$APP/Contents/MacOS/Verrou" > "$LOG" 2>/dev/null || true
+# Le pont vers Brave s'essaie sur un port à part ; les déclarations Native
+# Messaging qu'il écrit désignent ce build : on les retire ensuite.
+VERROU_BRIDGE_PORT="${VERROU_BRIDGE_PORT:-41799}" "$APP/Contents/MacOS/Verrou" > "$LOG" 2>/dev/null || true
+for dir in "BraveSoftware/Brave-Browser" "Google/Chrome"; do
+  manifest="$HOME/Library/Application Support/$dir/NativeMessagingHosts/app.verrou.bridge.json"
+  if grep -qs "$APP" "$manifest"; then rm -f "$manifest"; fi
+done
 grep '^E2E_' "$LOG"
 grep -q '^E2E_DONE' "$LOG"
 OUT="$(sed -n 's/^E2E_OUT //p' "$LOG" | tail -1)"

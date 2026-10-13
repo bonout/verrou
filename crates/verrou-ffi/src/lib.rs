@@ -15,8 +15,11 @@
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
 #![allow(clippy::needless_pass_by_value)]
 
-use std::sync::{Arc, Mutex, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
+use std::time::{SystemTime, UNIX_EPOCH};
 
+use verrou_bridge::protocol::{Credentials, Suggestion};
+use verrou_bridge::{Backend, Bridge, PairingRequest};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
@@ -425,6 +428,8 @@ pub struct VaultSession {
     pending: Mutex<Option<PendingLogin>>,
     #[cfg(target_os = "macos")]
     security_key: Mutex<Option<verrou_vaultwarden::security_key::SigningSession>>,
+    /// Pont vers l'extension de navigateur, s'il est activé.
+    bridge: Mutex<Option<Bridge>>,
 }
 
 impl VaultSession {
@@ -530,6 +535,7 @@ impl VaultSession {
             pending: Mutex::new(None),
             #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
+            bridge: Mutex::new(None),
         })
     }
 
@@ -719,6 +725,7 @@ impl VaultSession {
             pending: Mutex::new(None),
             #[cfg(target_os = "macos")]
             security_key: Mutex::new(None),
+            bridge: Mutex::new(None),
         })
     }
 
@@ -885,6 +892,142 @@ impl VaultSession {
                 .map(summary)
                 .collect())
         })
+    }
+}
+
+// MARK: Pont vers l'extension de navigateur
+
+/// Ce que l'app fait pour le pont : demander l'accord d'appairage, amener le
+/// coffre au déverrouillage. Appelé depuis le fil du pont : répondre vite.
+#[uniffi::export(callback_interface)]
+pub trait BridgeDelegate: Send + Sync {
+    /// Afficher `code` et demander l'accord ; répondre par
+    /// `answer_bridge_pairing(id, …)`.
+    fn pairing_requested(&self, id: String, name: String, code: String);
+    fn unlock_requested(&self);
+}
+
+/// Une extension appairée.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct BridgeClient {
+    pub id: String,
+    pub name: String,
+    /// Horodatage Unix de l'appairage.
+    pub created: i64,
+}
+
+/// Le coffre de la session, vu par le pont : seulement ce que
+/// `verrou_bridge::access` autorise.
+struct SessionBackend {
+    session: Weak<VaultSession>,
+    delegate: Box<dyn BridgeDelegate>,
+}
+
+impl Backend for SessionBackend {
+    fn is_unlocked(&self) -> bool {
+        self.session.upgrade().is_some_and(|s| s.is_unlocked())
+    }
+
+    fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>> {
+        let session = self.session.upgrade()?;
+        session
+            .with_vault(|v| Ok(verrou_bridge::access::suggestions(v, page_url)))
+            .ok()
+    }
+
+    fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>> {
+        let session = self.session.upgrade()?;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        session
+            .with_vault(|v| Ok(verrou_bridge::access::credentials(v, item, page_url, now)))
+            .ok()
+    }
+
+    fn request_unlock(&self) {
+        self.delegate.unlock_requested();
+    }
+
+    fn pairing_requested(&self, request: PairingRequest) {
+        self.delegate
+            .pairing_requested(request.id, request.name, request.code);
+    }
+}
+
+#[uniffi::export]
+impl VaultSession {
+    /// Démarre le pont (port `VERROU_BRIDGE_PORT`, sinon le port de Verrou).
+    /// Les extensions appairées sont gardées dans le dossier du compte.
+    pub fn start_bridge(
+        self: Arc<Self>,
+        delegate: Box<dyn BridgeDelegate>,
+    ) -> Result<u16, VerrouError> {
+        let file = self.store()?.dir().join("bridge-clients.json");
+        let mut slot = self.bridge.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(bridge) = slot.as_ref() {
+            return Ok(bridge.port());
+        }
+        let backend = SessionBackend {
+            session: Arc::downgrade(&self),
+            delegate,
+        };
+        let bridge = Bridge::start(verrou_bridge::port_from_env(), file, Arc::new(backend))
+            .map_err(|e| VerrouError::Storage {
+                message: format!("pont vers le navigateur : {e}"),
+            })?;
+        let port = bridge.port();
+        *slot = Some(bridge);
+        Ok(port)
+    }
+
+    pub fn stop_bridge(&self) {
+        let bridge = self
+            .bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        drop(bridge);
+    }
+
+    pub fn answer_bridge_pairing(&self, id: String, approved: bool) {
+        if let Some(bridge) = self
+            .bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            bridge.answer_pairing(&id, approved);
+        }
+    }
+
+    pub fn bridge_clients(&self) -> Vec<BridgeClient> {
+        self.bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|b| {
+                b.clients()
+                    .into_iter()
+                    .map(|c| BridgeClient {
+                        id: c.id,
+                        name: c.name,
+                        created: c.created,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn revoke_bridge_client(&self, id: String) {
+        if let Some(bridge) = self
+            .bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            bridge.revoke(&id);
+        }
     }
 }
 

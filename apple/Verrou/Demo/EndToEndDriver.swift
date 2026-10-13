@@ -155,6 +155,17 @@ final class EndToEndDriver {
                   "mis à la corbeille")
         }
 
+        // Pont vers Brave, sur un port de test : écoute TCP et écriture des
+        // déclarations Native Messaging, sous le sandbox de l'app.
+        if ProcessInfo.processInfo.environment["VERROU_BRIDGE_PORT"] != nil {
+            let bridge = BrowserBridge(model: model)
+            model.browserBridge = bridge
+            bridge.enabled = true
+            check(bridge.running && bridge.error == nil, "pont vers Brave à l'écoute dans le sandbox (\(bridge.error ?? "ok"))")
+            bridge.enabled = false
+            check(!bridge.running, "pont arrêté")
+        }
+
         model.lock()
         check(model.lockState == .locked && !model.needsLogin, "verrouillé, compte conservé")
         await snap("23-verrouille")
