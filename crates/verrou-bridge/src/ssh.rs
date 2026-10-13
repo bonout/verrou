@@ -37,11 +37,13 @@ fn public_blob(key: &PrivateKey) -> Option<Vec<u8>> {
     key.public_key().to_bytes().ok()
 }
 
-/// Les clés SSH utilisables du coffre : leur clé publique et leur titre.
+/// Les clés SSH utilisables du coffre (ni archivées, ni à la corbeille) :
+/// leur clé publique et leur titre.
 pub fn identities(vault: &Vault) -> Vec<SshIdentity> {
     vault
         .items()
         .iter()
+        .filter(|item| item.is_active())
         .filter_map(|item| {
             let blob = public_blob(&private_key(item)?)?;
             Some(SshIdentity {
@@ -57,6 +59,7 @@ pub fn identities(vault: &Vault) -> Vec<SshIdentity> {
 pub fn key_item<'v>(vault: &'v Vault, blob: &[u8]) -> Option<&'v Item> {
     vault.items().iter().find(|item| {
         item.kind == ItemKind::SshKey
+            && item.is_active()
             && private_key(item)
                 .and_then(|key| public_blob(&key))
                 .is_some_and(|b| b == blob)
@@ -127,6 +130,7 @@ mod tests {
             ],
             notes: None,
             reprompt: false,
+            state: verrou_core::ItemState::Active,
         }
     }
 

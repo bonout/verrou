@@ -460,6 +460,7 @@ impl Builder<'_> {
             fields,
             notes: None,
             reprompt: false,
+            state: crate::ItemState::Active,
         }
     }
 
@@ -528,6 +529,7 @@ impl Builder<'_> {
                     notes: None,
                     // Comme souvent dans Bitwarden : les cartes redemandent confirmation.
                     reprompt: true,
+                    state: crate::ItemState::Active,
                 }
             })
             .collect()
@@ -571,6 +573,7 @@ impl Builder<'_> {
             ],
             notes: None,
             reprompt: false,
+            state: crate::ItemState::Active,
         };
         let (created, modified) = self.dates();
         let passport = Item {
@@ -597,6 +600,7 @@ impl Builder<'_> {
             ],
             notes: None,
             reprompt: false,
+            state: crate::ItemState::Active,
         };
         vec![me, passport]
     }
@@ -648,6 +652,7 @@ impl Builder<'_> {
                     fields: Vec::new(),
                     notes: Some(SecretString::new(*body)),
                     reprompt: false,
+                    state: crate::ItemState::Active,
                 }
             })
             .collect()
@@ -683,6 +688,7 @@ impl Builder<'_> {
             ],
             notes: None,
             reprompt: false,
+            state: crate::ItemState::Active,
         }
     }
 

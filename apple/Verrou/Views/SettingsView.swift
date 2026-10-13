@@ -8,6 +8,8 @@ struct SettingsView: View {
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchAtLoginError: String?
+    @AppStorage(AutoLock.minutesKey) private var autoLockMinutes = 10
+    @AppStorage(AutoLock.sleepKey) private var lockOnSleep = true
 
     var body: some View {
         @Bindable var model = model
@@ -44,6 +46,18 @@ struct SettingsView: View {
                     }
                     Button("Synchroniser maintenant") { Task { await model.syncNow() } }
                         .disabled(model.lockState != .unlocked || model.syncState == .syncing)
+                }
+
+                Section("Verrouillage") {
+                    Picker("Verrouiller après", selection: $autoLockMinutes) {
+                        Text("1 minute d'inactivité").tag(1)
+                        Text("5 minutes d'inactivité").tag(5)
+                        Text("10 minutes d'inactivité").tag(10)
+                        Text("30 minutes d'inactivité").tag(30)
+                        Text("1 heure d'inactivité").tag(60)
+                        Text("Jamais").tag(0)
+                    }
+                    Toggle("Verrouiller à la mise en veille et au verrouillage de l'écran", isOn: $lockOnSleep)
                 }
 
                 Section {

@@ -483,6 +483,7 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 fields: Vec::new(),
                 notes: None,
                 reprompt: false,
+                state: verrou_core::ItemState::Active,
             };
             set(
                 &mut item,
@@ -554,6 +555,7 @@ mod tests {
             ],
             notes: None,
             reprompt: false,
+            state: verrou_core::ItemState::Active,
         }
     }
 

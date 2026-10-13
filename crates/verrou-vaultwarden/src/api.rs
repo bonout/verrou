@@ -274,9 +274,20 @@ impl Api {
 
     /// Met l'élément à la corbeille (suppression douce, restaurable).
     pub async fn trash_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        self.cipher_action(access_token, id, "delete").await
+    }
+
+    /// `PUT /api/ciphers/{id}/{action}` : `delete` (corbeille), `restore`,
+    /// `archive`, `unarchive`.
+    pub async fn cipher_action(
+        &self,
+        access_token: &str,
+        id: &str,
+        action: &str,
+    ) -> Result<(), Error> {
         let response = self
             .http
-            .put(format!("{}/api/ciphers/{id}/delete", self.base))
+            .put(format!("{}/api/ciphers/{id}/{action}", self.base))
             .bearer_auth(access_token)
             .send()
             .await?;

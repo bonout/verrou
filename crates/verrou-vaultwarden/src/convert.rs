@@ -6,13 +6,18 @@
 use std::collections::HashMap;
 
 use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType};
-use verrou_core::{Field, FieldKind, Item, ItemKind, SecretString};
+use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, SecretString};
 
-/// `None` pour un élément à la corbeille : Verrou ne les montre pas.
+/// Les éléments archivés et ceux de la corbeille sont gardés, avec leur état :
+/// l'interface les montre à part.
 pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Option<Item> {
-    if view.deleted_date.is_some() {
-        return None;
-    }
+    let state = if view.deleted_date.is_some() {
+        ItemState::Trashed
+    } else if view.archived_date.is_some() {
+        ItemState::Archived
+    } else {
+        ItemState::Active
+    };
     let id = view.id.map(|id| id.to_string())?;
     let folder = view
         .folder_id
@@ -40,6 +45,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
             .filter(|n| !n.is_empty())
             .map(SecretString::new),
         reprompt: view.reprompt == CipherRepromptType::Password,
+        state,
     };
     match view.r#type {
         CipherType::Login => login(view, &mut item),
@@ -54,6 +60,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
         CipherType::Passport => "Passeport".clone_into(&mut item.subtitle),
     }
     custom_fields(view, &mut item);
+    password_history(view, &mut item);
     Some(item)
 }
 
@@ -297,6 +304,27 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
             }
             FieldType::Linked => {}
         }
+    }
+}
+
+/// Anciens mots de passe, du plus récent au plus ancien : champs secrets
+/// `history-N` (jamais `Password`, pour que le mot de passe actuel reste le
+/// seul que l'audit et le remplissage voient).
+fn password_history(view: &CipherView, item: &mut Item) {
+    for (index, entry) in view.password_history.iter().flatten().enumerate() {
+        if entry.password.is_empty() {
+            continue;
+        }
+        let label = format!(
+            "Remplacé le {}",
+            entry.last_used_date.format("%d/%m/%Y à %H:%M")
+        );
+        item.fields.push(Field::new(
+            &format!("history-{index}"),
+            &label,
+            FieldKind::Concealed,
+            entry.password.clone(),
+        ));
     }
 }
 

@@ -8,9 +8,10 @@ struct ItemDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
-                if !detail.urls.isEmpty || !detail.fields.isEmpty {
+                stateBanner
+                if !detail.urls.isEmpty || !fields.isEmpty {
                     FieldCard {
-                        ForEach(Array(detail.fields.enumerated()), id: \.element.id) { index, field in
+                        ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
                             if index > 0 { Divider().padding(.leading, 14) }
                             FieldRow(itemID: detail.summary.id, field: field)
                         }
@@ -29,6 +30,15 @@ struct ItemDetailView: View {
                     SectionTitle("Notes")
                     FieldCard { NotesRow(itemID: detail.summary.id) }
                 }
+                if !history.isEmpty {
+                    SectionTitle("Anciens mots de passe")
+                    FieldCard {
+                        ForEach(Array(history.enumerated()), id: \.element.id) { index, field in
+                            if index > 0 { Divider().padding(.leading, 14) }
+                            FieldRow(itemID: detail.summary.id, field: field)
+                        }
+                    }
+                }
                 if !detail.summary.tags.isEmpty {
                     TagsRow(tags: detail.summary.tags)
                 }
@@ -42,7 +52,15 @@ struct ItemDetailView: View {
         .background(Color(nsColor: .windowBackgroundColor))
         .toolbar {
             ToolbarItemGroup {
-                if model.canEdit {
+                if model.canEdit, detail.summary.state == .active {
+                    Button {
+                        Task { await model.setArchived(detail.summary.id, true) }
+                    } label: {
+                        Label("Archiver", systemImage: "archivebox")
+                    }
+                    .help("Archiver : garder l'élément hors du chemin")
+                }
+                if model.canEdit, detail.summary.state != .trashed {
                     Button {
                         Task { await model.edit(detail.summary.id) }
                     } label: {
@@ -91,12 +109,50 @@ struct ItemDetailView: View {
                 }
             }
             Spacer()
-            Image(systemName: detail.summary.favorite ? "star.fill" : "star")
-                .font(.title2)
-                .foregroundStyle(detail.summary.favorite ? Color.yellow : Color.secondary)
-                .help(detail.summary.favorite ? "Favori" : "Pas en favori")
+            Button {
+                Task { await model.setFavorite(detail.summary.id, !detail.summary.favorite) }
+            } label: {
+                Image(systemName: detail.summary.favorite ? "star.fill" : "star")
+                    .font(.title2)
+                    .foregroundStyle(detail.summary.favorite ? Color.yellow : Color.secondary)
+            }
+            .buttonStyle(.plain)
+            .disabled(!model.canEdit || detail.summary.state != .active || model.editorBusy)
+            .help(detail.summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris")
         }
         .padding(.bottom, 4)
+    }
+
+    /// Champs de l'élément, hors anciens mots de passe (`history-N`).
+    private var fields: [FieldView] { detail.fields.filter { !$0.id.hasPrefix("history-") } }
+    private var history: [FieldView] { detail.fields.filter { $0.id.hasPrefix("history-") } }
+
+    @ViewBuilder private var stateBanner: some View {
+        switch detail.summary.state {
+        case .active:
+            EmptyView()
+        case .archived:
+            banner("Archivé : hors de la liste, de la recherche et du remplissage.", symbol: "archivebox",
+                   action: "Sortir des archives") { await model.setArchived(detail.summary.id, false) }
+        case .trashed:
+            banner("À la corbeille : supprimé définitivement par le serveur après 30 jours.", symbol: "trash",
+                   action: "Restaurer") { await model.restore(detail.summary.id) }
+        }
+    }
+
+    private func banner(_ text: String, symbol: String, action: String,
+                        perform: @escaping () async -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: symbol).foregroundStyle(.secondary)
+            Text(text).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            if model.canEdit {
+                Button(action) { Task { await perform() } }
+                    .disabled(model.editorBusy)
+            }
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var metadata: some View {

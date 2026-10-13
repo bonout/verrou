@@ -684,6 +684,44 @@ final class AppModel {
         toast = Toast(message: "Enregistré depuis Brave", detail: title.isEmpty ? nil : title)
     }
 
+    // MARK: Rangement
+
+    func setFavorite(_ itemID: String, _ favorite: Bool) async {
+        await perform(favorite ? "Ajouté aux favoris" : "Retiré des favoris", select: itemID) {
+            try await self.session.setFavorite(id: itemID, favorite: favorite)
+        }
+    }
+
+    /// Archiver : l'élément quitte la liste, la recherche et le remplissage,
+    /// sans être supprimé.
+    func setArchived(_ itemID: String, _ archived: Bool) async {
+        await perform(archived ? "Archivé" : "Sorti des archives",
+                      detail: archived ? "Retrouvez-le dans Archives" : nil,
+                      select: archived ? nil : itemID) {
+            try await self.session.setArchived(id: itemID, archived: archived)
+        }
+    }
+
+    func restore(_ itemID: String) async {
+        await perform("Restauré", select: itemID) {
+            try await self.session.restoreItem(id: itemID)
+        }
+    }
+
+    private func perform(_ done: String, detail: String? = nil, select: String?,
+                         _ action: @escaping () async throws -> Void) async {
+        guard canEdit, !editorBusy else { return }
+        editorBusy = true
+        defer { editorBusy = false }
+        do {
+            try await action()
+            afterWrite(select: select)
+            toast = Toast(message: done, detail: detail)
+        } catch {
+            toast = Toast(message: "Action impossible", detail: Self.describe(error), failure: true)
+        }
+    }
+
     /// Le serveur a répondu et le coffre a été resynchronisé : on recharge.
     private func afterWrite(select id: String?) {
         guard lockState == .unlocked else { return }
@@ -839,10 +877,22 @@ struct Toast: Equatable, Identifiable {
     var failure = false
 }
 
-/// Verrouillage automatique : inactivité, mise en veille, écran verrouillé.
+/// Verrouillage automatique : inactivité (`autoLockMinutes`, 0 : jamais),
+/// mise en veille et écran verrouillé (`lockOnSleep`).
 @MainActor
 final class AutoLock {
-    private let timeout: TimeInterval = 10 * 60
+    static let minutesKey = "autoLockMinutes"
+    static let sleepKey = "lockOnSleep"
+    static var minutes: Int {
+        UserDefaults.standard.object(forKey: minutesKey) as? Int ?? 10
+    }
+    static var lockOnSleep: Bool {
+        UserDefaults.standard.object(forKey: sleepKey) as? Bool ?? true
+    }
+
+    private var timeout: TimeInterval? {
+        Self.minutes > 0 ? TimeInterval(Self.minutes * 60) : nil
+    }
     private var lastActivity = Date()
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
@@ -856,20 +906,20 @@ final class AutoLock {
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.onLock() }
+                MainActor.assumeIsolated { if AutoLock.lockOnSleep { self?.onLock() } }
             })
         }
         observers.append(DistributedNotificationCenter.default().addObserver(
             forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.onLock() }
+            MainActor.assumeIsolated { if AutoLock.lockOnSleep { self?.onLock() } }
         })
     }
 
     func touch() { lastActivity = Date() }
 
     private func check() {
-        if Date().timeIntervalSince(lastActivity) > timeout { onLock() }
+        if let timeout, Date().timeIntervalSince(lastActivity) > timeout { onLock() }
     }
 
     deinit {

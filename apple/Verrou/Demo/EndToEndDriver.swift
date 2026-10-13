@@ -106,7 +106,8 @@ final class EndToEndDriver {
             await model.answerTwoFactor(.authenticator, token: Self.totp(config.totpSecret, at: now + offset))
         }
         check(model.lockState == .unlocked, "coffre ouvert après le second facteur")
-        check(model.summaries.count == 9, "9 éléments déchiffrés (\(model.summaries.count))")
+        check(model.counts?.all == 9 && model.counts?.trashed == 1,
+              "9 éléments déchiffrés, 1 à la corbeille (\(model.counts?.all ?? 0), \(model.counts?.trashed ?? 0))")
         check(model.counts?.folders.map(\.name).sorted() == ["Personnel", "Travail"], "dossiers déchiffrés")
         check(model.biometricEnrolled == Biometrics.isAvailable, "Touch ID enrôlé si disponible")
 
@@ -158,8 +159,25 @@ final class EndToEndDriver {
             check(model.reveal("password", of: created.id) == "nouveau-mot-de-passe"
                   && model.summaries.contains { $0.title == "Modifié par Verrou" }, "modification enregistrée")
             await model.trash(created.id)
-            check(!model.summaries.contains { $0.id == created.id } && model.summaries.count == 9,
-                  "mis à la corbeille")
+            let state = { [model] in model.summaries.first { $0.id == created.id }?.state }
+            check(state() == .trashed && model.counts?.all == 9, "mis à la corbeille")
+            model.filter = .trash
+            check(model.rows.contains { $0.id == created.id }, "visible dans la corbeille")
+            await model.restore(created.id)
+            check(state() == .active, "restauré")
+            // Vaultwarden refuse une modification datée de la même seconde.
+            try? await Task.sleep(for: .seconds(1.5))
+            await model.setArchived(created.id, true)
+            model.filter = .all
+            check(state() == .archived && !model.rows.contains { $0.id == created.id }, "archivé, hors de la liste")
+            await model.setArchived(created.id, false)
+            try? await Task.sleep(for: .seconds(1.5))
+            await model.setFavorite(created.id, true)
+            check(state() == .active && model.summaries.first { $0.id == created.id }?.favorite == true,
+                  "sorti des archives, mis en favori")
+            check(model.selectedDetail?.fields.contains { $0.id.hasPrefix("history-") } ?? false
+                  || model.selection != created.id, "historique des mots de passe")
+            await model.trash(created.id)
         }
 
         // Pont vers Brave, sur un port de test : écoute TCP et écriture des
@@ -180,7 +198,7 @@ final class EndToEndDriver {
         await model.unlock(masterPassword: "faux")
         check(model.unlockError == "Mot de passe principal incorrect.", "mauvais mot de passe au déverrouillage")
         await model.unlock(masterPassword: config.password)
-        check(model.lockState == .unlocked && model.summaries.count == 9, "déverrouillage hors ligne par mot de passe")
+        check(model.lockState == .unlocked && model.counts?.all == 9, "déverrouillage hors ligne par mot de passe")
 
         model.logout()
         check(model.needsLogin && !model.biometricEnrolled && model.account == nil, "déconnexion")
