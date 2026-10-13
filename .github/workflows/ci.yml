@@ -56,5 +56,5 @@ jobs:
       - name: Compiler l'app
         run: |
           xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Debug \
-            -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode.noindex \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
