@@ -26,7 +26,9 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
 - **App macOS** (SwiftUI) : barre latérale (catégories,
   dossiers, étiquettes), liste avec surlignage, fiche détaillée (copie au clic,
   mot de passe coloré, codes TOTP avec compte à rebours, cartes, identités,
-  notes, clés SSH), **accès rapide ⌘⇧Espace** depuis n'importe quelle app.
+  notes, clés SSH), **accès rapide ⌘⇧Espace** depuis n'importe quelle app,
+  **icônes des sites** servies par le Vaultwarden du compte, **cadenas dans
+  la barre des menus** et ouverture à l'ouverture de session (Réglages).
 - **Presse-papiers prudent** : les secrets copiés sont marqués « dissimulés » (les
   historiques de presse-papiers les ignorent) et effacés après 90 s.
 - **Verrouillage automatique** : 10 min d'inactivité, mise en veille, écran

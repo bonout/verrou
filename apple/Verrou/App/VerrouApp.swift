@@ -1,8 +1,10 @@
+import ServiceManagement
 import SwiftUI
 
 @main
 struct VerrouApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
+    @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
 
     var body: some Scene {
         Window("Verrou", id: "main") {
@@ -35,6 +37,87 @@ struct VerrouApp: App {
             SettingsView()
                 .environment(delegate.model)
         }
+
+        MenuBarExtra(isInserted: $showMenuBarExtra) {
+            MenuBarMenu(quickAccess: { delegate.quickAccess?.show() })
+                .environment(delegate.model)
+        } label: {
+            MenuBarIcon()
+                .environment(delegate.model)
+        }
+    }
+}
+
+/// Icône de la barre des menus : cadenas fermé ou ouvert, selon le coffre.
+struct MenuBarIcon: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Image(systemName: model.lockState == .unlocked ? "lock.open.fill" : "lock.fill")
+            .accessibilityLabel(model.lockState == .unlocked ? "Verrou, déverrouillé" : "Verrou, verrouillé")
+    }
+}
+
+struct MenuBarMenu: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    let quickAccess: () -> Void
+
+    var body: some View {
+        Text(status)
+        Divider()
+        Button("Accès rapide", action: quickAccess)
+            .keyboardShortcut(.space, modifiers: [.command, .shift])
+        Button("Ouvrir Verrou", action: showMainWindow)
+        Divider()
+        if model.lockState == .unlocked {
+            if model.mode == .vaultwarden {
+                Button("Synchroniser") { Task { await model.syncNow() } }
+            }
+            Button("Verrouiller") { model.lock() }
+        } else {
+            // La fenêtre principale demande Touch ID d'elle-même.
+            Button("Déverrouiller…", action: showMainWindow)
+        }
+        Divider()
+        SettingsLink { Text("Réglages…") }
+        Button("Quitter Verrou") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
+    }
+
+    private var status: String {
+        switch model.lockState {
+        case .unlocked: model.account.map { "Déverrouillé · \($0.email)" } ?? "Déverrouillé"
+        case .unlocking: "Déverrouillage…"
+        case .locked: model.needsLogin ? "Non connecté" : "Verrouillé"
+        }
+    }
+
+    private func showMainWindow() {
+        openWindow(id: "main")
+        NSApp.activate()
+    }
+}
+
+/// Ouverture de Verrou à l'ouverture de session (élément de connexion).
+enum LaunchAtLogin {
+    static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
+    /// macOS attend l'accord de l'utilisateur dans Réglages Système.
+    static var needsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
+
+    static func set(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
+        }
+    }
+
+    /// Lancé par macOS à l'ouverture de session (et non par l'utilisateur).
+    static var launchedAtLogin: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
+        return event.eventID == kAEOpenApplication
+            && event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem
     }
 }
 
@@ -69,8 +152,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var endToEnd: EndToEndDriver?
     #endif
 
+    /// À relire avant la fin du lancement : l'événement d'ouverture n'est
+    /// plus « courant » ensuite.
+    private var launchedAtLogin = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        launchedAtLogin = LaunchAtLogin.launchedAtLogin
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         quickAccess = QuickAccessController(model: model)
+        if launchedAtLogin {
+            // Ouverture de session : Verrou attend discrètement, dans la barre
+            // des menus et derrière ⌘⇧Espace, sans fenêtre ni Touch ID.
+            DispatchQueue.main.async {
+                NSApp.windows.filter { $0.identifier?.rawValue == "main" }.forEach { $0.close() }
+            }
+        }
         if ProcessInfo.processInfo.environment["VERROU_DEMO"] == "1", let quickAccess {
             demo = DemoDriver(model: model, quickAccess: quickAccess)
             demo?.start()
