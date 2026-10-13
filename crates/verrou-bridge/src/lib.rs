@@ -19,7 +19,7 @@ pub mod protocol;
 mod server;
 
 pub use clients::ClientInfo;
-pub use server::{Backend, Bridge, PairingRequest};
+pub use server::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan};
 
 /// Port d'écoute de Verrou. `VERROU_BRIDGE_PORT` le remplace (tests).
 pub const DEFAULT_PORT: u16 = 41_738;

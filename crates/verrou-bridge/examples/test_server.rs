@@ -8,16 +8,20 @@
 //! pour que le test le compare à celui de l'extension.
 
 use std::io::Write as _;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use verrou_bridge::protocol::{Credentials, Suggestion};
-use verrou_bridge::{Backend, Bridge, PairingRequest, access};
+use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
+use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan, access};
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 static BRIDGE: OnceLock<Mutex<Option<Bridge>>> = OnceLock::new();
 
-struct Fake(Vault);
+struct Fake {
+    vault: Mutex<Vault>,
+    created: AtomicU32,
+}
 
 impl Backend for Fake {
     fn is_unlocked(&self) -> bool {
@@ -25,7 +29,7 @@ impl Backend for Fake {
     }
 
     fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>> {
-        Some(access::suggestions(&self.0, page_url))
+        Some(access::suggestions(&self.vault.lock().unwrap(), page_url))
     }
 
     fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>> {
@@ -33,7 +37,42 @@ impl Backend for Fake {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        Some(access::credentials(&self.0, item, page_url, now))
+        Some(access::credentials(
+            &self.vault.lock().unwrap(),
+            item,
+            page_url,
+            now,
+        ))
+    }
+
+    fn check_save(
+        &self,
+        page_url: &str,
+        username: &str,
+        password: &str,
+        current: Option<&str>,
+    ) -> Option<Result<(SaveAction, Option<Suggestion>), String>> {
+        Some(access::check_save(
+            &self.vault.lock().unwrap(),
+            page_url,
+            username,
+            password,
+            current,
+        ))
+    }
+
+    /// Écrit dans le faux coffre et l'annonce (`SAVED <élément>`).
+    fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
+        let mut vault = self.vault.lock().unwrap();
+        let outcome = plan(&vault).map(|write| {
+            let n = self.created.fetch_add(1, Ordering::SeqCst);
+            let (updated, id) = access::apply_in_memory(&vault, write, &format!("nouveau-{n}"));
+            *vault = updated;
+            println!("SAVED {id}");
+            let _ = std::io::stdout().flush();
+            id
+        });
+        Box::pin(async move { Some(outcome) })
     }
 
     fn request_unlock(&self) {
@@ -98,8 +137,15 @@ fn main() {
         ),
     ]);
     let file = std::env::temp_dir().join(format!("verrou-bridge-test-{}.json", std::process::id()));
-    let bridge =
-        Bridge::start(verrou_bridge::port_from_env(), file, Arc::new(Fake(vault))).unwrap();
+    let bridge = Bridge::start(
+        verrou_bridge::port_from_env(),
+        file,
+        Arc::new(Fake {
+            vault: Mutex::new(vault),
+            created: AtomicU32::new(0),
+        }),
+    )
+    .unwrap();
     println!("PORT {}", bridge.port());
     let _ = std::io::stdout().flush();
     BRIDGE.get_or_init(|| Mutex::new(Some(bridge)));

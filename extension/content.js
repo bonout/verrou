@@ -1,9 +1,12 @@
 // Dans chaque page (et chaque cadre) : repère les champs de connexion et
-// propose, sous le champ, les identifiants de Verrou pour ce site.
+// propose, sous le champ, les identifiants de Verrou pour ce site ; sur un
+// champ « nouveau mot de passe », un mot de passe fort ; après l'envoi d'un
+// formulaire, d'enregistrer l'identifiant dans Verrou.
 //
-// Le menu vit dans un shadow DOM fermé : la page ne peut ni le lire ni le
-// modifier, et seuls les clics réels (`isTrusted`) le déclenchent. Les
-// secrets n'arrivent qu'au moment du remplissage, pour l'élément choisi.
+// Le menu et le bandeau vivent dans un shadow DOM fermé : la page ne peut ni
+// les lire ni les modifier, et seuls les clics réels (`isTrusted`) les
+// déclenchent. Les secrets n'arrivent qu'au moment du remplissage, pour
+// l'élément choisi.
 
 (() => {
   if (globalThis.__verrouContent) return;
@@ -11,6 +14,9 @@
 
   const USERNAME_HINT = /user|login|e-?mail|identifiant|courriel|account|compte|pseudo|nom d.utilisateur/i;
   const OTP_HINT = /otp|totp|2fa|mfa|one.?time|verification|vérification|authenticat|security.?code|code/i;
+  const NEW_HINT = /new|nouveau|nouvelle|confirm|repeat|retype|again|verify|vérif|register|sign.?up|inscri|créer|create/i;
+  const CURRENT_HINT = /current|old|actuel|ancien|existing/i;
+  const SIGNUP_FORM_HINT = /register|sign.?up|inscri|create.?account|créer.?(un|votre).?compte|join/i;
   const TEXT_TYPES = new Set(["text", "email", "tel", ""]);
 
   // MARK: Champs
@@ -34,30 +40,64 @@
     return [...scope.querySelectorAll("input")].filter(usable);
   }
 
+  const typeOf = (input) => (input.getAttribute("type") ?? "text").toLowerCase();
+  const isText = (input) => TEXT_TYPES.has(typeOf(input));
+
   function hintOf(input) {
     return [input.name, input.id, input.placeholder, input.getAttribute("aria-label"),
       input.labels?.[0]?.textContent].filter(Boolean).join(" ");
   }
 
-  const isLoginPassword = (input) =>
-    input.type === "password" && !/new-password/i.test(input.autocomplete);
+  function formHint(scope) {
+    if (scope === document) return "";
+    const buttons = [...scope.querySelectorAll("button, input[type=submit]")]
+      .map((b) => b.textContent || b.value).join(" ");
+    return [scope.id, scope.getAttribute("name"), scope.getAttribute("action"), buttons].filter(Boolean).join(" ");
+  }
 
-  // « username », « password », « otp » ou null.
+  // Rôle de chaque champ mot de passe du formulaire : « current » (connexion,
+  // ancien mot de passe) ou « new » (inscription, changement, confirmation).
+  // `all` : aussi les champs masqués (le formulaire part, la page change).
+  function passwordRoles(scope, all = false) {
+    const fields = [...scope.querySelectorAll("input")]
+      .filter((i) => typeOf(i) === "password" && (all ? !i.disabled : usable(i)));
+    const roles = new Map();
+    fields.forEach((input, index) => {
+      const autocomplete = (input.autocomplete || "").toLowerCase();
+      const hint = hintOf(input);
+      let role;
+      if (autocomplete.includes("new-password")) role = "new";
+      else if (autocomplete.includes("current-password")) role = "current";
+      else if (CURRENT_HINT.test(hint)) role = "current";
+      else if (NEW_HINT.test(hint)) role = "new";
+      // Un seul champ : connexion, sauf formulaire d'inscription.
+      else if (fields.length === 1) role = SIGNUP_FORM_HINT.test(formHint(scope)) ? "new" : "current";
+      // Deux : le mot de passe et sa confirmation. Trois : l'ancien, puis le nouveau deux fois.
+      else if (fields.length === 2) role = "new";
+      else role = index === 0 ? "current" : "new";
+      roles.set(input, role);
+    });
+    return roles;
+  }
+
+  const roleOf = (input) => passwordRoles(scopeOf(input)).get(input) ?? null;
+  const isLoginPassword = (input) => typeOf(input) === "password" && roleOf(input) === "current";
+
+  // « username », « password », « new », « otp » ou null.
   function classify(input) {
     if (!usable(input)) return null;
-    const type = (input.getAttribute("type") ?? "text").toLowerCase();
+    const type = typeOf(input);
     const autocomplete = (input.autocomplete || "").toLowerCase();
-    if (type === "password") return isLoginPassword(input) ? "password" : null;
-    if (!TEXT_TYPES.has(type)) return null;
+    if (type === "password") return roleOf(input) === "new" ? "new" : "password";
+    if (!isText(input)) return null;
     if (autocomplete.includes("one-time-code")) return "otp";
     if (/\b(username|email)\b/.test(autocomplete) && !autocomplete.includes("new")) return "username";
     const hint = hintOf(input);
     const inputs = inputsOf(scopeOf(input));
-    const password = inputs.find(isLoginPassword);
+    const password = inputs.find((i) => typeOf(i) === "password");
     if (password) {
       // Le champ texte qui précède le mot de passe est l'identifiant.
-      const before = inputs.slice(0, inputs.indexOf(password))
-        .filter((i) => TEXT_TYPES.has((i.getAttribute("type") ?? "text").toLowerCase()));
+      const before = inputs.slice(0, inputs.indexOf(password)).filter(isText);
       if (before.at(-1) === input || type === "email" || USERNAME_HINT.test(hint)) return "username";
       return null;
     }
@@ -78,10 +118,18 @@
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  // Remplit le formulaire de `anchor` (ou la page) avec `credentials`.
-  function apply(credentials, anchor) {
+  function withFilling(action) {
     filling = true;
     try {
+      action();
+    } finally {
+      setTimeout(() => { filling = false; }, 50);
+    }
+  }
+
+  // Remplit le formulaire de `anchor` (ou la page) avec `credentials`.
+  function apply(credentials, anchor) {
+    withFilling(() => {
       const inputs = inputsOf(anchor ? scopeOf(anchor) : document);
       if (anchor && classify(anchor) === "otp") {
         if (credentials.totp) setValue(anchor, credentials.totp);
@@ -96,9 +144,18 @@
         if (otp && credentials.totp) setValue(otp, credentials.totp);
       }
       (password ?? username)?.focus({ preventScroll: true });
-    } finally {
-      setTimeout(() => { filling = false; }, 50);
-    }
+    });
+  }
+
+  // Le mot de passe généré dans tous les champs « nouveau » du formulaire
+  // (le mot de passe et sa confirmation).
+  function applyGenerated(password, anchor) {
+    withFilling(() => {
+      for (const [input, role] of passwordRoles(scopeOf(anchor))) {
+        if (role === "new") setValue(input, password);
+      }
+      anchor.focus({ preventScroll: true });
+    });
   }
 
   // MARK: Messages vers le service worker
@@ -111,16 +168,17 @@
     }
   }
 
-  // MARK: Menu
+  // MARK: Style commun
 
   const STYLE = `
     :host { all: initial; position: absolute; z-index: 2147483647; }
-    .menu {
+    .menu, .banner {
       font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: #1d1d1f; background: rgba(255,255,255,.98);
       border: 1px solid rgba(0,0,0,.12); border-radius: 10px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.18); overflow: hidden; min-width: 260px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.18); overflow: hidden;
     }
+    .menu { min-width: 260px; }
     .row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: default; }
     .row.selected { background: #5b5bd6; color: #fff; }
     .row.selected .sub { color: rgba(255,255,255,.8); }
@@ -132,13 +190,57 @@
     .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .title { font-weight: 600; }
     .sub { color: #6e6e73; font-size: 12px; }
+    .sub.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .footer { padding: 5px 10px; font-size: 11px; color: #8e8e93; border-top: 1px solid rgba(0,0,0,.08); }
+    .banner { width: 340px; padding: 12px 14px; }
+    .banner .title { white-space: normal; }
+    .head { display: flex; gap: 10px; align-items: center; }
+    .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
+    button {
+      font: inherit; border: 0; border-radius: 7px; padding: 6px 11px; cursor: default;
+      background: rgba(0,0,0,.06); color: inherit;
+    }
+    button.primary { background: #5b5bd6; color: #fff; font-weight: 600; }
+    button.quiet { background: none; color: #8e8e93; padding: 6px 4px; margin-right: auto; }
     @media (prefers-color-scheme: dark) {
-      .menu { color: #f5f5f7; background: rgba(40,40,44,.98); border-color: rgba(255,255,255,.14); }
+      .menu, .banner { color: #f5f5f7; background: rgba(40,40,44,.98); border-color: rgba(255,255,255,.14); }
       .sub, .footer { color: #a1a1a6; }
       .footer { border-color: rgba(255,255,255,.1); }
+      button { background: rgba(255,255,255,.1); }
+      button.quiet { background: none; color: #a1a1a6; }
     }
   `;
+
+  function shadowHost(tag) {
+    const host = document.createElement(tag);
+    const root = host.attachShadow({ mode: "closed" });
+    const style = document.createElement("style");
+    style.textContent = STYLE;
+    root.append(style);
+    return { host, root };
+  }
+
+  function div(className, text) {
+    const node = document.createElement("div");
+    node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  // Un bouton qui n'obéit qu'aux vrais clics.
+  function trustedButton(label, className, action) {
+    const button = document.createElement("button");
+    button.className = className;
+    button.textContent = label;
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.isTrusted) action();
+    });
+    return button;
+  }
+
+  // MARK: Menu sous le champ
 
   const menu = {
     host: null,
@@ -151,11 +253,7 @@
 
     ensure() {
       if (this.host) return;
-      this.host = document.createElement("verrou-menu");
-      this.root = this.host.attachShadow({ mode: "closed" });
-      const style = document.createElement("style");
-      style.textContent = STYLE;
-      this.root.append(style);
+      ({ host: this.host, root: this.root } = shadowHost("verrou-menu"));
     },
 
     get open() {
@@ -175,26 +273,14 @@
 
     render() {
       this.root.querySelector(".menu")?.remove();
-      const box = document.createElement("div");
-      box.className = "menu";
+      const box = div("menu");
       box.setAttribute("role", "listbox");
       this.rows.forEach((row, index) => {
-        const line = document.createElement("div");
-        line.className = `row${index === this.selected ? " selected" : ""}`;
+        const line = div(`row${index === this.selected ? " selected" : ""}`);
         line.setAttribute("role", "option");
-        const badge = document.createElement("div");
-        badge.className = "badge";
-        badge.textContent = row.badge;
-        const text = document.createElement("div");
-        text.className = "text";
-        const title = document.createElement("div");
-        title.className = "title";
-        title.textContent = row.title;
-        const sub = document.createElement("div");
-        sub.className = "sub";
-        sub.textContent = row.subtitle ?? "";
-        text.append(title, sub);
-        line.append(badge, text);
+        const text = div("text");
+        text.append(div("title", row.title), div(`sub${row.mono ? " mono" : ""}`, row.subtitle ?? ""));
+        line.append(div("badge", row.badge), text);
         // mousedown : garder le curseur dans le champ de la page.
         line.addEventListener("mousedown", (event) => {
           event.preventDefault();
@@ -208,10 +294,7 @@
         });
         box.append(line);
       });
-      const footer = document.createElement("div");
-      footer.className = "footer";
-      footer.textContent = "Verrou";
-      box.append(footer);
+      box.append(div("footer", "Verrou"));
       this.root.append(box);
     },
 
@@ -240,6 +323,11 @@
       const row = this.rows[index];
       const anchor = this.anchor;
       if (!row || !anchor) return;
+      if (row.action === "generate") {
+        this.hide();
+        applyGenerated(row.password, anchor);
+        return;
+      }
       if (row.action === "unlock") {
         await send({ kind: "unlock" });
         this.rows = [{ badge: "…", title: "Déverrouillez Verrou", subtitle: "Touch ID ou mot de passe principal" }];
@@ -288,9 +376,20 @@
       }));
   }
 
+  function generatorRow() {
+    const password = globalThis.verrouGenerator.password();
+    return { action: "generate", badge: "✦", title: "Utiliser un mot de passe fort", subtitle: password, mono: true, password };
+  }
+
   async function offer(input) {
     const kind = classify(input);
     if (!kind) return;
+    if (kind === "new") {
+      // Proposé même coffre verrouillé : rien ne sort de Verrou. Seulement
+      // sur un champ vide, pour ne pas écraser ce que l'utilisateur tape.
+      if (!input.value) menu.show(input, kind, [generatorRow()]);
+      return;
+    }
     const reply = await send({ kind: "suggest" });
     if (document.activeElement !== input) return;
     // Verrouillé : on ne le signale que sur un vrai formulaire de connexion.
@@ -298,6 +397,160 @@
     const rows = rowsFor(reply, kind);
     if (rows.length) menu.show(input, kind, rows);
     else menu.hide();
+  }
+
+  // MARK: Enregistrement après l'envoi d'un formulaire
+
+  let lastCapture = { key: "", at: 0 };
+
+  // Identifiant et mot de passe du formulaire, au moment où il part.
+  function capture(scope) {
+    const roles = passwordRoles(scope, true);
+    const inputs = [...scope.querySelectorAll("input")].filter((i) => !i.disabled);
+    if (!roles.size) {
+      // Première étape d'une connexion : l'identifiant seul, gardé pour l'étape suivante.
+      const username = inputs.find((i) => classify(i) === "username");
+      if (username?.value.trim()) send({ kind: "rememberUsername", username: username.value.trim() });
+      return;
+    }
+    const filled = [...roles].filter(([input]) => input.value);
+    const fresh = filled.filter(([, role]) => role === "new").map(([input]) => input.value);
+    const current = filled.find(([, role]) => role === "current")?.[0].value ?? null;
+    // Confirmation différente du mot de passe : le site va refuser.
+    if (new Set(fresh).size > 1) return;
+    const password = fresh[0] ?? current;
+    if (!password) return;
+    const firstPassword = [...roles.keys()][0];
+    const texts = inputs.filter(isText);
+    const before = texts.filter((i) => i.compareDocumentPosition(firstPassword) & Node.DOCUMENT_POSITION_FOLLOWING);
+    const username = (texts.find((i) => classify(i) === "username") ?? before.at(-1))?.value.trim() ?? "";
+    const key = `${username}\n${password}`;
+    if (key === lastCapture.key && Date.now() - lastCapture.at < 3000) return;
+    lastCapture = { key, at: Date.now() };
+    send({ kind: "capture", username, password, current: fresh.length ? current : null });
+  }
+
+  function captureFrom(target) {
+    if (!(target instanceof Element)) return;
+    const scope = target.closest("form") ?? document;
+    // Formulaire sans <form> : seulement s'il y a un mot de passe sur la page.
+    if (scope === document && !document.querySelector("input[type=password]")) return;
+    capture(scope);
+  }
+
+  document.addEventListener("submit", (event) => captureFrom(event.target), true);
+
+  document.addEventListener("click", (event) => {
+    if (!event.isTrusted) return;
+    const target = event.composedPath()[0];
+    const button = target instanceof Element
+      ? target.closest("button, input[type=submit], input[type=button], [role=button]")
+      : null;
+    if (button) captureFrom(button);
+  }, true);
+
+  // MARK: Bandeau « Enregistrer dans Verrou » (cadre principal)
+
+  const banner = {
+    host: null,
+    root: null,
+    timer: null,
+
+    show(...nodes) {
+      if (!this.host) {
+        ({ host: this.host, root: this.root } = shadowHost("verrou-banner"));
+        Object.assign(this.host.style, { position: "fixed", top: "12px", right: "12px" });
+      }
+      clearTimeout(this.timer);
+      this.root.querySelector(".banner")?.remove();
+      const box = div("banner");
+      box.append(...nodes);
+      this.root.append(box);
+      if (!this.host.isConnected) document.documentElement.append(this.host);
+    },
+
+    hide(after = 0) {
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.host?.remove(), after);
+    },
+  };
+
+  function bannerHead(title, subtitle) {
+    const head = div("head");
+    const text = div("text");
+    text.append(div("title", title), div("sub", subtitle));
+    head.append(div("badge", "V"), text);
+    return head;
+  }
+
+  function actions(...buttons) {
+    const row = div("actions");
+    row.append(...buttons);
+    return row;
+  }
+
+  function notify(message, detail = "Verrou") {
+    banner.show(bannerHead(message, detail));
+    banner.hide(2500);
+  }
+
+  async function dismiss() {
+    await send({ kind: "dismissSave" });
+    banner.hide();
+  }
+
+  async function showOffer() {
+    if (window !== top) return;
+    const offer = await send({ kind: "pendingSave" });
+    if (!offer?.action) return;
+    const who = `${offer.username || "sans identifiant"} · ${offer.site}`;
+    if (offer.action === "locked") {
+      banner.show(
+        bannerHead("Enregistrer dans Verrou ?", who),
+        actions(
+          trustedButton("Pas maintenant", "", dismiss),
+          trustedButton("Déverrouiller", "primary", async () => {
+            await send({ kind: "unlock" });
+            banner.show(bannerHead("Déverrouillez Verrou…", "Touch ID ou mot de passe principal"));
+            waitThenOffer();
+          }),
+        ),
+      );
+      return;
+    }
+    const update = offer.action === "update";
+    banner.show(
+      bannerHead(update ? `Mettre à jour le mot de passe de « ${offer.title} » ?` : "Enregistrer dans Verrou ?", who),
+      actions(
+        trustedButton("Jamais pour ce site", "quiet", async () => {
+          await send({ kind: "neverSave" });
+          banner.hide();
+        }),
+        trustedButton("Pas maintenant", "", dismiss),
+        trustedButton(update ? "Mettre à jour" : "Enregistrer", "primary", async () => {
+          banner.show(bannerHead("Enregistrement…", offer.site));
+          const result = await send({ kind: "confirmSave" });
+          if (result?.ok) notify(update ? "Mot de passe mis à jour" : "Enregistré dans Verrou");
+          else notify("Enregistrement impossible", result?.reason ?? "Verrou ne répond pas");
+        }),
+      ),
+    );
+  }
+
+  // Après « Déverrouiller » : la vraie proposition dès que Verrou est ouvert.
+  function waitThenOffer() {
+    let tries = 0;
+    const poll = setInterval(async () => {
+      tries += 1;
+      const offer = await send({ kind: "pendingSave" });
+      if (!offer?.action || tries > 90) {
+        clearInterval(poll);
+        banner.hide();
+      } else if (offer.action !== "locked") {
+        clearInterval(poll);
+        showOffer();
+      }
+    }, 1000);
   }
 
   // MARK: Écouteurs
@@ -314,6 +567,11 @@
     }, 120);
   }, true);
 
+  document.addEventListener("input", (event) => {
+    // On tape soi-même son nouveau mot de passe : le générateur s'efface.
+    if (event.isTrusted && menu.open && menu.kind === "new" && event.target === menu.anchor) menu.hide();
+  }, true);
+
   document.addEventListener("mousedown", (event) => {
     // Clic sur le champ déjà actif après « Échap » : on rouvre.
     const target = event.composedPath()[0];
@@ -322,27 +580,40 @@
   }, true);
 
   document.addEventListener("keydown", (event) => {
-    if (!menu.open || event.target !== menu.anchor) return;
-    const keys = {
-      ArrowDown: () => menu.move(1),
-      ArrowUp: () => menu.move(-1),
-      Enter: () => menu.choose(menu.selected),
-      Escape: () => menu.hide(),
-    };
-    const action = keys[event.key];
-    if (!action) return;
-    event.preventDefault();
-    event.stopPropagation();
-    action();
+    if (menu.open && event.target === menu.anchor) {
+      const keys = {
+        ArrowDown: () => menu.move(1),
+        ArrowUp: () => menu.move(-1),
+        Enter: () => menu.choose(menu.selected),
+        Escape: () => menu.hide(),
+      };
+      const action = keys[event.key];
+      if (!action) return;
+      event.preventDefault();
+      event.stopPropagation();
+      action();
+      return;
+    }
+    // Envoi au clavier : certains formulaires partent sans « submit ».
+    if (event.isTrusted && event.key === "Enter" && event.target instanceof HTMLInputElement) {
+      captureFrom(event.target);
+    }
   }, true);
 
   addEventListener("scroll", () => menu.place(), true);
   addEventListener("resize", () => menu.place());
 
-  // Remplissage demandé depuis la fenêtre de l'extension (cadre principal).
   chrome.runtime.onMessage.addListener((message) => {
-    if (message?.kind !== "apply" || window !== top) return;
-    const active = document.activeElement;
-    apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null);
+    if (window !== top) return;
+    // Remplissage demandé depuis la fenêtre de l'extension (cadre principal).
+    if (message?.kind === "apply") {
+      const active = document.activeElement;
+      apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null);
+    }
+    // Formulaire envoyé sans changer de page (application monopage).
+    if (message?.kind === "offerSave") showOffer();
   });
+
+  // Page suivante d'un formulaire envoyé : une proposition attend peut-être.
+  showOffer();
 })();

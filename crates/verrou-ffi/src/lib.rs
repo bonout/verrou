@@ -18,8 +18,9 @@
 use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use verrou_bridge::protocol::{Credentials, Suggestion};
-use verrou_bridge::{Backend, Bridge, PairingRequest};
+use verrou_bridge::access::Write;
+use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
+use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
@@ -510,6 +511,49 @@ impl VaultSession {
         }
     }
 
+    /// Écriture venue de l'extension, déjà vérifiée par
+    /// `verrou_bridge::access` : sur le serveur, puis dans le coffre affiché.
+    async fn perform_write(
+        &self,
+        connection: &Arc<tokio::sync::Mutex<Connection>>,
+        write: Write,
+    ) -> Result<String, VerrouError> {
+        let mut open = connection.lock().await;
+        let (id, decrypted) = match write {
+            Write::Create {
+                title,
+                uri,
+                username,
+                password,
+                totp,
+            } => {
+                open.create(Draft {
+                    name: title,
+                    login: Some(LoginDraft {
+                        username,
+                        password,
+                        totp,
+                        uris: vec![uri],
+                    }),
+                    ..Draft::default()
+                })
+                .await?
+            }
+            Write::Update {
+                item,
+                username,
+                password,
+                totp,
+            } => {
+                let decrypted = open.amend_login(&item, username, password, totp).await?;
+                (item, decrypted)
+            }
+        };
+        drop(open);
+        self.install_if_current(connection, decrypted)?;
+        Ok(id)
+    }
+
     fn pending(&self) -> Result<PendingLogin, VerrouError> {
         self.pending
             .lock()
@@ -905,6 +949,9 @@ pub trait BridgeDelegate: Send + Sync {
     /// `answer_bridge_pairing(id, …)`.
     fn pairing_requested(&self, id: String, name: String, code: String);
     fn unlock_requested(&self);
+    /// L'extension a enregistré un identifiant (ou un code) : le coffre a
+    /// été resynchronisé, l'app recharge sa liste. `title` : pour le signaler.
+    fn vault_changed(&self, item: String, title: String);
 }
 
 /// Une extension appairée.
@@ -943,6 +990,50 @@ impl Backend for SessionBackend {
         session
             .with_vault(|v| Ok(verrou_bridge::access::credentials(v, item, page_url, now)))
             .ok()
+    }
+
+    fn check_save(
+        &self,
+        page_url: &str,
+        username: &str,
+        password: &str,
+        current: Option<&str>,
+    ) -> Option<Result<(SaveAction, Option<Suggestion>), String>> {
+        let session = self.session.upgrade()?;
+        session
+            .with_vault(|v| {
+                Ok(verrou_bridge::access::check_save(
+                    v, page_url, username, password, current,
+                ))
+            })
+            .ok()
+    }
+
+    fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
+        Box::pin(async move {
+            let session = self.session.upgrade()?;
+            let write = match session.with_vault(|v| Ok(plan(v))).ok()? {
+                Ok(write) => write,
+                Err(reason) => return Some(Err(reason)),
+            };
+            let Some(connection) = session.current_connection() else {
+                // Coffre fictif : rien à écrire.
+                return Some(Err("coffre en lecture seule".to_owned()));
+            };
+            match session.perform_write(&connection, write).await {
+                Ok(id) => {
+                    let title = session
+                        .with_vault(|v| Ok(v.get(&id).map(|i| i.title.clone())))
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default();
+                    self.delegate.vault_changed(id.clone(), title);
+                    Some(Ok(id))
+                }
+                Err(VerrouError::Locked) => None,
+                Err(error) => Some(Err(error.to_string())),
+            }
+        })
     }
 
     fn request_unlock(&self) {

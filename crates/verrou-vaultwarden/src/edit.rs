@@ -82,6 +82,35 @@ impl Connection {
         self.sync_with(&access).await
     }
 
+    /// Remplace, dans un identifiant existant, ce qui est fourni : le mot de
+    /// passe (l'ancien rejoint l'historique), la graine TOTP, et l'identifiant
+    /// seulement s'il n'y en a pas. Le reste de l'élément repart intact.
+    /// C'est l'écriture de l'extension de navigateur.
+    pub async fn amend_login(
+        &mut self,
+        id: &str,
+        username: Option<String>,
+        password: Option<SecretString>,
+        totp: Option<SecretString>,
+    ) -> Result<Decrypted, Error> {
+        let mut draft = self.draft(id).await?;
+        let Some(login) = draft.login.as_mut() else {
+            return Err(Error::Invalid(
+                "cet élément n'est pas un identifiant".to_owned(),
+            ));
+        };
+        if login.username.as_deref().is_none_or(str::is_empty) && username.is_some() {
+            login.username = username;
+        }
+        if password.is_some() {
+            login.password = password;
+        }
+        if totp.is_some() {
+            login.totp = totp;
+        }
+        self.update(id, draft).await
+    }
+
     /// Corbeille du serveur : l'élément se restaure depuis le coffre web
     /// pendant 30 jours (réglage de Vaultwarden).
     pub async fn trash(&mut self, id: &str) -> Result<Decrypted, Error> {

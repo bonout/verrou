@@ -801,6 +801,8 @@ async fn create_edit_and_trash() {
     ));
     stale.sync().await.unwrap();
 
+    amend_like_the_extension(&mut connection, &seeder, &github_id).await;
+
     // Un autre type : seul le titre change, la carte reste entière.
     let visa = vault
         .items
@@ -815,6 +817,12 @@ async fn create_edit_and_trash() {
     let vault = connection.update(&visa, card_draft).await.unwrap();
     let card = vault.items.iter().find(|i| i.id == visa).unwrap();
     assert_eq!(card.title, "Visa Premier");
+    assert!(matches!(
+        connection
+            .amend_login(&visa, None, Some(SecretString::new("x")), None)
+            .await,
+        Err(Error::Invalid(_))
+    ));
     assert_eq!(
         card.field("number").unwrap().value.expose(),
         "4242 4242 4242 4242"
@@ -830,4 +838,51 @@ async fn create_edit_and_trash() {
     ));
 
     std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Ce que l'extension écrit : nouveau mot de passe et graine TOTP d'un
+/// identifiant existant ; son identifiant n'est pas remplacé.
+async fn amend_like_the_extension(
+    connection: &mut verrou_vaultwarden::Connection,
+    seeder: &Seeder,
+    github_id: &str,
+) {
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection
+        .amend_login(
+            github_id,
+            Some("autre".to_owned()),
+            Some(SecretString::new("depuis-brave")),
+            Some(SecretString::new(
+                "otpauth://totp/GitHub:camille?secret=GEZDGNBVGY3TQOJQ",
+            )),
+        )
+        .await
+        .unwrap();
+    let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
+    assert_eq!(
+        github.field("password").unwrap().value.expose(),
+        "depuis-brave"
+    );
+    assert_eq!(
+        github
+            .field_of_kind(verrou_core::FieldKind::Username)
+            .unwrap()
+            .value
+            .expose(),
+        "camille"
+    );
+    let stored = seeder.fetch(github_id).await;
+    assert_eq!(
+        stored.password_history.unwrap()[0].password,
+        "nouveau-mot-de-passe"
+    );
+    assert!(
+        stored
+            .login
+            .unwrap()
+            .totp
+            .unwrap()
+            .contains("GEZDGNBVGY3TQOJQ")
+    );
 }

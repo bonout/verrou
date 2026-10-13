@@ -104,9 +104,27 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   seulement vers `localhost`). L'adresse vient du navigateur (`sender.url`),
   jamais de la page. Coffre verrouillé : rien, sinon la demande de
   déverrouillage. Une extension appairée ne peut donc pas vider le coffre.
-- **Dans la page** : le menu vit dans un shadow DOM fermé et n'obéit qu'aux
-  événements réels (`isTrusted`) ; la page ne peut ni le lire ni le
-  déclencher. Les secrets n'arrivent qu'au remplissage, pour l'élément choisi.
+- **Ce que l'extension écrit** : après l'envoi d'un formulaire, l'identifiant
+  et le mot de passe saisis attendent la réponse de l'utilisateur deux minutes
+  au plus, dans `chrome.storage.session` (en mémoire, hors de portée des
+  pages). Rien n'est écrit sans un clic réel sur le bandeau. Verrou vérifie
+  de nouveau chaque écriture : un nouvel élément pour le site de la page, ou
+  le nouveau mot de passe (ou code de vérification) d'un identifiant qui
+  correspond à ce site, en HTTPS. L'ancien mot de passe rejoint l'historique
+  de l'élément. Une page piégée peut au pire proposer d'enregistrer ce
+  qu'elle veut pour son propre site, et l'utilisateur doit l'accepter.
+- **Générateur** : dans l'extension (`generator.js`), même règles que celui de
+  Verrou, hasard de `crypto.getRandomValues` sans biais. Il ne demande rien
+  à Verrou et fonctionne coffre verrouillé.
+- **QR code de double authentification** : sur un clic dans la fenêtre de
+  l'extension, une image de l'onglet visible (droit `activeTab`, valable
+  seulement après ce clic) est lue par le lecteur de codes-barres de Brave,
+  dans l'extension ; l'image n'est ni gardée ni envoyée. Seule l'URI
+  `otpauth://` part vers Verrou, pour l'identifiant choisi.
+- **Dans la page** : le menu et le bandeau vivent dans un shadow DOM fermé et
+  n'obéissent qu'aux événements réels (`isTrusted`) ; la page ne peut ni les
+  lire ni les déclencher. Les secrets n'arrivent qu'au remplissage, pour
+  l'élément choisi ; le bandeau d'enregistrement ne reçoit pas le mot de passe.
 - **Ce qui est sur le disque** : côté Verrou, `bridge-clients.json` (conteneur
   de l'app, mode 600) garde la clé de chaque extension appairée ; côté Brave,
   la clé AES non exportable dans IndexedDB. Ces clés ne donnent que ce que
