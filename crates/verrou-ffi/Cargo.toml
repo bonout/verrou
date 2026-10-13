@@ -1,0 +1,23 @@
+[package]
+name = "verrou-ffi"
+description = "Liaison UniFFI entre le cœur Rust et les applications Apple."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib", "lib"]
+name = "verrou_ffi"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+verrou-core.workspace = true
+uniffi = { workspace = true, features = ["cli"] }
+thiserror.workspace = true
+
+[lints]
+workspace = true
