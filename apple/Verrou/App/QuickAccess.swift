@@ -9,6 +9,10 @@ final class QuickAccessController {
     private let model: AppModel
     private var panel: QuickAccessPanel?
     private var hotKey: HotKey?
+    /// Démonstration : la fenêtre reste ouverte même si Verrou n'est pas au
+    /// premier plan (macOS refuse de lui donner la main pendant qu'on se sert
+    /// d'une autre app).
+    var staysOpen = false
 
     init(model: AppModel) {
         self.model = model
@@ -39,6 +43,7 @@ final class QuickAccessController {
         }
         NSApp.activate()
         panel.makeKeyAndOrderFront(nil)
+        if staysOpen { panel.orderFrontRegardless() }
     }
 
     func close() {
@@ -56,13 +61,16 @@ final class QuickAccessController {
         panel.isMovableByWindowBackground = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.hidesOnDeactivate = true
+        panel.hidesOnDeactivate = !staysOpen
         panel.isReleasedWhenClosed = false
         panel.backgroundColor = .clear
         panel.standardWindowButton(.closeButton)?.isHidden = true
         panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
         panel.standardWindowButton(.zoomButton)?.isHidden = true
-        panel.onResignKey = { [weak self] in self?.close() }
+        panel.onResignKey = { [weak self] in
+            guard let self, !self.staysOpen else { return }
+            self.close()
+        }
         let root = QuickAccessView(close: { [weak self] in self?.close() })
             .environment(model)
         panel.contentView = NSHostingView(rootView: root)
@@ -187,7 +195,8 @@ struct QuickAccessView: View {
                     HStack(spacing: 11) {
                         ItemIcon(summary: summary, size: 30)
                         VStack(alignment: .leading, spacing: 1) {
-                            HighlightedText(text: summary.title, highlights: hit.highlights).lineLimit(1)
+                            HighlightedText(text: summary.title, highlights: hit.highlights,
+                                            tint: index == selected ? nil : Theme.accent).lineLimit(1)
                             Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
                         }
                         Spacer()

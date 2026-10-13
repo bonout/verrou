@@ -4,8 +4,9 @@
 #
 #   scripts/demo-capture.sh [chemin/vers/Verrou.app]
 #
-# L'app se capture elle-même (voir WindowRecorder.swift) : pas d'autorisation
-# « Enregistrement de l'écran » à donner au terminal.
+# L'app capture ses propres fenêtres par ScreenCaptureKit (voir
+# WindowRecorder.swift), et seulement elles : le terminal qui lance ce script
+# doit avoir l'autorisation « Enregistrement de l'écran ».
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/target/xcode/Build/Products/Debug/Verrou.app}"
