@@ -145,40 +145,125 @@ fn decode_base64(text: &str) -> Result<Vec<u8>, Error> {
         .map_err(|_| Error::SecurityKey("identifiant de clé illisible".to_owned()))
 }
 
-#[cfg(target_os = "macos")]
 pub use device::{SecurityKeyStatus, SigningSession};
+
+/// Hors macOS, pas d'USB : la même interface, qui refuse tout. L'interface
+/// Swift et les tests de la CI Linux compilent sans conditions.
+#[cfg(not(target_os = "macos"))]
+mod device {
+    use super::{AssertionRequest, AssertionResponse};
+    use crate::error::Error;
+    use crate::unlock_keys::{HmacSecret, UnlockCredential};
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum SecurityKeyStatus {
+        TouchRequired,
+        PinRequired { retry: bool, attempts: Option<u8> },
+    }
+
+    #[derive(Clone, Default)]
+    pub struct SigningSession;
+
+    fn unsupported() -> Error {
+        Error::SecurityKey("clé de sécurité en USB : macOS seulement".to_owned())
+    }
+
+    #[allow(clippy::unused_self)]
+    impl SigningSession {
+        pub fn new() -> Self {
+            Self
+        }
+
+        pub fn cancel(&self) {}
+
+        pub fn submit_pin(&self, _pin: &str) -> bool {
+            false
+        }
+
+        pub fn sign(
+            &self,
+            _request: &AssertionRequest,
+            _on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<AssertionResponse, Error> {
+            Err(unsupported())
+        }
+
+        pub fn enroll_for_unlock(
+            &self,
+            _salt: &[u8; 32],
+            _exclude: &[Vec<u8>],
+            _on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<(Vec<u8>, HmacSecret), Error> {
+            Err(unsupported())
+        }
+
+        pub fn unlock_secret(
+            &self,
+            _credentials: &[UnlockCredential],
+            _on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<(Option<Vec<u8>>, HmacSecret), Error> {
+            Err(unsupported())
+        }
+    }
+}
 
 /// Dialogue avec la clé, par USB (macOS seulement : l'app sandboxée a le droit
 /// `com.apple.security.device.usb`).
 #[cfg(target_os = "macos")]
 mod device {
-    use std::sync::mpsc::{RecvTimeoutError, channel};
-    use std::sync::{Arc, Mutex, PoisonError};
+    use std::collections::HashMap;
+    use std::sync::mpsc::{RecvTimeoutError, Sender, channel};
+    use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
     use std::time::{Duration, Instant};
 
-    use authenticator::authenticatorservice::{AuthenticatorService, SignArgs};
+    use authenticator::authenticatorservice::{AuthenticatorService, RegisterArgs, SignArgs};
+    use authenticator::crypto::COSEAlgorithm;
+    use authenticator::ctap2::commands::StatusCode;
     use authenticator::ctap2::server::{
-        AuthenticationExtensionsClientInputs, PublicKeyCredentialDescriptor, Transport,
-        UserVerificationRequirement,
+        AuthenticationExtensionsClientInputs, AuthenticationExtensionsPRFInputs,
+        AuthenticationExtensionsPRFValues, PublicKeyCredentialDescriptor,
+        PublicKeyCredentialParameters, PublicKeyCredentialUserEntity, RelyingParty,
+        ResidentKeyRequirement, Transport, UserVerificationRequirement,
     };
-    use authenticator::errors::AuthenticatorError;
+    use authenticator::errors::{AuthenticatorError, CommandError, HIDError};
     use authenticator::statecallback::StateCallback;
-    use authenticator::{StatusPinUv, StatusUpdate};
+    use authenticator::{Pin, PinError, StatusPinUv, StatusUpdate};
+    use rand::RngCore;
+    use rand::rngs::OsRng;
+    use zeroize::{Zeroize, Zeroizing};
 
     use super::{AssertionRequest, AssertionResponse};
     use crate::error::Error;
+    use crate::unlock_keys::{HmacSecret, RP_ID, UnlockCredential};
+
+    /// Déverrouillage et enrôlement : le temps de brancher la clé, de saisir
+    /// son code PIN et de la toucher.
+    const UNLOCK_TIMEOUT_MS: u64 = 120_000;
 
     /// Où en est l'échange, pour l'afficher.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum SecurityKeyStatus {
         /// Clé détectée : il faut la toucher.
         TouchRequired,
+        /// La clé attend son code PIN, à donner par
+        /// [`SigningSession::submit_pin`]. `retry` : le précédent était faux ;
+        /// `attempts` : essais restants, si la clé le dit.
+        PinRequired { retry: bool, attempts: Option<u8> },
     }
 
-    /// Une demande de signature en cours, annulable depuis un autre fil.
+    /// Un échange en cours avec la clé, annulable depuis un autre fil.
     #[derive(Clone, Default)]
     pub struct SigningSession {
         service: Arc<Mutex<Option<AuthenticatorService>>>,
+        /// Où répondre quand la clé attend son code PIN.
+        pin_reply: Arc<Mutex<Option<Sender<Pin>>>>,
+        /// Le code PIN saisi, gardé le temps d'un enrôlement (deux échanges
+        /// avec la clé, un seul code à taper), puis effacé.
+        pin: Arc<Mutex<Option<Zeroizing<String>>>>,
+    }
+
+    fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+        mutex.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
     impl SigningSession {
@@ -188,62 +273,235 @@ mod device {
 
         /// Interrompt l'attente (l'utilisateur a annulé ou changé de méthode).
         pub fn cancel(&self) {
-            let mut guard = self.service.lock().unwrap_or_else(PoisonError::into_inner);
+            // Sans destinataire, la bibliothèque cesse d'attendre le code PIN.
+            lock(&self.pin_reply).take();
+            lock(&self.pin).take();
+            let mut guard = lock(&self.service);
             if let Some(service) = guard.as_mut() {
                 let _ = service.cancel();
             }
             guard.take();
         }
 
-        /// Bloquant : attend une clé, puis son contact, jusqu'au délai.
-        pub fn sign(
-            &self,
-            request: &AssertionRequest,
-            on_status: impl Fn(SecurityKeyStatus),
-        ) -> Result<AssertionResponse, Error> {
-            let mut service = AuthenticatorService::new()
-                .map_err(|e| Error::SecurityKey(format!("USB indisponible ({e:?})")))?;
-            service.add_u2f_usb_hid_platform_transports();
+        /// Le code PIN que la clé attend (après
+        /// [`SecurityKeyStatus::PinRequired`]). `false` : plus rien n'attend.
+        pub fn submit_pin(&self, pin: &str) -> bool {
+            let Some(reply) = lock(&self.pin_reply).take() else {
+                return false;
+            };
+            *lock(&self.pin) = Some(Zeroizing::new(pin.to_owned()));
+            reply.send(Pin::new(pin)).is_ok()
+        }
 
-            let args = SignArgs {
-                client_data_hash: request.client_data_hash,
-                origin: request.origin.clone(),
-                relying_party_id: request.rp_id.clone(),
-                allow_list: request
-                    .allow_credentials
-                    .iter()
-                    .map(|id| PublicKeyCredentialDescriptor {
-                        id: id.clone(),
-                        transports: vec![Transport::USB],
-                    })
-                    .collect(),
-                // Vaultwarden demande « discouraged » : un contact suffit,
-                // pas de code PIN.
-                user_verification_req: UserVerificationRequirement::Discouraged,
-                user_presence_req: true,
+        /// Crée sur la clé une accréditation pour déverrouiller Verrou
+        /// (extension `hmac-secret`, code PIN exigé), puis lui demande son
+        /// secret pour `salt`. Deux contacts, un seul code PIN. `exclude` : les
+        /// accréditations déjà enrôlées, pour ne pas enrôler deux fois la même
+        /// clé. Rend l'identifiant de l'accréditation et le secret.
+        pub fn enroll_for_unlock(
+            &self,
+            salt: &[u8; 32],
+            exclude: &[Vec<u8>],
+            on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<(Vec<u8>, HmacSecret), Error> {
+            let result = self.enroll(salt, exclude, &on_status);
+            lock(&self.pin).take();
+            result
+        }
+
+        fn enroll(
+            &self,
+            salt: &[u8; 32],
+            exclude: &[Vec<u8>],
+            on_status: &dyn Fn(SecurityKeyStatus),
+        ) -> Result<(Vec<u8>, HmacSecret), Error> {
+            // L'accréditation n'est pas « résidente » : la clé ne garde rien,
+            // l'utilisateur est un identifiant aléatoire sans signification.
+            let mut user_id = [0u8; 16];
+            OsRng.fill_bytes(&mut user_id);
+            let args = RegisterArgs {
+                client_data_hash: random_hash(),
+                relying_party: RelyingParty {
+                    id: RP_ID.to_owned(),
+                    name: Some("Verrou".to_owned()),
+                },
+                origin: RP_ID.to_owned(),
+                user: PublicKeyCredentialUserEntity {
+                    id: user_id.to_vec(),
+                    name: Some("Verrou".to_owned()),
+                    display_name: Some("Déverrouillage de Verrou".to_owned()),
+                },
+                pub_cred_params: vec![
+                    PublicKeyCredentialParameters {
+                        alg: COSEAlgorithm::ES256,
+                    },
+                    PublicKeyCredentialParameters {
+                        alg: COSEAlgorithm::EDDSA,
+                    },
+                ],
+                exclude_list: descriptors(exclude.iter()),
+                user_verification_req: UserVerificationRequirement::Required,
+                resident_key_req: ResidentKeyRequirement::Discouraged,
                 extensions: AuthenticationExtensionsClientInputs {
-                    app_id: request.app_id.clone(),
+                    hmac_create_secret: Some(true),
                     ..Default::default()
                 },
                 pin: None,
                 use_ctap1_fallback: false,
             };
+            let registered = self
+                .exchange(
+                    UNLOCK_TIMEOUT_MS,
+                    true,
+                    on_status,
+                    |service, status, callback| {
+                        service.register(UNLOCK_TIMEOUT_MS, args, status, callback)
+                    },
+                )?
+                .map_err(unlock_error)?;
+            if registered.extensions.hmac_create_secret != Some(true) {
+                return Err(Error::SecurityKey(
+                    "cette clé ne prend pas en charge hmac-secret".to_owned(),
+                ));
+            }
+            let credential_id = registered
+                .att_obj
+                .auth_data
+                .credential_data
+                .map(|data| data.credential_id)
+                .ok_or_else(|| {
+                    Error::SecurityKey("la clé n'a pas rendu d'identifiant".to_owned())
+                })?;
+            let credential = UnlockCredential {
+                credential_id: credential_id.clone(),
+                salt: *salt,
+            };
+            let (_, secret) = self.read_secret(&[credential], on_status)?;
+            Ok((credential_id, secret))
+        }
+
+        /// Demande à la clé branchée le secret de l'une des accréditations
+        /// enrôlées (code PIN exigé, puis un contact). Rend l'accréditation
+        /// qui a répondu, si la clé le dit, et le secret.
+        pub fn unlock_secret(
+            &self,
+            credentials: &[UnlockCredential],
+            on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<(Option<Vec<u8>>, HmacSecret), Error> {
+            self.read_secret(credentials, &on_status)
+        }
+
+        fn read_secret(
+            &self,
+            credentials: &[UnlockCredential],
+            on_status: &dyn Fn(SecurityKeyStatus),
+        ) -> Result<(Option<Vec<u8>>, HmacSecret), Error> {
+            // Un sel par accréditation (extension PRF, `evalByCredential`) : la
+            // bibliothèque ne garde de la liste que les accréditations de la
+            // clé branchée, puis choisit le sel qui va avec.
+            let by_credential: HashMap<Vec<u8>, AuthenticationExtensionsPRFValues> = credentials
+                .iter()
+                .map(|c| {
+                    let values = AuthenticationExtensionsPRFValues {
+                        first: c.salt.to_vec(),
+                        second: None,
+                    };
+                    (c.credential_id.clone(), values)
+                })
+                .collect();
+            let args = SignArgs {
+                client_data_hash: random_hash(),
+                origin: RP_ID.to_owned(),
+                relying_party_id: RP_ID.to_owned(),
+                allow_list: descriptors(credentials.iter().map(|c| &c.credential_id)),
+                user_verification_req: UserVerificationRequirement::Required,
+                user_presence_req: true,
+                extensions: AuthenticationExtensionsClientInputs {
+                    prf: Some(AuthenticationExtensionsPRFInputs {
+                        eval: None,
+                        eval_by_credential: Some(by_credential),
+                    }),
+                    ..Default::default()
+                },
+                // Enrôlement : le code PIN vient d'être saisi pour créer
+                // l'accréditation.
+                pin: lock(&self.pin).as_ref().map(|pin| Pin::new(pin)),
+                use_ctap1_fallback: false,
+            };
+            let signed = self
+                .exchange(
+                    UNLOCK_TIMEOUT_MS,
+                    true,
+                    on_status,
+                    |service, status, callback| {
+                        service.sign(UNLOCK_TIMEOUT_MS, args, status, callback)
+                    },
+                )?
+                .map_err(unlock_error)?;
+            let mut output = signed
+                .extensions
+                .prf
+                .and_then(|prf| prf.results)
+                .map(|values| values.first)
+                .ok_or_else(|| {
+                    Error::SecurityKey(
+                        "la clé n'a pas rendu son secret (hmac-secret non pris en charge)"
+                            .to_owned(),
+                    )
+                })?;
+            let secret = HmacSecret::from_slice(&output);
+            output.zeroize();
+            Ok((signed.assertion.credentials.map(|c| c.id), secret?))
+        }
+
+        /// Un échange avec la clé : relaie les demandes de contact et de code
+        /// PIN (`allow_pin`), jusqu'à la réponse, au délai, ou à `cancel`.
+        fn exchange<T: Send + 'static>(
+            &self,
+            timeout_ms: u64,
+            allow_pin: bool,
+            on_status: &dyn Fn(SecurityKeyStatus),
+            start: impl FnOnce(
+                &mut AuthenticatorService,
+                Sender<StatusUpdate>,
+                StateCallback<authenticator::Result<T>>,
+            ) -> authenticator::Result<()>,
+        ) -> Result<authenticator::Result<T>, Error> {
+            let mut service = AuthenticatorService::new()
+                .map_err(|e| Error::SecurityKey(format!("USB indisponible ({e:?})")))?;
+            service.add_u2f_usb_hid_platform_transports();
             let (status_tx, status_rx) = channel::<StatusUpdate>();
             let (result_tx, result_rx) = channel();
             let callback = StateCallback::new(Box::new(move |result| {
                 let _ = result_tx.send(result);
             }));
-            service
-                .sign(request.timeout_ms, args, status_tx, callback)
+            start(&mut service, status_tx, callback)
                 .map_err(|e| Error::SecurityKey(format!("{e:?}")))?;
-            *self.service.lock().unwrap_or_else(PoisonError::into_inner) = Some(service);
+            *lock(&self.service) = Some(service);
 
-            let deadline = Instant::now() + Duration::from_millis(request.timeout_ms + 2_000);
+            let deadline = Instant::now() + Duration::from_millis(timeout_ms + 2_000);
             let outcome = loop {
                 while let Ok(status) = status_rx.try_recv() {
                     match status {
                         StatusUpdate::PresenceRequired => {
                             on_status(SecurityKeyStatus::TouchRequired);
+                        }
+                        StatusUpdate::PinUvError(StatusPinUv::PinRequired(reply)) if allow_pin => {
+                            *lock(&self.pin_reply) = Some(reply);
+                            on_status(SecurityKeyStatus::PinRequired {
+                                retry: false,
+                                attempts: None,
+                            });
+                        }
+                        StatusUpdate::PinUvError(StatusPinUv::InvalidPin(reply, attempts))
+                            if allow_pin =>
+                        {
+                            lock(&self.pin).take();
+                            *lock(&self.pin_reply) = Some(reply);
+                            on_status(SecurityKeyStatus::PinRequired {
+                                retry: true,
+                                attempts,
+                            });
                         }
                         StatusUpdate::PinUvError(
                             StatusPinUv::PinRequired(_) | StatusPinUv::InvalidPin(..),
@@ -268,10 +526,42 @@ mod device {
                     }
                 }
             };
-            self.service
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .take();
+            lock(&self.service).take();
+            lock(&self.pin_reply).take();
+            Ok(outcome)
+        }
+
+        /// Bloquant : attend une clé, puis son contact, jusqu'au délai.
+        pub fn sign(
+            &self,
+            request: &AssertionRequest,
+            on_status: impl Fn(SecurityKeyStatus),
+        ) -> Result<AssertionResponse, Error> {
+            let args = SignArgs {
+                client_data_hash: request.client_data_hash,
+                origin: request.origin.clone(),
+                relying_party_id: request.rp_id.clone(),
+                allow_list: descriptors(request.allow_credentials.iter()),
+                // Vaultwarden demande « discouraged » : un contact suffit,
+                // pas de code PIN.
+                user_verification_req: UserVerificationRequirement::Discouraged,
+                user_presence_req: true,
+                extensions: AuthenticationExtensionsClientInputs {
+                    app_id: request.app_id.clone(),
+                    ..Default::default()
+                },
+                pin: None,
+                use_ctap1_fallback: false,
+            };
+            // Pas de code PIN ici : le second facteur se contente d'un contact.
+            let outcome = self.exchange(
+                request.timeout_ms,
+                false,
+                &on_status,
+                |service, status, callback| {
+                    service.sign(request.timeout_ms, args, status, callback)
+                },
+            )?;
 
             match outcome {
                 Ok(result) => {
@@ -307,6 +597,58 @@ mod device {
                 ))),
             }
         }
+    }
+
+    fn descriptors<'a>(
+        ids: impl Iterator<Item = &'a Vec<u8>>,
+    ) -> Vec<PublicKeyCredentialDescriptor> {
+        ids.map(|id| PublicKeyCredentialDescriptor {
+            id: id.clone(),
+            transports: vec![Transport::USB],
+        })
+        .collect()
+    }
+
+    /// Aucun serveur ne vérifie la signature du déverrouillage : seul compte
+    /// le secret `hmac-secret`. L'empreinte signée est donc aléatoire.
+    fn random_hash() -> [u8; 32] {
+        let mut hash = [0u8; 32];
+        OsRng.fill_bytes(&mut hash);
+        hash
+    }
+
+    /// Les refus de la clé, dits à l'utilisateur.
+    fn unlock_error(error: AuthenticatorError) -> Error {
+        let message = match error {
+            AuthenticatorError::CancelledByUser => "demande annulée",
+            AuthenticatorError::CredentialExcluded => {
+                "cette clé est déjà enregistrée pour déverrouiller ce coffre"
+            }
+            AuthenticatorError::PinError(PinError::PinNotSet) => {
+                "la clé n'a pas de code PIN : définissez-en un (Yubico Authenticator, rubrique Passkeys), puis recommencez"
+            }
+            AuthenticatorError::PinError(PinError::PinBlocked) => {
+                "code PIN bloqué : la clé doit être réinitialisée (ses accréditations seront perdues)"
+            }
+            AuthenticatorError::PinError(PinError::PinAuthBlocked | PinError::UvBlocked) => {
+                "trop de codes PIN erronés : débranchez la clé, rebranchez-la, puis recommencez"
+            }
+            AuthenticatorError::PinError(PinError::PinIsTooShort | PinError::PinIsTooLong(_)) => {
+                "longueur de code PIN invalide"
+            }
+            AuthenticatorError::HIDError(HIDError::Command(CommandError::StatusCode(
+                StatusCode::NoCredentials,
+                _,
+            ))) => "cette clé n'est pas enregistrée pour déverrouiller ce coffre",
+            AuthenticatorError::HIDError(HIDError::IO(..)) | AuthenticatorError::Io(_) => {
+                "la clé a été débranchée"
+            }
+            AuthenticatorError::UnsupportedOption(_) => {
+                "cette clé ne convient pas : il faut une clé FIDO2 avec code PIN et hmac-secret"
+            }
+            e => return Error::SecurityKey(format!("la clé a refusé ({e:?})")),
+        };
+        Error::SecurityKey(message.to_owned())
     }
 }
 

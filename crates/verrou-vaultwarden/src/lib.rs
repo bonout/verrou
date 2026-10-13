@@ -9,6 +9,9 @@
 //!
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
 //! SDK avant d'être envoyées.
+//!
+//! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
+//! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
 
 mod api;
 pub mod breach;
@@ -17,6 +20,7 @@ mod edit;
 mod error;
 pub mod security_key;
 mod store;
+pub mod unlock_keys;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
@@ -242,22 +246,63 @@ pub async fn unlock_with_user_key(
 ) -> Result<Unlocked, Error> {
     let account = store.load_account()?.ok_or(Error::NoAccount)?;
     let sdk = sdk_client(&account.server);
+    init_with_user_key(&sdk, &account, user_key)
+        .await
+        // Une clé refusée vient d'un enrôlement Touch ID périmé (mot de passe
+        // changé, reconnexion) : il faut repasser par le mot de passe.
+        .map_err(|_| Error::Crypto("clé Touch ID périmée".to_owned()))?;
+    open(store, account, sdk).await
+}
+
+/// Déverrouillage par une clé de sécurité enrôlée : `secret` est ce que la
+/// clé a rendu (`hmac-secret`), `credential_id` l'accréditation qui a
+/// répondu, si elle l'a dit. La clé de l'utilisateur ne quitte pas Rust.
+pub async fn unlock_with_security_key(
+    store: &Store,
+    credential_id: Option<&[u8]>,
+    secret: &unlock_keys::HmacSecret,
+) -> Result<Unlocked, Error> {
+    let account = store.load_account()?.ok_or(Error::NoAccount)?;
+    let keys = store.load_security_keys()?;
+    let user_key = unlock_keys::unseal(&keys, credential_id, secret)?;
+    let sdk = sdk_client(&account.server);
+    if init_with_user_key(&sdk, &account, &user_key).await.is_err() {
+        // Descellée mais refusée : la clé du coffre a changé depuis
+        // l'enrôlement. Les clés enrôlées ne valent plus rien.
+        store.delete_security_keys()?;
+        return Err(Error::Crypto(
+            "clé de sécurité périmée, à enregistrer de nouveau".to_owned(),
+        ));
+    }
+    open(store, account, sdk).await
+}
+
+async fn init_with_user_key(
+    sdk: &Client,
+    account: &Account,
+    user_key: &SecretString,
+) -> Result<(), Error> {
     init(
-        &sdk,
-        &account,
+        sdk,
+        account,
         InitUserCryptoMethod::DecryptedKey {
             decrypted_user_key: user_key.expose().to_owned(),
         },
     )
-    .await
-    // Une clé refusée vient d'un enrôlement Touch ID périmé (mot de passe
-    // changé, reconnexion) : il faut repasser par le mot de passe.
-    .map_err(|_| Error::Crypto("clé Touch ID périmée".to_owned()))?;
-    open(store, account, sdk).await
+    .await?;
+    // Le SDK accepte n'importe quelle clé bien formée (le coffre se
+    // déchiffre alors en zéro élément) : on la vérifie sur le jeton de
+    // renouvellement, chiffré avec elle.
+    sdk.crypto()
+        .decrypt_with_local_user_data_key(account.refresh_token.clone())
+        .map(drop)
+        .map_err(Error::crypto)
 }
 
-/// Oublie le compte : jetons, cache et clés chiffrées.
+/// Oublie le compte : jetons, cache, clés chiffrées et clés de sécurité
+/// enrôlées.
 pub fn logout(store: &Store) -> Result<(), Error> {
+    store.delete_security_keys()?;
     store.delete_account()
 }
 
@@ -331,6 +376,24 @@ impl Connection {
             .await
             .map(|key| SecretString::new(key.to_string()))
             .map_err(Error::crypto)
+    }
+
+    /// Enrôle une clé de sécurité : scelle la clé de l'utilisateur avec ce que
+    /// la clé a rendu pour `salt`, et l'ajoute à `security-keys.json`. La clé
+    /// de l'utilisateur ne quitte pas Rust.
+    pub async fn enroll_security_key(
+        &self,
+        label: &str,
+        credential_id: &[u8],
+        salt: &[u8; 32],
+        secret: &unlock_keys::HmacSecret,
+    ) -> Result<unlock_keys::EnrolledKey, Error> {
+        let user_key = self.user_key().await?;
+        let key = unlock_keys::seal(&user_key, secret, credential_id, salt, label, now())?;
+        // Vérifie le scellement avant de l'écrire.
+        key.open(secret)?;
+        unlock_keys::add(&self.store, key.clone())?;
+        Ok(key)
     }
 
     async fn decrypt_cache(&self) -> Result<Decrypted, Error> {

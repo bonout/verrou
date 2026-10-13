@@ -28,9 +28,10 @@ use verrou_core::{FieldKind, ItemKind, SecretString};
 use verrou_vaultwarden::security_key::{
     self, AssertionRequest, AssertionResponse, assertion_request,
 };
+use verrou_vaultwarden::unlock_keys::{self, HmacSecret};
 use verrou_vaultwarden::{
-    Draft, Error, LoginDraft, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, login, logout,
-    unlock_with_password, unlock_with_user_key,
+    Draft, Error, LoginDraft, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, Unlocked, login,
+    logout, unlock_with_password, unlock_with_security_key, unlock_with_user_key,
 };
 
 const PASSWORD: &str = "cheval correct pile agrafe";
@@ -425,12 +426,88 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
         Err(Error::Crypto(_))
     ));
 
+    security_key_unlock(&store, by_key, &user_key).await;
+
     logout(&store).unwrap();
+    assert_eq!(store.load_security_keys().unwrap(), []);
     assert!(matches!(
         unlock_with_password(&store, &SecretString::new(PASSWORD)).await,
         Err(Error::NoAccount)
     ));
     std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Chemin de la clé de sécurité, avec de fausses réponses `hmac-secret` :
+/// une clé principale et une de secours. Laisse une clé enrôlée, que la
+/// déconnexion doit effacer.
+async fn security_key_unlock(store: &Store, by_key: Unlocked, user_key: &SecretString) {
+    let store = store.clone();
+    let main = HmacSecret::from_bytes([1; 32]);
+    let backup = HmacSecret::from_bytes([2; 32]);
+    let main_salt = unlock_keys::new_salt();
+    let backup_salt = unlock_keys::new_salt();
+    by_key
+        .connection
+        .enroll_security_key("Principale", &[1, 1], &main_salt, &main)
+        .await
+        .unwrap();
+    by_key
+        .connection
+        .enroll_security_key("Secours", &[2, 2], &backup_salt, &backup)
+        .await
+        .unwrap();
+    drop(by_key);
+    let keys = store.load_security_keys().unwrap();
+    assert_eq!(keys.len(), 2);
+    assert_eq!(
+        unlock_keys::credentials(&keys).unwrap()[1],
+        unlock_keys::UnlockCredential {
+            credential_id: vec![2, 2],
+            salt: backup_salt,
+        }
+    );
+    let by_backup = unlock_with_security_key(&store, Some(&[2, 2]), &backup)
+        .await
+        .unwrap();
+    assert_eq!(
+        by_backup
+            .vault
+            .items
+            .iter()
+            .filter(|i| i.is_active())
+            .count(),
+        4
+    );
+    drop(by_backup);
+    let by_main = unlock_with_security_key(&store, None, &main).await.unwrap();
+    drop(by_main);
+    assert!(matches!(
+        unlock_with_security_key(&store, None, &HmacSecret::from_bytes([3; 32])).await,
+        Err(Error::SecurityKey(_))
+    ));
+    let file = std::fs::read_to_string(store.dir().join("security-keys.json")).unwrap();
+    assert!(!file.contains(user_key.expose()));
+
+    // Copie scellée d'une autre clé de coffre (la clé a changé depuis
+    // l'enrôlement) : périmée, toutes les clés enrôlées sont retirées.
+    let other_key = SecretString::new(data_encoding::BASE64.encode(&[7; 64]));
+    let stale = unlock_keys::seal(&other_key, &main, &[1, 1], &main_salt, "Principale", 0).unwrap();
+    unlock_keys::add(&store, stale).unwrap();
+    assert!(matches!(
+        unlock_with_security_key(&store, Some(&[1, 1]), &main).await,
+        Err(Error::Crypto(_))
+    ));
+    // Le SDK accepterait cette clé bien formée (et un coffre vide) : Verrou
+    // la vérifie, pour Touch ID aussi.
+    assert!(matches!(
+        unlock_with_user_key(&store, &other_key).await,
+        Err(Error::Crypto(_))
+    ));
+    assert_eq!(store.load_security_keys().unwrap(), []);
+
+    // Pour la déconnexion, qui doit l'oublier.
+    let again = unlock_keys::seal(user_key, &main, &[1, 1], &main_salt, "Principale", 0).unwrap();
+    unlock_keys::add(&store, again).unwrap();
 }
 
 #[tokio::test]

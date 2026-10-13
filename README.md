@@ -5,9 +5,9 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 
 > **Status: first usable version.** The Mac app signs in to Vaultwarden
 > (second factor included), decrypts the vault with Bitwarden's official Rust
-> SDK, keeps it encrypted for offline use, unlocks with Touch ID, creates and
-> edits logins and notes, fills Brave forms through its extension, and serves
-> the `verrou` CLI and an SSH agent from the real vault.
+> SDK, keeps it encrypted for offline use, unlocks with Touch ID or a YubiKey,
+> creates and edits logins and notes, fills Brave forms through its extension,
+> and serves the `verrou` CLI and an SSH agent from the real vault.
 >
 > The app's interface is in French.
 
@@ -49,6 +49,10 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   cache (the server's response, still encrypted).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
   [SECURITY.md](SECURITY.md)).
+- **YubiKey unlock**: the vault key is sealed by a secret that never leaves
+  the key (FIDO2 `hmac-secret`); unlocking takes the key's PIN and a touch.
+  Several keys can be enrolled (main and backup) in Settings, each removable
+  on its own. A FIDO2 PIN must be set on the key.
 - **Instant local search**: fuzzy, accent- and case-insensitive, excluded
   words (`!pro`), filters (`tag:banque`, `dossier:maison`, `type:carte`).
   Under 5 ms per keystroke on 10,000 items, about 0.3 ms on a real vault.
@@ -73,7 +77,7 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 ```
 crates/
   verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault
-  verrou-vaultwarden  sign-in, second factor, cache, decryption (Bitwarden Rust SDK)
+  verrou-vaultwarden  sign-in, second factor, cache, decryption (Bitwarden Rust SDK), YubiKey unlock
   verrou-ffi          UniFFI interface to Swift (no secret without an explicit request)
   verrou-bridge       bridge to the extension and the CLI: pairing, encrypted channel,
                       per-client permissions, SSH signing, Native Messaging host
@@ -233,7 +237,7 @@ Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
 3. ✅ Brave extension: in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
 4. iPhone and iPad: Face ID, system AutoFill extension
-5. YubiKey: ✅ FIDO2 sign-in over USB; `hmac-secret` unlock
+5. YubiKey: ✅ FIDO2 sign-in over USB, ✅ `hmac-secret` unlock
 
 ## License
 

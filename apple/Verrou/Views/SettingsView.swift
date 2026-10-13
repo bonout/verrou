@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Réglages (⌘,) : démarrage, apparence, compte, synchronisation, Touch ID,
-/// déconnexion.
+/// clés de sécurité, déconnexion.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var confirmLogout = false
@@ -68,6 +68,8 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                SecurityKeysSection()
+
                 Section {
                     Button("Se déconnecter de ce Mac…", role: .destructive) { confirmLogout = true }
                 } footer: {
@@ -128,6 +130,89 @@ struct SettingsView: View {
             return "S'active au prochain déverrouillage par mot de passe."
         }
         return "La clé du coffre est scellée par le Secure Enclave : ajouter ou retirer une empreinte désactive Touch ID."
+    }
+}
+
+/// Clés de sécurité qui déverrouillent le coffre (YubiKey, hmac-secret) :
+/// liste, ajout, retrait.
+struct SecurityKeysSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var adding = false
+
+    var body: some View {
+        Section {
+            ForEach(model.unlockKeys, id: \.id) { key in
+                LabeledContent {
+                    Button("Retirer", role: .destructive) { model.removeUnlockKey(key) }
+                } label: {
+                    Text(key.label)
+                    Text("Ajoutée le \(Date(timeIntervalSince1970: TimeInterval(key.created)).formatted(date: .abbreviated, time: .shortened))")
+                }
+            }
+            Button("Ajouter une clé de sécurité pour déverrouiller…") {
+                model.enrollError = nil
+                adding = true
+            }
+            .disabled(model.lockState != .unlocked)
+        } header: {
+            Text("Clés de sécurité")
+        } footer: {
+            Text(model.unlockKeys.isEmpty
+                 ? "Une YubiKey (FIDO2, avec un code PIN) peut déverrouiller le coffre : code PIN, puis un contact. Ajoutez-en une de secours."
+                 : "Le code PIN et la clé sont tous deux nécessaires. Une reconnexion ou une déconnexion retire ces clés.")
+                .foregroundStyle(.secondary)
+        }
+        .sheet(isPresented: $adding) {
+            AddSecurityKeySheet()
+        }
+    }
+}
+
+/// Ajout d'une clé : un nom, puis l'échange avec la clé (code PIN, deux contacts).
+private struct AddSecurityKeySheet: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    @State private var label = ""
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Ajouter une clé de sécurité")
+                .font(.headline)
+            if model.keyExchange == .enroll {
+                SecurityKeyPanel()
+                Text("La clé vous sera demandée deux fois : pour créer son accréditation, puis pour lire son secret.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                TextField("Nom (par exemple « YubiKey de secours »)", text: $label)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 320)
+                    .onSubmit(start)
+                if let error = model.enrollError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+                HStack {
+                    Button("Fermer") { dismiss() }
+                        .keyboardShortcut(.cancelAction)
+                    Button("Commencer", action: start)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(model.lockState != .unlocked)
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 400)
+        .onDisappear { model.cancelKeyExchange() }
+    }
+
+    private func start() {
+        Task {
+            if await model.enrollSecurityKey(label: label) { dismiss() }
+        }
     }
 }
 
