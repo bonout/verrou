@@ -127,6 +127,34 @@ final class EndToEndDriver {
         await model.syncNow()
         check(model.syncState == .idle, "synchronisation par jeton de renouvellement")
 
+        // Écriture : créer, modifier, mettre à la corbeille.
+        model.newItem(login: true)
+        let generated = model.editor?.draft.login?.password ?? ""
+        check(generated.count == 20, "nouvel identifiant avec un mot de passe généré")
+        if var draft = model.editor?.draft {
+            draft.name = "Créé par Verrou"
+            draft.login?.username = "e2e@verrou.test"
+            draft.login?.urls = ["https://exemple.fr"]
+            await model.saveEditor(draft)
+        }
+        let created = model.summaries.first { $0.title == "Créé par Verrou" }
+        check(model.editor == nil && created != nil && model.selection == created?.id, "élément créé sur le serveur")
+        if let created {
+            await model.edit(created.id)
+            check(model.editor?.draft.login?.password == generated, "brouillon prérempli, secrets compris")
+            await snap("24-modification")
+            if var draft = model.editor?.draft {
+                draft.name = "Modifié par Verrou"
+                draft.login?.password = "nouveau-mot-de-passe"
+                await model.saveEditor(draft)
+            }
+            check(model.reveal("password", of: created.id) == "nouveau-mot-de-passe"
+                  && model.summaries.contains { $0.title == "Modifié par Verrou" }, "modification enregistrée")
+            await model.trash(created.id)
+            check(!model.summaries.contains { $0.id == created.id } && model.summaries.count == 9,
+                  "mis à la corbeille")
+        }
+
         model.lock()
         check(model.lockState == .locked && !model.needsLogin, "verrouillé, compte conservé")
         await snap("23-verrouille")

@@ -19,7 +19,14 @@ struct VerrouApp: App {
                 SettingsLink { Text("Réglages…") }
                     .keyboardShortcut(",", modifiers: .command)
             }
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                Button("Nouvel identifiant") { delegate.model.newItem(login: true) }
+                    .keyboardShortcut("n", modifiers: .command)
+                    .disabled(!delegate.model.canEdit)
+                Button("Nouvelle note sécurisée") { delegate.model.newItem(login: false) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.canEdit)
+            }
             CommandMenu("Coffre") {
                 Button("Accès rapide") { delegate.quickAccess?.toggle() }
                     .keyboardShortcut(.space, modifiers: [.command, .shift])

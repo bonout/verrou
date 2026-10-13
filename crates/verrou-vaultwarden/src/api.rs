@@ -1,4 +1,5 @@
-//! Échanges HTTP avec Vaultwarden : prélogin, jetons, synchronisation.
+//! Échanges HTTP avec Vaultwarden : prélogin, jetons, synchronisation,
+//! écritures.
 //!
 //! Aucune cryptographie ici. Le mot de passe principal n'y arrive que déjà
 //! dérivé par le SDK (`MasterPasswordAuthenticationData`), et les données du
@@ -8,6 +9,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
+use bitwarden_api_api::models::CipherRequestModel;
 use bitwarden_crypto::Kdf;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
@@ -232,6 +234,55 @@ impl Api {
         Ok(response.error_for_status()?.text().await?)
     }
 
+    /// Crée un élément (déjà chiffré) ; rend son identifiant.
+    pub async fn create_cipher(
+        &self,
+        access_token: &str,
+        cipher: &CipherRequestModel,
+    ) -> Result<String, Error> {
+        let response = self
+            .http
+            .post(format!("{}/api/ciphers", self.base))
+            .bearer_auth(access_token)
+            .json(cipher)
+            .send()
+            .await?;
+        let body = write_response(response).await?;
+        body.get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))
+    }
+
+    /// Remplace un élément. Le serveur refuse si `lastKnownRevisionDate` ne
+    /// correspond plus (modifié ailleurs entre-temps).
+    pub async fn update_cipher(
+        &self,
+        access_token: &str,
+        id: &str,
+        cipher: &CipherRequestModel,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/ciphers/{id}", self.base))
+            .bearer_auth(access_token)
+            .json(cipher)
+            .send()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Met l'élément à la corbeille (suppression douce, restaurable).
+    pub async fn trash_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/ciphers/{id}/delete", self.base))
+            .bearer_auth(access_token)
+            .send()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
     /// Demande l'envoi du code de second facteur par e-mail.
     pub async fn send_email_code(
         &self,
@@ -255,6 +306,26 @@ impl Api {
         let body: Value = response.json().await.unwrap_or(Value::Null);
         Err(Error::Server(error_message(&body)))
     }
+}
+
+/// Réponse d'une écriture : le JSON renvoyé, ou l'erreur traduite.
+async fn write_response(response: reqwest::Response) -> Result<Value, Error> {
+    let status = response.status();
+    let body: Value = response.json().await.unwrap_or(Value::Null);
+    if status.is_success() {
+        return Ok(body);
+    }
+    if status == reqwest::StatusCode::UNAUTHORIZED {
+        return Err(Error::SessionExpired);
+    }
+    if status == reqwest::StatusCode::NOT_FOUND {
+        return Err(Error::NotFound);
+    }
+    let message = error_message(&body);
+    if message.contains("out of date") {
+        return Err(Error::Conflict);
+    }
+    Err(Error::Server(message))
 }
 
 /// `https://vault.exemple.fr/` → `https://vault.exemple.fr`. HTTP en clair

@@ -151,8 +151,8 @@ struct QuickAccessView: View {
                 HStack(spacing: 0) {
                     resultsList
                     Divider()
-                    if hits.indices.contains(selected) {
-                        QuickDetail(summary: model.summary(for: hits[selected]))
+                    if let current {
+                        QuickDetail(summary: current)
                             .frame(width: 250)
                     }
                 }
@@ -202,26 +202,27 @@ struct QuickAccessView: View {
     private var resultsList: some View {
         ScrollView {
             VStack(spacing: 2) {
-                ForEach(Array(hits.enumerated()), id: \.element.position) { index, hit in
-                    let summary = model.summary(for: hit)
-                    HStack(spacing: 11) {
-                        ItemIcon(summary: summary, size: 30)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HighlightedText(text: summary.title, highlights: hit.highlights,
-                                            tint: index == selected ? nil : Theme.accent).lineLimit(1)
-                            Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
+                ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
+                    if let summary = model.summary(for: hit) {
+                        HStack(spacing: 11) {
+                            ItemIcon(summary: summary, size: 30)
+                            VStack(alignment: .leading, spacing: 1) {
+                                HighlightedText(text: summary.title, highlights: hit.highlights,
+                                                tint: index == selected ? nil : Theme.accent).lineLimit(1)
+                                Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            if summary.hasTotp {
+                                Image(systemName: "clock.badge.checkmark").font(.caption)
+                            }
                         }
-                        Spacer()
-                        if summary.hasTotp {
-                            Image(systemName: "clock.badge.checkmark").font(.caption)
-                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .foregroundStyle(index == selected ? Color.white : Color.primary)
+                        .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
+                        .onTapGesture { selected = index }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .foregroundStyle(index == selected ? Color.white : Color.primary)
-                    .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
-                    .contentShape(Rectangle())
-                    .onTapGesture { selected = index }
                 }
             }
             .padding(8)

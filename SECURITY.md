@@ -22,8 +22,9 @@ PR qui touche à l'un de ces points le dit dans sa description.
    toujours le nôtre.
 5. **Verrouillage** : inactivité (10 min), veille, écran verrouillé, fin de
    session. Verrouiller libère le coffre.
-6. **Mode lecture seule** au début : aucune écriture vers Vaultwarden tant que la
-   lecture et le remplissage n'ont pas fait leurs preuves.
+6. **Écritures prudentes** : chiffrées par le SDK, envoyées avec la date de
+   révision connue (le serveur refuse d'écraser une version plus récente),
+   en ne touchant qu'aux champs que l'écran d'édition montre.
 7. **App sandboxée**, runtime renforcé, réseau sortant uniquement.
 
 ## Connexion à Vaultwarden
@@ -62,7 +63,15 @@ PR qui touche à l'un de ces points le dit dans sa description.
   nom du site, sans authentification. Session réseau éphémère et cache en
   mémoire, vidé au verrouillage : la liste des sites ne reste pas en clair sur
   le disque. Désactivables dans les réglages.
-- **Lecture seule** : aucune écriture vers le serveur.
+- **Écriture** : l'élément part du cache, déchiffré par le SDK ; Verrou y
+  reporte les champs modifiés, le SDK le rechiffre (avec la clé de l'élément
+  ou de son organisation), puis `POST`/`PUT /api/ciphers` et une
+  synchronisation. Un mot de passe remplacé rejoint l'historique de l'élément
+  (5 entrées, comme Bitwarden). Les éléments qu'un compte ne peut pas
+  modifier (partage en lecture) sont refusés avant tout envoi. Pour éditer,
+  Swift reçoit les secrets de l'élément (`edit_draft`) : seulement quand
+  l'utilisateur ouvre l'écran de modification. La corbeille est celle du
+  serveur (`PUT /api/ciphers/{id}/delete`), restaurable.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne
   sont pas affichées.

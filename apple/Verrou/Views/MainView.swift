@@ -23,6 +23,18 @@ struct MainView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("Nouvel identifiant") { model.newItem(login: true) }
+                    Button("Nouvelle note sécurisée") { model.newItem(login: false) }
+                } label: {
+                    Label("Nouvel élément", systemImage: "plus")
+                } primaryAction: {
+                    model.newItem(login: true)
+                }
+                .disabled(!model.canEdit)
+                .help(model.canEdit ? "Nouvel identifiant (⌘N)" : "Coffre fictif : lecture seule")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.lock()
                 } label: {
@@ -42,6 +54,10 @@ struct MainView: View {
                         withAnimation(.snappy) { if model.toast?.id == toast.id { model.toast = nil } }
                     }
             }
+        }
+        .sheet(item: $model.editor) { editor in
+            EditItemView(editor: editor)
+                .environment(model)
         }
         .onAppear { searchFocused = true }
         .onKeyPress(.escape) {
@@ -202,12 +218,13 @@ struct ItemListView: View {
             } else {
                 ScrollViewReader { proxy in
                     List(selection: $model.selection) {
-                        ForEach(model.results, id: \.position) { hit in
-                            let summary = model.summary(for: hit)
-                            ItemRow(summary: summary, highlights: hit.highlights)
-                                .tag(summary.id)
-                                .id(summary.id)
-                                .contextMenu { RowMenu(summary: summary) }
+                        ForEach(model.results, id: \.id) { hit in
+                            if let summary = model.summary(for: hit) {
+                                ItemRow(summary: summary, highlights: hit.highlights)
+                                    .tag(summary.id)
+                                    .id(summary.id)
+                                    .contextMenu { RowMenu(summary: summary) }
+                            }
                         }
                     }
                     .listStyle(.inset)
@@ -309,6 +326,10 @@ struct RowMenu: View {
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
             Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }
+        }
+        if model.canEdit {
+            Divider()
+            Button("Modifier…") { Task { await model.edit(summary.id) } }
         }
     }
 }

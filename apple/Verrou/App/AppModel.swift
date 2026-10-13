@@ -77,6 +77,19 @@ final class AppModel {
         quickAccessOpenings += 1
     }
 
+    // Édition
+    /// Écran de création ou de modification ouvert.
+    var editor: Editor?
+    private(set) var editorBusy = false
+    var editorError: String?
+
+    struct Editor: Identifiable {
+        let id = UUID()
+        /// `nil` : création.
+        let itemID: String?
+        let draft: ItemDraft
+    }
+
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
 
@@ -366,7 +379,7 @@ final class AppModel {
         counts = try? session.counts()
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
-            selection = results.first.map { summaries[Int($0.position)].id }
+            selection = results.first?.id
         }
     }
 
@@ -452,6 +465,9 @@ final class AppModel {
         case .InvalidTotp(let message): return "Code à usage unique invalide : \(message)"
         case .NoPendingLogin: return "Recommencez la connexion."
         case .SecurityKey(let message): return "Clé de sécurité : \(message)."
+        case .ReadOnly: return "Cet élément est en lecture seule pour votre compte."
+        case .Invalid(let message): return message.prefix(1).uppercased() + message.dropFirst() + "."
+        case .Conflict: return "L'élément a changé sur le serveur : synchronisez, puis recommencez."
         }
     }
 
@@ -466,8 +482,15 @@ final class AppModel {
         lastSearchDuration = clock.now - start
     }
 
-    func summary(for hit: SearchHit) -> ItemSummary {
-        summaries[Int(hit.position)]
+    /// Le résumé d'un résultat, s'il désigne toujours le même élément : entre
+    /// le remplacement du coffre côté Rust (synchronisation, écriture) et le
+    /// rechargement ici, un ancien résultat peut encore être affiché.
+    func summary(for hit: SearchHit) -> ItemSummary? {
+        let position = Int(hit.position)
+        if summaries.indices.contains(position), summaries[position].id == hit.id {
+            return summaries[position]
+        }
+        return summaries.first { $0.id == hit.id }
     }
 
     var selectedDetail: ItemDetail? {
@@ -477,10 +500,96 @@ final class AppModel {
 
     func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
-        let ids = results.map { summaries[Int($0.position)].id }
+        let ids = results.map(\.id)
         let current = selection.flatMap { ids.firstIndex(of: $0) } ?? -1
         let next = min(max(current + offset, 0), ids.count - 1)
         selection = ids[next]
+    }
+
+    // MARK: Édition
+
+    /// Le coffre fictif reste en lecture seule ; Vaultwarden demande le réseau.
+    var canEdit: Bool { mode == .vaultwarden && lockState == .unlocked }
+
+    var folders: [FolderOption] {
+        lockState == .unlocked ? session.folders() : []
+    }
+
+    /// Nouvel élément, rangé dans le dossier affiché ; un identifiant arrive
+    /// avec un mot de passe déjà généré.
+    func newItem(login: Bool) {
+        guard canEdit else { return }
+        var folderID: String?
+        if case .folder(let name) = filter {
+            folderID = folders.first { $0.name == name }?.id
+        }
+        editorError = nil
+        let fields = login
+            ? LoginFields(username: nil, password: generatePassword(length: 20, digits: true, symbols: true),
+                          totp: nil, urls: [])
+            : nil
+        editor = Editor(itemID: nil, draft: ItemDraft(name: "", folderId: folderID, favorite: false,
+                                                     notes: nil, login: fields))
+    }
+
+    func edit(_ itemID: String) async {
+        guard canEdit else { return }
+        editorError = nil
+        do {
+            editor = Editor(itemID: itemID, draft: try await session.editDraft(id: itemID))
+        } catch {
+            toast = Toast(message: "Modification impossible", detail: Self.describe(error), failure: true)
+        }
+    }
+
+    func saveEditor(_ draft: ItemDraft) async {
+        guard let editor, !editorBusy else { return }
+        editorBusy = true
+        editorError = nil
+        defer { editorBusy = false }
+        do {
+            let id: String
+            if let existing = editor.itemID {
+                try await session.updateItem(id: existing, draft: draft)
+                id = existing
+            } else {
+                id = try await session.createItem(draft: draft)
+            }
+            afterWrite(select: id)
+            self.editor = nil
+            toast = Toast(message: editor.itemID == nil ? "Élément créé" : "Modifications enregistrées", detail: nil)
+        } catch VerrouError.Conflict {
+            editorError = "L'élément a changé ailleurs entre-temps. Verrou vient de le recharger : rouvrez-le pour refaire la modification."
+            await syncNow()
+        } catch {
+            editorError = Self.describe(error)
+        }
+    }
+
+    /// Corbeille du serveur : restaurable depuis le coffre web.
+    func trash(_ itemID: String) async {
+        guard canEdit else { return }
+        editorBusy = true
+        defer { editorBusy = false }
+        do {
+            try await session.trashItem(id: itemID)
+            editor = nil
+            afterWrite(select: nil)
+            toast = Toast(message: "Mis à la corbeille", detail: "Restaurable depuis le coffre web")
+        } catch {
+            editorError = Self.describe(error)
+            toast = Toast(message: "Corbeille impossible", detail: Self.describe(error), failure: true)
+        }
+    }
+
+    /// Le serveur a répondu et le coffre a été resynchronisé : on recharge.
+    private func afterWrite(select id: String?) {
+        guard lockState == .unlocked else { return }
+        account = session.account()
+        revealed.removeAll()
+        reloadVault()
+        if let id { selection = id }
+        syncState = .idle
     }
 
     // MARK: Secrets
@@ -536,6 +645,7 @@ struct Toast: Equatable, Identifiable {
     let id = UUID()
     let message: String
     let detail: String?
+    var failure = false
 }
 
 /// Verrouillage automatique : inactivité, mise en veille, écran verrouillé.

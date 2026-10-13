@@ -4822,6 +4822,7 @@ dependencies = [
  "bitwarden-core",
  "bitwarden-crypto",
  "bitwarden-vault",
+ "chrono",
  "ciborium",
  "data-encoding",
  "p256 0.13.2",
