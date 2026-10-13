@@ -26,6 +26,10 @@ struct VerrouApp: App {
                 Button("Nouvelle note sécurisée") { delegate.model.newItem(login: false) }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
+                Divider()
+                Button("Importer…") { delegate.model.startImport() }
+                    .keyboardShortcut("i", modifiers: [.command, .shift])
+                    .disabled(!delegate.model.canEdit)
             }
             CommandMenu("Coffre") {
                 Button("Accès rapide") { delegate.quickAccess?.toggle() }
@@ -34,6 +38,8 @@ struct VerrouApp: App {
                 Button("Synchroniser") { Task { await delegate.model.syncNow() } }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(delegate.model.lockState != .unlocked || delegate.model.mode == .demo)
+                Button("Nettoyer les doublons…") { delegate.model.openDuplicates() }
+                    .disabled(delegate.model.lockState != .unlocked)
                 Button("Verrouiller") { delegate.model.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(delegate.model.lockState != .unlocked)

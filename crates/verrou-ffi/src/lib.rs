@@ -39,6 +39,13 @@ use verrou_vaultwarden::{
 
 uniffi::setup_scaffolding!();
 
+mod import;
+
+pub use import::{
+    DuplicateGroupView, ImportChoice, ImportDestination, ImportEntry, ImportFormat, ImportOutcome,
+    ImportReview, ImportSkipped, ImportStatus,
+};
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum VerrouError {
     #[error("le coffre est verrouillé")]
@@ -562,6 +569,8 @@ pub struct VaultSession {
     authorized: Mutex<HashMap<String, Instant>>,
     /// Demandes d'accord du terminal en attente de l'utilisateur.
     confirmations: Arc<Confirmations>,
+    /// Export lu, en attente de confirmation (secrets compris).
+    pending_import: Mutex<Option<import::PendingImport>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -794,6 +803,7 @@ impl VaultSession {
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),
             confirmations: Arc::default(),
+            pending_import: Mutex::new(None),
         })
     }
 
@@ -1129,6 +1139,7 @@ impl VaultSession {
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),
             confirmations: Arc::default(),
+            pending_import: Mutex::new(None),
         })
     }
 
@@ -1168,6 +1179,7 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
+        self.cancel_import();
     }
 
     /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets

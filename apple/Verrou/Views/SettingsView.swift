@@ -61,6 +61,16 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    LabeledContent("Importer") {
+                        Button("Choisir un fichier…") { model.startImport() }
+                            .disabled(!model.canEdit)
+                    }
+                } footer: {
+                    Text("Exports des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV). Les doublons sont repérés avant l'import ; Coffre → Nettoyer les doublons… traite ceux du coffre.")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
                     Toggle("Déverrouiller avec Touch ID", isOn: touchID)
                         .disabled(!Biometrics.isAvailable)
                 } footer: {

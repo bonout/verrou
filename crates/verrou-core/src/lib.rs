@@ -6,7 +6,9 @@
 //! de Bitwarden.
 
 pub mod audit;
+pub mod duplicates;
 pub mod generator;
+pub mod import;
 pub mod matching;
 pub mod mock;
 pub mod model;

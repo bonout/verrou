@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-use bitwarden_api_api::models::CipherRequestModel;
+use bitwarden_api_api::models::{
+    CipherBulkDeleteRequestModel, CipherRequestModel, ImportCiphersRequestModel,
+};
 use bitwarden_crypto::Kdf;
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde::Deserialize;
@@ -289,6 +291,54 @@ impl Api {
             .http
             .put(format!("{}/api/ciphers/{id}/{action}", self.base))
             .bearer_auth(access_token)
+            .send()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Importe des éléments déjà chiffrés en une seule requête, comme
+    /// l'import du coffre web. Les dossiers sont désignés par leur
+    /// identifiant (`folders` + `folderRelationships`).
+    pub async fn import_ciphers(
+        &self,
+        access_token: &str,
+        request: &ImportCiphersRequestModel,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .post(format!("{}/api/ciphers/import", self.base))
+            .bearer_auth(access_token)
+            // Des centaines d'éléments chiffrés : plus long qu'une écriture.
+            .timeout(Duration::from_secs(120))
+            .json(request)
+            .send()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Crée un dossier (nom déjà chiffré) ; rend son identifiant.
+    pub async fn create_folder(&self, access_token: &str, name: &str) -> Result<String, Error> {
+        let response = self
+            .http
+            .post(format!("{}/api/folders", self.base))
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({ "name": name }))
+            .send()
+            .await?;
+        let body = write_response(response).await?;
+        body.get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Server("dossier créé sans identifiant".to_owned()))
+    }
+
+    /// Met plusieurs éléments à la corbeille en une requête (restaurables).
+    pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/ciphers/delete", self.base))
+            .bearer_auth(access_token)
+            .json(&CipherBulkDeleteRequestModel::new(ids.to_vec()))
             .send()
             .await?;
         write_response(response).await.map(drop)

@@ -72,6 +72,29 @@ PR qui touche à l'un de ces points le dit dans sa description.
   Swift reçoit les secrets de l'élément (`edit_draft`) : seulement quand
   l'utilisateur ouvre l'écran de modification. La corbeille est celle du
   serveur (`PUT /api/ciphers/{id}/delete`), restaurable.
+- **Import** (Apple, 1Password, Proton Pass) : le fichier d'export est **en
+  clair**, il contient tous les mots de passe. Verrou ne le lit que sur
+  demande, une fois, par le panneau d'ouverture de macOS (droit
+  `com.apple.security.files.user-selected.read-only` : lecture seule, de ce
+  seul fichier) ; il ne le copie pas, ne le garde pas et n'y écrit rien. Le
+  cœur Rust le lit et le compare au coffre ; les secrets restent dans des
+  `SecretString` jusqu'à l'import, l'abandon ou le verrouillage, et la revue
+  ne montre à Swift que titres, identifiants et sites, avec le verdict de la
+  comparaison des mots de passe. Limite connue : les lecteurs CSV et JSON
+  gardent des copies intermédiaires qui ne sont pas mises à zéro. Les
+  éléments sont chiffrés par le SDK comme une création, puis envoyés en une
+  requête (`POST /api/ciphers/import`, comme le coffre web) ; les noms de
+  dossiers partent chiffrés. Un mot de passe remplacé rejoint l'historique
+  de l'élément. Verrou recommande de supprimer le fichier d'export après
+  l'import (et de vider la corbeille du Finder). Les exports chiffrés (PGP de
+  Proton Pass) sont refusés : il faut exporter sans chiffrement.
+- **Doublons** : comparés dans Rust (même site, même identifiant) ; Swift ne
+  reçoit que les groupes et le verdict « mot de passe identique ou non ». La
+  corbeille en masse (`PUT /api/ciphers/delete`) est celle du serveur,
+  restaurable, et rien n'est envoyé si un élément n'est pas modifiable. Les
+  éléments protégés (« redemander le mot de passe principal ») sont comparés
+  comme les autres, à l'import comme ici : seul le verdict en sort, aucun
+  secret.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne
   sont pas affichées.
