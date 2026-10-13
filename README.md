@@ -27,6 +27,11 @@ macOS (puis iPadOS et iOS), extension Brave et CLI, autour d'un cœur en Rust.
   propose de le déverrouiller (Touch ID). L'extension est reliée une fois à
   l'app, en comparant un code à 6 chiffres, puis le canal est chiffré de bout
   en bout ; elle ne reçoit que les identifiants du site ouvert, en HTTPS.
+  Sur un champ « nouveau mot de passe », elle propose un mot de passe fort
+  (et remplit sa confirmation) ; après l'envoi d'un formulaire, un bandeau
+  propose d'enregistrer le compte ou de mettre à jour son mot de passe. Un QR
+  code de double authentification affiché par un site s'ajoute à
+  l'identifiant depuis la fenêtre de l'extension (ou sa clé, saisie à la main).
 - **Hors ligne** : le coffre reste disponible sans réseau, déchiffré à partir
   du cache (la réponse du serveur, chiffrée).
 - **Touch ID** : la clé du coffre est scellée par le Secure Enclave (voir
@@ -127,7 +132,7 @@ Vaultwarden), `VERROU_MOCK_SIZE=10000` (gros coffre fictif), `VERROU_DEMO=1`
 
 1. ✅ Cœur, recherche, app macOS et CLI sur coffre fictif
 2. ✅ Connexion Vaultwarden : SDK Rust Bitwarden, second facteur, déchiffrement, synchro, cache chiffré hors ligne, Touch ID par le Secure Enclave
-3. Extension Brave : ✅ menu dans les champs, formulaires en plusieurs étapes, codes ; enregistrement des nouveaux comptes, générateur, cartes, adresses
+3. Extension Brave : ✅ menu dans les champs, formulaires en plusieurs étapes, codes, enregistrement et mise à jour des comptes, générateur, QR codes de double authentification ; cartes, adresses
 4. iPhone et iPad : Face ID, extension de remplissage automatique du système
 5. YubiKey : ✅ connexion FIDO2 en USB ; déverrouillage `hmac-secret`
 

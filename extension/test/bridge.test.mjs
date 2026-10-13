@@ -11,6 +11,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 
 import { BridgeError, Channel } from "../bridge.js";
 
@@ -92,10 +93,27 @@ test("appairage, suggestions et remplissage depuis l'extension", async () => {
   const denied = await channel.request({ cmd: "fill", url: "https://evil.example/", item: "github" });
   assert.equal(denied.result, "denied");
 
+  // Après l'envoi d'un formulaire : nouveau compte, puis enregistré.
+  const page = "http://localhost:8000/inscription";
+  const fresh = await channel.request({ cmd: "check", url: page, username: "dominique", password: "Nouveau-42!" });
+  assert.equal(fresh.action, "new");
+  const saved = await channel.request({ cmd: "save", url: page, username: "dominique", password: "Nouveau-42!" });
+  assert.equal(saved.result, "saved");
+  const known = await channel.request({ cmd: "check", url: page, username: "dominique", password: "Nouveau-42!" });
+  assert.equal(known.action, "known");
+  assert.equal(known.item.id, saved.item);
+
+  // QR code de double authentification ajouté à l'identifiant du site.
+  const totp = await channel.request({ cmd: "set_totp", url: page, item: saved.item,
+    totp: "otpauth://totp/Local:dominique?secret=JBSWY3DPEHPK3PXP&issuer=Local" });
+  assert.equal(totp.result, "saved");
+  const withCode = await channel.request({ cmd: "fill", url: page, item: saved.item });
+  assert.match(withCode.totp, /^\d{6}$/);
+
   // Une nouvelle connexion (le service worker se rendort) garde l'appairage.
   channel.disconnect();
   const again = await channel.request({ cmd: "suggest", url: "http://localhost:8000/connexion" });
-  assert.deepEqual(again.items.map((i) => i.id), ["local"]);
+  assert.ok(again.items.some((i) => i.id === "local"));
   channel.disconnect();
 });
 
@@ -144,4 +162,19 @@ test("l'identifiant de l'extension est celui que l'app déclare au navigateur", 
   assert.ok(swift.includes(`extensionID = "${id}"`), `BrowserBridge.swift doit déclarer ${id}`);
   const e2e = readFileSync(`${root}extension/e2e/brave.mjs`, "utf8");
   assert.ok(e2e.includes(`EXTENSION_ID = "${id}"`));
+});
+
+test("le générateur suit les règles de Verrou", () => {
+  const context = { crypto };
+  vm.runInNewContext(readFileSync(`${root}extension/generator.js`, "utf8"), context);
+  const { password, CLASSES } = context.verrouGenerator;
+  const seen = new Set();
+  for (let i = 0; i < 200; i += 1) {
+    const value = password();
+    assert.equal(value.length, 20);
+    for (const set of CLASSES) assert.ok([...value].some((c) => set.includes(c)), `${value} sans ${set}`);
+    assert.doesNotMatch(value, /[lIO01]/);
+    seen.add(value);
+  }
+  assert.equal(seen.size, 200);
 });

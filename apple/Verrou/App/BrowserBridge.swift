@@ -99,6 +99,10 @@ final class BrowserBridge {
         }
     }
 
+    fileprivate func vaultChanged(item: String, title: String) {
+        model.didSaveFromBrowser(title: title)
+    }
+
     // MARK: Déclaration au navigateur
 
     /// `NativeMessagingHosts/app.verrou.bridge.json` : le navigateur n'accepte
@@ -164,6 +168,12 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
     func unlockRequested() {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated { bridge?.unlockRequested() }
+        }
+    }
+
+    func vaultChanged(item: String, title: String) {
+        DispatchQueue.main.async { [weak bridge] in
+            MainActor.assumeIsolated { bridge?.vaultChanged(item: item, title: title) }
         }
     }
 }

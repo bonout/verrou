@@ -6,8 +6,10 @@
 //! peut que demander un appairage, que l'utilisateur doit accepter dans
 //! Verrou après avoir comparé le code.
 
+use std::future::Future;
 use std::io;
 use std::path::PathBuf;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -18,12 +20,18 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
 use zeroize::Zeroize as _;
 
+use crate::access::Write;
 use crate::clients::{ClientInfo, ClientStore};
 use crate::crypto::{Direction, KeyPair};
 use crate::protocol::{
     Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS, MAX_FRAME, Outgoing, Reply,
-    ReplyResult, Request, Suggestion,
+    ReplyResult, Request, SaveAction, Suggestion,
 };
+
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+
+/// Demande d'écriture de l'extension, à vérifier sur le coffre déverrouillé.
+pub type WritePlan = Box<dyn FnOnce(&verrou_core::Vault) -> Result<Write, String> + Send>;
 
 /// Le temps laissé à l'utilisateur pour accepter un appairage.
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(120);
@@ -38,6 +46,18 @@ pub trait Backend: Send + Sync + 'static {
     fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>>;
     /// `None` : coffre verrouillé ; `Err` : refus, avec sa raison.
     fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>>;
+    /// `None` : coffre verrouillé ; `Err` : refus. Voir [`crate::access::check_save`].
+    fn check_save(
+        &self,
+        page_url: &str,
+        username: &str,
+        password: &str,
+        current: Option<&str>,
+    ) -> Option<Result<(SaveAction, Option<Suggestion>), String>>;
+    /// Vérifie la demande d'écriture sur le coffre ([`crate::access::plan_save`],
+    /// [`crate::access::plan_totp`]), puis l'exécute. `None` : coffre
+    /// verrouillé ; `Ok` : l'identifiant de l'élément écrit.
+    fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>>;
     /// L'extension demande à déverrouiller : amener Verrou au premier plan.
     fn request_unlock(&self);
     /// Demande d'appairage : afficher `code` et demander l'accord, puis
@@ -196,7 +216,9 @@ async fn serve(shared: Arc<Shared>, mut reader: OwnedReadHalf, mut writer: Owned
                 }
                 continue;
             }
-            Ok(Incoming::Request { client, iv, data }) => answer(&shared, &client, &iv, &data),
+            Ok(Incoming::Request { client, iv, data }) => {
+                answer(&shared, &client, &iv, &data).await
+            }
             Err(_) => Outgoing::Error {
                 code: ErrorCode::BadRequest,
             },
@@ -281,7 +303,7 @@ async fn pair(
     }
 }
 
-fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
+async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
     let bad = Outgoing::Error {
         code: ErrorCode::BadRequest,
     };
@@ -319,6 +341,35 @@ fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
             backend.request_unlock();
             ReplyResult::Done
         }
+        Command::Check {
+            url,
+            username,
+            password,
+            current,
+        } => match backend.check_save(&url, &username, &password, current.as_deref()) {
+            None => ReplyResult::Locked,
+            Some(Ok((action, item))) => ReplyResult::Check { action, item },
+            Some(Err(reason)) => ReplyResult::Denied { reason },
+        },
+        Command::Save {
+            url,
+            username,
+            password,
+            item,
+        } => written(
+            backend
+                .write(Box::new(move |vault| {
+                    crate::access::plan_save(vault, &url, &username, &password, item.as_deref())
+                }))
+                .await,
+        ),
+        Command::SetTotp { url, totp, item } => written(
+            backend
+                .write(Box::new(move |vault| {
+                    crate::access::plan_totp(vault, &url, &totp, item.as_deref())
+                }))
+                .await,
+        ),
     };
     let Ok(mut body) = serde_json::to_vec(&Reply {
         id: request.id,
@@ -329,4 +380,12 @@ fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
     let (iv, data) = key.seal(client, Direction::Response, &body);
     body.zeroize();
     Outgoing::Response { iv, data }
+}
+
+fn written(outcome: Option<Result<String, String>>) -> ReplyResult {
+    match outcome {
+        None => ReplyResult::Locked,
+        Some(Ok(item)) => ReplyResult::Saved { item },
+        Some(Err(reason)) => ReplyResult::Denied { reason },
+    }
 }

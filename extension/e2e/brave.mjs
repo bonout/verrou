@@ -43,17 +43,36 @@ const server = spawn(`${root}target/debug/examples/test_server`, {
 });
 children.push(server);
 const codes = [];
+const saved = [];
 const port = await new Promise((resolve) => {
   createInterface({ input: server.stdout }).on("line", (line) => {
     if (line.startsWith("PORT ")) resolve(line.slice(5));
     if (line.startsWith("CODE ")) codes.push(line.slice(5));
+    if (line.startsWith("SAVED ")) saved.push(line.slice(6));
   });
 });
 
 // MARK: Page de connexion
 
 const page = createServer((request, response) => {
+  if (request.url === "/qr.png") {
+    response.setHeader("content-type", "image/png");
+    response.setHeader("access-control-allow-origin", "*");
+    return response.end(readFileSync(`${root}extension/e2e/fixtures/otpauth.png`));
+  }
   response.setHeader("content-type", "text/html; charset=utf-8");
+  if (request.url.startsWith("/inscription")) {
+    return response.end(`<!doctype html><title>Inscription</title>
+      <form id="signup" action="/bienvenue" method="post">
+        <label>E-mail <input id="new-email" type="email" name="email"></label>
+        <label>Mot de passe <input id="new-password" type="password" name="password"></label>
+        <label>Confirmation <input id="confirm" type="password" name="confirm"></label>
+        <button id="create">Créer mon compte</button>
+      </form>`);
+  }
+  if (request.url.startsWith("/bienvenue")) {
+    return response.end(`<!doctype html><title>Bienvenue</title><h1>Compte créé</h1>`);
+  }
   response.end(`<!doctype html><title>Connexion</title>
     <form id="login" onsubmit="return false">
       <label>E-mail <input id="email" type="email" name="email" autocomplete="username"></label>
@@ -64,6 +83,7 @@ const page = createServer((request, response) => {
 }).listen(0, "127.0.0.1");
 await new Promise((resolve) => page.once("listening", resolve));
 const pageUrl = `http://localhost:${page.address().port}/connexion`;
+const signupUrl = `http://localhost:${page.address().port}/inscription`;
 
 // MARK: Brave, profil jetable
 
@@ -144,6 +164,13 @@ async function evaluate(sessionId, expression) {
   return result.value;
 }
 
+// Un vrai clic (isTrusted), aux coordonnées de la fenêtre.
+async function click(sessionId, x, y) {
+  for (const type of ["mousePressed", "mouseReleased"]) {
+    await cdp("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 }, sessionId);
+  }
+}
+
 async function press(sessionId, key) {
   const codes = { Enter: 13, ArrowDown: 40, Escape: 27 };
   for (const type of ["rawKeyDown", "keyUp"]) {
@@ -206,6 +233,44 @@ try {
   await sleep(600);
   assert.equal(await evaluate(tab, `document.getElementById("password").value`), "");
   step("un clic simulé par la page ne remplit rien");
+
+  // Inscription : mot de passe fort proposé dans le champ, au clavier.
+  const signup = await openTab(signupUrl);
+  await eventually(() => evaluate(signup, `document.readyState === "complete"`), "page d'inscription");
+  await cdp("Page.bringToFront", {}, signup);
+  await evaluate(signup, `document.getElementById("new-email").value = "dominique@exemple.fr"`);
+  await evaluate(signup, `document.getElementById("new-password").focus()`);
+  await eventually(() => evaluate(signup, `Boolean(document.querySelector("verrou-menu"))`), "générateur");
+  await press(signup, "Enter");
+  const generated = await eventually(() => evaluate(signup,
+    `document.getElementById("new-password").value && [document.getElementById("new-password").value, document.getElementById("confirm").value]`),
+  "mot de passe généré");
+  assert.equal(generated[0].length, 20);
+  assert.equal(generated[0], generated[1], "la confirmation reçoit le même mot de passe");
+  step("mot de passe fort généré dans le champ et sa confirmation");
+
+  // Envoi du formulaire : la page suivante propose d'enregistrer.
+  const box = await evaluate(signup, `(() => { const r = document.getElementById("create").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
+  await click(signup, ...box);
+  await eventually(() => evaluate(signup, `location.pathname === "/bienvenue" && document.readyState === "complete"`), "page suivante");
+  const bannerBox = await eventually(() => evaluate(signup,
+    `(() => { const b = document.querySelector("verrou-banner"); if (!b) return null; const r = b.getBoundingClientRect(); return r.height > 40 && [r.right, r.bottom]; })()`),
+  "bandeau « Enregistrer »");
+  step("bandeau d'enregistrement après l'envoi du formulaire");
+  // Un clic simulé par la page sur le bandeau n'enregistre rien.
+  await evaluate(signup, `document.querySelector("verrou-banner").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+  await sleep(500);
+  assert.deepEqual(saved, []);
+  // Le bouton « Enregistrer », en bas à droite du bandeau.
+  await click(signup, bannerBox[0] - 50, bannerBox[1] - 26);
+  await eventually(() => saved.length > 0, "enregistrement dans Verrou");
+  step(`identifiant enregistré dans Verrou (${saved[0]})`);
+
+  // QR code de double authentification lu dans la fenêtre de l'extension.
+  const otpauth = await evaluate(popup, `import("./qr.js").then(async (qr) =>
+    qr.otpauthFrom(await (await fetch("http://localhost:${page.address().port}/qr.png")).blob()))`);
+  assert.equal(otpauth, "otpauth://totp/Local:dominique%40exemple.fr?secret=JBSWY3DPEHPK3PXP&issuer=Local");
+  step("QR code de double authentification lu");
 } catch (error) {
   failed = true;
   console.error(`BRAVE_FAIL ${error.message}`);

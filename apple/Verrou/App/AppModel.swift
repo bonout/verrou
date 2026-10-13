@@ -585,6 +585,14 @@ final class AppModel {
         }
     }
 
+    /// L'extension a enregistré un identifiant ou un code : le cœur Rust a
+    /// déjà remplacé le coffre, on recharge l'affichage sans changer de sélection.
+    func didSaveFromBrowser(title: String) {
+        guard lockState == .unlocked else { return }
+        afterWrite(select: selection)
+        toast = Toast(message: "Enregistré depuis Brave", detail: title.isEmpty ? nil : title)
+    }
+
     /// Le serveur a répondu et le coffre a été resynchronisé : on recharge.
     private func afterWrite(select id: String?) {
         guard lockState == .unlocked else { return }

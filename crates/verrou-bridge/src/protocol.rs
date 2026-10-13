@@ -82,6 +82,33 @@ pub enum Command {
     },
     /// Amène Verrou au premier plan pour le déverrouiller.
     Unlock,
+    /// Identifiant saisi sur la page `url` : déjà dans le coffre, nouveau,
+    /// ou nouveau mot de passe d'un élément ? `current` : l'ancien mot de
+    /// passe d'un formulaire de changement.
+    Check {
+        url: String,
+        username: String,
+        password: String,
+        #[serde(default)]
+        current: Option<String>,
+    },
+    /// Enregistre l'identifiant de la page : `item` absent, un nouvel
+    /// élément ; sinon le nouveau mot de passe de cet élément.
+    Save {
+        url: String,
+        username: String,
+        password: String,
+        #[serde(default)]
+        item: Option<String>,
+    },
+    /// Ajoute la graine TOTP (ou l'URI `otpauth://` d'un QR code) à
+    /// l'élément `item` de la page, ou à un nouvel élément.
+    SetTotp {
+        url: String,
+        totp: String,
+        #[serde(default)]
+        item: Option<String>,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -94,12 +121,37 @@ pub struct Reply {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "result", rename_all = "snake_case")]
 pub enum ReplyResult {
-    Status { unlocked: bool },
-    Suggestions { items: Vec<Suggestion> },
+    Status {
+        unlocked: bool,
+    },
+    Suggestions {
+        items: Vec<Suggestion>,
+    },
     Credentials(Credentials),
     Locked,
-    Denied { reason: String },
+    Denied {
+        reason: String,
+    },
     Done,
+    Check {
+        action: SaveAction,
+        /// L'élément concerné, pour `known` et `update`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        item: Option<Suggestion>,
+    },
+    /// Écrit dans le coffre : l'identifiant de l'élément créé ou modifié.
+    Saved {
+        item: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SaveAction {
+    /// Déjà dans le coffre, à l'identique : rien à proposer.
+    Known,
+    New,
+    Update,
 }
 
 /// Ce que le menu de l'extension affiche. Aucun secret.

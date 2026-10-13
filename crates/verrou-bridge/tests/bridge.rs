@@ -10,12 +10,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
-use verrou_bridge::protocol::{Credentials, Suggestion};
-use verrou_bridge::{Backend, Bridge, PairingRequest, access};
+use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
+use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan, access};
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 struct FakeBackend {
-    vault: Vault,
+    vault: Mutex<Vault>,
     unlocked: AtomicBool,
     unlock_requested: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
@@ -28,12 +28,42 @@ impl Backend for FakeBackend {
 
     fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>> {
         self.is_unlocked()
-            .then(|| access::suggestions(&self.vault, page_url))
+            .then(|| access::suggestions(&self.vault.lock().unwrap(), page_url))
     }
 
     fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>> {
         self.is_unlocked()
-            .then(|| access::credentials(&self.vault, item, page_url, 59))
+            .then(|| access::credentials(&self.vault.lock().unwrap(), item, page_url, 59))
+    }
+
+    fn check_save(
+        &self,
+        page_url: &str,
+        username: &str,
+        password: &str,
+        current: Option<&str>,
+    ) -> Option<Result<(SaveAction, Option<Suggestion>), String>> {
+        self.is_unlocked().then(|| {
+            access::check_save(
+                &self.vault.lock().unwrap(),
+                page_url,
+                username,
+                password,
+                current,
+            )
+        })
+    }
+
+    fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
+        let outcome = self.is_unlocked().then(|| {
+            let mut vault = self.vault.lock().unwrap();
+            plan(&vault).map(|write| {
+                let (updated, id) = access::apply_in_memory(&vault, write, "nouveau");
+                *vault = updated;
+                id
+            })
+        });
+        Box::pin(async move { outcome })
     }
 
     fn request_unlock(&self) {
@@ -73,7 +103,7 @@ fn start() -> (
 ) {
     let (sender, receiver) = mpsc::channel();
     let backend = Arc::new(FakeBackend {
-        vault: Vault::new(vec![github()]),
+        vault: Mutex::new(Vault::new(vec![github()])),
         unlocked: AtomicBool::new(true),
         unlock_requested: AtomicBool::new(false),
         pairings: Mutex::new(sender),
@@ -212,6 +242,37 @@ fn pairing_then_fill_for_the_matching_site_only() {
         client.request(&json!({ "cmd": "fill", "url": "http://github.com/", "item": "github" }));
     assert_eq!(http["result"], "denied");
 
+    // Après l'envoi d'un formulaire : connu, mise à jour, nouveau.
+    let check = |client: &mut Client, username: &str, password: &str| {
+        client.request(&json!({ "cmd": "check", "url": "https://github.com/login",
+            "username": username, "password": password }))
+    };
+    assert_eq!(check(&mut client, "camille", "hunter2")["action"], "known");
+    let update = check(&mut client, "camille", "hunter3");
+    assert_eq!(update["action"], "update");
+    assert_eq!(update["item"]["id"], "github");
+    assert_eq!(check(&mut client, "dominique", "x")["action"], "new");
+
+    // Enregistrer : le nouveau mot de passe remplit ensuite le formulaire.
+    let saved = client.request(&json!({ "cmd": "save", "url": "https://github.com/login",
+        "username": "camille", "password": "hunter3", "item": "github" }));
+    assert_eq!(saved["result"], "saved");
+    assert_eq!(check(&mut client, "camille", "hunter3")["action"], "known");
+    // Pas pour un élément d'un autre site.
+    let elsewhere = client.request(&json!({ "cmd": "save", "url": "https://evil.example/",
+        "username": "camille", "password": "x", "item": "github" }));
+    assert_eq!(elsewhere["result"], "denied");
+
+    // QR code de double authentification : la graine rejoint l'élément.
+    let totp = client.request(
+        &json!({ "cmd": "set_totp", "url": "https://github.com/settings",
+        "totp": "otpauth://totp/GitHub:camille?secret=JBSWY3DPEHPK3PXP", "item": "github" }),
+    );
+    assert_eq!(totp["result"], "saved");
+    let suggestions =
+        client.request(&json!({ "cmd": "suggest", "url": "https://github.com/login" }));
+    assert_eq!(suggestions["items"][0]["has_totp"], true);
+
     // Requête rejouée trop tard : refusée.
     let stale = client.request_at(&json!({ "cmd": "status" }), now_ms() - 10 * 60 * 1000);
     assert_eq!(stale["code"], "bad_request");
@@ -226,6 +287,9 @@ fn pairing_then_fill_for_the_matching_site_only() {
         "done"
     );
     assert!(backend.unlock_requested.load(Ordering::SeqCst));
+    let save_locked = client.request(&json!({ "cmd": "save", "url": "https://github.com/",
+        "username": "camille", "password": "x" }));
+    assert_eq!(save_locked["result"], "locked");
     backend.unlocked.store(true, Ordering::SeqCst);
 
     // L'appairage survit à un redémarrage de Verrou…

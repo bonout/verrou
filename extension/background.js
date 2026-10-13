@@ -138,9 +138,146 @@ function startPairing() {
   return pairing;
 }
 
+// MARK: Enregistrement après l'envoi d'un formulaire
+//
+// Le mot de passe capté attend la réponse de l'utilisateur dans
+// `chrome.storage.session` (en mémoire, hors de portée des pages), deux
+// minutes au plus, pour l'onglet où le formulaire est parti.
+
+const PENDING_MS = 2 * 60_000;
+const USERNAME_MS = 5 * 60_000;
+
+const pendingKey = (tabId) => `save:${tabId}`;
+const usernameKey = (tabId) => `user:${tabId}`;
+
+async function sessionGet(key) {
+  return (await chrome.storage.session.get(key))[key];
+}
+
+async function neverList() {
+  return (await chrome.storage.local.get("never")).never ?? [];
+}
+
+const siteOf = (url) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+};
+
+async function rememberUsername(tabId, username) {
+  await chrome.storage.session.set({ [usernameKey(tabId)]: { username, at: Date.now() } });
+}
+
+async function capture(sender, message) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined || !sender.url || !channel.client) return;
+  const site = siteOf(sender.url);
+  if ((await neverList()).includes(site)) return;
+  let username = String(message.username ?? "").slice(0, 512);
+  if (!username) {
+    // Deuxième étape d'une connexion : l'identifiant de l'étape précédente.
+    const remembered = await sessionGet(usernameKey(tabId));
+    if (remembered && Date.now() - remembered.at < USERNAME_MS) username = remembered.username;
+  }
+  const password = String(message.password ?? "");
+  const current = message.current ? String(message.current) : null;
+  const pending = { url: sender.url, site, username, password, current, at: Date.now() };
+  let reply;
+  try {
+    reply = await call({ cmd: "check", url: sender.url, username, password, current });
+  } catch {
+    return;
+  }
+  if (reply.result === "locked") {
+    pending.action = "locked";
+  } else if (reply.result === "check" && reply.action !== "known") {
+    pending.action = reply.action;
+    pending.item = reply.item?.id ?? null;
+    pending.title = reply.item?.title ?? "";
+  } else {
+    await chrome.storage.session.remove(pendingKey(tabId));
+    return;
+  }
+  await chrome.storage.session.set({ [pendingKey(tabId)]: pending });
+  // Application monopage : la page reste, on lui dit de proposer. Sinon, la
+  // page suivante le demandera elle-même.
+  setTimeout(() => chrome.tabs.sendMessage(tabId, { kind: "offerSave" }, { frameId: 0 }).catch(() => {}), 600);
+}
+
+async function pendingFor(sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined) return null;
+  const pending = await sessionGet(pendingKey(tabId));
+  if (!pending || Date.now() - pending.at > PENDING_MS) return null;
+  if (pending.action === "locked") {
+    // Verrou vient peut-être d'être déverrouillé : la vraie réponse.
+    try {
+      const reply = await call({ cmd: "check", url: pending.url, username: pending.username,
+        password: pending.password, current: pending.current });
+      if (reply.result === "check") {
+        if (reply.action === "known") {
+          await chrome.storage.session.remove(pendingKey(tabId));
+          return null;
+        }
+        Object.assign(pending, { action: reply.action, item: reply.item?.id ?? null, title: reply.item?.title ?? "" });
+        await chrome.storage.session.set({ [pendingKey(tabId)]: pending });
+      }
+    } catch {
+      // Hors ligne : on garde la proposition telle quelle.
+    }
+  }
+  return pending;
+}
+
+async function confirmSave(sender) {
+  const pending = await pendingFor(sender);
+  if (!pending || pending.action === "locked") return { ok: false, reason: "Verrou est verrouillé" };
+  try {
+    const reply = await call({ cmd: "save", url: pending.url, username: pending.username,
+      password: pending.password, item: pending.action === "update" ? pending.item : null });
+    if (reply.result !== "saved") {
+      return { ok: false, reason: reply.result === "locked" ? "Verrou est verrouillé" : reply.reason };
+    }
+    await chrome.storage.session.remove(pendingKey(sender.tab.id));
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: `Verrou ne répond pas (${error.message})` };
+  }
+}
+
+async function neverSave(sender) {
+  const pending = await pendingFor(sender);
+  if (pending?.site) {
+    const never = await neverList();
+    if (!never.includes(pending.site)) await chrome.storage.local.set({ never: [...never, pending.site] });
+  }
+  await chrome.storage.session.remove(pendingKey(sender.tab.id));
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.storage.session.remove([pendingKey(tabId), usernameKey(tabId)]).catch(() => {});
+});
+
+// MARK: Code de vérification (QR code)
+
+async function setTotp(url, totp, item) {
+  try {
+    const reply = await call({ cmd: "set_totp", url, totp, item: item ?? null });
+    if (reply.result === "saved") return { ok: true };
+    return { ok: false, reason: reply.result === "locked" ? "Verrou est verrouillé" : reply.reason };
+  } catch (error) {
+    return { ok: false, reason: `Verrou ne répond pas (${error.message})` };
+  }
+}
+
 // MARK: Messages
 
-const fromPage = new Set(["suggest", "fill", "unlock"]);
+const fromPage = new Set([
+  "suggest", "fill", "unlock",
+  "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
+]);
 
 async function activeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -162,6 +299,27 @@ async function handle(message, sender) {
       return fill(sender.url, message.item);
     case "unlock":
       await call({ cmd: "unlock" }).catch(() => {});
+      return { ok: true };
+    case "capture":
+      await capture(sender, message);
+      return { ok: true };
+    case "rememberUsername":
+      if (sender.tab?.id !== undefined) await rememberUsername(sender.tab.id, String(message.username).slice(0, 512));
+      return { ok: true };
+    case "pendingSave": {
+      const pending = await pendingFor(sender);
+      // Pas de mot de passe vers la page : le bandeau n'en a pas besoin.
+      return pending
+        ? { action: pending.action, username: pending.username, site: pending.site, title: pending.title ?? "" }
+        : {};
+    }
+    case "confirmSave":
+      return confirmSave(sender);
+    case "dismissSave":
+      if (sender.tab?.id !== undefined) await chrome.storage.session.remove(pendingKey(sender.tab.id));
+      return { ok: true };
+    case "neverSave":
+      await neverSave(sender);
       return { ok: true };
 
     // Depuis la fenêtre de l'extension.
@@ -187,6 +345,27 @@ async function handle(message, sender) {
       await chrome.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
       return { ok: true };
     }
+    case "setTotpTab": {
+      const tab = await activeTab();
+      if (!tab?.url) return { ok: false, reason: "aucun onglet" };
+      return setTotp(tab.url, String(message.totp ?? ""), message.item);
+    }
+    case "captureTab": {
+      // Image de l'onglet, pour y lire un QR code (droit « activeTab » :
+      // seulement après un clic sur l'icône de l'extension).
+      const tab = await activeTab();
+      if (!tab) return { ok: false };
+      try {
+        return { ok: true, image: await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" }) };
+      } catch (error) {
+        return { ok: false, reason: error.message };
+      }
+    }
+    case "neverList":
+      return { sites: await neverList() };
+    case "forgetNever":
+      await chrome.storage.local.set({ never: (await neverList()).filter((s) => s !== message.site) });
+      return { ok: true };
     default:
       return { error: "commande inconnue" };
   }
