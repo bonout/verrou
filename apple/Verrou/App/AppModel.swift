@@ -67,6 +67,13 @@ final class AppModel {
     var toast: Toast?
     /// Requête de la fenêtre d'accès rapide, indépendante de la fenêtre principale.
     var quickQuery = ""
+    /// Incrémenté à chaque ouverture de l'accès rapide : la fenêtre est
+    /// réutilisée, son `onAppear` ne revient pas.
+    private(set) var quickAccessOpenings = 0
+
+    func quickAccessOpened() {
+        quickAccessOpenings += 1
+    }
 
     let clipboard = Clipboard()
     let mockSize: UInt32
