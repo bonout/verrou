@@ -1,4 +1,5 @@
 import LocalAuthentication
+import os
 
 /// Touch ID (et Apple Watch) via LocalAuthentication.
 ///
@@ -11,14 +12,31 @@ enum Biometrics {
         case failure(String)
     }
 
-    static var isAvailable: Bool {
-        LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+    /// Chaque question à LocalAuthentication passe par un autre processus
+    /// (2 ms, 40 ms la première fois) : la réponse est gardée jusqu'à la
+    /// prochaine activation de l'app (`refresh()`), au lieu d'être reposée à
+    /// chaque rendu de l'écran verrouillé.
+    private static let cache = OSAllocatedUnfairLock<(available: Bool, symbol: String)?>(initialState: nil)
+
+    private static var state: (available: Bool, symbol: String) {
+        if let state = cache.withLock({ $0 }) { return state }
+        let context = LAContext()
+        let available = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        let state = (available, context.biometryType == .faceID ? "faceid" : "touchid")
+        cache.withLock { $0 = state }
+        return state
     }
 
-    static var symbolName: String {
-        let context = LAContext()
-        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        return context.biometryType == .faceID ? "faceid" : "touchid"
+    static var isAvailable: Bool { state.available }
+
+    static var symbolName: String { state.symbol }
+
+    /// À l'activation de l'app : un capteur a pu apparaître ou disparaître
+    /// (clavier Touch ID branché, Mac refermé). La question est reposée hors
+    /// du fil principal.
+    static func refresh() {
+        cache.withLock { $0 = nil }
+        Task.detached(priority: .userInitiated) { _ = state }
     }
 
     static func authenticate(reason: String) async -> Outcome {

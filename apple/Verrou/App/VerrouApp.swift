@@ -130,22 +130,40 @@ enum LaunchAtLogin {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    /// La fenêtre du coffre est construite une fois, derrière l'écran
+    /// verrouillé (vide : le verrouillage efface tout ce qu'elle affiche), et
+    /// gardée : déverrouiller la découvre au lieu de la reconstruire. Elle
+    /// se construit juste après le premier affichage de l'écran verrouillé,
+    /// pendant que Touch ID attend le doigt.
+    @State private var vaultMounted = false
+
+    private var unlocked: Bool { model.lockState == .unlocked }
 
     var body: some View {
-        Group {
-            if model.lockState == .unlocked {
+        ZStack {
+            if vaultMounted || unlocked {
                 MainView()
-                    .transition(.opacity.combined(with: .scale(scale: 1.01)))
-            } else if model.needsLogin {
-                LoginView()
-                    .transition(.opacity)
-            } else {
-                LockView()
-                    .transition(.opacity)
+                    .opacity(unlocked ? 1 : 0)
+                    .allowsHitTesting(unlocked)
+                    .accessibilityHidden(!unlocked)
+            }
+            if !unlocked {
+                Group {
+                    if model.needsLogin {
+                        LoginView()
+                    } else {
+                        LockView()
+                    }
+                }
+                .transition(.opacity)
+                .onAppear {
+                    DispatchQueue.main.async { vaultMounted = true }
+                }
             }
         }
-        .animation(.smooth(duration: 0.35), value: model.lockState)
-        .animation(.smooth(duration: 0.35), value: model.needsLogin)
+        .toolbar(unlocked ? .automatic : .hidden, for: .windowToolbar)
+        .animation(.easeOut(duration: 0.15), value: model.lockState)
+        .animation(.easeOut(duration: 0.15), value: model.needsLogin)
         .onContinuousHover { _ in model.noteActivity() }
     }
 }
@@ -157,6 +175,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var demo: DemoDriver?
     #if DEBUG
     private var endToEnd: EndToEndDriver?
+    #endif
+    #if DEBUG || BENCH
+    private var bench: BenchDriver?
     #endif
 
     /// À relire avant la fin du lancement : l'événement d'ouverture n'est
@@ -190,6 +211,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let config = EndToEndDriver.Config(ProcessInfo.processInfo.environment) {
             endToEnd = EndToEndDriver(model: model, config: config)
             endToEnd?.start()
+        }
+        #endif
+        #if DEBUG || BENCH
+        if environment["VERROU_BENCH"] == "1" {
+            bench = BenchDriver(model: model)
+            bench?.start()
         }
         #endif
     }

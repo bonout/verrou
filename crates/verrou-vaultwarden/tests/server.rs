@@ -401,9 +401,9 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
         .unwrap();
     assert_eq!(again.vault.items.len(), 4);
 
-    // Synchronisation par le jeton de renouvellement.
-    let synced = again.connection.sync().await.unwrap();
-    assert_eq!(synced.items.len(), 4);
+    // Synchronisation par le jeton de renouvellement : rien n'a changé
+    // depuis le cache, rien à déchiffrer de nouveau.
+    assert!(again.connection.sync().await.unwrap().is_none());
     drop(again);
 
     // Chemin de Touch ID : la clé de l'utilisateur suffit.
@@ -799,7 +799,8 @@ async fn create_edit_and_trash() {
         stale.update(&github_id, draft).await,
         Err(Error::Conflict)
     ));
-    stale.sync().await.unwrap();
+    let refreshed = stale.sync().await.unwrap().expect("le serveur a changé");
+    assert!(refreshed.items.iter().any(|i| i.title == "GitHub perso"));
 
     amend_like_the_extension(&mut connection, &seeder, &github_id).await;
 

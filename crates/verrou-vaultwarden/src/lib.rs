@@ -277,10 +277,20 @@ impl Connection {
     }
 
     /// Renouvelle le jeton d'accès, télécharge le coffre, l'enregistre comme
-    /// cache et le déchiffre.
-    pub async fn sync(&mut self) -> Result<Decrypted, Error> {
+    /// cache et le déchiffre. `None` : rien n'a changé sur le serveur depuis
+    /// le cache, le coffre déjà déchiffré reste valable (le cas courant : pas
+    /// de déchiffrement ni de rechargement de l'affichage pour rien).
+    pub async fn sync(&mut self) -> Result<Option<Decrypted>, Error> {
         let access = self.access_token().await?;
-        self.sync_with(&access).await
+        let sync_json = self.api.sync(&access).await?;
+        let unchanged = self.account.sync.as_deref() == Some(sync_json.as_str());
+        self.account.sync = Some(sync_json);
+        self.account.synced_at = Some(now());
+        self.store.save_account(&self.account)?;
+        if unchanged {
+            return Ok(None);
+        }
+        self.decrypt_cache().await.map(Some)
     }
 
     /// Jeton d'accès neuf, obtenu par le jeton de renouvellement (enregistré

@@ -700,14 +700,22 @@ impl VaultSession {
         Ok(self.install(unlocked))
     }
 
-    /// Télécharge le coffre et remplace le contenu affiché. Les positions de
-    /// `summaries()` changent : l'app recharge tout après coup.
-    pub async fn sync(&self) -> Result<u32, VerrouError> {
+    /// Télécharge le coffre et, s'il a changé, remplace le contenu affiché :
+    /// les positions de `summaries()` changent, l'app recharge tout après coup.
+    pub async fn sync(&self) -> Result<SyncOutcome, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
-        let decrypted = connection.lock().await.sync().await?;
+        let Some(decrypted) = connection.lock().await.sync().await? else {
+            return Ok(SyncOutcome {
+                changed: false,
+                failures: 0,
+            });
+        };
         let failures = decrypted.failures as u32;
         self.install_if_current(&connection, decrypted)?;
-        Ok(failures)
+        Ok(SyncOutcome {
+            changed: true,
+            failures,
+        })
     }
 
     /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
@@ -952,6 +960,15 @@ pub trait BridgeDelegate: Send + Sync {
     /// L'extension a enregistré un identifiant (ou un code) : le coffre a
     /// été resynchronisé, l'app recharge sa liste. `title` : pour le signaler.
     fn vault_changed(&self, item: String, title: String);
+}
+
+/// Résultat d'une synchronisation.
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct SyncOutcome {
+    /// `false` : le serveur n'a rien de nouveau, le coffre affiché est à jour.
+    pub changed: bool,
+    /// Éléments que le SDK n'a pas su déchiffrer.
+    pub failures: u32,
 }
 
 /// Une extension appairée.

@@ -193,36 +193,33 @@ struct QuickAccessView: View {
         }
     }
 
-    private var hits: [SearchHit] {
-        guard model.lockState == .unlocked else { return [] }
-        let all = (try? model.session.search(query: model.quickQuery, filter: .all, order: .relevance)) ?? []
-        return Array(all.prefix(model.quickQuery.isEmpty ? 0 : 8))
+    private var hits: [ResultRow] {
+        model.lockState == .unlocked ? model.quickRows : []
     }
 
     private var resultsList: some View {
         ScrollView {
             VStack(spacing: 2) {
                 ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
-                    if let summary = model.summary(for: hit) {
-                        HStack(spacing: 11) {
-                            ItemIcon(summary: summary, size: 30)
-                            VStack(alignment: .leading, spacing: 1) {
-                                HighlightedText(text: summary.title, highlights: hit.highlights,
-                                                tint: index == selected ? nil : Theme.accent).lineLimit(1)
-                                Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
-                            }
-                            Spacer()
-                            if summary.hasTotp {
-                                Image(systemName: "clock.badge.checkmark").font(.caption)
-                            }
+                    let summary = hit.summary
+                    HStack(spacing: 11) {
+                        ItemIcon(summary: summary, size: 30)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HighlightedText(text: summary.title, highlights: hit.highlights,
+                                            tint: index == selected ? nil : Theme.accent).lineLimit(1)
+                            Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .foregroundStyle(index == selected ? Color.white : Color.primary)
-                        .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
-                        .contentShape(Rectangle())
-                        .onTapGesture { selected = index }
+                        Spacer()
+                        if summary.hasTotp {
+                            Image(systemName: "clock.badge.checkmark").font(.caption)
+                        }
                     }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .foregroundStyle(index == selected ? Color.white : Color.primary)
+                    .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+                    .contentShape(Rectangle())
+                    .onTapGesture { selected = index }
                 }
             }
             .padding(8)
@@ -254,7 +251,7 @@ struct QuickAccessView: View {
     }
 
     private var current: ItemSummary? {
-        hits.indices.contains(selected) ? model.summary(for: hits[selected]) : nil
+        hits.indices.contains(selected) ? hits[selected].summary : nil
     }
 
     private func primaryAction() {
