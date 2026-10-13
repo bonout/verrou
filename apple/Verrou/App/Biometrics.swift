@@ -59,4 +59,14 @@ enum Biometrics {
             return .failure(error.localizedDescription)
         }
     }
+
+    /// Confirmation d'un accès demandé par le terminal : Touch ID, ou le mot
+    /// de passe de la session (`.deviceOwnerAuthentication`) quand Touch ID
+    /// n'est pas disponible ou que l'utilisateur le préfère.
+    static func confirm(reason: String) async -> Bool {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else { return false }
+        return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
+    }
 }

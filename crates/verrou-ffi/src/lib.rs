@@ -16,12 +16,13 @@
 #![allow(clippy::needless_pass_by_value)]
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use verrou_bridge::access::Write;
-use verrou_bridge::protocol::{CONFIRM_IN_APP, Credentials, SaveAction, Suggestion};
-use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan};
+use verrou_bridge::protocol::{CONFIRM_IN_APP, ClientKind, Credentials, SaveAction, Suggestion};
+use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
@@ -467,11 +468,50 @@ pub struct VaultSession {
     pending: Mutex<Option<PendingLogin>>,
     #[cfg(target_os = "macos")]
     security_key: Mutex<Option<verrou_vaultwarden::security_key::SigningSession>>,
-    /// Pont vers l'extension de navigateur, s'il est activé.
+    /// Pont vers l'extension de navigateur et le terminal, s'il est activé.
     bridge: Mutex<Option<Bridge>>,
     /// Éléments protégés confirmés récemment (Touch ID ou mot de passe
     /// principal), effacés au verrouillage.
     authorized: Mutex<HashMap<String, Instant>>,
+    /// Demandes d'accord du terminal en attente de l'utilisateur.
+    confirmations: Arc<Confirmations>,
+}
+
+/// Demandes d'accord en cours : l'app répond par
+/// `answer_bridge_confirmation`, depuis le fil principal.
+#[derive(Default)]
+struct Confirmations {
+    next: AtomicU64,
+    pending: Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>,
+}
+
+impl Confirmations {
+    fn answer(&self, id: &str, approved: bool) {
+        let sender = self
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(id);
+        if let Some(sender) = sender {
+            let _ = sender.send(approved);
+        }
+    }
+}
+
+/// Retire la demande quand on cesse de l'attendre (réponse, délai écoulé).
+struct PendingConfirmation<'a> {
+    confirmations: &'a Confirmations,
+    id: String,
+}
+
+impl Drop for PendingConfirmation<'_> {
+    fn drop(&mut self) {
+        self.confirmations
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.id);
+    }
 }
 
 impl VaultSession {
@@ -641,6 +681,7 @@ impl VaultSession {
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),
+            confirmations: Arc::default(),
         })
     }
 
@@ -883,6 +924,7 @@ impl VaultSession {
             security_key: Mutex::new(None),
             bridge: Mutex::new(None),
             authorized: Mutex::new(HashMap::new()),
+            confirmations: Arc::default(),
         })
     }
 
@@ -893,6 +935,15 @@ impl VaultSession {
     }
 
     pub fn lock(&self) {
+        // Les accords donnés au terminal ne survivent pas au verrouillage.
+        if let Some(bridge) = self
+            .bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            bridge.forget_approvals();
+        }
         self.vault
             .write()
             .unwrap_or_else(PoisonError::into_inner)
@@ -1100,15 +1151,65 @@ impl VaultSession {
     }
 }
 
-// MARK: Pont vers l'extension de navigateur
+// MARK: Pont vers l'extension de navigateur et le terminal
+
+/// Nature d'un client du pont.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum BridgeClientKind {
+    /// L'extension de Brave.
+    Browser,
+    /// Le terminal (`verrou`, et son agent SSH).
+    Cli,
+}
+
+impl From<ClientKind> for BridgeClientKind {
+    fn from(kind: ClientKind) -> Self {
+        match kind {
+            ClientKind::Browser => Self::Browser,
+            ClientKind::Cli => Self::Cli,
+        }
+    }
+}
+
+/// Ce que le terminal demande à faire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AccessPurpose {
+    /// Lire un secret de l'élément (mot de passe, notes, code…).
+    Reveal,
+    /// Signer avec la clé SSH de l'élément.
+    Ssh,
+}
+
+impl From<Purpose> for AccessPurpose {
+    fn from(purpose: Purpose) -> Self {
+        match purpose {
+            Purpose::Reveal => Self::Reveal,
+            Purpose::Ssh => Self::Ssh,
+        }
+    }
+}
 
 /// Ce que l'app fait pour le pont : demander l'accord d'appairage, amener le
-/// coffre au déverrouillage. Appelé depuis le fil du pont : répondre vite.
+/// coffre au déverrouillage, faire confirmer un accès du terminal. Appelé
+/// depuis le fil du pont : répondre vite.
 #[uniffi::export(callback_interface)]
 pub trait BridgeDelegate: Send + Sync {
     /// Afficher `code` et demander l'accord ; répondre par
-    /// `answer_bridge_pairing(id, …)`.
-    fn pairing_requested(&self, id: String, name: String, code: String);
+    /// `answer_bridge_pairing(id, …)`. `kind` : ce qui sera relié.
+    fn pairing_requested(&self, id: String, name: String, code: String, kind: BridgeClientKind);
+    /// Le terminal `client_name` veut lire un secret de l'élément `item`
+    /// (titre `title`), ou signer avec sa clé SSH : demander Touch ID (ou le
+    /// mot de passe de la session ; pour un élément protégé, la confirmation
+    /// de `needs_confirmation`), puis répondre par
+    /// `answer_bridge_confirmation(id, …)`.
+    fn confirm_requested(
+        &self,
+        id: String,
+        client_name: String,
+        purpose: AccessPurpose,
+        item: String,
+        title: String,
+    );
     fn unlock_requested(&self);
     /// L'extension a enregistré un identifiant (ou un code) : le coffre a
     /// été resynchronisé, l'app recharge sa liste. `title` : pour le signaler.
@@ -1127,13 +1228,14 @@ pub struct SyncOutcome {
     pub failures: u32,
 }
 
-/// Une extension appairée.
+/// Un client appairé (extension ou terminal).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct BridgeClient {
     pub id: String,
     pub name: String,
     /// Horodatage Unix de l'appairage.
     pub created: i64,
+    pub kind: BridgeClientKind,
 }
 
 /// Le coffre de la session, vu par le pont : seulement ce que
@@ -1141,6 +1243,7 @@ pub struct BridgeClient {
 struct SessionBackend {
     session: Weak<VaultSession>,
     delegate: Box<dyn BridgeDelegate>,
+    confirmations: Arc<Confirmations>,
 }
 
 impl Backend for SessionBackend {
@@ -1236,15 +1339,68 @@ impl Backend for SessionBackend {
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
-        self.delegate
-            .pairing_requested(request.id, request.name, request.code);
+        self.delegate.pairing_requested(
+            request.id,
+            request.name,
+            request.code,
+            request.kind.into(),
+        );
+    }
+
+    fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool {
+        self.session.upgrade().is_some_and(|session| {
+            session
+                .with_vault(|vault| {
+                    reader(vault);
+                    Ok(())
+                })
+                .is_ok()
+        })
+    }
+
+    fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
+        let id = self
+            .confirmations
+            .next
+            .fetch_add(1, Ordering::Relaxed)
+            .to_string();
+        let (sender, answer) = tokio::sync::oneshot::channel();
+        self.confirmations
+            .pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id.clone(), sender);
+        let item = request.item.clone();
+        self.delegate.confirm_requested(
+            id.clone(),
+            request.client_name,
+            request.purpose.into(),
+            request.item,
+            request.title,
+        );
+        let pending = PendingConfirmation {
+            confirmations: &self.confirmations,
+            id,
+        };
+        Box::pin(async move {
+            let approved = answer.await.unwrap_or(false);
+            drop(pending);
+            // Élément protégé (« redemander le mot de passe principal ») :
+            // l'accord ne vaut que si l'app l'a confirmé comme tel.
+            approved
+                && self.session.upgrade().is_some_and(|session| {
+                    session
+                        .with_vault(|v| Ok(v.get(&item).is_none_or(|i| session.is_authorized(i))))
+                        .unwrap_or(false)
+                })
+        })
     }
 }
 
 #[uniffi::export]
 impl VaultSession {
     /// Démarre le pont (port `VERROU_BRIDGE_PORT`, sinon le port de Verrou).
-    /// Les extensions appairées sont gardées dans le dossier du compte.
+    /// Les clients appairés sont gardés dans le dossier du compte.
     pub fn start_bridge(
         self: Arc<Self>,
         delegate: Box<dyn BridgeDelegate>,
@@ -1257,10 +1413,11 @@ impl VaultSession {
         let backend = SessionBackend {
             session: Arc::downgrade(&self),
             delegate,
+            confirmations: Arc::clone(&self.confirmations),
         };
         let bridge = Bridge::start(verrou_bridge::port_from_env(), file, Arc::new(backend))
             .map_err(|e| VerrouError::Storage {
-                message: format!("pont vers le navigateur : {e}"),
+                message: format!("pont vers le navigateur et le terminal : {e}"),
             })?;
         let port = bridge.port();
         *slot = Some(bridge);
@@ -1287,6 +1444,11 @@ impl VaultSession {
         }
     }
 
+    /// Réponse de l'utilisateur à une demande d'accord du terminal.
+    pub fn answer_bridge_confirmation(&self, id: String, approved: bool) {
+        self.confirmations.answer(&id, approved);
+    }
+
     pub fn bridge_clients(&self) -> Vec<BridgeClient> {
         self.bridge
             .lock()
@@ -1299,6 +1461,7 @@ impl VaultSession {
                         id: c.id,
                         name: c.name,
                         created: c.created,
+                        kind: c.kind.into(),
                     })
                     .collect()
             })
@@ -1425,5 +1588,49 @@ mod tests {
             )
             .unwrap();
         assert_eq!(summaries[hits[0].position as usize].title, "Boursorama");
+    }
+
+    /// Délégué qui accepte toute demande d'accord du terminal, aussitôt.
+    struct Approver(Arc<Confirmations>);
+
+    impl BridgeDelegate for Approver {
+        fn pairing_requested(&self, _: String, _: String, _: String, _: BridgeClientKind) {}
+        fn confirm_requested(&self, id: String, _: String, _: AccessPurpose, _: String, _: String) {
+            self.0.answer(&id, true);
+        }
+        fn unlock_requested(&self) {}
+        fn vault_changed(&self, _: String, _: String) {}
+        fn reprompt_requested(&self, _: String, _: String) {}
+    }
+
+    #[test]
+    fn terminal_approval_of_a_protected_item_needs_the_app_confirmation() {
+        let session = session();
+        let backend = SessionBackend {
+            session: Arc::downgrade(&session),
+            delegate: Box::new(Approver(Arc::clone(&session.confirmations))),
+            confirmations: Arc::clone(&session.confirmations),
+        };
+        let summaries = session.summaries().unwrap();
+        let protected = summaries.iter().find(|s| s.reprompt).unwrap().id.clone();
+        let plain = summaries.iter().find(|s| !s.reprompt).unwrap().id.clone();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let confirm = |item: &str| {
+            runtime.block_on(backend.confirm(Confirmation {
+                client: "cli".to_owned(),
+                client_name: "verrou".to_owned(),
+                purpose: Purpose::Reveal,
+                item: item.to_owned(),
+                title: String::new(),
+            }))
+        };
+        assert!(confirm(&plain));
+        // Accordé par une simple confirmation : pas assez pour un élément protégé.
+        assert!(!confirm(&protected));
+        session.authorize_item(protected.clone());
+        assert!(confirm(&protected));
+        assert!(session.confirmations.pending.lock().unwrap().is_empty());
     }
 }

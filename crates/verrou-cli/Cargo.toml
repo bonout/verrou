@@ -1,10 +1,14 @@
 [package]
 name = "verrou-cli"
-description = "Verrou en ligne de commande."
+description = "Verrou en ligne de commande, et son agent SSH."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+
+[lib]
+name = "verrou_cli"
+path = "src/lib.rs"
 
 [[bin]]
 name = "verrou"
@@ -12,9 +16,19 @@ path = "src/main.rs"
 
 [dependencies]
 verrou-core.workspace = true
+verrou-bridge.workspace = true
 clap.workspace = true
+data-encoding.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+uuid.workspace = true
+# Clés SSH de test, vérification des signatures de l'agent.
+ssh-key = { version = "0.7.0-rc.11", features = ["ed25519"] }
+signature = "3"
+getrandom = { version = "0.4", features = ["sys_rng"] }
 
 [lints]
 workspace = true

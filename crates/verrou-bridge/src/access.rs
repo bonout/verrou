@@ -1,20 +1,183 @@
-//! Ce que l'extension a le droit d'obtenir du coffre.
+//! Ce que chaque client a le droit d'obtenir du coffre.
 //!
-//! Règle : un mot de passe ne sort que pour un identifiant qui correspond à
-//! la page demandée (même domaine enregistrable, comme Bitwarden), et
-//! seulement vers une page en HTTPS. Une extension appairée ne peut donc pas
-//! vider le coffre : elle ne voit que ce que la page en cours justifie.
+//! **Commandes** : chaque nature de client a les siennes ([`allowed`]) ;
+//! l'extension ne peut pas chercher dans le coffre, le terminal ne peut pas
+//! remplir une page.
 //!
-//! Écrire suit la même règle : l'extension n'enregistre un identifiant, ou
-//! n'en modifie un, que pour le site de la page, après un clic de
-//! l'utilisateur dans le bandeau de Verrou.
+//! **Extension** : un mot de passe ne sort que pour un identifiant qui
+//! correspond à la page demandée (même domaine enregistrable, comme
+//! Bitwarden), et seulement vers une page en HTTPS. Une extension appairée
+//! ne peut donc pas vider le coffre : elle ne voit que ce que la page en
+//! cours justifie. Écrire suit la même règle : l'extension n'enregistre un
+//! identifiant, ou n'en modifie un, que pour le site de la page, après un
+//! clic de l'utilisateur dans le bandeau de Verrou.
+//!
+//! **Terminal** : il cherche dans tout le coffre, mais les résultats et les
+//! éléments ne portent aucun secret ([`item_view`]). Un secret (champ
+//! masqué, notes, code à usage unique) et chaque signature SSH demandent
+//! l'accord de l'utilisateur dans Verrou ([`field_needs_confirmation`]), gardé
+//! quelques minutes pour cet élément et ce client seulement.
 
 use url::Url;
 use verrou_core::matching::host_of;
 use verrou_core::totp::Totp;
-use verrou_core::{FieldKind, Item, ItemKind, SecretString, Vault};
+use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault};
 
-use crate::protocol::{Credentials, SaveAction, Suggestion};
+use crate::protocol::{
+    ClientKind, Command, Credentials, FieldView, ItemSummary, ItemView, SaveAction, Suggestion,
+};
+
+/// Résultats rendus au plus par une recherche du terminal.
+const MAX_RESULTS: usize = 200;
+
+/// La commande est-elle permise à ce client ? Les commandes communes : l'état
+/// et la demande de déverrouillage.
+pub fn allowed(kind: ClientKind, command: &Command) -> bool {
+    match command {
+        Command::Status | Command::Unlock => true,
+        Command::Suggest { .. }
+        | Command::Fill { .. }
+        | Command::Check { .. }
+        | Command::Save { .. }
+        | Command::SetTotp { .. } => kind == ClientKind::Browser,
+        Command::VaultSearch { .. }
+        | Command::VaultItem { .. }
+        | Command::Reveal { .. }
+        | Command::Totp { .. }
+        | Command::Unlink
+        | Command::SshKeys
+        | Command::SshSign { .. } => kind == ClientKind::Cli,
+    }
+}
+
+// MARK: Terminal
+
+fn item_summary(item: &Item) -> ItemSummary {
+    ItemSummary {
+        id: item.id.clone(),
+        kind: item.kind,
+        title: item.title.clone(),
+        subtitle: item.subtitle.clone(),
+        urls: item.urls.clone(),
+        folder: item.folder.clone(),
+        tags: item.tags.clone(),
+        favorite: item.favorite,
+        has_totp: item.has_totp(),
+    }
+}
+
+/// Recherche du terminal : les `limit` premiers résultats et leur total.
+pub fn search(
+    vault: &Vault,
+    query: &str,
+    kind: Option<ItemKind>,
+    favorites: bool,
+    limit: Option<u32>,
+) -> (Vec<ItemSummary>, usize) {
+    let filter = match (kind, favorites) {
+        (Some(kind), _) => Filter::Kind(kind),
+        (None, true) => Filter::Favorites,
+        (None, false) => Filter::All,
+    };
+    let hits = vault.search(query, &filter, Sort::Relevance);
+    let limit = limit.map_or(MAX_RESULTS, |l| (l as usize).min(MAX_RESULTS));
+    let items = hits
+        .iter()
+        .take(limit)
+        .map(|hit| item_summary(&vault.items()[hit.index]))
+        .collect();
+    (items, hits.len())
+}
+
+/// L'élément d'identifiant `query`, sinon le meilleur résultat de recherche.
+pub fn find<'v>(vault: &'v Vault, query: &str) -> Result<&'v Item, String> {
+    if let Some(item) = vault.get(query) {
+        return Ok(item);
+    }
+    vault
+        .search(query, &Filter::All, Sort::Relevance)
+        .first()
+        .map(|hit| &vault.items()[hit.index])
+        .ok_or_else(|| format!("aucun élément pour « {query} »"))
+}
+
+/// L'élément sans la valeur de ses champs secrets ni ses notes.
+pub fn item_view(item: &Item) -> ItemView {
+    ItemView {
+        summary: item_summary(item),
+        fields: item
+            .fields
+            .iter()
+            .map(|f| {
+                let secret = f.kind.is_secret();
+                FieldView {
+                    id: f.id.clone(),
+                    label: f.label.clone(),
+                    kind: f.kind,
+                    secret,
+                    value: (!secret).then(|| f.value.expose().to_owned()),
+                }
+            })
+            .collect(),
+        has_notes: item.notes.is_some(),
+    }
+}
+
+/// Le champ `field` (ou `notes`) de l'élément demande-t-il l'accord de
+/// l'utilisateur ? `Err` : élément ou champ introuvable.
+pub fn field_needs_confirmation(vault: &Vault, item_id: &str, field: &str) -> Result<bool, String> {
+    let item = vault
+        .get(item_id)
+        .ok_or_else(|| "élément introuvable".to_owned())?;
+    if field == "notes" {
+        return item
+            .notes
+            .as_ref()
+            .map(|_| true)
+            .ok_or_else(|| format!("« {} » n'a pas de notes", item.title));
+    }
+    item.field(field)
+        .map(|f| f.kind.is_secret())
+        .ok_or_else(|| format!("« {} » n'a pas de champ « {field} »", item.title))
+}
+
+/// La valeur du champ `field` (ou des notes) de l'élément.
+pub fn field_value(vault: &Vault, item_id: &str, field: &str) -> Result<String, String> {
+    let item = vault
+        .get(item_id)
+        .ok_or_else(|| "élément introuvable".to_owned())?;
+    let value = if field == "notes" {
+        item.notes.as_ref().map(|n| n.expose().to_owned())
+    } else {
+        item.field(field).map(|f| f.value.expose().to_owned())
+    };
+    value.ok_or_else(|| format!("« {} » n'a pas de champ « {field} »", item.title))
+}
+
+/// Le code à usage unique du moment : code, période, secondes restantes.
+pub fn totp_code(
+    vault: &Vault,
+    item_id: &str,
+    unix_time: u64,
+) -> Result<(String, u64, u64), String> {
+    let item = vault
+        .get(item_id)
+        .ok_or_else(|| "élément introuvable".to_owned())?;
+    let field = item
+        .field_of_kind(FieldKind::Totp)
+        .ok_or_else(|| format!("« {} » n'a pas de code à usage unique", item.title))?;
+    let code = Totp::parse(field.value.expose())
+        .map_err(|e| e.to_string())?
+        .generate(unix_time);
+    Ok((code.code, code.period, code.remaining))
+}
+
+/// Titre de l'élément, pour la demande d'accord.
+pub fn title_of(vault: &Vault, item_id: &str) -> Option<String> {
+    vault.get(item_id).map(|i| i.title.clone())
+}
+
+// MARK: Extension
 
 /// Longueurs maximales acceptées depuis une page.
 const MAX_USERNAME: usize = 512;
@@ -504,6 +667,100 @@ mod tests {
             .is_err()
         );
         assert!(plan_totp(&v, "https://github.com/", uri, Some("banque")).is_err());
+    }
+
+    #[test]
+    fn each_kind_of_client_has_its_own_commands() {
+        let browser_only = [
+            Command::Suggest { url: String::new() },
+            Command::Fill {
+                url: String::new(),
+                item: String::new(),
+            },
+            Command::Check {
+                url: String::new(),
+                username: String::new(),
+                password: String::new(),
+                current: None,
+            },
+            Command::Save {
+                url: String::new(),
+                username: String::new(),
+                password: String::new(),
+                item: None,
+            },
+            Command::SetTotp {
+                url: String::new(),
+                totp: String::new(),
+                item: None,
+            },
+        ];
+        let cli_only = [
+            Command::VaultSearch {
+                query: String::new(),
+                kind: None,
+                favorites: false,
+                limit: None,
+            },
+            Command::VaultItem {
+                query: String::new(),
+            },
+            Command::Reveal {
+                item: String::new(),
+                field: String::new(),
+            },
+            Command::Totp {
+                item: String::new(),
+            },
+            Command::Unlink,
+            Command::SshKeys,
+            Command::SshSign {
+                public_key: String::new(),
+                data: String::new(),
+                flags: 0,
+            },
+        ];
+        for command in &browser_only {
+            assert!(allowed(ClientKind::Browser, command), "{command:?}");
+            assert!(!allowed(ClientKind::Cli, command), "{command:?}");
+        }
+        for command in &cli_only {
+            assert!(allowed(ClientKind::Cli, command), "{command:?}");
+            assert!(!allowed(ClientKind::Browser, command), "{command:?}");
+        }
+        for command in [Command::Status, Command::Unlock] {
+            assert!(allowed(ClientKind::Browser, &command));
+            assert!(allowed(ClientKind::Cli, &command));
+        }
+    }
+
+    #[test]
+    fn terminal_views_carry_no_secret() {
+        let mut v = vec![item("github", "https://github.com")];
+        v[0].notes = Some(SecretString::new("note secrète"));
+        let v = Vault::new(v);
+        let (found, total) = search(&v, "git", None, false, Some(10));
+        assert_eq!((found.len(), total), (1, 1));
+        let json = serde_json::to_string(&found).unwrap();
+        assert!(!json.contains("secret"), "{json}");
+        let view = item_view(find(&v, "github").unwrap());
+        let json = serde_json::to_string(&view).unwrap();
+        assert!(!json.contains(r#":"secret""#), "{json}");
+        assert!(!json.contains("JBSWY3DPEHPK3PXP"), "{json}");
+        assert!(!json.contains("note secrète"), "{json}");
+        assert_eq!(view.fields[0].value.as_deref(), Some("camille"));
+        assert!(view.has_notes);
+        // Le champ non secret sort sans accord ; mot de passe et notes, non.
+        assert_eq!(
+            field_needs_confirmation(&v, "github", "username"),
+            Ok(false)
+        );
+        assert_eq!(field_needs_confirmation(&v, "github", "password"), Ok(true));
+        assert_eq!(field_needs_confirmation(&v, "github", "notes"), Ok(true));
+        assert!(field_needs_confirmation(&v, "github", "inconnu").is_err());
+        assert_eq!(field_value(&v, "github", "password").unwrap(), "secret");
+        assert_eq!(totp_code(&v, "github", 59).unwrap().0.len(), 6);
+        assert!(find(&v, "zzzz").is_err());
     }
 
     #[test]

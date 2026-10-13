@@ -1,5 +1,5 @@
 //! Le pont de bout en bout, côté Verrou : un client qui fait ce que fait
-//! l'extension, sur une vraie connexion TCP.
+//! l'extension (ou le terminal), sur une vraie connexion TCP.
 
 use std::io::{Read as _, Write as _};
 use std::net::TcpStream;
@@ -8,10 +8,16 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use data_encoding::BASE64;
 use serde_json::{Value, json};
+use signature::Verifier as _;
+use ssh_key::encoding::Decode as _;
+use ssh_key::{Algorithm, LineEnding, PrivateKey, Signature};
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
-use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
-use verrou_bridge::{Backend, BoxFuture, Bridge, PairingRequest, WritePlan, access};
+use verrou_bridge::protocol::{ClientKind, Credentials, SaveAction, Suggestion};
+use verrou_bridge::{
+    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan, access,
+};
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 struct FakeBackend {
@@ -21,6 +27,9 @@ struct FakeBackend {
     /// L'utilisateur a confirmé les éléments protégés (Touch ID).
     confirmed: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
+    /// Réponse de l'« utilisateur » aux demandes d'accord.
+    approve: AtomicBool,
+    confirmations: Mutex<Vec<Confirmation>>,
 }
 
 impl Backend for FakeBackend {
@@ -85,6 +94,20 @@ impl Backend for FakeBackend {
     fn pairing_requested(&self, request: PairingRequest) {
         let _ = self.pairings.lock().unwrap().send(request);
     }
+
+    fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool {
+        if !self.is_unlocked() {
+            return false;
+        }
+        reader(&self.vault.lock().unwrap());
+        true
+    }
+
+    fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
+        self.confirmations.lock().unwrap().push(request);
+        let approved = self.approve.load(Ordering::SeqCst);
+        Box::pin(async move { approved })
+    }
 }
 
 /// Un identifiant « redemander le mot de passe principal ».
@@ -118,6 +141,64 @@ fn github() -> Item {
     }
 }
 
+fn ssh_item(key: &PrivateKey) -> Item {
+    Item {
+        id: "cle-ssh".to_owned(),
+        kind: ItemKind::SshKey,
+        title: "Clé du N100".to_owned(),
+        subtitle: String::new(),
+        urls: Vec::new(),
+        folder: None,
+        tags: Vec::new(),
+        favorite: false,
+        created: 0,
+        modified: 0,
+        fields: vec![
+            Field::new(
+                "public_key",
+                "Clé publique",
+                FieldKind::Multiline,
+                key.public_key().to_openssh().unwrap(),
+            ),
+            Field::new(
+                "private_key",
+                "Clé privée",
+                FieldKind::Concealed,
+                key.to_openssh(LineEnding::LF).unwrap().as_str(),
+            ),
+        ],
+        notes: None,
+        reprompt: false,
+    }
+}
+
+fn banque() -> Item {
+    Item {
+        id: "banque".to_owned(),
+        kind: ItemKind::Login,
+        title: "Banque".to_owned(),
+        subtitle: "camille".to_owned(),
+        urls: vec!["https://banque.fr".to_owned()],
+        folder: None,
+        tags: Vec::new(),
+        favorite: false,
+        created: 0,
+        modified: 0,
+        fields: vec![
+            Field::new("username", "Identifiant", FieldKind::Username, "camille"),
+            Field::new(
+                "password",
+                "Mot de passe",
+                FieldKind::Password,
+                "coffre-fort",
+            ),
+            Field::new("totp", "Code", FieldKind::Totp, "JBSWY3DPEHPK3PXP"),
+        ],
+        notes: Some(verrou_core::SecretString::new("question secrète : Médor")),
+        reprompt: false,
+    }
+}
+
 fn start() -> (
     Bridge,
     Arc<FakeBackend>,
@@ -131,6 +212,8 @@ fn start() -> (
         unlock_requested: AtomicBool::new(false),
         confirmed: AtomicBool::new(false),
         pairings: Mutex::new(sender),
+        approve: AtomicBool::new(false),
+        confirmations: Mutex::new(Vec::new()),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -176,8 +259,16 @@ impl Client {
 
     /// Demande d'appairage ; rend le code calculé de notre côté.
     fn begin_pairing(&mut self) -> String {
+        self.begin_pairing_with(&json!({ "name": "Brave" }))
+    }
+
+    /// `extra` : le nom, et la nature du client s'il l'annonce.
+    fn begin_pairing_with(&mut self, extra: &Value) -> String {
         let ours = KeyPair::generate();
-        self.send(&json!({ "type": "pair", "name": "Brave", "key": ours.public_base64() }));
+        let mut message = extra.clone();
+        message["type"] = json!("pair");
+        message["key"] = json!(ours.public_base64());
+        self.send(&message);
         let pairing = self.receive();
         assert_eq!(pairing["type"], "pairing");
         pairing["client"].as_str().unwrap().clone_into(&mut self.id);
@@ -377,5 +468,219 @@ fn refused_or_forged_clients_get_nothing() {
     // Du bruit : la connexion répond « bad_request » sans tomber.
     spammer.send(&json!({ "type": "n'importe quoi" }));
     assert_eq!(spammer.receive()["code"], "bad_request");
+    let _ = std::fs::remove_file(file);
+}
+
+/// Appaire un client qui annonce `kind`, accepté d'office.
+fn paired(bridge: &Bridge, pairings: &mpsc::Receiver<PairingRequest>, kind: &str) -> Client {
+    let mut client = Client::connect(bridge.port());
+    let code = client.begin_pairing_with(&json!({ "name": "verrou", "kind": kind }));
+    let request = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(request.code, code);
+    bridge.answer_pairing(&request.id, true);
+    assert_eq!(client.receive()["type"], "paired");
+    client
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+fn terminal_searches_without_secrets_and_reveals_with_consent() {
+    let (bridge, backend, pairings, file) = start();
+    {
+        let mut vault = backend.vault.lock().unwrap();
+        *vault = Vault::new(vec![github(), banque()]);
+    }
+    let mut cli = Client::connect(bridge.port());
+    let code = cli.begin_pairing_with(&json!({ "name": "verrou", "kind": "cli" }));
+    let request = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(
+        (request.code.as_str(), request.kind),
+        (code.as_str(), ClientKind::Cli)
+    );
+    bridge.answer_pairing(&request.id, true);
+    assert_eq!(cli.receive()["type"], "paired");
+    assert_eq!(bridge.clients()[0].kind, ClientKind::Cli);
+
+    // Les commandes de l'extension lui sont refusées.
+    let filled =
+        cli.request(&json!({ "cmd": "fill", "url": "https://github.com/", "item": "github" }));
+    assert_eq!(filled["result"], "denied");
+    let suggest = cli.request(&json!({ "cmd": "suggest", "url": "https://github.com/" }));
+    assert_eq!(suggest["result"], "denied");
+
+    // Recherche et élément : aucun secret.
+    let found = cli.request(&json!({ "cmd": "vault_search", "query": "banq" }));
+    assert_eq!(found["result"], "items");
+    assert_eq!(found["items"][0]["id"], "banque");
+    assert_eq!(found["items"][0]["has_totp"], true);
+    let all = cli.request(&json!({ "cmd": "vault_search", "query": "", "limit": 1 }));
+    assert_eq!(
+        (
+            all["items"].as_array().unwrap().len(),
+            all["total"].as_u64()
+        ),
+        (1, Some(2))
+    );
+    let item = cli.request(&json!({ "cmd": "vault_item", "query": "Banque" }));
+    assert_eq!(item["result"], "item");
+    assert_eq!(item["item"]["id"], "banque");
+    let text = item.to_string();
+    for secret in ["coffre-fort", "JBSWY3DPEHPK3PXP", "Médor"] {
+        assert!(!found.to_string().contains(secret));
+        assert!(!text.contains(secret), "{text}");
+    }
+    assert_eq!(item["item"]["fields"][0]["value"], "camille");
+    assert_eq!(item["item"]["fields"][1]["secret"], true);
+    assert!(item["item"]["fields"][1].get("value").is_none());
+
+    // Un champ non secret sort sans demande.
+    let username = cli.request(&json!({ "cmd": "reveal", "item": "banque", "field": "username" }));
+    assert_eq!(username["value"], "camille");
+    assert!(backend.confirmations.lock().unwrap().is_empty());
+
+    // Un secret attend l'accord : refusé, puis accordé (et gardé).
+    let reveal = json!({ "cmd": "reveal", "item": "banque", "field": "password" });
+    assert_eq!(cli.request(&reveal)["result"], "denied");
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(cli.request(&reveal)["value"], "coffre-fort");
+    {
+        let asked = backend.confirmations.lock().unwrap();
+        assert_eq!(asked.len(), 2);
+        assert_eq!(asked[1].purpose, Purpose::Reveal);
+        assert_eq!(asked[1].title, "Banque");
+        assert_eq!(asked[1].client_name, "verrou");
+    }
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&reveal)["value"], "coffre-fort");
+    let notes = cli.request(&json!({ "cmd": "reveal", "item": "banque", "field": "notes" }));
+    assert_eq!(notes["value"], "question secrète : Médor");
+    let totp = cli.request(&json!({ "cmd": "totp", "item": "banque" }));
+    assert_eq!(totp["result"], "code");
+    assert_eq!(totp["code"].as_str().unwrap().len(), 6);
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
+
+    // L'accord vaut pour cet élément seulement…
+    let other = cli.request(&json!({ "cmd": "reveal", "item": "github", "field": "password" }));
+    assert_eq!(other["result"], "denied");
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 3);
+    // … et se perd au verrouillage.
+    bridge.forget_approvals();
+    assert_eq!(cli.request(&reveal)["result"], "denied");
+    // Pas de code : refusé sans rien demander.
+    let none = cli.request(&json!({ "cmd": "totp", "item": "github" }));
+    assert_eq!(none["result"], "denied");
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 4);
+    assert_eq!(
+        cli.request(&json!({ "cmd": "reveal", "item": "banque", "field": "inconnu" }))["result"],
+        "denied"
+    );
+
+    // Coffre verrouillé : rien, sinon la demande de déverrouillage.
+    backend.unlocked.store(false, Ordering::SeqCst);
+    assert_eq!(
+        cli.request(&json!({ "cmd": "vault_search", "query": "" }))["result"],
+        "locked"
+    );
+    assert_eq!(cli.request(&reveal)["result"], "locked");
+    assert_eq!(cli.request(&json!({ "cmd": "unlock" }))["result"], "done");
+    assert!(backend.unlock_requested.load(Ordering::SeqCst));
+    backend.unlocked.store(true, Ordering::SeqCst);
+
+    // L'extension, elle, ne peut pas chercher dans le coffre.
+    // (Trois secondes au moins entre deux appairages.)
+    std::thread::sleep(Duration::from_secs(3));
+    let mut brave = paired(&bridge, &pairings, "browser");
+    for command in [
+        json!({ "cmd": "vault_search", "query": "" }),
+        json!({ "cmd": "vault_item", "query": "banque" }),
+        json!({ "cmd": "reveal", "item": "banque", "field": "password" }),
+        json!({ "cmd": "totp", "item": "banque" }),
+        json!({ "cmd": "ssh_keys" }),
+        json!({ "cmd": "unlink" }),
+    ] {
+        assert_eq!(brave.request(&command)["result"], "denied", "{command}");
+    }
+
+    // `verrou unlink` : le terminal s'oublie lui-même.
+    assert_eq!(cli.request(&json!({ "cmd": "unlink" }))["result"], "done");
+    assert_eq!(
+        cli.request(&json!({ "cmd": "status" }))["code"],
+        "unknown_client"
+    );
+    assert_eq!(bridge.clients().len(), 1);
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn ssh_agent_commands_sign_inside_verrou() {
+    let (bridge, backend, pairings, file) = start();
+    let key = PrivateKey::random(
+        &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
+        Algorithm::Ed25519,
+    )
+    .unwrap();
+    {
+        let mut vault = backend.vault.lock().unwrap();
+        *vault = Vault::new(vec![github(), ssh_item(&key)]);
+    }
+    let mut cli = paired(&bridge, &pairings, "cli");
+
+    let keys = cli.request(&json!({ "cmd": "ssh_keys" }));
+    assert_eq!(keys["result"], "ssh_keys");
+    assert_eq!(keys["keys"].as_array().unwrap().len(), 1);
+    assert_eq!(keys["keys"][0]["title"], "Clé du N100");
+    let blob = keys["keys"][0]["public_key"].as_str().unwrap().to_owned();
+    assert_eq!(
+        BASE64.decode(blob.as_bytes()).unwrap(),
+        key.public_key().to_bytes().unwrap()
+    );
+    assert!(!keys.to_string().contains("PRIVATE"));
+
+    let sign = json!({ "cmd": "ssh_sign", "public_key": blob,
+        "data": BASE64.encode(b"session ssh"), "flags": 0 });
+    assert_eq!(cli.request(&sign)["result"], "denied");
+    backend.approve.store(true, Ordering::SeqCst);
+    let signed = cli.request(&sign);
+    assert_eq!(signed["result"], "signature", "{signed}");
+    let bytes = BASE64
+        .decode(signed["signature"].as_str().unwrap().as_bytes())
+        .unwrap();
+    let signature = Signature::decode(&mut &bytes[..]).unwrap();
+    key.public_key()
+        .key_data()
+        .verify(b"session ssh", &signature)
+        .unwrap();
+    {
+        let asked = backend.confirmations.lock().unwrap();
+        assert_eq!(asked.len(), 2);
+        assert_eq!(asked[1].purpose, Purpose::Ssh);
+        assert_eq!(asked[1].title, "Clé du N100");
+    }
+    // Accord gardé pour cette clé : pas de nouvelle demande.
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
+
+    // Une clé inconnue, ou une requête illisible : refusées sans demande.
+    let other = PrivateKey::random(
+        &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
+        Algorithm::Ed25519,
+    )
+    .unwrap();
+    let unknown = json!({ "cmd": "ssh_sign",
+        "public_key": BASE64.encode(&other.public_key().to_bytes().unwrap()),
+        "data": BASE64.encode(b"x") });
+    assert_eq!(cli.request(&unknown)["result"], "denied");
+    let garbled = json!({ "cmd": "ssh_sign", "public_key": "!!", "data": "" });
+    assert_eq!(cli.request(&garbled)["result"], "denied");
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
+
+    // Coffre verrouillé : ni clés, ni signature.
+    backend.unlocked.store(false, Ordering::SeqCst);
+    assert_eq!(
+        cli.request(&json!({ "cmd": "ssh_keys" }))["result"],
+        "locked"
+    );
+    assert_eq!(cli.request(&sign)["result"], "locked");
     let _ = std::fs::remove_file(file);
 }

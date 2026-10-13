@@ -4214,6 +4214,7 @@ dependencies = [
  "rand_core 0.10.1",
  "rsa",
  "sec1 0.8.1",
+ "sha1 0.11.0",
  "sha2 0.11.1",
  "signature 3.0.0",
  "ssh-cipher",
@@ -4850,12 +4851,15 @@ version = "0.1.0"
 dependencies = [
  "aes-gcm 0.10.3",
  "data-encoding",
+ "getrandom 0.4.3",
  "hkdf 0.12.4",
  "p256 0.13.2",
  "rand 0.8.8",
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "signature 3.0.0",
+ "ssh-key",
  "thiserror",
  "tokio",
  "url",
@@ -4869,9 +4873,16 @@ name = "verrou-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "data-encoding",
+ "getrandom 0.4.3",
  "serde",
  "serde_json",
+ "signature 3.0.0",
+ "ssh-key",
+ "uuid",
+ "verrou-bridge",
  "verrou-core",
+ "zeroize",
 ]
 
 [[package]]

@@ -25,7 +25,7 @@ PR qui touche à l'un de ces points le dit dans sa description.
 6. **Écritures prudentes** : chiffrées par le SDK, envoyées avec la date de
    révision connue (le serveur refuse d'écraser une version plus récente),
    en ne touchant qu'aux champs que l'écran d'édition montre.
-7. **App sandboxée**, runtime renforcé ; en entrée, seulement le pont vers l'extension, sur `127.0.0.1`.
+7. **App sandboxée**, runtime renforcé ; en entrée, seulement le pont vers l'extension et le terminal, sur `127.0.0.1`.
 
 ## Connexion à Vaultwarden
 
@@ -153,6 +153,57 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   Pwned par k-anonymat. Seuls les 5 premiers caractères hexadécimaux du SHA-1
   de chaque mot de passe partent, avec du remplissage dans les réponses ; la
   comparaison se fait sur le Mac.
+## Terminal et agent SSH
+
+```
+verrou (CLI) ─────────TCP 127.0.0.1──▶ Verrou
+ssh ──socket Unix──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Verrou
+```
+
+- **Appairage** : le même que l'extension (ECDH P-256, code à 6 chiffres à
+  comparer, canal AES-256-GCM), par `verrou link`. Le client se déclare
+  « terminal » ; la fenêtre d'accord de Verrou le dit (« Relier le terminal
+  (verrou) ») et dit ce qu'il pourra faire. Un client enregistré sans nature
+  (avant cette version) est une extension.
+- **Commandes par nature de client** (`access::allowed`, vérifié par le pont
+  pour chaque requête, avec des tests) : l'extension n'a que ses commandes
+  (suggérer, remplir, enregistrer) ; le terminal n'a que les siennes
+  (chercher, lire un élément, révéler, code, clés SSH, signer). Ni l'un ni
+  l'autre ne peut emprunter celles de l'autre.
+- **Ce que le terminal obtient sans demander** : les résultats de recherche
+  et les éléments **sans aucun secret** (titre, identifiant, sites, dossier,
+  étiquettes, valeur des champs non masqués) ; les champs masqués, les notes
+  et les graines TOTP n'y figurent pas (un test le vérifie). Coffre
+  verrouillé : rien, sinon la demande de déverrouillage (Touch ID dans
+  Verrou).
+- **Ce qui demande un accord** : chaque secret (champ masqué, notes, code à
+  usage unique) et chaque signature SSH. Verrou demande Touch ID (ou le mot
+  de passe de la session, `.deviceOwnerAuthentication`) : « autoriser le
+  terminal à lire « titre » », « autoriser ssh à utiliser la clé « titre » ».
+  L'accord vaut **5 minutes pour ce client et cet élément** seulement ; il est
+  oublié au verrouillage du coffre et à la révocation du client. Sans réponse
+  en 90 s : refus. Un élément protégé (« redemander le mot de passe
+  principal ») exige la confirmation de l'app (Touch ID ou mot de passe
+  principal), que le cœur Rust vérifie avant de livrer quoi que ce soit.
+- **Clés SSH** : la clé privée (OpenSSH, telle que Vaultwarden la garde) ne
+  quitte jamais l'app. Verrou signe (crate `ssh-key` de RustCrypto) et ne
+  rend que la signature ; l'agent ne voit que les clés publiques. Les clés
+  protégées par une phrase de passe sont ignorées.
+- **Ce qui est sur le disque** : `~/.config/verrou/cli.json` (mode 600,
+  dossier 700) garde l'identifiant du client et la clé du canal. Un
+  programme qui le lit peut se faire passer pour le terminal : chercher sans
+  secret, et demander des secrets — que l'utilisateur doit encore accepter
+  par Touch ID. Réglages → *Délier*, ou `verrou unlink`, révoque le lien.
+- **Socket de l'agent** : `~/.verrou/agent.sock`, dossier 700, socket 600.
+  Comme pour `ssh-agent`, **tout programme lancé par l'utilisateur** peut lui
+  demander les clés publiques et des signatures ; chaque signature d'une clé
+  passe toutefois par Touch ID, puis l'accord dure 5 minutes pour cette clé
+  (pendant ce temps, un tel programme peut signer sans nouvelle demande).
+  L'agent ne sait ni ajouter, ni retirer, ni exporter de clé ; les autres
+  messages reçoivent `SSH_AGENT_FAILURE`.
+- **Limites connues** : l'accord est donné par élément, sans montrer quelle
+  commande le demande ; un programme qui tourne sous le compte de
+  l'utilisateur peut lire ce que la CLI affiche.
 
 ## Touch ID
 

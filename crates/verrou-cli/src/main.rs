@@ -1,17 +1,25 @@
 //! `verrou` : le coffre depuis le terminal.
 //!
-//! Tant que la connexion à Vaultwarden n'existe pas, la CLI travaille sur le
-//! coffre fictif et le signale sur stderr à chaque commande.
+//! Le coffre n'est déchiffré que dans l'app : la CLI, reliée une fois par
+//! `verrou link`, lui pose ses questions par le pont (TCP `127.0.0.1`, canal
+//! chiffré). Les secrets demandent l'accord de l'utilisateur dans Verrou
+//! (Touch ID). `--mock` travaille sur le coffre fictif, sans l'app.
 
 use std::io::Write as _;
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
+use verrou_bridge::access;
+use verrou_bridge::protocol::{Command as Ask, ItemSummary, ItemView, ReplyResult};
+use verrou_cli::agent::{self, BridgeKeys, Keys};
+use verrou_cli::config::Config;
+use verrou_cli::remote::{self, Endpoint, Error, Remote};
 use verrou_core::generator::{self, PasswordOptions};
-use verrou_core::totp::Totp;
-use verrou_core::{FieldKind, Filter, Item, ItemKind, Sort, Vault, mock};
+use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
 
 #[derive(Parser)]
 #[command(
@@ -20,7 +28,11 @@ use verrou_core::{FieldKind, Filter, Item, ItemKind, Sort, Vault, mock};
     about = "Gestionnaire de mots de passe pour Vaultwarden"
 )]
 struct Cli {
-    /// Taille du coffre fictif.
+    /// Travailler sur le coffre fictif, sans l'app.
+    #[arg(long, global = true)]
+    mock: bool,
+
+    /// Taille du coffre fictif (avec `--mock`).
     #[arg(long, global = true, env = "VERROU_MOCK_SIZE", default_value_t = 0)]
     mock_size: usize,
 
@@ -34,7 +46,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Chercher des éléments (sans requête : tout lister).
+    /// Relier ce terminal à Verrou (une fois) : un code à comparer dans l'app.
+    Link {
+        /// Nom montré dans Verrou.
+        #[arg(long, default_value = "le terminal (verrou)")]
+        name: String,
+    },
+    /// Délier ce terminal de Verrou.
+    Unlink,
+    /// État de la liaison et du coffre.
+    Status,
+    /// Chercher des éléments (sans requête : tout lister). Aucun secret.
     #[command(visible_alias = "ls")]
     Search {
         query: Vec<String>,
@@ -45,18 +67,19 @@ enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
-    /// Afficher un élément. Les secrets restent masqués sans `--reveal`.
+    /// Afficher un élément (titre ou identifiant). Les secrets restent masqués
+    /// sans `--reveal` ou `--field` ; Verrou demande alors votre accord.
     Get {
         query: Vec<String>,
-        /// N'afficher que ce champ (`password`, `username`, `totp`…), brut.
+        /// N'afficher que ce champ (`password`, `username`, `totp`, `notes`…), brut.
         #[arg(short, long)]
         field: Option<String>,
         #[arg(long)]
         reveal: bool,
     },
-    /// Code à usage unique de l'élément trouvé.
+    /// Code à usage unique de l'élément trouvé (accord demandé dans Verrou).
     Totp { query: Vec<String> },
-    /// Générer un mot de passe.
+    /// Générer un mot de passe (sur place, sans l'app).
     Generate {
         #[arg(short, long, default_value_t = 20)]
         length: usize,
@@ -64,6 +87,13 @@ enum Command {
         no_symbols: bool,
         #[arg(long)]
         no_digits: bool,
+    },
+    /// Agent SSH : les clés SSH du coffre, signées par Verrou. Tourne au
+    /// premier plan et affiche la ligne `export SSH_AUTH_SOCK=…`.
+    SshAgent {
+        /// Socket Unix (défaut : `~/.verrou/agent.sock`).
+        #[arg(long)]
+        socket: Option<PathBuf>,
     },
     /// Mesurer la recherche sur un gros coffre fictif.
     Bench {
@@ -105,8 +135,8 @@ struct ItemJson<'a> {
     favorite: bool,
 }
 
-impl<'a> From<&'a Item> for ItemJson<'a> {
-    fn from(item: &'a Item) -> Self {
+impl<'a> From<&'a ItemSummary> for ItemJson<'a> {
+    fn from(item: &'a ItemSummary) -> Self {
         Self {
             id: &item.id,
             kind: item.kind.keyword(),
@@ -120,6 +150,15 @@ impl<'a> From<&'a Item> for ItemJson<'a> {
     }
 }
 
+/// `verrou get --json` : l'élément et ses champs, valeurs secrètes absentes.
+#[derive(Serialize)]
+struct ItemDetailJson<'a> {
+    #[serde(flatten)]
+    item: ItemJson<'a>,
+    fields: &'a [verrou_bridge::protocol::FieldView],
+    has_notes: bool,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(&cli) {
@@ -131,135 +170,181 @@ fn main() -> ExitCode {
     }
 }
 
-fn open_vault(size: usize) -> Vault {
-    eprintln!(
-        "\x1b[2m(coffre fictif — la connexion à Vaultwarden arrive dans la prochaine version)\x1b[0m"
-    );
-    Vault::new(mock::vault_items(size, 42))
-}
-
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
 
-fn find<'v>(vault: &'v Vault, query: &[String]) -> Result<&'v Item, String> {
-    let query = query.join(" ");
-    if let Some(item) = vault.get(&query) {
-        return Ok(item);
-    }
-    let hits = vault.search(&query, &Filter::All, Sort::Relevance);
-    hits.first()
-        .map(|h| &vault.items()[h.index])
-        .ok_or_else(|| format!("aucun élément pour « {query} »"))
+/// D'où viennent les éléments : l'app (par le pont) ou le coffre fictif.
+enum Source {
+    Mock(Vault),
+    App(Remote),
 }
 
-#[allow(clippy::too_many_lines)] // un `match` par sous-commande, lisible d'un trait
+impl Source {
+    fn open(cli: &Cli) -> Result<Self, String> {
+        if cli.mock {
+            eprintln!("\x1b[2m(coffre fictif, --mock)\x1b[0m");
+            return Ok(Self::Mock(Vault::new(mock::vault_items(cli.mock_size, 42))));
+        }
+        let path = Config::default_path()?;
+        let config = Config::load(&path)?.ok_or_else(|| Error::NotLinked.to_string())?;
+        Remote::connect(&config, Endpoint::from_env())
+            .map(Self::App)
+            .map_err(|e| e.to_string())
+    }
+
+    fn ask(remote: &mut Remote, command: &Ask) -> Result<ReplyResult, String> {
+        remote.ask(command).map_err(|e| e.to_string())
+    }
+
+    fn search(
+        &mut self,
+        query: &str,
+        kind: Option<ItemKind>,
+        favorites: bool,
+        limit: usize,
+    ) -> Result<(Vec<ItemSummary>, usize), String> {
+        let limit = u32::try_from(limit).ok();
+        match self {
+            Self::Mock(vault) => Ok(access::search(vault, query, kind, favorites, limit)),
+            Self::App(remote) => {
+                let command = Ask::VaultSearch {
+                    query: query.to_owned(),
+                    kind,
+                    favorites,
+                    limit,
+                };
+                match Self::ask(remote, &command)? {
+                    ReplyResult::Items { items, total } => Ok((items, total as usize)),
+                    other => Err(unexpected(&other)),
+                }
+            }
+        }
+    }
+
+    fn item(&mut self, query: &str) -> Result<ItemView, String> {
+        match self {
+            Self::Mock(vault) => access::find(vault, query).map(access::item_view),
+            Self::App(remote) => match Self::ask(
+                remote,
+                &Ask::VaultItem {
+                    query: query.to_owned(),
+                },
+            )? {
+                ReplyResult::Item { item } => Ok(item),
+                other => Err(unexpected(&other)),
+            },
+        }
+    }
+
+    fn reveal(&mut self, item: &str, field: &str) -> Result<String, String> {
+        match self {
+            Self::Mock(vault) => access::field_value(vault, item, field),
+            Self::App(remote) => match Self::ask(
+                remote,
+                &Ask::Reveal {
+                    item: item.to_owned(),
+                    field: field.to_owned(),
+                },
+            )? {
+                ReplyResult::Secret(secret) => Ok(secret.value.clone()),
+                other => Err(unexpected(&other)),
+            },
+        }
+    }
+
+    /// Code, période, secondes restantes.
+    fn totp(&mut self, item: &str) -> Result<(String, u64, u64), String> {
+        match self {
+            Self::Mock(vault) => access::totp_code(vault, item, now()),
+            Self::App(remote) => match Self::ask(
+                remote,
+                &Ask::Totp {
+                    item: item.to_owned(),
+                },
+            )? {
+                ReplyResult::Code {
+                    code,
+                    period,
+                    remaining,
+                } => Ok((code, period, remaining)),
+                other => Err(unexpected(&other)),
+            },
+        }
+    }
+}
+
+fn unexpected(reply: &ReplyResult) -> String {
+    format!("réponse inattendue de Verrou : {reply:?}")
+}
+
 fn run(cli: &Cli) -> Result<(), String> {
     let mut out = std::io::stdout().lock();
     match &cli.command {
+        Command::Link { name } => link(name)?,
+        Command::Unlink => unlink()?,
+        Command::Status => status(&mut out, cli.json)?,
         Command::Search {
             query,
             kind,
             favorites,
             limit,
         } => {
-            let vault = open_vault(cli.mock_size);
-            let filter = match (kind, favorites) {
-                (Some(k), _) => Filter::Kind((*k).into()),
-                (None, true) => Filter::Favorites,
-                (None, false) => Filter::All,
-            };
-            let hits = vault.search(&query.join(" "), &filter, Sort::Relevance);
-            let items: Vec<&Item> = hits
-                .iter()
-                .take(*limit)
-                .map(|h| &vault.items()[h.index])
-                .collect();
-            if cli.json {
-                let json: Vec<ItemJson> = items.iter().map(|i| ItemJson::from(*i)).collect();
-                writeln!(
-                    out,
-                    "{}",
-                    serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?
-                )
-                .ok();
-            } else {
-                for item in &items {
-                    let star = if item.favorite { "★" } else { " " };
-                    writeln!(
-                        out,
-                        "{star} {:<36} \x1b[2m{:<34} {}\x1b[0m",
-                        truncate(&item.title, 36),
-                        truncate(&item.subtitle, 34),
-                        item.kind.label()
-                    )
-                    .ok();
-                }
-                if hits.len() > items.len() {
-                    writeln!(
-                        out,
-                        "\x1b[2m… et {} autres\x1b[0m",
-                        hits.len() - items.len()
-                    )
-                    .ok();
-                }
-            }
+            let mut source = Source::open(cli)?;
+            let (items, total) =
+                source.search(&query.join(" "), kind.map(Into::into), *favorites, *limit)?;
+            print_results(&mut out, &items, total, cli.json)?;
         }
         Command::Get {
             query,
             field,
             reveal,
         } => {
-            let vault = open_vault(cli.mock_size);
-            let item = find(&vault, query)?;
+            let mut source = Source::open(cli)?;
+            let item = source.item(&query.join(" "))?;
             if let Some(field_id) = field {
-                let value = match field_id.as_str() {
-                    "notes" => item.notes.as_ref().map(|n| n.expose().to_owned()),
-                    "totp" => item
-                        .field_of_kind(FieldKind::Totp)
-                        .map(|f| Totp::parse(f.value.expose()).map(|t| t.generate(now()).code))
-                        .transpose()
-                        .map_err(|e| e.to_string())?,
-                    other => item.field(other).map(|f| f.value.expose().to_owned()),
-                };
-                let value = value
-                    .ok_or_else(|| format!("« {} » n'a pas de champ « {field_id} »", item.title))?;
+                let value = field_value(&mut source, &item, field_id)?;
                 // Un champ demandé explicitement sort brut, pour `| pbcopy`.
                 writeln!(out, "{value}").ok();
                 return Ok(());
             }
             if cli.json {
+                let json = ItemDetailJson {
+                    item: ItemJson::from(&item.summary),
+                    fields: &item.fields,
+                    has_notes: item.has_notes,
+                };
                 writeln!(
                     out,
                     "{}",
-                    serde_json::to_string_pretty(&ItemJson::from(item))
-                        .map_err(|e| e.to_string())?
+                    serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?
                 )
                 .ok();
                 return Ok(());
             }
-            print_item(&mut out, item, *reveal);
+            print_item(&mut out, &mut source, &item, *reveal)?;
         }
         Command::Totp { query } => {
-            let vault = open_vault(cli.mock_size);
-            let item = find(&vault, query)?;
-            let field = item
-                .field_of_kind(FieldKind::Totp)
-                .ok_or_else(|| format!("« {} » n'a pas de code à usage unique", item.title))?;
-            let code = Totp::parse(field.value.expose())
-                .map_err(|e| e.to_string())?
-                .generate(now());
+            let mut source = Source::open(cli)?;
+            let item = source.item(&query.join(" "))?;
+            if !item.summary.has_totp {
+                return Err(format!(
+                    "« {} » n'a pas de code à usage unique",
+                    item.summary.title
+                ));
+            }
+            let (code, period, remaining) = source.totp(&item.summary.id)?;
             if cli.json {
                 writeln!(
                     out,
-                    r#"{{"code":"{}","remaining":{},"period":{}}}"#,
-                    code.code, code.remaining, code.period
+                    "{}",
+                    serde_json::json!({ "code": code, "remaining": remaining, "period": period })
                 )
                 .ok();
             } else {
-                writeln!(out, "{}", code.code).ok();
+                writeln!(out, "{code}").ok();
             }
         }
         Command::Generate {
@@ -275,50 +360,238 @@ fn run(cli: &Cli) -> Result<(), String> {
             });
             writeln!(out, "{password}").ok();
         }
+        Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::Bench { items } => bench(&mut out, *items),
     }
     Ok(())
 }
 
-fn print_item(out: &mut impl std::io::Write, item: &Item, reveal: bool) {
+/// Valeur d'un champ : visible dans l'élément, ou demandée à Verrou.
+fn field_value(source: &mut Source, item: &ItemView, field_id: &str) -> Result<String, String> {
+    let title = &item.summary.title;
+    if field_id == "totp" {
+        if !item.summary.has_totp {
+            return Err(format!("« {title} » n'a pas de code à usage unique"));
+        }
+        return source.totp(&item.summary.id).map(|(code, _, _)| code);
+    }
+    if field_id == "notes" {
+        if !item.has_notes {
+            return Err(format!("« {title} » n'a pas de notes"));
+        }
+        return source.reveal(&item.summary.id, "notes");
+    }
+    let field = item
+        .fields
+        .iter()
+        .find(|f| f.id == field_id)
+        .ok_or_else(|| format!("« {title} » n'a pas de champ « {field_id} »"))?;
+    match &field.value {
+        Some(value) => Ok(value.clone()),
+        None => source.reveal(&item.summary.id, field_id),
+    }
+}
+
+fn link(name: &str) -> Result<(), String> {
+    let path = Config::default_path()?;
+    if Config::load(&path)?.is_some() {
+        eprintln!(
+            "verrou : ce terminal était déjà relié ; le nouveau lien remplace l'ancien (déliez l'ancien dans les réglages de Verrou)."
+        );
+    }
+    eprintln!("Demande envoyée à Verrou…");
+    let config = remote::link(Endpoint::from_env(), name, |code| {
+        eprintln!(
+            "Code de vérification : \x1b[1m{code}\x1b[0m\nAcceptez dans Verrou seulement s'il affiche exactement ce code."
+        );
+    })
+    .map_err(|e| e.to_string())?;
+    config.save(&path)?;
+    eprintln!("Terminal relié à Verrou ({}).", path.display());
+    Ok(())
+}
+
+fn unlink() -> Result<(), String> {
+    let path = Config::default_path()?;
+    let Some(config) = Config::load(&path)? else {
+        eprintln!("Ce terminal n'était pas relié.");
+        return Ok(());
+    };
+    // Prévenir Verrou s'il est ouvert ; sinon, le lien reste dans ses
+    // réglages, à délier à la main.
+    let endpoint = Endpoint {
+        launch: false,
+        ..Endpoint::from_env()
+    };
+    let told = Remote::connect(&config, endpoint)
+        .and_then(|mut remote| remote.call(&Ask::Unlink))
+        .is_ok_and(|reply| reply == ReplyResult::Done);
+    Config::remove(&path)?;
+    if told {
+        eprintln!("Terminal délié.");
+    } else {
+        eprintln!(
+            "Lien effacé de ce terminal. Verrou ne répond pas : déliez aussi « le terminal » dans ses réglages."
+        );
+    }
+    Ok(())
+}
+
+fn status(out: &mut impl std::io::Write, json: bool) -> Result<(), String> {
+    let path = Config::default_path()?;
+    let config = Config::load(&path)?;
+    let (linked, reachable, unlocked) = match &config {
+        None => (false, None, None),
+        Some(config) => {
+            let endpoint = Endpoint {
+                launch: false,
+                ..Endpoint::from_env()
+            };
+            match Remote::connect(config, endpoint).and_then(|mut r| r.unlocked()) {
+                Ok(unlocked) => (true, Some(true), Some(unlocked)),
+                Err(Error::UnknownClient) => (false, Some(true), None),
+                Err(_) => (true, Some(false), None),
+            }
+        }
+    };
+    if json {
+        writeln!(
+            out,
+            "{}",
+            serde_json::json!({
+                "linked": linked,
+                "app_running": reachable,
+                "unlocked": unlocked,
+                "config": path,
+            })
+        )
+        .ok();
+        return Ok(());
+    }
+    let line = match (config.is_some(), linked, reachable, unlocked) {
+        (false, ..) => "non relié : « verrou link »".to_owned(),
+        (true, false, ..) => "lien révoqué dans Verrou : « verrou link »".to_owned(),
+        (true, true, Some(false), _) => "relié ; Verrou n'est pas ouvert".to_owned(),
+        (true, true, _, Some(true)) => "relié ; coffre déverrouillé".to_owned(),
+        _ => "relié ; coffre verrouillé".to_owned(),
+    };
+    writeln!(out, "{line}").ok();
+    Ok(())
+}
+
+fn ssh_agent(socket: Option<&std::path::Path>) -> Result<(), String> {
+    let config =
+        Config::load(&Config::default_path()?)?.ok_or_else(|| Error::NotLinked.to_string())?;
+    let (path, default) = match socket {
+        Some(path) => (path.to_owned(), false),
+        None => (agent::default_socket()?, true),
+    };
+    let listener = agent::bind(&path, default)?;
+    let path = std::fs::canonicalize(&path).unwrap_or(path);
+    println!(
+        "export SSH_AUTH_SOCK={}",
+        shell_quote(&path.to_string_lossy())
+    );
+    let _ = std::io::stdout().flush();
+    eprintln!(
+        "Agent SSH de Verrou à l'écoute (Ctrl-C pour l'arrêter). Chaque clé demande votre accord dans Verrou."
+    );
+    let keys: Arc<dyn Keys> = Arc::new(BridgeKeys {
+        config,
+        endpoint: Endpoint::from_env(),
+    });
+    agent::serve(&listener, &keys);
+    Ok(())
+}
+
+/// Entre apostrophes si besoin, pour coller la ligne dans un shell.
+fn shell_quote(text: &str) -> String {
+    if text
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || "/._-~+@".contains(c))
+    {
+        text.to_owned()
+    } else {
+        format!("'{}'", text.replace('\'', r"'\''"))
+    }
+}
+
+fn print_results(
+    out: &mut impl std::io::Write,
+    items: &[ItemSummary],
+    total: usize,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        let json: Vec<ItemJson> = items.iter().map(ItemJson::from).collect();
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?
+        )
+        .ok();
+        return Ok(());
+    }
+    for item in items {
+        let star = if item.favorite { "★" } else { " " };
+        writeln!(
+            out,
+            "{star} {:<36} \x1b[2m{:<34} {}\x1b[0m",
+            truncate(&item.title, 36),
+            truncate(&item.subtitle, 34),
+            item.kind.label()
+        )
+        .ok();
+    }
+    if total > items.len() {
+        writeln!(out, "\x1b[2m… et {} autres\x1b[0m", total - items.len()).ok();
+    }
+    Ok(())
+}
+
+fn print_item(
+    out: &mut impl std::io::Write,
+    source: &mut Source,
+    item: &ItemView,
+    reveal: bool,
+) -> Result<(), String> {
     const PAD: &str = "\n                         ";
+    let summary = &item.summary;
     writeln!(
         out,
         "\x1b[1m{}\x1b[0m  \x1b[2m{}\x1b[0m",
-        item.title,
-        item.kind.label()
+        summary.title,
+        summary.kind.label()
     )
     .ok();
-    for url in &item.urls {
+    for url in &summary.urls {
         writeln!(out, "  {:<22} {url}", "Site").ok();
     }
     for f in &item.fields {
-        let shown = if f.kind == FieldKind::Totp {
-            Totp::parse(f.value.expose()).map_or_else(
-                |e| e.to_string(),
-                |t| {
-                    let c = t.generate(now());
-                    format!("{} {}  ({} s)", &c.code[..3], &c.code[3..], c.remaining)
-                },
-            )
-        } else if f.kind.is_secret() && !reveal {
-            "••••••••••••".to_owned()
-        } else {
-            f.value.expose().replace('\n', PAD)
+        let shown = match (&f.value, f.kind) {
+            (Some(value), _) => value.replace('\n', PAD),
+            (None, FieldKind::Totp) if reveal => {
+                let (code, _, remaining) = source.totp(&summary.id)?;
+                let (a, b) = code.split_at(code.len() / 2);
+                format!("{a} {b}  ({remaining} s)")
+            }
+            (None, _) if reveal => source.reveal(&summary.id, &f.id)?.replace('\n', PAD),
+            (None, _) => "••••••••••••".to_owned(),
         };
         writeln!(out, "  {:<22} {shown}", f.label).ok();
     }
-    if let Some(notes) = &item.notes {
+    if item.has_notes {
         let shown = if reveal {
-            notes.expose().to_owned()
+            source.reveal(&summary.id, "notes")?
         } else {
             "•••• (--reveal)".to_owned()
         };
         writeln!(out, "  {:<22} {}", "Notes", shown.replace('\n', PAD)).ok();
     }
-    if let Some(folder) = &item.folder {
+    if let Some(folder) = &summary.folder {
         writeln!(out, "  {:<22} \x1b[2m{folder}\x1b[0m", "Dossier").ok();
     }
+    Ok(())
 }
 
 fn bench(out: &mut impl std::io::Write, items: usize) {

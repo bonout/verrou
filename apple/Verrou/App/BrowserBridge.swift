@@ -1,10 +1,10 @@
 import AppKit
 import Observation
 
-/// Remplissage dans Brave : l'extension parle à Verrou par l'hôte Native
+/// Brave et le terminal : l'extension parle à Verrou par l'hôte Native
 /// Messaging embarqué dans l'app (`Contents/MacOS/verrou-native-host`), qui
-/// relaie vers le pont du cœur Rust (`127.0.0.1`, canal chiffré). Voir
-/// SECURITY.md.
+/// relaie vers le pont du cœur Rust (`127.0.0.1`, canal chiffré) ; la CLI
+/// `verrou` (et son agent SSH) parle directement au pont. Voir SECURITY.md.
 @MainActor
 @Observable
 final class BrowserBridge {
@@ -16,6 +16,8 @@ final class BrowserBridge {
     private let model: AppModel
     private(set) var running = false
     private(set) var error: String?
+    /// Brave absent : le terminal peut se relier quand même.
+    private(set) var browserNote: String?
     private(set) var clients: [BridgeClient] = []
     /// Confirmations en cours : l'extension réessaie chaque seconde.
     @ObservationIgnored private var confirming: Set<String> = []
@@ -45,7 +47,13 @@ final class BrowserBridge {
             return
         }
         do {
-            try installHostManifest()
+            browserNote = nil
+            do {
+                try installHostManifest()
+            } catch {
+                // Sans Brave, le terminal reste utilisable.
+                browserNote = error.localizedDescription
+            }
             _ = try model.session.startBridge(delegate: Callbacks(bridge: self))
             running = true
             error = nil
@@ -65,20 +73,33 @@ final class BrowserBridge {
         refreshClients()
     }
 
-    // MARK: Demandes de l'extension
+    // MARK: Demandes des clients
 
-    fileprivate func pairingRequested(id: String, name: String, code: String) {
+    fileprivate func pairingRequested(id: String, name: String, code: String, kind: BridgeClientKind) {
         NSApp.activate()
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Relier « \(name) » à Verrou ?"
-        alert.informativeText = """
-            Code affiché par l'extension : \(code)
+        switch kind {
+        case .browser:
+            alert.messageText = "Relier « \(name) » à Verrou ?"
+            alert.informativeText = """
+                Code affiché par l'extension : \(code)
 
-            N'acceptez que si vous venez de demander l'appairage dans l'extension \
-            et qu'elle affiche exactement ce code. L'extension pourra ensuite \
-            remplir vos identifiants sur les sites qui leur correspondent.
-            """
+                N'acceptez que si vous venez de demander l'appairage dans l'extension \
+                et qu'elle affiche exactement ce code. L'extension pourra ensuite \
+                remplir vos identifiants sur les sites qui leur correspondent.
+                """
+        case .cli:
+            alert.messageText = "Relier le terminal (verrou) à Verrou ?"
+            alert.informativeText = """
+                Code affiché par « verrou link » : \(code)
+
+                N'acceptez que si vous venez de lancer « verrou link » et qu'il affiche \
+                exactement ce code. Le terminal pourra ensuite chercher dans le coffre \
+                (titres, identifiants, sites), et demander un mot de passe, un code ou \
+                une signature SSH : chaque fois, Verrou vous demandera Touch ID.
+                """
+        }
         // « Refuser » d'abord : la touche Entrée ne relie rien par mégarde.
         alert.addButton(withTitle: "Refuser")
         alert.addButton(withTitle: "Relier")
@@ -113,6 +134,26 @@ final class BrowserBridge {
         Task {
             _ = await model.confirmAccess(itemID: item, title: title)
             confirming.remove(item)
+        }
+    }
+
+    /// Le terminal veut un secret ou une signature SSH : Touch ID, ou le mot
+    /// de passe de la session si Touch ID n'est pas disponible. L'accord est
+    /// gardé quelques minutes par le pont, pour ce terminal et cet élément.
+    /// Élément protégé (« redemander le mot de passe principal ») : la même
+    /// confirmation que dans l'app (Touch ID ou mot de passe principal).
+    fileprivate func confirmRequested(id: String, purpose: AccessPurpose, item: String, title: String) {
+        let reason = switch purpose {
+        case .reveal: "autoriser le terminal à lire « \(title) »"
+        case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
+        }
+        Task {
+            let approved = if model.session.needsConfirmation(id: item) {
+                await model.confirmAccess(itemID: item, title: title)
+            } else {
+                await Biometrics.confirm(reason: reason)
+            }
+            model.session.answerBridgeConfirmation(id: id, approved: approved)
         }
     }
 
@@ -172,9 +213,18 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         self.bridge = bridge
     }
 
-    func pairingRequested(id: String, name: String, code: String) {
+    func pairingRequested(id: String, name: String, code: String, kind: BridgeClientKind) {
         DispatchQueue.main.async { [weak bridge] in
-            MainActor.assumeIsolated { bridge?.pairingRequested(id: id, name: name, code: code) }
+            MainActor.assumeIsolated { bridge?.pairingRequested(id: id, name: name, code: code, kind: kind) }
+        }
+    }
+
+    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String) {
+        DispatchQueue.main.async { [weak bridge] in
+            MainActor.assumeIsolated {
+                // Pont arrêté entre-temps : la demande expire d'elle-même.
+                bridge?.confirmRequested(id: id, purpose: purpose, item: item, title: title)
+            }
         }
     }
 

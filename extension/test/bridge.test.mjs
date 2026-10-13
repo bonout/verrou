@@ -136,6 +136,9 @@ test("Verrou injoignable : l'extension le sait", async () => {
     });
     let onMessage = () => {};
     let onDisconnect = () => {};
+    // L'hôte peut être déjà sorti quand la requête part : écrire échoue
+    // (EPIPE), comme pour un navigateur dont l'hôte s'est arrêté.
+    host.stdin.on("error", () => {});
     host.stdout.on("data", (chunk) => onMessage(JSON.parse(chunk.subarray(4).toString())));
     host.on("exit", () => onDisconnect("hôte arrêté"));
     // L'hôte peut s'arrêter avant notre écriture (port fermé) : EPIPE attendu.

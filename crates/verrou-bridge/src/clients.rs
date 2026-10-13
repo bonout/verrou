@@ -1,8 +1,10 @@
-//! Extensions appairées, dans le dossier de Verrou (conteneur de l'app,
-//! fichier lisible par le seul utilisateur).
+//! Clients appairés (extensions, terminal), dans le dossier de Verrou
+//! (conteneur de l'app, fichier lisible par le seul utilisateur).
 //!
-//! La clé d'un client ne permet que ce que permet l'extension : demander les
-//! identifiants d'une page, coffre déverrouillé. Révoquer un client
+//! La clé d'un client ne permet que ce que permet sa nature
+//! ([`crate::access::allowed`]) : pour l'extension, demander les
+//! identifiants d'une page ; pour le terminal, chercher et demander un
+//! secret, que l'utilisateur confirme dans Verrou. Révoquer un client
 //! l'oblige à s'appairer de nouveau.
 
 use std::fs;
@@ -12,6 +14,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::crypto::ChannelKey;
+use crate::protocol::ClientKind;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct StoredClient {
@@ -20,6 +23,9 @@ struct StoredClient {
     key: String,
     /// Horodatage Unix de l'appairage.
     created: i64,
+    /// Absent des fichiers d'avant le terminal : une extension.
+    #[serde(default)]
+    kind: ClientKind,
 }
 
 /// Ce que les réglages affichent d'un client.
@@ -28,6 +34,7 @@ pub struct ClientInfo {
     pub id: String,
     pub name: String,
     pub created: i64,
+    pub kind: ClientKind,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -50,30 +57,31 @@ impl ClientStore {
         Self { path, clients }
     }
 
-    pub fn key(&self, id: &str) -> Option<ChannelKey> {
-        self.clients
-            .iter()
-            .find(|c| c.id == id)
-            .and_then(|c| ChannelKey::from_base64(&c.key).ok())
+    /// La clé du client et ce qu'on sait de lui.
+    pub fn get(&self, id: &str) -> Option<(ChannelKey, ClientInfo)> {
+        let client = self.clients.iter().find(|c| c.id == id)?;
+        let key = ChannelKey::from_base64(&client.key).ok()?;
+        Some((key, info(client)))
     }
 
     pub fn list(&self) -> Vec<ClientInfo> {
-        self.clients
-            .iter()
-            .map(|c| ClientInfo {
-                id: c.id.clone(),
-                name: c.name.clone(),
-                created: c.created,
-            })
-            .collect()
+        self.clients.iter().map(info).collect()
     }
 
-    pub fn add(&mut self, id: String, name: String, key: &ChannelKey, created: i64) {
+    pub fn add(
+        &mut self,
+        id: String,
+        name: String,
+        kind: ClientKind,
+        key: &ChannelKey,
+        created: i64,
+    ) {
         self.clients.push(StoredClient {
             id,
             name,
             key: key.to_base64(),
             created,
+            kind,
         });
         self.save();
     }
@@ -108,5 +116,47 @@ impl ClientStore {
         if written.is_ok() {
             let _ = fs::rename(&temp, &self.path);
         }
+    }
+}
+
+fn info(client: &StoredClient) -> ClientInfo {
+    ClientInfo {
+        id: client.id.clone(),
+        name: client.name.clone(),
+        created: client.created,
+        kind: client.kind,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clients_saved_before_the_terminal_are_browsers() {
+        let path =
+            std::env::temp_dir().join(format!("verrou-clients-{}.json", uuid::Uuid::new_v4()));
+        let key = ChannelKey::from_bytes([3; 32]);
+        fs::write(
+            &path,
+            format!(
+                r#"{{"clients":[{{"id":"ancien","name":"Brave","key":"{}","created":1}}]}}"#,
+                key.to_base64()
+            ),
+        )
+        .unwrap();
+        let mut store = ClientStore::open(path.clone());
+        assert_eq!(store.get("ancien").unwrap().1.kind, ClientKind::Browser);
+        store.add(
+            "cli".to_owned(),
+            "verrou".to_owned(),
+            ClientKind::Cli,
+            &key,
+            2,
+        );
+        let reopened = ClientStore::open(path.clone());
+        assert_eq!(reopened.get("cli").unwrap().1.kind, ClientKind::Cli);
+        assert_eq!(reopened.list().len(), 2);
+        let _ = fs::remove_file(path);
     }
 }
