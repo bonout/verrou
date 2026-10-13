@@ -32,7 +32,10 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   strong password (and fills the confirmation too); after a form is submitted,
   a banner offers to save the account or update its password. A two-factor QR
   code shown by a site can be added to the login from the extension's popup
-  (or its secret key, typed by hand).
+  (or its secret key, typed by hand). Payment and address forms get a menu
+  too: pick a card or an identity and every field is filled, drop-down lists
+  included. A site Verrou doesn't know yet can be linked to an existing login
+  from the popup (*Remplir avec un autre identifiant…*).
 - **Security audit**: reused, weak and plain-HTTP passwords, computed
   locally; known breaches on request through Have I Been Pwned (k-anonymity:
   only 5 characters of each password's SHA-1 leave the Mac).
@@ -228,7 +231,7 @@ Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).
 
 1. ✅ Core, search, macOS app and CLI on a mock vault
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
-3. Brave extension: ✅ in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes; cards, addresses
+3. ✅ Brave extension: in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
 4. iPhone and iPad: Face ID, system AutoFill extension
 5. YubiKey: ✅ FIDO2 sign-in over USB; `hmac-secret` unlock
 

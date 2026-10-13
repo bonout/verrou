@@ -275,8 +275,33 @@ async function setTotp(url, totp, item) {
 
 // MARK: Messages
 
+// MARK: Cartes et adresses
+
+async function forms(url) {
+  try {
+    const reply = await call({ cmd: "forms", url });
+    if (reply.result === "locked") return { state: "locked" };
+    return { state: "unlocked", cards: reply.cards ?? [], identities: reply.identities ?? [] };
+  } catch (error) {
+    return { state: stateOf(error) };
+  }
+}
+
+async function fillForm(url, item) {
+  try {
+    const reply = await call({ cmd: "fill_form", url, item });
+    if (reply.result === "form") {
+      const { id, result, ...data } = reply;
+      return { ok: true, data };
+    }
+    return { ok: false, state: reply.result, reason: reply.reason };
+  } catch (error) {
+    return { ok: false, state: stateOf(error) };
+  }
+}
+
 const fromPage = new Set([
-  "suggest", "fill", "unlock",
+  "suggest", "fill", "unlock", "forms", "fillForm",
   "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
 ]);
 
@@ -298,6 +323,10 @@ async function handle(message, sender) {
       return suggest(sender.url);
     case "fill":
       return fill(sender.url, message.item);
+    case "forms":
+      return forms(sender.url);
+    case "fillForm":
+      return fillForm(sender.url, message.item);
     case "unlock":
       await call({ cmd: "unlock" }).catch(() => {});
       return { ok: true };
@@ -361,6 +390,29 @@ async function handle(message, sender) {
       } catch (error) {
         return { ok: false, reason: error.message };
       }
+    }
+    case "searchLogins": {
+      try {
+        const reply = await call({ cmd: "search_logins", query: String(message.query ?? "") });
+        return reply.result === "suggestions" ? { items: reply.items } : { items: [], state: reply.result };
+      } catch (error) {
+        return { items: [], state: stateOf(error) };
+      }
+    }
+    case "linkSiteTab": {
+      // Choisi dans la fenêtre de l'extension : rattacher le site de l'onglet
+      // à cet identifiant, puis remplir comme d'habitude.
+      const tab = await activeTab();
+      if (!tab?.url) return { ok: false, reason: "aucun onglet" };
+      try {
+        const reply = await call({ cmd: "link_site", url: tab.url, item: message.item });
+        if (reply.result !== "saved") return { ok: false, reason: reply.reason ?? reply.result };
+      } catch (error) {
+        return { ok: false, reason: error.message };
+      }
+      const credentials = await fill(tab.url, message.item);
+      if (credentials.ok) await chrome.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
+      return { ok: true };
     }
     case "neverList":
       return { sites: await neverList() };

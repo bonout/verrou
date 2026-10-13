@@ -70,6 +70,25 @@ const page = createServer((request, response) => {
         <button id="create">Créer mon compte</button>
       </form>`);
   }
+  if (request.url.startsWith("/paiement")) {
+    return response.end(`<!doctype html><title>Paiement</title>
+      <form id="checkout" onsubmit="return false">
+        <fieldset><legend>Livraison</legend>
+          <label>Prénom <input id="given" autocomplete="given-name"></label>
+          <label>Nom <input id="family" autocomplete="family-name"></label>
+          <label>Adresse <input id="street" name="adresse"></label>
+          <label>Code postal <input id="zip" name="code_postal"></label>
+          <label>Ville <input id="city" name="ville"></label>
+          <label>Pays <select id="country" name="pays"><option value="">—</option><option value="BE">Belgique</option><option value="FR">France</option></select></label>
+        </fieldset>
+      </form>
+      <form id="card" onsubmit="return false">
+        <label>Numéro de carte <input id="cc" name="cardnumber" inputmode="numeric"></label>
+        <label>Mois d'expiration <select id="month" name="exp-month">${[..."123456789"].map((m) => `<option value="0${m}">0${m}</option>`).join("")}<option>10</option><option>11</option><option>12</option></select></label>
+        <label>Année <input id="year" name="exp-year" maxlength="2"></label>
+        <label>Cryptogramme <input id="cvc" name="cvc"></label>
+      </form>`);
+  }
   if (request.url.startsWith("/bienvenue")) {
     return response.end(`<!doctype html><title>Bienvenue</title><h1>Compte créé</h1>`);
   }
@@ -265,6 +284,29 @@ try {
   await click(signup, bannerBox[0] - 50, bannerBox[1] - 26);
   await eventually(() => saved.length > 0, "enregistrement dans Verrou");
   step(`identifiant enregistré dans Verrou (${saved[0]})`);
+
+  // Paiement : la carte, puis l'adresse, depuis le menu sous le champ.
+  const checkout = await openTab(pageUrl.replace("/connexion", "/paiement"));
+  await eventually(() => evaluate(checkout, `document.readyState === "complete"`), "page de paiement");
+  await cdp("Page.bringToFront", {}, checkout);
+  await evaluate(checkout, `document.getElementById("cc").focus()`);
+  await eventually(() => evaluate(checkout, `Boolean(document.querySelector("verrou-menu"))`), "menu des cartes");
+  await press(checkout, "Enter");
+  const card = await eventually(() => evaluate(checkout, `(() => {
+    const v = (id) => document.getElementById(id).value;
+    return v("cc") && [v("cc"), v("month"), v("year"), v("cvc")];
+  })()`), "carte remplie");
+  assert.deepEqual(card, ["4242424242424242", "09", "29", "123"]);
+  step("carte remplie (numéro, mois en liste, année sur 2 chiffres, cryptogramme)");
+  await evaluate(checkout, `document.getElementById("given").focus()`);
+  await eventually(() => evaluate(checkout, `Boolean(document.querySelector("verrou-menu"))`), "menu des adresses");
+  await press(checkout, "Enter");
+  const address = await eventually(() => evaluate(checkout, `(() => {
+    const v = (id) => document.getElementById(id).value;
+    return v("given") && [v("given"), v("family"), v("street"), v("zip"), v("city"), v("country")];
+  })()`), "adresse remplie");
+  assert.deepEqual(address, ["Camille", "Martin", "12 rue des Lilas", "74000", "Annecy", "FR"]);
+  step("adresse remplie, pays choisi dans la liste");
 
   // QR code de double authentification lu dans la fenêtre de l'extension.
   const otpauth = await evaluate(popup, `import("./qr.js").then(async (qr) =>
