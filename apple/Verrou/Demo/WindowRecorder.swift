@@ -1,43 +1,60 @@
 import AppKit
 import AVFoundation
+import ScreenCaptureKit
+import VideoToolbox
 
-/// Capture des fenêtres de Verrou par Verrou lui-même, pour la démonstration.
+/// Capture des fenêtres de Verrou pour la démonstration, par ScreenCaptureKit.
 ///
-/// L'app dessine ses propres vues dans une image : aucune autorisation
-/// « Enregistrement de l'écran » n'est nécessaire, et rien d'autre que ses
-/// fenêtres ne peut apparaître dans les captures.
-@MainActor
+/// Le filtre ne retient que les fenêtres de Verrou : aucune autre app ne peut
+/// apparaître dans les captures, même si l'une d'elles recouvre la fenêtre.
+/// Demande l'autorisation « Enregistrement de l'écran » pour l'app qui lance
+/// Verrou (le terminal, via `scripts/demo-capture.sh`).
+///
+/// `cacheDisplay(in:to:)` ne convenait pas : il ne sait pas dessiner les
+/// matériaux translucides (barre latérale, barre d'outils), rendus en blanc.
 enum WindowSnapshot {
-    /// Image de la fenêtre principale, avec les panneaux flottants de l'app
-    /// superposés à leur position réelle.
-    static func composite(main: NSWindow, overlays: [NSWindow], scale: CGFloat) -> CGImage? {
-        let frame = main.frame
-        let width = Int(frame.width * scale)
-        let height = Int(frame.height * scale)
-        guard let context = CGContext(
-            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        context.interpolationQuality = .high
-        for window in [main] + overlays where window.isVisible {
-            guard let image = render(window) else { continue }
-            let rect = CGRect(
-                x: (window.frame.minX - frame.minX) * scale,
-                y: (window.frame.minY - frame.minY) * scale,
-                width: window.frame.width * scale,
-                height: window.frame.height * scale)
-            context.draw(image, in: rect)
-        }
-        return context.makeImage()
+    struct Source {
+        let filter: SCContentFilter
+        /// Rectangle de la fenêtre principale dans l'écran, origine en haut à gauche.
+        let rect: CGRect
     }
 
-    static func render(_ window: NSWindow) -> CGImage? {
-        // Le cadre de la fenêtre (barre de titre et barre d'outils comprises)
-        // est la vue parente de `contentView`.
-        guard let view = window.contentView?.superview ?? window.contentView,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        return rep.cgImage
+    /// Toutes les fenêtres de Verrou, y compris celles ouvertes plus tard
+    /// (l'accès rapide), cadrées sur la fenêtre principale.
+    @MainActor
+    static func source(main: NSWindow) async throws -> Source {
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+        let pid = ProcessInfo.processInfo.processIdentifier
+        guard let app = content.applications.first(where: { $0.processID == pid }) else {
+            throw CaptureError.appNotFound
+        }
+        let screen = main.screen ?? NSScreen.main!
+        let displayID = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID
+        guard let display = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first else {
+            throw CaptureError.displayNotFound
+        }
+        // Coordonnées AppKit (origine en bas à gauche de l'écran principal)
+        // vers celles de l'écran capturé (origine en haut à gauche).
+        let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
+        let frame = main.frame
+        let rect = CGRect(
+            x: frame.minX - display.frame.minX,
+            y: primaryHeight - frame.maxY - display.frame.minY,
+            width: frame.width,
+            height: frame.height)
+        let filter = SCContentFilter(display: display, including: [app], exceptingWindows: [])
+        return Source(filter: filter, rect: rect)
+    }
+
+    static func configuration(for source: Source, scale: CGFloat) -> SCStreamConfiguration {
+        let config = SCStreamConfiguration()
+        config.sourceRect = source.rect
+        config.width = Int(source.rect.width * scale)
+        config.height = Int(source.rect.height * scale)
+        config.showsCursor = false
+        config.capturesAudio = false
+        config.backgroundColor = .clear
+        return config
     }
 
     static func writePNG(_ image: CGImage, to url: URL) throws {
@@ -45,75 +62,92 @@ enum WindowSnapshot {
         guard let data = rep.representation(using: .png, properties: [:]) else { return }
         try data.write(to: url)
     }
+
+    enum CaptureError: Error {
+        case appNotFound, displayNotFound
+    }
 }
 
-/// Enregistrement vidéo (H.264) de la fenêtre principale, image par image.
-@MainActor
-final class WindowRecorder {
+/// Enregistrement vidéo (H.264) de la fenêtre principale et des panneaux de
+/// Verrou qui la recouvrent. Les captures d'écran sont prises dans ce même
+/// flux : une seule session ScreenCaptureKit, que les autres apps qui
+/// capturent l'écran (visioconférence) ne font pas échouer en cours de route.
+final class WindowRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
-    private let adaptor: AVAssetWriterInputPixelBufferAdaptor
-    private let main: NSWindow
-    private let overlays: () -> [NSWindow]
-    private let size: CGSize
-    private var timer: Timer?
-    private var frame: Int64 = 0
-    private let fps: Int32 = 24
+    private var stream: SCStream!
+    private let queue = DispatchQueue(label: "app.verrou.demo.recorder")
+    private var started = false
+    private var latest: CVPixelBuffer?
 
-    init(url: URL, main: NSWindow, overlays: @escaping () -> [NSWindow]) throws {
+    @MainActor
+    init(url: URL, main: NSWindow) async throws {
         try? FileManager.default.removeItem(at: url)
-        self.main = main
-        self.overlays = overlays
-        size = CGSize(width: main.frame.width, height: main.frame.height)
+        let source = try await WindowSnapshot.source(main: main)
+        let config = WindowSnapshot.configuration(for: source, scale: 2)
+        config.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        config.pixelFormat = kCVPixelFormatType_32BGRA
+        config.backgroundColor = NSColor.windowBackgroundColor.cgColor
         writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264,
-            AVVideoWidthKey: Int(size.width),
-            AVVideoHeightKey: Int(size.height),
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 6_000_000],
+            AVVideoWidthKey: config.width,
+            AVVideoHeightKey: config.height,
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 12_000_000],
         ])
         input.expectsMediaDataInRealTime = true
-        adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: Int(size.width),
-            kCVPixelBufferHeightKey as String: Int(size.height),
-        ])
         writer.add(input)
+        super.init()
+        stream = SCStream(filter: source.filter, configuration: config, delegate: self)
+        try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue)
     }
 
-    func start() {
+    func start() async throws {
         writer.startWriting()
-        writer.startSession(atSourceTime: .zero)
-        timer = Timer.scheduledTimer(withTimeInterval: 1 / Double(fps), repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.captureFrame() }
+        try await stream.startCapture()
+    }
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        guard type == .screen, sampleBuffer.isValid, isComplete(sampleBuffer) else { return }
+        latest = sampleBuffer.imageBuffer
+        if !started {
+            writer.startSession(atSourceTime: sampleBuffer.presentationTimeStamp)
+            started = true
+        }
+        if input.isReadyForMoreMediaData {
+            input.append(sampleBuffer)
         }
     }
 
-    private func captureFrame() {
-        guard input.isReadyForMoreMediaData,
-              let image = WindowSnapshot.composite(main: main, overlays: overlays(), scale: 1),
-              let pool = adaptor.pixelBufferPool else { return }
-        var buffer: CVPixelBuffer?
-        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-        guard let buffer else { return }
-        CVPixelBufferLockBaseAddress(buffer, [])
-        if let context = CGContext(
-            data: CVPixelBufferGetBaseAddress(buffer), width: Int(size.width), height: Int(size.height),
-            bitsPerComponent: 8, bytesPerRow: CVPixelBufferGetBytesPerRow(buffer),
-            space: CGColorSpace(name: CGColorSpace.sRGB)!,
-            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue) {
-            context.setFillColor(NSColor.windowBackgroundColor.cgColor)
-            context.fill(CGRect(origin: .zero, size: size))
-            context.draw(image, in: CGRect(origin: .zero, size: size))
-        }
-        CVPixelBufferUnlockBaseAddress(buffer, [])
-        adaptor.append(buffer, withPresentationTime: CMTime(value: frame, timescale: fps))
-        frame += 1
+    /// ScreenCaptureKit envoie aussi des images vides quand rien n'a bougé.
+    private func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+              let raw = attachments.first?[.status] as? Int,
+              let status = SCFrameStatus(rawValue: raw) else { return false }
+        return status == .complete
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        print("DEMO_LOG flux arrêté : \(error.localizedDescription)")
+        fflush(stdout)
+    }
+
+    /// Dernière image reçue, en pleine définition.
+    func snapshot() -> CGImage? {
+        guard let buffer = queue.sync(execute: { latest }) else { return nil }
+        var image: CGImage?
+        VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image)
+        return image
     }
 
     func finish() async {
-        timer?.invalidate()
-        input.markAsFinished()
-        await writer.finishWriting()
+        try? await stream.stopCapture()
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            queue.async { [self] in
+                input.markAsFinished()
+                writer.finishWriting { done.resume() }
+            }
+        }
     }
 }

@@ -104,6 +104,9 @@ struct ItemIcon: View {
 struct HighlightedText: View {
     let text: String
     let highlights: [UInt32]
+    /// `nil` sur fond d'accent (ligne sélectionnée) : la couleur d'accent y
+    /// disparaîtrait, les caractères trouvés sont alors soulignés.
+    var tint: Color? = Theme.accent
 
     var body: some View {
         Text(attributed)
@@ -115,7 +118,11 @@ struct HighlightedText: View {
         for (offset, character) in text.enumerated() {
             var piece = AttributedString(String(character))
             if marked.contains(UInt32(offset)) {
-                piece.foregroundColor = Theme.accent
+                if let tint {
+                    piece.foregroundColor = tint
+                } else {
+                    piece.underlineStyle = .single
+                }
                 piece.font = .body.weight(.semibold)
             }
             result += piece

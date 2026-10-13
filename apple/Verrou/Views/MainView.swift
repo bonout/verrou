@@ -113,6 +113,8 @@ struct VaultFooter: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        // Sans fond, les dernières lignes de la liste défilent sous le pied.
+        .background(.bar)
     }
 }
 

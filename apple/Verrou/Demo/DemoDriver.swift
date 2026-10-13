@@ -4,8 +4,8 @@ import SwiftUI
 /// Démonstration scriptée (`VERROU_DEMO=1`) pour les captures d'écran et la
 /// vidéo de la PR : rejoue un parcours réaliste sans toucher au clavier.
 ///
-/// L'app capture elle-même ses fenêtres (`WindowSnapshot`, `WindowRecorder`)
-/// dans son dossier temporaire, qu'elle annonce par `DEMO_OUT <chemin>` ;
+/// L'app capture ses propres fenêtres par ScreenCaptureKit (`WindowSnapshot`,
+/// `WindowRecorder`) dans son dossier temporaire, qu'elle annonce par `DEMO_OUT <chemin>` ;
 /// `scripts/demo-capture.sh` les récupère. Le déverrouillage simule Touch ID :
 /// le coffre fictif n'a rien à protéger.
 @MainActor
@@ -17,11 +17,11 @@ final class DemoDriver {
     private var mainWindow: NSWindow? {
         NSApp.windows.first { $0.identifier?.rawValue == "main" } ?? NSApp.windows.first { $0.isVisible && !($0 is NSPanel) }
     }
-    private var overlays: [NSWindow] { NSApp.windows.filter { $0 is QuickAccessPanel && $0.isVisible } }
 
     init(model: AppModel, quickAccess: QuickAccessController) {
         self.model = model
         self.quickAccess = quickAccess
+        quickAccess.staysOpen = true
     }
 
     func start() {
@@ -34,12 +34,22 @@ final class DemoDriver {
 
     private func snap(_ name: String) async {
         await pause(0.25)
-        if let main = mainWindow, let image = WindowSnapshot.composite(main: main, overlays: overlays, scale: 2) {
-            try? WindowSnapshot.writePNG(image, to: output.appending(path: "\(name).png"))
+        guard let image = recorder?.snapshot() else { fail("capture \(name) : aucune image reçue") }
+        do {
+            try WindowSnapshot.writePNG(image, to: output.appending(path: "\(name).png"))
+        } catch {
+            fail("capture \(name) : \(error.localizedDescription)")
         }
         print("DEMO_SNAP \(name)")
         fflush(stdout)
         await pause(1.0)
+    }
+
+    /// Le script attend `DEMO_DONE` : sans lui, il affiche ce journal et échoue.
+    private func fail(_ message: String) -> Never {
+        print("DEMO_ERROR \(message)")
+        fflush(stdout)
+        exit(1)
     }
 
     private func type(_ text: String, into keyPath: ReferenceWritableKeyPath<AppModel, String>) async {
@@ -69,8 +79,14 @@ final class DemoDriver {
         fflush(stdout)
         await pause(0.5)
         if let main = mainWindow {
-            recorder = try? WindowRecorder(url: output.appending(path: "demo.mov"), main: main) { [weak self] in self?.overlays ?? [] }
-            recorder?.start()
+            do {
+                let recorder = try await WindowRecorder(url: output.appending(path: "demo.mov"), main: main)
+                try await recorder.start()
+                self.recorder = recorder
+            } catch {
+                // Sans l'autorisation « Enregistrement de l'écran », inutile d'aller plus loin.
+                fail("enregistrement : \(error.localizedDescription)")
+            }
         }
         await pause(1.5)
         await snap("01-verrouille")
