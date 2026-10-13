@@ -5,16 +5,23 @@
 //! fois au déverrouillage ; chaque frappe de recherche ne renvoie que des
 //! positions et des surlignages ; un mot de passe ne traverse la frontière que
 //! par `reveal`, au moment où l'utilisateur l'affiche ou le copie.
+//!
+//! Exception documentée : `user_key`, qui rend la clé de l'utilisateur pour
+//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID).
 
 // UniFFI exige des arguments possédés (`String`, énumérations) : la règle
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
 #![allow(clippy::needless_pass_by_value)]
 
-use std::sync::{Arc, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
-use verrou_core::{FieldKind, Filter, Item, ItemKind, Sort, Vault, mock};
+use verrou_core::{FieldKind, Filter, Item, ItemKind, SecretString, Sort, Vault, mock};
+use verrou_vaultwarden::{
+    Connection, Decrypted, LoginStep, PendingLogin, Store, TwoFactorAnswer, TwoFactorMethod,
+    Unlocked,
+};
 
 uniffi::setup_scaffolding!();
 
@@ -26,6 +33,103 @@ pub enum VerrouError {
     NotFound,
     #[error("code à usage unique invalide : {message}")]
     InvalidTotp { message: String },
+    #[error("mot de passe principal incorrect")]
+    WrongPassword,
+    #[error("second facteur refusé : {message}")]
+    TwoFactorRejected { message: String },
+    #[error("aucun compte n'est configuré")]
+    NoAccount,
+    #[error("la session a expiré : reconnectez-vous")]
+    SessionExpired,
+    #[error("{message}")]
+    InvalidServer { message: String },
+    #[error("serveur injoignable : {message}")]
+    Network { message: String },
+    #[error("réponse du serveur : {message}")]
+    Server { message: String },
+    #[error("déchiffrement impossible : {message}")]
+    Crypto { message: String },
+    #[error("stockage local : {message}")]
+    Storage { message: String },
+    #[error("aucune connexion en cours")]
+    NoPendingLogin,
+}
+
+impl From<verrou_vaultwarden::Error> for VerrouError {
+    fn from(error: verrou_vaultwarden::Error) -> Self {
+        use verrou_vaultwarden::Error as E;
+        match error {
+            E::WrongPassword => Self::WrongPassword,
+            E::TwoFactorRejected(message) => Self::TwoFactorRejected { message },
+            E::NoAccount => Self::NoAccount,
+            E::SessionExpired => Self::SessionExpired,
+            E::InvalidServer(message) => Self::InvalidServer { message },
+            E::Network(message) => Self::Network { message },
+            E::Server(message) => Self::Server { message },
+            E::Crypto(message) => Self::Crypto { message },
+            E::Storage(message) => Self::Storage { message },
+        }
+    }
+}
+
+/// Le compte Vaultwarden enregistré sur ce Mac.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct AccountInfo {
+    pub server: String,
+    pub email: String,
+    /// Horodatage Unix de la dernière synchronisation réussie.
+    pub synced_at: Option<i64>,
+}
+
+/// Méthode de second facteur proposée par le serveur.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TwoFactorOption {
+    /// Clé de sécurité (`YubiKey` en FIDO2). `challenge` est à transmettre à
+    /// la page de connexion `WebAuthn` du serveur.
+    SecurityKey {
+        challenge: String,
+    },
+    Authenticator,
+    YubiKeyOtp,
+    Email,
+}
+
+impl From<&TwoFactorMethod> for TwoFactorOption {
+    fn from(method: &TwoFactorMethod) -> Self {
+        match method {
+            TwoFactorMethod::WebAuthn { challenge } => Self::SecurityKey {
+                challenge: challenge.clone(),
+            },
+            TwoFactorMethod::Authenticator => Self::Authenticator,
+            TwoFactorMethod::YubiKeyOtp => Self::YubiKeyOtp,
+            TwoFactorMethod::Email => Self::Email,
+        }
+    }
+}
+
+impl TwoFactorOption {
+    fn provider(&self) -> u8 {
+        match self {
+            Self::SecurityKey { challenge } => TwoFactorMethod::WebAuthn {
+                challenge: challenge.clone(),
+            },
+            Self::Authenticator => TwoFactorMethod::Authenticator,
+            Self::YubiKeyOtp => TwoFactorMethod::YubiKeyOtp,
+            Self::Email => TwoFactorMethod::Email,
+        }
+        .provider()
+    }
+}
+
+#[derive(Clone, Debug, uniffi::Enum)]
+pub enum LoginResult {
+    /// Coffre ouvert. `failures` : éléments que le SDK n'a pas su déchiffrer.
+    Unlocked {
+        failures: u32,
+    },
+    TwoFactorRequired {
+        options: Vec<TwoFactorOption>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -228,10 +332,16 @@ fn summary(item: &Item) -> ItemSummary {
 }
 
 /// Session du coffre. Verrouiller libère le coffre, ce qui efface ses
-/// secrets de la mémoire (`SecretString` est mis à zéro à la libération).
+/// secrets de la mémoire (`SecretString` est mis à zéro à la libération), et
+/// la connexion, qui porte la clé de l'utilisateur.
 #[derive(uniffi::Object)]
 pub struct VaultSession {
     vault: RwLock<Option<Vault>>,
+    store: Option<Store>,
+    /// Coffre Vaultwarden ouvert. Le verrou extérieur n'est tenu qu'un
+    /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
+    connection: Mutex<Option<Arc<tokio::sync::Mutex<Connection>>>>,
+    pending: Mutex<Option<PendingLogin>>,
 }
 
 impl VaultSession {
@@ -246,14 +356,178 @@ impl VaultSession {
     fn item<'v>(vault: &'v Vault, id: &str) -> Result<&'v Item, VerrouError> {
         vault.get(id).ok_or(VerrouError::NotFound)
     }
+
+    fn store(&self) -> Result<&Store, VerrouError> {
+        self.store.as_ref().ok_or(VerrouError::NoAccount)
+    }
+
+    fn current_connection(&self) -> Option<Arc<tokio::sync::Mutex<Connection>>> {
+        self.connection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn install_vault(&self, decrypted: Decrypted) -> u32 {
+        let failures = decrypted.failures as u32;
+        *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
+            Some(Vault::new(decrypted.items));
+        failures
+    }
+
+    fn install(&self, unlocked: Unlocked) -> u32 {
+        *self
+            .connection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) =
+            Some(Arc::new(tokio::sync::Mutex::new(unlocked.connection)));
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        self.install_vault(unlocked.vault)
+    }
+
+    fn login_result(&self, step: LoginStep) -> LoginResult {
+        match step {
+            LoginStep::Unlocked(unlocked) => LoginResult::Unlocked {
+                failures: self.install(*unlocked),
+            },
+            LoginStep::TwoFactor(pending) => {
+                let options = pending.methods().iter().map(Into::into).collect();
+                *self.pending.lock().unwrap_or_else(PoisonError::into_inner) = Some(*pending);
+                LoginResult::TwoFactorRequired { options }
+            }
+        }
+    }
+
+    fn pending(&self) -> Result<PendingLogin, VerrouError> {
+        self.pending
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+            .ok_or(VerrouError::NoPendingLogin)
+    }
+}
+
+/// Connexion à Vaultwarden. Ces méthodes sont asynchrones côté Swift : le
+/// réseau et la dérivation du mot de passe (des centaines de millisecondes)
+/// ne bloquent jamais l'interface.
+#[uniffi::export(async_runtime = "tokio")]
+impl VaultSession {
+    /// Session reliée à un compte, dont les fichiers vivent dans `data_dir`.
+    #[uniffi::constructor]
+    pub fn with_storage(data_dir: String) -> Arc<Self> {
+        Arc::new(Self {
+            vault: RwLock::new(None),
+            store: Some(Store::new(data_dir)),
+            connection: Mutex::new(None),
+            pending: Mutex::new(None),
+        })
+    }
+
+    /// Le compte enregistré, s'il y en a un.
+    pub fn account(&self) -> Option<AccountInfo> {
+        let account = self.store.as_ref()?.load_account().ok()??;
+        Some(AccountInfo {
+            server: account.server,
+            email: account.email,
+            synced_at: account.synced_at,
+        })
+    }
+
+    pub async fn login(
+        &self,
+        server: String,
+        email: String,
+        password: String,
+    ) -> Result<LoginResult, VerrouError> {
+        let store = self.store()?.clone();
+        let step =
+            verrou_vaultwarden::login(&store, &server, &email, SecretString::new(password)).await?;
+        Ok(self.login_result(step))
+    }
+
+    /// Envoie le code de second facteur par e-mail.
+    pub async fn send_email_code(&self) -> Result<(), VerrouError> {
+        Ok(self.pending()?.send_email_code().await?)
+    }
+
+    /// Réponse au second facteur : code saisi, ou JSON rendu par la page
+    /// `WebAuthn` pour une clé de sécurité.
+    pub async fn answer_two_factor(
+        &self,
+        option: TwoFactorOption,
+        token: String,
+    ) -> Result<LoginResult, VerrouError> {
+        let pending = self.pending()?;
+        let answer = TwoFactorAnswer {
+            provider: option.provider(),
+            token: token.trim().to_owned(),
+        };
+        let unlocked = pending.answer(&answer).await?;
+        Ok(LoginResult::Unlocked {
+            failures: self.install(unlocked),
+        })
+    }
+
+    /// Déverrouillage hors ligne, sur le cache, par le mot de passe principal.
+    pub async fn unlock_with_password(&self, password: String) -> Result<u32, VerrouError> {
+        let store = self.store()?.clone();
+        let unlocked =
+            verrou_vaultwarden::unlock_with_password(&store, &SecretString::new(password)).await?;
+        Ok(self.install(unlocked))
+    }
+
+    /// Déverrouillage par la clé de l'utilisateur que Touch ID a libérée.
+    pub async fn unlock_with_user_key(&self, user_key: String) -> Result<u32, VerrouError> {
+        let store = self.store()?.clone();
+        let unlocked =
+            verrou_vaultwarden::unlock_with_user_key(&store, &SecretString::new(user_key)).await?;
+        Ok(self.install(unlocked))
+    }
+
+    /// Télécharge le coffre et remplace le contenu affiché. Les positions de
+    /// `summaries()` changent : l'app recharge tout après coup.
+    pub async fn sync(&self) -> Result<u32, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.sync().await?;
+        // Verrouillé pendant la synchronisation : ne pas rouvrir le coffre.
+        let still_current = self
+            .current_connection()
+            .is_some_and(|current| Arc::ptr_eq(&current, &connection));
+        if !still_current {
+            return Err(VerrouError::Locked);
+        }
+        Ok(self.install_vault(decrypted))
+    }
+
+    /// ⚠️ Clé de l'utilisateur (base64), à confier immédiatement au Secure
+    /// Enclave pour Touch ID. Ne jamais l'écrire ni la journaliser.
+    pub async fn user_key(&self) -> Result<String, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let key = connection.lock().await.user_key().await?;
+        Ok(key.expose().to_owned())
+    }
+
+    /// Oublie le compte de ce Mac (jetons, cache) et verrouille.
+    pub fn logout(&self) -> Result<(), VerrouError> {
+        self.lock();
+        verrou_vaultwarden::logout(self.store()?)?;
+        Ok(())
+    }
 }
 
 #[uniffi::export]
 impl VaultSession {
+    /// Session sans compte : seulement le coffre fictif (démonstration).
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             vault: RwLock::new(None),
+            store: None,
+            connection: Mutex::new(None),
+            pending: Mutex::new(None),
         })
     }
 
@@ -266,6 +540,14 @@ impl VaultSession {
     pub fn lock(&self) {
         self.vault
             .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        self.connection
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        self.pending
+            .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
     }
