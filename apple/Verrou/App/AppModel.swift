@@ -583,6 +583,12 @@ final class AppModel {
         return summaries.first { $0.id == hit.id }
     }
 
+    /// Résumé de l'élément sélectionné (sans appel au cœur Rust).
+    var selectedSummary: ItemSummary? {
+        guard let selection else { return nil }
+        return rows.first { $0.id == selection }?.summary ?? summaries.first { $0.id == selection }
+    }
+
     var selectedDetail: ItemDetail? {
         guard let selection else { return nil }
         return try? session.detail(id: selection)
