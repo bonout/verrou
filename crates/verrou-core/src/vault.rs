@@ -6,6 +6,7 @@ use crate::matching::{SiteMatch, site_match};
 use crate::model::{Item, ItemKind, ItemState};
 use crate::passkey::Passkey;
 use crate::search::{Filter, Hit, SearchIndex, Sort, fold};
+use crate::template::Template;
 
 pub struct Vault {
     items: Vec<Item>,
@@ -25,6 +26,8 @@ pub struct Counts {
     pub favorites: usize,
     pub with_totp: usize,
     pub kinds: Vec<(ItemKind, usize)>,
+    /// Modèles présents dans le coffre (les autres ne sont pas listés).
+    pub templates: Vec<(Template, usize)>,
     pub folders: Vec<(String, usize)>,
     pub tags: Vec<(String, usize)>,
     /// Éléments actifs par organisation et par collection (identifiants).
@@ -104,6 +107,7 @@ impl Vault {
 
     pub fn counts(&self) -> Counts {
         let mut kinds: BTreeMap<ItemKind, usize> = BTreeMap::new();
+        let mut templates: BTreeMap<Template, usize> = BTreeMap::new();
         let mut folders: BTreeMap<String, usize> = BTreeMap::new();
         let mut tags: BTreeMap<String, usize> = BTreeMap::new();
         let mut organizations: BTreeMap<String, usize> = BTreeMap::new();
@@ -120,6 +124,9 @@ impl Vault {
             }
             counts.all += 1;
             *kinds.entry(item.kind).or_default() += 1;
+            if let Some(template) = item.template() {
+                *templates.entry(template).or_default() += 1;
+            }
             if let Some(folder) = &item.folder {
                 *folders.entry(folder.clone()).or_default() += 1;
             }
@@ -141,6 +148,7 @@ impl Vault {
             .iter()
             .map(|k| (*k, kinds.get(k).copied().unwrap_or(0)))
             .collect();
+        counts.templates = templates.into_iter().collect();
         counts.folders = folders.into_iter().collect();
         counts.tags = tags.into_iter().collect();
         counts.organizations = organizations.into_iter().collect();

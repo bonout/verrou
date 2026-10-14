@@ -30,8 +30,9 @@ use verrou_vaultwarden::security_key::{
 };
 use verrou_vaultwarden::unlock_keys::{self, HmacSecret};
 use verrou_vaultwarden::{
-    Draft, Error, LoginDraft, LoginStep, Store, TwoFactorAnswer, TwoFactorMethod, Unlocked, login,
-    logout, unlock_with_password, unlock_with_security_key, unlock_with_user_key,
+    CustomFieldDraft, CustomFieldKind, Draft, Error, LoginDraft, LoginStep, Store, TwoFactorAnswer,
+    TwoFactorMethod, Unlocked, login, logout, unlock_with_password, unlock_with_security_key,
+    unlock_with_user_key,
 };
 
 const PASSWORD: &str = "cheval correct pile agrafe";
@@ -798,6 +799,7 @@ async fn create_login_and_note(
                 totp: None,
                 uris: vec!["https://www.doctolib.fr".to_owned()],
             }),
+            ..Draft::default()
         })
         .await
         .unwrap();
@@ -1052,6 +1054,88 @@ async fn archive_restore_and_favorite(
             .expose(),
         "depuis-brave"
     );
+}
+
+/// Modèle Wi-Fi et champs personnalisés : le champ `verrou:type` part au
+/// serveur comme un champ texte ordinaire, revient comme modèle, et survit à
+/// la modification des autres champs.
+#[tokio::test]
+async fn templates_and_custom_fields() {
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    let store = temp_store();
+    let mut connection = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    )
+    .connection;
+    let field = |name: &str, value: &str, kind| CustomFieldDraft {
+        name: name.to_owned(),
+        value: Some(SecretString::new(value)),
+        kind,
+        linked_id: None,
+    };
+    let (id, vault) = connection
+        .create(Draft {
+            name: "Wi-Fi maison".to_owned(),
+            template: Some(verrou_core::Template::Wifi),
+            fields: Some(vec![
+                field("Nom du réseau (SSID)", "Martin-5G", CustomFieldKind::Text),
+                field("Mot de passe", "lilas-27", CustomFieldKind::Hidden),
+                field("Sécurité", "WPA2", CustomFieldKind::Text),
+            ]),
+            ..Draft::default()
+        })
+        .await
+        .unwrap();
+    let wifi = vault.items.iter().find(|i| i.id == id).unwrap();
+    assert_eq!(wifi.kind, ItemKind::SecureNote);
+    assert_eq!(wifi.template(), Some(verrou_core::Template::Wifi));
+    assert_eq!(wifi.subtitle, "Martin-5G");
+    let password = wifi.field_labelled("Mot de passe").unwrap();
+    assert_eq!(password.kind, FieldKind::Concealed);
+    assert_eq!(password.value.expose(), "lilas-27");
+
+    // Ce que voit un autre client (le coffre web) : un champ texte de plus.
+    let stored = seeder.fetch(&id).await;
+    let marker = stored
+        .fields
+        .unwrap()
+        .into_iter()
+        .find(|f| f.name.as_deref() == Some("verrou:type"))
+        .expect("champ du modèle sur le serveur");
+    assert_eq!(marker.value.as_deref(), Some("wifi"));
+    assert_eq!(marker.r#type, bitwarden_vault::FieldType::Text);
+
+    // Renommer, supprimer, ajouter une case à cocher : le modèle reste.
+    let mut draft = connection.draft(&id).await.unwrap();
+    assert_eq!(draft.template, Some(verrou_core::Template::Wifi));
+    let mut fields = draft.fields.take().unwrap();
+    assert_eq!(fields.len(), 3, "le champ réservé n'est pas proposé");
+    fields.remove(2);
+    "Clé WPA".clone_into(&mut fields[1].name);
+    fields.push(field("Réseau invité", "true", CustomFieldKind::Boolean));
+    draft.fields = Some(fields);
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection.update(&id, draft).await.unwrap();
+    let wifi = vault.items.iter().find(|i| i.id == id).unwrap();
+    assert_eq!(wifi.template(), Some(verrou_core::Template::Wifi));
+    let labels: Vec<&str> = wifi
+        .fields
+        .iter()
+        .filter(|f| f.id.starts_with("custom-"))
+        .map(|f| f.label.as_str())
+        .collect();
+    assert_eq!(labels, ["Nom du réseau (SSID)", "Clé WPA", "Réseau invité"]);
+    assert_eq!(
+        wifi.field_labelled("Réseau invité").unwrap().value.expose(),
+        "Oui"
+    );
+    let stored = seeder.fetch(&id).await;
+    assert_eq!(stored.fields.unwrap().len(), 4);
+    std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
 /// Export des Mots de passe d'Apple : déjà présent, nouveau mot de passe,
@@ -1657,6 +1741,8 @@ async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
         folder: Some("Papiers".to_owned()),
         favorite: false,
         card: None,
+        identity: None,
+        template: None,
         fields: Vec::new(),
         modified: None,
         attachments: vec![ImportedFile::new("bail.txt", b"loyer : 800".to_vec())],

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType};
-use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString};
+use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString, template};
 
 /// Les éléments archivés et ceux de la corbeille sont gardés, avec leur état :
 /// l'interface les montre à part.
@@ -288,8 +288,10 @@ fn ssh_key(view: &CipherView, item: &mut Item) {
     );
 }
 
-/// Champs personnalisés. Les champs « liés » (qui renvoient à l'identifiant ou
-/// au mot de passe) n'ont pas de valeur propre : ils sont ignorés.
+/// Champs personnalisés. Un champ « lié » (qui renvoie à l'identifiant, au
+/// mot de passe…) n'a pas de valeur propre : il montre le champ désigné. Les
+/// champs réservés `verrou:…` gardent leur nom pour identifiant (jamais
+/// affichés) ; le modèle qu'ils désignent remplace le sous-titre générique.
 fn custom_fields(view: &CipherView, item: &mut Item) {
     for (index, field) in view.fields.iter().flatten().enumerate() {
         let label = field
@@ -297,6 +299,10 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
             .clone()
             .filter(|n| !n.is_empty())
             .unwrap_or_else(|| "Champ".to_owned());
+        if template::is_reserved(&label) {
+            push(item, &label, &label, FieldKind::Text, field.value.as_ref());
+            continue;
+        }
         let id = format!("custom-{index}");
         match field.r#type {
             FieldType::Text => push(item, &id, &label, FieldKind::Text, field.value.as_ref()),
@@ -316,8 +322,59 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
                 item.fields
                     .push(Field::new(&id, &label, FieldKind::Text, value));
             }
-            FieldType::Linked => {}
+            FieldType::Linked => {
+                let target = field.linked_id.map_or(0, u32::from);
+                let value = format!("Lié au champ « {} »", linked_label(target));
+                item.fields
+                    .push(Field::new(&id, &label, FieldKind::Text, value));
+            }
         }
+    }
+    let Some(template) = item.template() else {
+        return;
+    };
+    if item.kind == ItemKind::SecureNote {
+        // Le premier champ visible du modèle (réseau, banque…), sinon son nom.
+        item.subtitle = template
+            .fields()
+            .iter()
+            .filter(|f| !f.hidden)
+            .find_map(|f| item.field_labelled(f.label))
+            .map_or_else(
+                || template.singular().to_owned(),
+                |f| f.value.expose().to_owned(),
+            );
+    }
+}
+
+/// Nom du champ désigné par un champ lié (numérotation de Bitwarden).
+fn linked_label(id: u32) -> &'static str {
+    match id {
+        100 | 413 => "Identifiant",
+        101 => "Mot de passe",
+        300 => "Titulaire",
+        301 => "Mois d'expiration",
+        302 => "Année d'expiration",
+        303 => "Cryptogramme",
+        304 => "Réseau",
+        305 => "Numéro",
+        400 => "Civilité",
+        401 => "Deuxième prénom",
+        402..=404 => "Adresse",
+        405 => "Ville",
+        406 => "Région",
+        407 => "Code postal",
+        408 => "Pays",
+        409 => "Société",
+        410 => "E-mail",
+        411 => "Téléphone",
+        412 => "Numéro de sécurité sociale",
+        414 => "Passeport",
+        415 => "Permis de conduire",
+        416 => "Prénom",
+        417 => "Nom",
+        418 => "Nom complet",
+        _ => "inconnu",
     }
 }
 

@@ -16,6 +16,7 @@ use nucleo_matcher::{Config, Matcher, Utf32String};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::model::{Item, ItemKind, ItemState};
+use crate::template::Template;
 
 /// Ce que montre la barre latérale.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -24,6 +25,8 @@ pub enum Filter {
     All,
     Favorites,
     Kind(ItemKind),
+    /// Éléments d'un modèle (Wi-Fi, passeport…).
+    Template(Template),
     Folder(String),
     Tag(String),
     WithTotp,
@@ -129,6 +132,10 @@ impl SearchIndex {
                     .filter_map(|u| crate::matching::host_of(u))
                     .collect();
                 let mut extra = vec![item.kind.label().to_owned(), item.kind.keyword().to_owned()];
+                if let Some(template) = item.template() {
+                    extra.push(template.label().to_owned());
+                    extra.push(template.keyword().to_owned());
+                }
                 extra.extend(item.folder.iter().cloned());
                 extra.extend(item.tags.iter().cloned());
                 // Un élément partagé se retrouve aussi par le nom de son
@@ -254,6 +261,7 @@ fn filter_accepts(filter: &Filter, item: &Item, entry: &Entry) -> bool {
         Filter::All | Filter::Archived | Filter::Trash => true,
         Filter::Favorites => item.favorite,
         Filter::Kind(kind) => item.kind == *kind,
+        Filter::Template(template) => item.template() == Some(*template),
         Filter::Folder(folder) => entry.folder.as_deref() == Some(fold(folder).as_str()),
         Filter::Tag(tag) => entry.tags.contains(&fold(tag)),
         Filter::WithTotp => item.has_totp(),
@@ -328,6 +336,7 @@ struct ParsedQuery {
     tags: Vec<String>,
     folders: Vec<String>,
     kinds: Vec<ItemKind>,
+    templates: Vec<Template>,
 }
 
 impl ParsedQuery {
@@ -336,6 +345,7 @@ impl ParsedQuery {
         let mut tags = Vec::new();
         let mut folders = Vec::new();
         let mut kinds = Vec::new();
+        let mut templates = Vec::new();
         for token in query.split_whitespace() {
             let lower = fold(token);
             if let Some(tag) = lower
@@ -358,6 +368,11 @@ impl ParsedQuery {
                     .find(|k| fold(k.keyword()).starts_with(kind) && !kind.is_empty())
                 {
                     kinds.push(*k);
+                } else if let Some(t) = Template::ALL
+                    .iter()
+                    .find(|t| fold(t.keyword()).starts_with(kind) && !kind.is_empty())
+                {
+                    templates.push(*t);
                 }
             } else {
                 words.push(token);
@@ -383,11 +398,13 @@ impl ParsedQuery {
             tags,
             folders,
             kinds,
+            templates,
         }
     }
 
     fn filters_accept(&self, item: &Item, entry: &Entry) -> bool {
         self.kinds.iter().all(|k| item.kind == *k)
+            && self.templates.iter().all(|t| item.template() == Some(*t))
             && self
                 .tags
                 .iter()

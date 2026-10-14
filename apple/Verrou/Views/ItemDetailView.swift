@@ -30,6 +30,9 @@ struct ItemDetailView: View {
                         }
                     }
                 }
+                if detail.summary.template == .wifi {
+                    WifiQRButton(itemID: detail.summary.id, title: detail.summary.title)
+                }
                 if !detail.urls.isEmpty {
                     SectionTitle("Sites")
                     FieldCard {
@@ -80,7 +83,7 @@ struct ItemDetailView: View {
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
                 HStack(spacing: 8) {
-                    Chip(text: detail.summary.category.singular, symbol: detail.summary.category.symbol, tint: detail.summary.category.tint)
+                    Chip(text: detail.summary.kindLabel, symbol: detail.summary.symbol, tint: detail.summary.tint)
                     if let folder = detail.summary.folder {
                         Chip(text: folder, symbol: "folder", tint: .secondary)
                     }

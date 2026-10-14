@@ -771,8 +771,20 @@ final class AppModel {
                           totp: nil, urls: [])
             : nil
         editor = Editor(itemID: nil, draft: ItemDraft(name: "", folderId: folderID, favorite: false,
-                                                     notes: nil, login: fields),
+                                                     notes: nil, login: fields, fields: [], template: nil),
                         destination: destinationFromFilter)
+    }
+
+    /// Nouvel élément selon un modèle (Wi-Fi, passeport…) : ses champs
+    /// prédéfinis, à remplir.
+    func newItem(template: ItemTemplate) {
+        guard canEdit else { return }
+        var draft = templateDraft(template: template)
+        if case .folder(let name) = filter {
+            draft.folderId = folders.first { $0.name == name }?.id
+        }
+        editorError = nil
+        editor = Editor(itemID: nil, draft: draft, destination: destinationFromFilter)
     }
 
     func edit(_ itemID: String) async {

@@ -1,9 +1,9 @@
 //! Export de Proton Pass, non chiffré : une archive ZIP contenant
 //! `Proton Pass/data.json` (coffres → éléments).
 //!
-//! Identifiants, notes et cartes sont repris ; une identité devient une note
-//! sécurisée ; un alias (une adresse e-mail relais, sans mot de passe) est
-//! laissé de côté.
+//! Identifiants, notes, cartes et identités sont repris ; un réseau Wi-Fi
+//! devient le modèle Wi-Fi de Verrou ; un alias (une adresse e-mail relais,
+//! sans mot de passe) est laissé de côté.
 //!
 //! Pièces jointes : l'élément cite ses fichiers (`files`) sous leur nom
 //! d'export, `<nom>.<identifiant><extension>`, rangés dans
@@ -12,9 +12,11 @@
 use serde_json::Value;
 
 use super::{
-    CardData, ExtraField, ImportError, ImportKind, ImportedFile, ImportedItem, Parsed,
-    append_lines, expiry, secret, text,
+    CardData, ExtraField, IdentityData, ImportError, ImportKind, ImportedFile, ImportedItem,
+    Parsed, append_lines, expiry, secret, template_fields, text,
 };
+use crate::secret::SecretString;
+use crate::template::{Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
 
 /// État d'un élément dans Proton Pass : 1 actif, 2 à la corbeille.
 const TRASHED: i64 = 2;
@@ -110,6 +112,8 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
             return parsed.skip(title, "alias e-mail de Proton Pass (sans mot de passe)");
         }
         "note" => {}
+        "wifi" => wifi(content, &mut item),
+        "identity" => identity(content, &mut item),
         _ => {
             // Identité, clé SSH, Wi-Fi… : chaque champ renseigné, dans les notes.
             if let Some(map) = content.as_object() {
@@ -131,7 +135,7 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
         });
     }
     // Champs supplémentaires d'une note (ou d'un autre type) : dans les notes.
-    if item.kind == ImportKind::SecureNote {
+    if item.kind == ImportKind::SecureNote && item.template.is_none() {
         lines.extend(
             item.fields
                 .drain(..)
@@ -206,6 +210,116 @@ fn card(content: &Value, item: &mut ImportedItem) {
     item.card = Some(card);
 }
 
+/// Réseau Wi-Fi : le modèle Wi-Fi de Verrou.
+fn wifi(content: &Value, item: &mut ImportedItem) {
+    item.template = Some(Template::Wifi);
+    // Énumération de Proton Pass : 1 WPA, 2 WPA2, 3 WPA3, 4 WEP.
+    let security = match content.get("security") {
+        Some(Value::Number(n)) => match n.as_i64() {
+            Some(1) => Some("WPA".to_owned()),
+            Some(2) => Some("WPA2".to_owned()),
+            Some(3) => Some("WPA3".to_owned()),
+            Some(4) => Some("WEP".to_owned()),
+            _ => None,
+        },
+        Some(Value::String(s)) => text(Some(s)),
+        _ => None,
+    };
+    let found: Vec<_> = [
+        (WIFI_SSID, text(string(content, "ssid"))),
+        (
+            WIFI_PASSWORD,
+            string(content, "password").map(str::to_owned),
+        ),
+        (WIFI_SECURITY, security),
+    ]
+    .into_iter()
+    .filter_map(|(label, value)| Some((label, value?)))
+    .collect();
+    let others = std::mem::take(&mut item.fields);
+    item.fields = template_fields(Template::Wifi, &found, others);
+}
+
+/// Identité : les champs que Bitwarden connaît ; les autres (date de
+/// naissance, réseaux sociaux, sections ajoutées…) en champs personnalisés.
+fn identity(content: &Value, item: &mut ImportedItem) {
+    item.kind = ImportKind::Identity;
+    let mut used: Vec<&str> = Vec::new();
+    let mut take = |key: &'static str| {
+        used.push(key);
+        text(string(content, key))
+    };
+    let mut identity = IdentityData {
+        first_name: take("firstName"),
+        middle_name: take("middleName"),
+        last_name: take("lastName"),
+        company: take("company").or_else(|| take("organization")),
+        email: take("email"),
+        phone: take("phoneNumber"),
+        address1: take("streetAddress"),
+        address2: take("floor"),
+        postal_code: take("zipOrPostalCode"),
+        city: take("city"),
+        state: take("stateOrProvince"),
+        country: take("countryOrRegion"),
+        ssn: take("socialSecurityNumber").map(Into::into),
+        passport_number: take("passportNumber").map(Into::into),
+        license_number: take("licenseNumber").map(Into::into),
+        ..IdentityData::default()
+    };
+    // Le nom complet seul : prénom(s), puis nom (le dernier mot).
+    if let Some(full) = take("fullName")
+        && identity.first_name.is_none()
+        && identity.last_name.is_none()
+    {
+        match full.rsplit_once(' ') {
+            Some((first, last)) => {
+                identity.first_name = Some(first.trim().to_owned());
+                identity.last_name = Some(last.trim().to_owned());
+            }
+            None => identity.last_name = Some(full),
+        }
+    }
+    item.identity = Some(identity);
+    let Some(map) = content.as_object() else {
+        return;
+    };
+    let mut fields = Vec::new();
+    for (key, value) in map {
+        match value {
+            Value::String(_) if !used.contains(&key.as_str()) => {
+                if let Some(value) = text(value.as_str()) {
+                    fields.push(ExtraField {
+                        name: humanize(key),
+                        value: value.into(),
+                        hidden: false,
+                    });
+                }
+            }
+            // `extraPersonalDetails`, `extraSections`… : des champs comme
+            // ceux de `extraFields`, parfois rangés dans des sections.
+            Value::Array(list) => {
+                for entry in list {
+                    let nested = entry.get("sectionFields").and_then(Value::as_array);
+                    for field in nested
+                        .into_iter()
+                        .flatten()
+                        .chain(entry.get("fieldName").is_some().then_some(entry))
+                    {
+                        let mut holder = ImportedItem::new(ImportKind::Identity, "");
+                        // Graine déjà « prise » : un champ TOTP reste un champ masqué.
+                        holder.totp = Some(SecretString::default());
+                        extra_field(field, &mut holder);
+                        fields.extend(holder.fields);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    item.fields.splice(0..0, fields);
+}
+
 /// Champ personnalisé : texte, masqué, TOTP (le premier sert de code à usage
 /// unique si l'identifiant n'en a pas).
 fn extra_field(field: &Value, item: &mut ImportedItem) {
@@ -256,6 +370,7 @@ mod tests {
     use std::io::Write;
 
     use super::super::{Format, ImportError, ImportKind, parse};
+    use crate::template::{Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
 
     const DATA: &str = r#"{
       "version": "1.21.2", "userId": "u1", "encrypted": false,
@@ -304,7 +419,24 @@ mod tests {
               "itemId": "i5", "state": 1,
               "data": {
                 "metadata": { "name": "Identité", "note": "" }, "type": "identity",
-                "content": { "fullName": "Camille Martin", "phoneNumber": "+33 6 00 00 00 00", "company": "" }
+                "content": {
+                  "fullName": "Camille Martin", "phoneNumber": "+33 6 00 00 00 00", "company": "",
+                  "birthdate": "1990-01-01",
+                  "extraPersonalDetails": [
+                    { "fieldName": "Instagram", "type": "text", "data": { "content": "@camille" } }
+                  ]
+                }
+              }
+            },
+            {
+              "itemId": "i6", "state": 1,
+              "data": {
+                "metadata": { "name": "Box", "note": "" },
+                "extraFields": [
+                  { "fieldName": "Emplacement", "type": "text", "data": { "content": "salon" } }
+                ],
+                "type": "wifi",
+                "content": { "ssid": "Martin-5G", "password": "lilas-27", "security": 2 }
               }
             }
           ]
@@ -340,7 +472,7 @@ mod tests {
     fn proton_pass_zip() {
         let parsed = parse(&archive(DATA), None).unwrap();
         assert_eq!(parsed.format, Format::ProtonPassZip);
-        assert_eq!(parsed.items.len(), 4);
+        assert_eq!(parsed.items.len(), 5);
         assert_eq!(parsed.skipped.len(), 2);
 
         let doctolib = parsed.items.iter().find(|i| i.title == "Doctolib").unwrap();
@@ -361,10 +493,29 @@ mod tests {
         assert_eq!(card.fields[0].name, "PIN");
 
         let identity = parsed.items.iter().find(|i| i.title == "Identité").unwrap();
-        assert_eq!(identity.kind, ImportKind::SecureNote);
-        let notes = identity.notes.as_ref().unwrap().expose();
-        assert!(notes.contains("Full name : Camille Martin"));
-        assert!(!notes.contains("Company"));
+        assert_eq!(identity.kind, ImportKind::Identity);
+        let data = identity.identity.as_ref().unwrap();
+        assert_eq!(data.first_name.as_deref(), Some("Camille"));
+        assert_eq!(data.last_name.as_deref(), Some("Martin"));
+        assert_eq!(data.phone.as_deref(), Some("+33 6 00 00 00 00"));
+        assert_eq!(data.company, None);
+        assert_eq!(identity.fields.len(), 2);
+        assert_eq!(identity.fields[0].name, "Birthdate");
+        assert_eq!(identity.fields[1].name, "Instagram");
+        assert!(identity.notes.is_none());
+
+        let wifi = parsed.items.iter().find(|i| i.title == "Box").unwrap();
+        assert_eq!(wifi.kind, ImportKind::SecureNote);
+        assert_eq!(wifi.template, Some(Template::Wifi));
+        let names: Vec<&str> = wifi.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            [WIFI_SSID, WIFI_PASSWORD, WIFI_SECURITY, "Emplacement"]
+        );
+        assert_eq!(wifi.fields[0].value.expose(), "Martin-5G");
+        assert!(wifi.fields[1].hidden && !wifi.fields[0].hidden);
+        assert_eq!(wifi.fields[2].value.expose(), "WPA2");
+        assert!(wifi.notes.is_none(), "les champs restent des champs");
 
         let netflix = parsed.items.iter().find(|i| i.title == "Netflix").unwrap();
         assert_eq!(netflix.folder.as_deref(), Some("Famille"));

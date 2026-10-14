@@ -11,7 +11,7 @@
 
 use std::collections::HashMap;
 
-use crate::import::{ImportKind, ImportedItem};
+use crate::import::{IdentityData, ImportKind, ImportedItem};
 use crate::matching::{host_of, registrable_domain};
 use crate::model::{Item, ItemKind, ItemState};
 use crate::search::fold;
@@ -125,6 +125,26 @@ fn vault_card_digits(item: &Item) -> String {
         .unwrap_or_default()
 }
 
+/// Clé d'une note d'un modèle (Wi-Fi, passeport…) : le modèle et le titre.
+fn template_key(template: &str, title: &str) -> String {
+    format!("modèle:{template}:{}", fold(title.trim()))
+}
+
+/// Clé d'une identité : le titre et le nom complet.
+fn identity_key(title: &str, full_name: &str) -> String {
+    format!("identité:{}:{}", fold(title.trim()), fold(full_name.trim()))
+}
+
+fn vault_full_name(item: &Item) -> String {
+    ["first_name", "middle_name", "last_name"]
+        .iter()
+        .filter_map(|id| item.field(id))
+        .map(|f| f.value.expose().trim())
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn notes_key(title: &str, notes: Option<&str>) -> Option<(String, String)> {
     let notes = notes.map(str::trim).filter(|n| !n.is_empty())?;
     Some((fold(title.trim()), notes.to_owned()))
@@ -140,7 +160,20 @@ pub fn classify(imported: &[ImportedItem], vault: &[Item]) -> Vec<Classification
         .map(|(position, item)| match item.kind {
             ImportKind::Login => classifier.login(position, item),
             ImportKind::Card => classifier.card(position, item),
-            ImportKind::SecureNote => classifier.note(position, item),
+            ImportKind::SecureNote => match item.template {
+                Some(template) => {
+                    classifier.keyed(position, template_key(template.key(), &item.title))
+                }
+                None => classifier.note(position, item),
+            },
+            ImportKind::Identity => {
+                let name = item
+                    .identity
+                    .as_ref()
+                    .map(IdentityData::full_name)
+                    .unwrap_or_default();
+                classifier.keyed(position, identity_key(&item.title, &name))
+            }
         })
         .collect()
 }
@@ -152,9 +185,12 @@ struct Classifier<'a> {
     logins: HashMap<(String, String), Vec<usize>>,
     cards: HashMap<String, usize>,
     notes: HashMap<(String, String), usize>,
+    /// Identités et notes des modèles, par clé.
+    others: HashMap<String, usize>,
     seen_logins: HashMap<(String, String), usize>,
     seen_cards: HashMap<String, usize>,
     seen_notes: HashMap<(String, String), usize>,
+    seen_others: HashMap<String, usize>,
 }
 
 const NEW: Classification = Classification {
@@ -177,9 +213,11 @@ impl<'a> Classifier<'a> {
             logins: HashMap::new(),
             cards: HashMap::new(),
             notes: HashMap::new(),
+            others: HashMap::new(),
             seen_logins: HashMap::new(),
             seen_cards: HashMap::new(),
             seen_notes: HashMap::new(),
+            seen_others: HashMap::new(),
         };
         for (index, item) in vault.iter().enumerate() {
             // Un élément à la corbeille ne compte pas : il va disparaître.
@@ -198,6 +236,22 @@ impl<'a> Classifier<'a> {
                         classifier.cards.entry(digits).or_insert(index);
                     }
                 }
+                ItemKind::SecureNote if item.template().is_some() => {
+                    let key = item
+                        .template()
+                        .map(crate::template::Template::key)
+                        .unwrap_or_default();
+                    classifier
+                        .others
+                        .entry(template_key(key, &item.title))
+                        .or_insert(index);
+                }
+                ItemKind::Identity => {
+                    classifier
+                        .others
+                        .entry(identity_key(&item.title, &vault_full_name(item)))
+                        .or_insert(index);
+                }
                 ItemKind::SecureNote => {
                     if let Some(key) =
                         notes_key(&item.title, item.notes.as_ref().map(SecretString::expose))
@@ -205,7 +259,7 @@ impl<'a> Classifier<'a> {
                         classifier.notes.entry(key).or_insert(index);
                     }
                 }
-                ItemKind::Identity | ItemKind::SshKey => {}
+                ItemKind::SshKey => {}
             }
         }
         classifier
@@ -284,6 +338,18 @@ impl<'a> Classifier<'a> {
             return exact(Existing::Import(earlier));
         }
         self.seen_cards.insert(digits, position);
+        NEW
+    }
+
+    /// Identité ou note d'un modèle : même clé, même élément.
+    fn keyed(&mut self, position: usize, key: String) -> Classification {
+        if let Some(&index) = self.others.get(&key) {
+            return exact(Existing::Vault(self.vault[index].id.clone()));
+        }
+        if let Some(&earlier) = self.seen_others.get(&key) {
+            return exact(Existing::Import(earlier));
+        }
+        self.seen_others.insert(key, position);
         NEW
     }
 
@@ -484,6 +550,8 @@ mod tests {
             folder: None,
             favorite: false,
             card: None,
+            identity: None,
+            template: None,
             fields: Vec::new(),
             modified: None,
             attachments: Vec::new(),

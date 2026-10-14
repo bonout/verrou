@@ -34,6 +34,10 @@ struct MainView: View {
                     Button("Nouvelle note sécurisée") { model.newItem(login: false) }
                     Button("Nouvelle clé SSH…") { model.newSshKey() }
                     Button("Nouveau document…") { model.newDocument() }
+                    Divider()
+                    ForEach(ItemTemplate.menuOrder, id: \.self) { template in
+                        Button(template.menuTitle) { model.newItem(template: template) }
+                    }
                 } label: {
                     Label("Nouvel élément", systemImage: "plus")
                 } primaryAction: {
@@ -166,6 +170,11 @@ struct SidebarView: View {
                 ForEach(model.counts?.categories ?? [], id: \.category) { entry in
                     row(.category(category: entry.category), entry.category.label, entry.category.symbol,
                         count: entry.count, tint: entry.category.tint)
+                }
+                // Modèles (Wi-Fi, passeport…) : seulement ceux qui ont des éléments.
+                ForEach(model.counts?.templates ?? [], id: \.template) { entry in
+                    row(.template(template: entry.template), entry.template.label, entry.template.symbol,
+                        count: entry.count, tint: entry.template.tint)
                 }
             }
             if let folders = model.counts?.folders, !folders.isEmpty {

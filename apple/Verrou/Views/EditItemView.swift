@@ -2,8 +2,10 @@ import SwiftUI
 
 /// Création ou modification d'un élément. Pour un identifiant : titre,
 /// identifiant, mot de passe (avec le générateur), code à usage unique,
-/// sites. Pour les autres types, seuls le titre, le dossier, le favori et les
-/// notes se modifient ici ; le reste de l'élément repart tel quel.
+/// sites. Pour tous les types : titre, champs personnalisés, dossier, favori
+/// et notes ; le reste de l'élément (carte, identité, champs réservés à
+/// Verrou…) repart tel quel. Un modèle (Wi-Fi, passeport…) arrive avec ses
+/// champs prédéfinis.
 struct EditItemView: View {
     @Environment(AppModel.self) private var model
     let editor: AppModel.Editor
@@ -28,7 +30,7 @@ struct EditItemView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Titre", text: $draft.name, prompt: Text(isLogin ? "GitHub, Banque…" : "Digicode, Wi-Fi…"))
+                    TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
                         .focused($titleFocused)
                         .accessibilityIdentifier("edit-title")
                     if isLogin {
@@ -67,6 +69,7 @@ struct EditItemView: View {
                 }
 
                 vaultSection
+                CustomFieldsSection(fields: $draft.fields)
 
                 Section {
                     Picker("Dossier", selection: $draft.folderId) {
@@ -114,8 +117,8 @@ struct EditItemView: View {
             .padding(16)
         }
         .frame(width: 540)
-        .frame(minHeight: isLogin ? 600 : 420)
-        .navigationTitle(isNew ? (isLogin ? "Nouvel identifiant" : "Nouvelle note sécurisée") : "Modifier")
+        .frame(minHeight: isLogin ? 640 : 520)
+        .navigationTitle(windowTitle)
         .onAppear { titleFocused = isNew }
         .confirmationDialog("Mettre « \(draft.name) » à la corbeille ?", isPresented: $confirmTrash) {
             Button("Mettre à la corbeille", role: .destructive) {
@@ -151,6 +154,17 @@ struct EditItemView: View {
                 LabeledContent("Coffre partagé", value: sharing.label)
             }
         }
+    }
+
+    private var titlePrompt: String {
+        if let template = draft.template { return template.titlePrompt }
+        return isLogin ? "GitHub, Banque…" : "Digicode, Wi-Fi…"
+    }
+
+    private var windowTitle: String {
+        guard isNew else { return "Modifier" }
+        if let template = draft.template { return "Nouveau : \(template.singular)" }
+        return isLogin ? "Nouvel identifiant" : "Nouvelle note sécurisée"
     }
 
     private var passwordRow: some View {
@@ -191,6 +205,9 @@ struct EditItemView: View {
     private func save() {
         // Les sites laissés vides ne partent pas.
         draft.login?.urls.removeAll { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+        // Un champ ajouté puis laissé sans nom ni valeur ne part pas.
+        draft.fields.removeAll { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.value ?? "").isEmpty
+            && $0.fieldType != .linked }
         Task { await model.saveEditor(draft, destination: isNew ? destination : nil) }
     }
 

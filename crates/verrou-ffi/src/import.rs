@@ -170,6 +170,7 @@ fn category(kind: ImportKind) -> ItemCategory {
         ImportKind::Login => ItemCategory::Login,
         ImportKind::SecureNote => ItemCategory::SecureNote,
         ImportKind::Card => ItemCategory::Card,
+        ImportKind::Identity => ItemCategory::Identity,
     }
 }
 

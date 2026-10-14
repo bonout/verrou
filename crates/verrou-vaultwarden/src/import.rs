@@ -17,14 +17,15 @@ use std::collections::{BTreeSet, HashMap};
 use bitwarden_api_api::models::{
     CipherRequestModel, FolderWithIdRequestModel, ImportCiphersRequestModel, Int32Int32KeyValuePair,
 };
-use bitwarden_vault::{CardView, CipherType, FieldType, FieldView, FolderView, VaultClientExt};
+use bitwarden_vault::{CardView, CipherType, FolderView, IdentityView, VaultClientExt};
 use chrono::{DateTime, Utc};
 use verrou_core::SecretString;
 use verrou_core::import::{ImportKind, ImportedItem};
 use verrou_core::matching::host_of;
+use verrou_core::template;
 
 use crate::edit::{apply, draft_of, new_view};
-use crate::{Connection, Decrypted, Draft, Error, LoginDraft};
+use crate::{Connection, CustomFieldDraft, CustomFieldKind, Decrypted, Draft, Error, LoginDraft};
 
 /// Éléments par requête : bien en deçà de la limite de taille des requêtes
 /// de Vaultwarden (20 Mo).
@@ -276,7 +277,8 @@ fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     true
 }
 
-/// L'élément à créer, déchiffré : identifiant, note sécurisée ou carte.
+/// L'élément à créer, déchiffré : identifiant, note sécurisée, carte ou
+/// identité, avec le champ de son modèle s'il en a un.
 fn import_view(
     item: &ImportedItem,
     now: DateTime<Utc>,
@@ -287,6 +289,26 @@ fn import_view(
         totp: item.totp.clone(),
         uris: item.urls.clone(),
     });
+    let fields = item
+        .fields
+        .iter()
+        .map(|f| CustomFieldDraft {
+            // Un nom réservé à Verrou venu d'ailleurs ne doit pas passer
+            // pour un modèle.
+            name: if template::is_reserved(&f.name) {
+                format!("({})", f.name)
+            } else {
+                f.name.clone()
+            },
+            value: Some(f.value.clone()),
+            kind: if f.hidden {
+                CustomFieldKind::Hidden
+            } else {
+                CustomFieldKind::Text
+            },
+            linked_id: None,
+        })
+        .collect();
     let mut view = new_view(
         Draft {
             name: item.title.clone(),
@@ -294,9 +316,37 @@ fn import_view(
             favorite: item.favorite,
             notes: item.notes.clone(),
             login,
+            fields: Some(fields),
+            template: item.template,
         },
         now,
     )?;
+    if item.kind == ImportKind::Identity {
+        let id = item.identity.clone().unwrap_or_default();
+        let secret = |s: Option<SecretString>| s.map(|s| s.expose().to_owned());
+        view.r#type = CipherType::Identity;
+        view.secure_note = None;
+        view.identity = Some(IdentityView {
+            title: id.title,
+            first_name: id.first_name,
+            middle_name: id.middle_name,
+            last_name: id.last_name,
+            address1: id.address1,
+            address2: id.address2,
+            address3: None,
+            city: id.city,
+            state: id.state,
+            postal_code: id.postal_code,
+            country: id.country,
+            company: id.company,
+            email: id.email,
+            phone: id.phone,
+            ssn: secret(id.ssn),
+            username: id.username,
+            passport_number: secret(id.passport_number),
+            license_number: secret(id.license_number),
+        });
+    }
     if item.kind == ImportKind::Card {
         let card = item.card.clone().unwrap_or_default();
         view.r#type = CipherType::Card;
@@ -309,23 +359,6 @@ fn import_view(
             brand: card.brand,
             number: card.number.map(|n| n.expose().to_owned()),
         });
-    }
-    if !item.fields.is_empty() {
-        view.fields = Some(
-            item.fields
-                .iter()
-                .map(|f| FieldView {
-                    name: Some(f.name.clone()),
-                    value: Some(f.value.expose().to_owned()),
-                    r#type: if f.hidden {
-                        FieldType::Hidden
-                    } else {
-                        FieldType::Text
-                    },
-                    linked_id: None,
-                })
-                .collect(),
-        );
     }
     Ok(view)
 }
@@ -373,7 +406,9 @@ fn import_request(
 #[cfg(test)]
 mod tests {
 
-    use verrou_core::import::{CardData, ExtraField};
+    use bitwarden_vault::FieldType;
+    use verrou_core::Template;
+    use verrou_core::import::{CardData, ExtraField, IdentityData};
 
     use super::*;
 
@@ -392,6 +427,8 @@ mod tests {
             folder: Some("Perso".to_owned()),
             favorite: true,
             card: None,
+            identity: None,
+            template: None,
             fields: vec![ExtraField {
                 name: "PIN".to_owned(),
                 value: SecretString::new("1234"),
@@ -400,6 +437,47 @@ mod tests {
             modified: None,
             attachments: Vec::new(),
         }
+    }
+
+    #[test]
+    fn identities_and_templates_become_bitwarden_views() {
+        let mut person = imported(ImportKind::Identity);
+        person.identity = Some(IdentityData {
+            first_name: Some("Camille".to_owned()),
+            city: Some("Annecy".to_owned()),
+            passport_number: Some(SecretString::new("12AB34567")),
+            ..IdentityData::default()
+        });
+        let view = import_view(&person, Utc::now()).unwrap();
+        assert_eq!(view.r#type, CipherType::Identity);
+        assert!(view.secure_note.is_none() && view.login.is_none());
+        let identity = view.identity.unwrap();
+        assert_eq!(identity.first_name.as_deref(), Some("Camille"));
+        assert_eq!(identity.passport_number.as_deref(), Some("12AB34567"));
+
+        let mut wifi = imported(ImportKind::SecureNote);
+        wifi.template = Some(Template::Wifi);
+        wifi.fields.push(ExtraField {
+            name: "verrou:type".to_owned(),
+            value: SecretString::new("passport"),
+            hidden: false,
+        });
+        let view = import_view(&wifi, Utc::now()).unwrap();
+        assert_eq!(view.r#type, CipherType::SecureNote);
+        let fields = view.fields.unwrap();
+        let names: Vec<_> = fields.iter().filter_map(|f| f.name.as_deref()).collect();
+        assert_eq!(names, ["PIN", "(verrou:type)", "verrou:type"]);
+        assert_eq!(fields[2].value.as_deref(), Some("wifi"));
+
+        let mut server = imported(ImportKind::Login);
+        server.template = Some(Template::Server);
+        let view = import_view(&server, Utc::now()).unwrap();
+        assert_eq!(view.r#type, CipherType::Login);
+        assert_eq!(view.login.unwrap().username.as_deref(), Some("camille"));
+        assert_eq!(
+            view.fields.unwrap().last().unwrap().value.as_deref(),
+            Some("server")
+        );
     }
 
     #[test]
