@@ -117,7 +117,9 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   history apps skip them) and cleared after 90 s.
 - **Auto-lock**: after 10 min of inactivity by default (1 min to never, in
   Settings), on sleep, and when the screen locks.
-- **Emergency access** (sidebar → *Accès d'urgence*): invite trusted
+- **Emergency access** (sidebar → *Accès d'urgence*, in the main window like
+  the audit: the list in the middle column, the selected contact and its
+  actions on the right): invite trusted
   contacts (view only or takeover, with a waiting period of 1 to 90 days),
   confirm them after checking their key fingerprint, approve or reject their
   requests, change or remove them. As someone's contact: request access, and
@@ -125,7 +127,8 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   new master password for the grantor) stays in the web vault. Invitations
   need the contact to have an account on the server; without e-mail
   configured, Vaultwarden accepts them at once.
-- **Send** (sidebar → *Envois*): share a text through an end-to-end encrypted
+- **Send** (sidebar → *Envois*, in the main window: the list in the middle
+  column, the selected Send on the right): share a text through an end-to-end encrypted
   link (Bitwarden Send), readable by anyone with the link, with or without an
   account. Deletion date (7 days by default, 31 at most), optional expiration,
   maximum number of accesses, password, hidden e-mail address; the list shows

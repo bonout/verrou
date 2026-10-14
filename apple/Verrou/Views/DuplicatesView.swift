@@ -5,25 +5,11 @@ struct DuplicatesSidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button {
+        // Une feuille plutôt qu'un volet : jamais en surbrillance.
+        SidebarPaneButton(title: "Doublons", symbol: "square.on.square.dashed",
+                          help: "Nettoyer les doublons du coffre") {
             model.openDuplicates()
-        } label: {
-            Label {
-                HStack {
-                    Text("Doublons")
-                    Spacer()
-                }
-            } icon: {
-                Image(systemName: "square.on.square.dashed").foregroundStyle(Theme.accent)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
-        .help("Nettoyer les doublons du coffre")
     }
 }
 

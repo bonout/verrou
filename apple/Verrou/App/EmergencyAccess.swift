@@ -20,6 +20,13 @@ final class EmergencyModel {
     var confirmation: Confirmation?
     /// Coffre d'un concédant ouvert.
     var grantorVault: GrantorVault?
+    /// Accès affiché dans la colonne de droite (un de mes contacts, ou un
+    /// concédant qui m'a choisi).
+    var selection: String?
+    /// Demande d'accès à confirmer.
+    var confirmRequest: EmergencyContact?
+    /// Suppression (ou renoncement) à confirmer.
+    var confirmDelete: EmergencyContact?
 
     struct InviteDraft: Identifiable {
         let id = UUID()
@@ -37,10 +44,30 @@ final class EmergencyModel {
         let fingerprint: String
     }
 
+    /// L'accès sélectionné, et s'il s'agit d'un de mes contacts (`trusted`).
+    var selected: (contact: EmergencyContact, trusted: Bool)? {
+        guard let selection else { return nil }
+        if let contact = trusted.first(where: { $0.id == selection }) { return (contact, true) }
+        if let contact = granted.first(where: { $0.id == selection }) { return (contact, false) }
+        return nil
+    }
+
     func set(_ overview: EmergencyOverview) {
         trusted = overview.trusted
         granted = overview.granted
         loaded = true
+        if selected == nil {
+            selection = (trusted + granted).first?.id
+        }
+    }
+
+    func inviteNew() {
+        invite = .init(contactID: nil, email: "", type: .view, waitDays: 7)
+    }
+
+    func edit(_ contact: EmergencyContact) {
+        invite = .init(contactID: contact.id, email: contact.email ?? "",
+                       type: contact.accessType, waitDays: Int(contact.waitTimeDays))
     }
 
     /// Au verrouillage : listes, brouillons et coffre du concédant oubliés.
@@ -53,6 +80,9 @@ final class EmergencyModel {
         notice = nil
         invite = nil
         confirmation = nil
+        selection = nil
+        confirmRequest = nil
+        confirmDelete = nil
         closeGrantorVault()
     }
 
@@ -97,6 +127,14 @@ final class GrantorVault: Identifiable {
 
 extension AppModel {
     var emergencyAvailable: Bool { mode == .vaultwarden && lockState == .unlocked }
+
+    /// Barre latérale ou menu Coffre : le volet des accès d'urgence dans la
+    /// fenêtre principale.
+    func openEmergency() {
+        guard emergencyAvailable else { return }
+        showMainWindow()
+        pane = .emergency
+    }
 
     func reloadEmergency() async {
         guard emergencyAvailable else { return }

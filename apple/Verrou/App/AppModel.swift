@@ -17,6 +17,14 @@ final class AppModel {
         case unlocked
     }
 
+    /// Entrées du bas de la barre latérale : chacune remplace la liste des
+    /// éléments dans la colonne centrale, et sa sélection s'affiche à droite.
+    enum SidebarPane {
+        case audit
+        case sends
+        case emergency
+    }
+
     /// `demo` : coffre fictif (captures, `VERROU_DEMO=1` ou `VERROU_MOCK=1`).
     enum Mode {
         case demo
@@ -80,11 +88,14 @@ final class AppModel {
     /// La session a expiré : il faut se reconnecter (mot de passe et second facteur).
     private(set) var reloginRequired = false
 
-    var filter: SidebarFilter = .all { didSet { showAudit = false; refresh() } }
+    var filter: SidebarFilter = .all { didSet { pane = nil; refresh() } }
+    /// Volet du bas de la barre latérale affiché dans la colonne centrale à
+    /// la place de la liste ; `nil` : la liste des éléments.
+    var pane: SidebarPane?
 
     // Audit
     /// La colonne centrale montre l'audit au lieu de la liste.
-    var showAudit = false
+    var showAudit: Bool { pane == .audit }
     private(set) var audit: AuditReport?
     /// `nil` : pas encore vérifié (seulement sur demande : réseau).
     private(set) var breaches: [BreachedPassword]?
@@ -462,7 +473,7 @@ final class AppModel {
     func openAudit() {
         audit = try? session.audit()
         watchtower.refresh(session, network: mode == .vaultwarden)
-        showAudit = true
+        pane = .audit
     }
 
     /// Ajoute aux fuites déjà affichées celles des mots de passe tout juste
@@ -517,7 +528,7 @@ final class AppModel {
         selection = nil
         query = ""
         quickQuery = ""
-        showAudit = false
+        pane = nil
         audit = nil
         breaches = nil
         breachError = nil
