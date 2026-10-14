@@ -347,6 +347,8 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     if (name === "button") return new FakeButton();
     return new FakeElement(name);
   };
+  // SVG (icône de Verrou) : un élément ordinaire suffit ici.
+  document.createElementNS = (_ns, tag) => new FakeElement(tag);
   document.querySelectorAll = (selector) => document.documentElement.querySelectorAll(selector);
   document.querySelector = (selector) => document.documentElement.querySelector(selector);
   document.addEventListener = (type, listener, capture = false) => {
