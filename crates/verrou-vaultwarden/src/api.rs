@@ -30,8 +30,8 @@ const CLIENT_VERSION: &str = "2026.6.0";
 
 #[derive(Clone)]
 pub(crate) struct Api {
-    http: reqwest::Client,
-    base: String,
+    pub(crate) http: reqwest::Client,
+    pub(crate) base: String,
 }
 
 /// Paramètres de dérivation du mot de passe, renvoyés par le prélogin.
@@ -370,7 +370,7 @@ impl Api {
 }
 
 /// Réponse d'une écriture : le JSON renvoyé, ou l'erreur traduite.
-async fn write_response(response: reqwest::Response) -> Result<Value, Error> {
+pub(crate) async fn write_response(response: reqwest::Response) -> Result<Value, Error> {
     let status = response.status();
     let body: Value = response.json().await.unwrap_or(Value::Null);
     if status.is_success() {

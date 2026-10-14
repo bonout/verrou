@@ -15,6 +15,7 @@
 //! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
 
 mod api;
+mod attachments;
 pub mod breach;
 mod convert;
 mod edit;
@@ -43,6 +44,7 @@ use bitwarden_vault::{Cipher, Folder, VaultClientExt};
 use verrou_core::{Item, SecretString};
 
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
+pub use attachments::AttachmentInfo;
 pub use edit::{Draft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};

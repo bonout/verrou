@@ -65,6 +65,13 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 - **Tidy up**: favorites (click the star), **archive** items (kept but out of
   the list, search and autofill), trash with **restore**, previous passwords
   visible in each item, configurable auto-lock delay.
+- **Attachments and documents**: an item's *Pièces jointes* section lists
+  its files (Bitwarden format: a key per file, encrypted before upload).
+  Open one in Quick Look, save a decrypted copy, delete it (with
+  confirmation), or add files with *Ajouter un fichier…* or by dropping them
+  on the item; 100 MB per file. File → *Nouveau document…* stores a file as
+  a secure note named after it. Attachments are downloaded on demand, never
+  cached: opening one needs the network.
 - **Offline**: the vault stays available without network, decrypted from the
   cache (the server's response, still encrypted).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
@@ -167,8 +174,13 @@ or to no folder. Everything is sent in one request, followed by one sync.
 
 What is imported: logins (username, password, sites, one-time code, extra
 fields), secure notes and credit cards. Other kinds (identities, servers,
-Wi-Fi…) become secure notes with their fields in the notes. Not imported:
-attachments and passkeys, archived or trashed items, Proton Pass aliases.
+Wi-Fi…) become secure notes with their fields in the notes. Files carried by
+a 1PUX or Proton Pass ZIP export become attachments (100 MB per file at most;
+a 1Password *Document* becomes a secure note with its file); a file missing
+from the archive is mentioned in the item's notes. Items with files are
+created one by one, after the bulk request. Not imported: passkeys, archived
+or trashed items, Proton Pass aliases, and the files of an entry that matches
+an item already in the vault.
 1Password tags have no equivalent in Vaultwarden and are dropped.
 
 **Delete the export file afterwards** (and empty the Finder's trash): it

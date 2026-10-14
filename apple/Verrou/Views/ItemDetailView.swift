@@ -49,6 +49,7 @@ struct ItemDetailView: View {
                         }
                     }
                 }
+                AttachmentsSection(summary: detail.summary)
                 if !detail.summary.tags.isEmpty {
                     TagsRow(tags: detail.summary.tags)
                 }
@@ -60,6 +61,7 @@ struct ItemDetailView: View {
             .frame(maxWidth: .infinity)
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .modifier(AttachmentDropModifier(summary: detail.summary))
     }
 
     private var header: some View {

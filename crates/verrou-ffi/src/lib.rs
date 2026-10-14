@@ -42,10 +42,12 @@ use verrou_vaultwarden::{
 
 uniffi::setup_scaffolding!();
 
+mod attachments;
 mod import;
 mod ssh;
 mod watchtower;
 
+pub use attachments::{AttachmentContent, AttachmentEntry};
 pub use import::{
     DuplicateGroupView, ImportChoice, ImportDestination, ImportEntry, ImportFormat, ImportOutcome,
     ImportReview, ImportSkipped, ImportStatus,

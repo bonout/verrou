@@ -4,16 +4,53 @@
 //! Identifiants, notes et cartes sont repris ; une identité devient une note
 //! sécurisée ; un alias (une adresse e-mail relais, sans mot de passe) est
 //! laissé de côté.
+//!
+//! Pièces jointes : l'élément cite ses fichiers (`files`) sous leur nom
+//! d'export, `<nom>.<identifiant><extension>`, rangés dans
+//! `Proton Pass/files/`.
 
 use serde_json::Value;
 
 use super::{
-    CardData, ExtraField, ImportError, ImportKind, ImportedItem, Parsed, append_lines, expiry,
-    secret, text,
+    CardData, ExtraField, ImportError, ImportKind, ImportedFile, ImportedItem, Parsed,
+    append_lines, expiry, secret, text,
 };
 
 /// État d'un élément dans Proton Pass : 1 actif, 2 à la corbeille.
 const TRASHED: i64 = 2;
+
+/// Fichiers cités par l'élément, à lire ensuite dans l'archive.
+fn files(entry: &Value) -> Vec<ImportedFile> {
+    entry
+        .get("files")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|name| !name.trim().is_empty())
+        .map(|name| ImportedFile::pending(&original_name(name), name.to_owned()))
+        .collect()
+}
+
+/// `facture.1a2b3c.pdf` → `facture.pdf` : Proton Pass glisse un identifiant
+/// hexadécimal avant l'extension (ou à la fin, sans extension).
+fn original_name(export_name: &str) -> String {
+    let hex = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit());
+    let mut parts: Vec<&str> = export_name.split('.').collect();
+    if parts.len() >= 3 && hex(parts[parts.len() - 2]) {
+        parts.remove(parts.len() - 2);
+    } else if parts.len() == 2 && hex(parts[1]) {
+        parts.pop();
+    }
+    parts.join(".")
+}
+
+/// `Proton Pass/files/<nom d'export>`, où `/` et `\` deviennent `_`.
+pub(super) fn archive_entry(name: &str, export_name: &str) -> bool {
+    let sanitized = export_name.replace(['/', '\\'], "_");
+    name.strip_suffix(sanitized.trim())
+        .is_some_and(|dir| dir.ends_with("files/"))
+}
 
 pub(super) fn parse(json: &Value, parsed: &mut Parsed) -> Result<(), ImportError> {
     if json.get("encrypted").and_then(Value::as_bool) == Some(true) {
@@ -102,6 +139,7 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
         );
     }
     append_lines(&mut item.notes, &lines);
+    item.attachments = files(entry);
     parsed.push(item);
 }
 
@@ -332,6 +370,45 @@ mod tests {
         assert_eq!(netflix.folder.as_deref(), Some("Famille"));
         assert!(netflix.totp.as_ref().unwrap().expose().contains("Netflix"));
         assert_eq!(netflix.fields, Vec::new());
+    }
+
+    #[test]
+    fn proton_pass_files_become_attachments() {
+        let data = r#"{
+          "version": "1.30.0", "encrypted": false,
+          "vaults": { "s": { "name": "Perso", "items": [{
+            "itemId": "f1", "state": 1,
+            "data": { "metadata": { "name": "Bail", "note": "" }, "type": "note", "content": {} },
+            "files": ["bail signé.7f3a9c12.pdf", "README.4bc1", "absent.aa11.txt"]
+          }] } }
+        }"#;
+        let mut bytes = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("Proton Pass/data.json", options).unwrap();
+        zip.write_all(data.as_bytes()).unwrap();
+        zip.start_file("Proton Pass/files/bail signé.7f3a9c12.pdf", options)
+            .unwrap();
+        zip.write_all(b"bail").unwrap();
+        zip.start_file("Proton Pass/files/README.4bc1", options)
+            .unwrap();
+        zip.write_all(b"lisez-moi").unwrap();
+        zip.finish().unwrap();
+
+        let parsed = parse(&bytes, None).unwrap();
+        let lease = &parsed.items[0];
+        assert_eq!(lease.kind, ImportKind::SecureNote);
+        let names: Vec<&str> = lease.attachments.iter().map(|a| a.name.as_str()).collect();
+        assert_eq!(names, ["bail signé.pdf", "README"]);
+        assert_eq!(lease.attachments[0].data.as_slice(), b"bail");
+        assert!(
+            lease
+                .notes
+                .as_ref()
+                .unwrap()
+                .expose()
+                .contains("« absent.txt » : non importée")
+        );
     }
 
     #[test]

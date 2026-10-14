@@ -75,8 +75,12 @@ PR qui touche à l'un de ces points le dit dans sa description.
 - **Import** (Apple, 1Password, Proton Pass) : le fichier d'export est **en
   clair**, il contient tous les mots de passe. Verrou ne le lit que sur
   demande, une fois, par le panneau d'ouverture de macOS (droit
-  `com.apple.security.files.user-selected.read-only` : lecture seule, de ce
-  seul fichier) ; il ne le copie pas, ne le garde pas et n'y écrit rien. Le
+  `com.apple.security.files.user-selected.read-write`, qu'exige
+  « Enregistrer sous… » des pièces jointes ; limité au fichier choisi) ; il
+  ne le copie pas, ne le garde pas et n'y écrit rien. Les fichiers d'une
+  archive (1Password, Proton Pass) deviennent des pièces jointes : lus en
+  mémoire (100 Mo par fichier, 512 Mo par archive), chiffrés comme un ajout,
+  l'élément créé seul puis ses fichiers. Le
   cœur Rust le lit et le compare au coffre ; les secrets restent dans des
   `SecretString` jusqu'à l'import, l'abandon ou le verrouillage, et la revue
   ne montre à Swift que titres, identifiants et sites, avec le verdict de la
@@ -95,9 +99,32 @@ PR qui touche à l'un de ces points le dit dans sa description.
   éléments protégés (« redemander le mot de passe principal ») sont comparés
   comme les autres, à l'import comme ici : seul le verdict en sort, aucun
   secret.
+- **Pièces jointes** (format Bitwarden) : chaque fichier a sa propre clé
+  (64 octets, tirée par le SDK), chiffrée par la clé de l'élément (ou de
+  l'utilisateur, ou de l'organisation) ; le nom du fichier est chiffré comme
+  un champ ; le contenu est un `EncArrayBuffer` de type 2 (AES-256-CBC,
+  HMAC-SHA256 vérifié avant tout déchiffrement). Le SDK fait toute cette
+  cryptographie ; un test relit un fichier chiffré par Bitwarden, un autre
+  vérifie qu'un octet altéré fait tout refuser. Envoi en deux temps
+  (`POST …/attachment/v2`, puis le contenu chiffré vers l'adresse rendue,
+  qui doit être sur le serveur du compte ; la réservation est supprimée si
+  l'envoi échoue), lecture par l'adresse signée que donne le serveur, en
+  HTTPS (HTTP seulement vers `localhost`). 100 Mo par fichier.
+  **Rien n'est gardé hors ligne** : le cache ne contient que les
+  métadonnées chiffrées de la synchronisation ; un fichier se télécharge à
+  chaque ouverture. Déchiffré dans Rust (tampon effacé à la libération), il
+  passe à Swift : pour Quick Look, dans un fichier temporaire du conteneur
+  de l'app (`tmp/pieces-jointes`, mode 600), effacé à la fermeture de
+  l'aperçu, au changement d'élément, au verrouillage et au lancement
+  suivant ; « Enregistrer sous… » écrit une copie **en clair**, là où
+  l'utilisateur le choisit (droit
+  `com.apple.security.files.user-selected.read-write`, limité aux fichiers
+  choisis dans les panneaux de macOS ou déposés sur la fenêtre). Un élément
+  protégé ne livre ses fichiers qu'après confirmation. Limites : la copie
+  passée à Swift (`Data`) n'est pas mise à zéro, et Quick Look peut garder
+  sa propre vignette en cache.
 - **Limites connues** : la demande de mot de passe principal par élément
-  (« reprompt ») n'est pas appliquée ; les pièces jointes ne sont pas
-  affichées.
+  (« reprompt ») n'est pas appliquée.
 
 ## Extension de navigateur
 
