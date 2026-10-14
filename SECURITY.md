@@ -205,6 +205,41 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
 - **Cartes et mots de passe anciens** : calculés localement (échéance des
   cartes, date de modification des éléments).
 
+## Remplissage dans les apps (⌘\)
+
+- **Ce qui est tapé** : l'identifiant, Tab, le mot de passe (Retour en
+  option, désactivé par défaut), par des événements clavier `CGEvent` dont le
+  texte passe en Unicode (`keyboardSetUnicodeString`), sans code de touche ni
+  modificateur. Le cœur Rust ne rend ces frappes (`autofill_keystrokes`)
+  qu'au moment où l'utilisateur choisit un identifiant, et refuse un élément
+  protégé tant qu'il n'a pas été confirmé (Touch ID ou mot de passe
+  principal) ; coffre verrouillé, il ne rend rien.
+- **Où** : dans l'app qui était au premier plan au moment du raccourci,
+  retenue par son PID. Verrou lui rend le premier plan et ne tape qu'après
+  avoir vérifié qu'elle l'a ; sinon, rien n'est tapé. Il ne lit ni ne
+  contrôle les fenêtres des autres apps (aucune lecture d'interface par
+  l'API d'accessibilité) : c'est l'utilisateur qui place le curseur dans le
+  champ.
+- **Saisie sécurisée** : si une autre app que la cible a activé la saisie
+  sécurisée (`IsSecureEventInputEnabled`, propriétaire lu dans
+  `CGSessionCopyCurrentDictionary`), Verrou prévient dans l'accès rapide et
+  ne tape rien. Celle de l'app visée (un champ de mot de passe) est normale.
+- **Autorisation** : taper pour une autre app demande l'accès
+  « Accessibilité » (`AXIsProcessTrustedWithOptions`,
+  `CGRequestPostEventAccess` pour une app sandboxée). Signé ad hoc, Verrou
+  peut perdre cette autorisation à chaque recompilation (macOS l'attache à la
+  signature) : il faut alors le retirer de la liste et l'autoriser à nouveau.
+- **Association** : une app se relie à un identifiant par une adresse
+  `macapp://<identifiant de paquet>` ajoutée à ses sites, chiffrée et
+  synchronisée comme eux, avec la règle de correspondance « jamais » pour
+  que les extensions Bitwarden ne la proposent sur aucune page. Le cœur ne la
+  traite jamais comme un site (ni suggestion web, ni icône, ni doublon).
+- **Limites connues** : une app qui lit les codes de touches plutôt que les
+  caractères (jeux, bureaux à distance) reçoit des frappes incorrectes ; une
+  app malveillante au premier plan reçoit ce qu'on lui tape, comme avec un
+  copier-coller. Le code à usage unique est copié (presse-papiers dissimulé,
+  effacé après 90 s), pas tapé.
+
 ## Terminal et agent SSH
 
 ```

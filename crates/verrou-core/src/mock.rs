@@ -314,6 +314,13 @@ const TAGS: &[&str] = &["dev", "pro", "famille", "ancien", "à-vérifier", "part
 
 /// Coffre fictif d'au moins `count` éléments (les éléments soignés d'abord,
 /// puis du remplissage pour les mesures de performance).
+/// Apps du Mac reliées à un identifiant du coffre fictif.
+const MAC_APPS: [(&str, &str); 3] = [
+    ("Slack", "com.tinyspeck.slackmacgap"),
+    ("Discord", "com.hnc.Discord"),
+    ("Notion", "notion.id"),
+];
+
 pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let mut builder = Builder {
@@ -330,7 +337,12 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
         } else {
             "camille.martin@exemple.fr".to_owned()
         };
-        items.push(builder.login(title, domain, &username, folder, tags, *favorite, *totp));
+        let mut item = builder.login(title, domain, &username, folder, tags, *favorite, *totp);
+        // Quelques identifiants reliés à leur app du Mac (remplissage par ⌘\).
+        if let Some((_, bundle_id)) = MAC_APPS.iter().find(|(t, _)| t == title) {
+            item.urls.push(format!("macapp://{bundle_id}"));
+        }
+        items.push(item);
     }
     // Deux comptes sur le même site, pour la correspondance et la recherche.
     items.push(builder.login(

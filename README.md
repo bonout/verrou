@@ -74,6 +74,10 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   with countdown, cards, identities, notes, SSH keys), **Quick Access ⌘⇧Space**
   from any app, **site icons** served by the account's own Vaultwarden, a
   **padlock in the menu bar**, and launch at login (Settings).
+- **Fill in any Mac app** (⌘\, like 1Password's Universal Autofill): the
+  shortcut remembers the app in front, opens Quick Access with the logins
+  linked to it, and types the username, Tab and the password (Unicode text,
+  any keyboard layout). See [Fill in any app](#fill-in-any-app).
 - **Careful clipboard**: copied secrets are marked "concealed" (clipboard
   history apps skip them) and cleared after 90 s.
 - **Auto-lock**: after 10 min of inactivity by default (1 min to never, in
@@ -163,6 +167,33 @@ username (`login.example.com` and `example.com` count as one site, but
 keep (the one with a one-time code, then the most recently modified, then
 the most complete) and moves the others to the trash in one request,
 restorable from the web vault.
+
+## Fill in any app
+
+1. Settings (⌘,) → *Général* → *Remplissage dans les apps*: on by default,
+   shortcut ⌘\ (the key left of Return, whatever the layout; ⌥⌘ or ⌃⌘
+   variants if another app already uses it).
+2. The first time, allow Verrou in System Settings → Privacy & Security →
+   **Accessibility** (Quick Access shows a button that opens it).
+3. In any app, put the cursor in the username field (or the password field)
+   and press ⌘\. Quick Access opens, titled with that app, listing the
+   logins linked to it. Enter fills: Verrou closes, the app comes back to the
+   front, and the username, Tab and password are typed.
+4. No login linked yet: search for it and press **⌘↩** to fill and link it
+   to the app (or click *Associer à …* to link without filling). The link is
+   stored in the item as a `macapp://<bundle id>` URI (with Bitwarden's
+   "never" match rule, so browser extensions ignore it) and syncs with the
+   vault.
+
+Options: press Return after the password (off by default), copy the item's
+one-time code to the clipboard after filling (on by default). Protected
+items ask for Touch ID or the master password first; a locked vault offers
+Touch ID in Quick Access. If another app holds Secure Keyboard Entry (e.g.
+Terminal's *Secure Keyboard Entry*), Verrou warns and types nothing.
+
+The app is signed ad hoc: macOS may forget the Accessibility permission
+after Verrou is rebuilt or reinstalled. If filling stops working, remove
+Verrou from the Accessibility list and allow it again.
 
 ## Brave extension
 

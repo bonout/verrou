@@ -13,6 +13,9 @@ final class QuickAccessController {
     /// premier plan (macOS refuse de lui donner la main pendant qu'on se sert
     /// d'une autre app).
     var staysOpen = false
+    /// Remplissage dans les apps (⌘\) : la fenêtre sert aussi à choisir
+    /// l'identifiant à taper dans l'app au premier plan.
+    var autofill: UniversalAutofill?
 
     init(model: AppModel) {
         self.model = model
@@ -24,7 +27,12 @@ final class QuickAccessController {
     var isVisible: Bool { panel?.isVisible ?? false }
 
     func toggle() {
-        if isVisible { close() } else { show() }
+        if isVisible {
+            close()
+        } else {
+            autofill?.target = nil
+            show()
+        }
     }
 
     /// `anchor` : centrer sur ce rectangle plutôt que sur l'écran (la
@@ -50,6 +58,7 @@ final class QuickAccessController {
     func close() {
         panel?.orderOut(nil)
         model.quickQuery = ""
+        autofill?.target = nil
     }
 
     private func makePanel() -> QuickAccessPanel {
@@ -72,7 +81,7 @@ final class QuickAccessController {
             guard let self, !self.staysOpen else { return }
             self.close()
         }
-        let root = QuickAccessView(close: { [weak self] in self?.close() })
+        let root = QuickAccessView(autofill: autofill, close: { [weak self] in self?.close() })
             .environment(model)
         panel.contentView = NSHostingView(rootView: root)
         return panel
@@ -89,26 +98,43 @@ final class QuickAccessPanel: NSPanel {
 }
 
 /// Raccourci global via Carbon : la seule API qui ne demande pas l'accès
-/// « Accessibilité » pour un raccourci clavier.
+/// « Accessibilité » pour un raccourci clavier. Plusieurs raccourcis
+/// (accès rapide ⌘⇧Espace, remplissage ⌘\) partagent un seul gestionnaire,
+/// qui retrouve l'action par l'identifiant du raccourci.
 final class HotKey {
     private var reference: EventHotKeyRef?
-    private var handler: EventHandlerRef?
-    nonisolated(unsafe) private static var action: (() -> Void)?
+    private let id: UInt32
+    /// `false` : la combinaison est déjà prise (par une autre app, souvent).
+    let isRegistered: Bool
+    nonisolated(unsafe) private static var actions: [UInt32: () -> Void] = [:]
+    nonisolated(unsafe) private static var handler: EventHandlerRef?
+    nonisolated(unsafe) private static var nextID: UInt32 = 1
 
     init(keyCode: UInt32, modifiers: UInt32, action: @escaping @MainActor () -> Void) {
-        Self.action = { MainActor.assumeIsolated { action() } }
+        Self.installHandlerIfNeeded()
+        id = Self.nextID
+        Self.nextID += 1
+        Self.actions[id] = { MainActor.assumeIsolated { action() } }
+        let hotKeyID = EventHotKeyID(signature: OSType(0x5652_5255), id: id) // « VRRU »
+        isRegistered = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &reference) == noErr
+    }
+
+    private static func installHandlerIfNeeded() {
+        guard handler == nil else { return }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, _ in
-            HotKey.action?()
+        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+            var pressed = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
+                                           nil, MemoryLayout<EventHotKeyID>.size, nil, &pressed)
+            guard status == noErr, pressed.signature == OSType(0x5652_5255) else { return OSStatus(eventNotHandledErr) }
+            HotKey.actions[pressed.id]?()
             return noErr
         }, 1, &spec, nil, &handler)
-        let id = EventHotKeyID(signature: OSType(0x5652_5255), id: 1) // « VRRU »
-        RegisterEventHotKey(keyCode, modifiers, id, GetApplicationEventTarget(), 0, &reference)
     }
 
     deinit {
         if let reference { UnregisterEventHotKey(reference) }
-        if let handler { RemoveEventHandler(handler) }
+        Self.actions[id] = nil
     }
 }
 
@@ -116,6 +142,7 @@ final class HotKey {
 
 struct QuickAccessView: View {
     @Environment(AppModel.self) private var model
+    var autofill: UniversalAutofill?
     let close: () -> Void
     @FocusState private var focused: Bool
     @State private var selected = 0
@@ -141,26 +168,47 @@ struct QuickAccessView: View {
 
             Divider()
 
+            if let autofill, let target = autofill.target {
+                AutofillTargetBar(target: target)
+                Divider()
+            }
+
             if model.lockState != .unlocked {
                 lockedState
+            } else if autofill?.target != nil, !AccessibilityPermission.isGranted {
+                AccessibilityRequestView()
             } else if hits.isEmpty {
-                Text(model.quickQuery.isEmpty ? "Tapez pour chercher dans le coffre" : "Aucun résultat")
+                Text(emptyMessage)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 40)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
                     resultsList
                     Divider()
                     if let current {
-                        QuickDetail(summary: current)
-                            .frame(width: 250)
+                        VStack(spacing: 0) {
+                            QuickDetail(summary: current)
+                            if let autofill, let target = autofill.target {
+                                AutofillLinkRow(autofill: autofill, target: target, item: current)
+                            }
+                        }
+                        .frame(width: 250)
                     }
                 }
             }
 
             Divider()
             HStack(spacing: 16) {
-                KeyHint(keys: "↩", label: "Copier le mot de passe")
+                if autofill?.target != nil {
+                    KeyHint(keys: "↩", label: "Remplir")
+                    if model.canEdit {
+                        KeyHint(keys: "⌘↩", label: "Associer et remplir")
+                    }
+                } else {
+                    KeyHint(keys: "↩", label: "Copier le mot de passe")
+                }
                 KeyHint(keys: "⌘C", label: "Identifiant")
                 KeyHint(keys: "⌥⌘C", label: "Code")
                 Spacer()
@@ -181,6 +229,8 @@ struct QuickAccessView: View {
             Task { focused = true }
         }
         .onChange(of: model.quickQuery) { selected = 0 }
+        // Déverrouillé depuis la fenêtre : les identifiants de l'app arrivent.
+        .onChange(of: model.lockState) { autofill?.refreshSuggestions() }
         .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
         .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
         .onKeyPress(.escape) { close(); return .handled }
@@ -188,13 +238,30 @@ struct QuickAccessView: View {
             Group {
                 Button("") { copyUsername() }.keyboardShortcut("c", modifiers: .command)
                 Button("") { copyCode() }.keyboardShortcut("c", modifiers: [.command, .option])
+                Button("") { fillAndLink() }.keyboardShortcut(.return, modifiers: .command)
             }
             .opacity(0)
         }
     }
 
     private var hits: [ResultRow] {
-        model.lockState == .unlocked ? model.quickRows : []
+        guard model.lockState == .unlocked else { return [] }
+        guard let autofill, autofill.target != nil else { return model.quickRows }
+        // Remplissage : sans recherche, les identifiants reliés à l'app ;
+        // en cherchant, seulement des identifiants (le reste ne se tape pas).
+        if model.quickQuery.isEmpty {
+            return autofill.suggestions.map { ResultRow(summary: $0, highlights: []) }
+        }
+        return model.quickRows.filter { $0.summary.category == .login }
+    }
+
+    private var emptyMessage: String {
+        if let target = autofill?.target, model.quickQuery.isEmpty {
+            return model.canEdit
+                ? "Aucun identifiant relié à « \(target.name) ». Cherchez-le, puis ⌘↩ pour le remplir et l'associer à cette app."
+                : "Aucun identifiant relié à « \(target.name) ». Tapez pour chercher dans le coffre."
+        }
+        return model.quickQuery.isEmpty ? "Tapez pour chercher dans le coffre" : "Aucun résultat"
     }
 
     private var resultsList: some View {
@@ -256,6 +323,10 @@ struct QuickAccessView: View {
 
     private func primaryAction() {
         guard let item = current else { return }
+        if let autofill, autofill.target != nil {
+            autofill.fill(itemID: item.id, link: false)
+            return
+        }
         if item.category == .login {
             model.copyPassword(of: item.id)
         } else {
@@ -263,6 +334,11 @@ struct QuickAccessView: View {
             NSApp.windows.first { $0.identifier?.rawValue == "main" }?.makeKeyAndOrderFront(nil)
         }
         close()
+    }
+
+    private func fillAndLink() {
+        guard let item = current, let autofill, autofill.target != nil else { return }
+        autofill.fill(itemID: item.id, link: model.canEdit)
     }
 
     private func copyUsername() {

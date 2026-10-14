@@ -87,6 +87,8 @@ private struct GeneralSettings: View {
                 Text(footer)
                     .foregroundStyle(launchAtLoginError == nil ? .secondary : Color.red)
             }
+
+            AppAutofillSection()
         }
     }
 

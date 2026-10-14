@@ -78,6 +78,23 @@ impl Vault {
         found.into_iter().map(|(_, item)| item).collect()
     }
 
+    /// Identifiants reliés à une application du Mac (`macapp://`), favoris
+    /// d'abord, puis par titre.
+    pub fn app_suggestions(&self, bundle_id: &str) -> Vec<&Item> {
+        let mut found: Vec<&Item> = self
+            .items
+            .iter()
+            .filter(|item| item.kind == ItemKind::Login && item.is_active())
+            .filter(|item| crate::apps::matches_app(&item.urls, bundle_id))
+            .collect();
+        found.sort_by(|a, b| {
+            b.favorite
+                .cmp(&a.favorite)
+                .then_with(|| fold(&a.title).cmp(&fold(&b.title)))
+        });
+        found
+    }
+
     pub fn counts(&self) -> Counts {
         let mut kinds: BTreeMap<ItemKind, usize> = BTreeMap::new();
         let mut folders: BTreeMap<String, usize> = BTreeMap::new();
