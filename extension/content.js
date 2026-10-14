@@ -335,12 +335,15 @@
     :host { all: initial; }
     * { box-sizing: border-box; }
     .stack {
-      display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
-      max-width: calc(100vw - 32px);
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      margin: 0 auto; max-width: calc(100vw - 32px);
       font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f4f6;
       -webkit-font-smoothing: antialiased;
     }
-    .pill { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; animation: drop .18s ease-out; }
+    /* L'hôte couvre toute la largeur du haut de la page sans capter les
+       clics : seuls la pastille et le bandeau en reçoivent. */
+    .pill, .banner { pointer-events: auto; }
+    .pill { display: flex; flex-direction: column; align-items: center; max-width: 100%; animation: drop .18s ease-out; }
     .capsule, .tab, .list, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
     .capsule {
       display: flex; align-items: center; gap: 10px; max-width: 100%;
@@ -369,7 +372,7 @@
     .close { flex: none; width: 28px; height: 28px; border-radius: 50%; color: #a3a3ad; }
     .close:hover { background: rgba(255,255,255,.1); color: #fff; }
     .tab {
-      display: flex; align-items: center; gap: 6px; margin-left: 24px; padding: 3px 12px 5px;
+      display: flex; align-items: center; gap: 6px; padding: 3px 12px 5px;
       border-top: 0; border-radius: 0 0 10px 10px; font-size: 12px; color: #d4d4da;
     }
     .chev { display: inline-block; transition: transform .15s ease; }
@@ -490,7 +493,13 @@
 
     attach() {
       this.ensure();
-      pin(this.host, { ...HOST_STYLES, position: "fixed", top: "16px", left: "16px", right: "auto", bottom: "auto" });
+      // Centrée en haut de la page, comme celle de 1Password : l'hôte prend
+      // toute la largeur (sans transformation, que la page ne peut donc pas
+      // détourner) et laisse passer les clics hors de la pastille.
+      pin(this.host, {
+        ...HOST_STYLES, position: "fixed", top: "16px", left: "0", right: "0", bottom: "auto",
+        width: "auto", "pointer-events": "none",
+      });
       if (!this.host.isConnected) document.documentElement.append(this.host);
     },
 

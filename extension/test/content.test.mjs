@@ -132,7 +132,9 @@ test("la pastille vient une fois avec un identifiant du site, sans menu sous le 
   const host = page.host("verrou-pill");
   assert.equal(host.style.getPropertyValue("position"), "fixed");
   assert.equal(host.style.getPropertyValue("top"), "16px");
-  assert.equal(host.style.getPropertyValue("left"), "16px");
+  assert.equal(host.style.getPropertyValue("left"), "0");
+  assert.equal(host.style.getPropertyValue("right"), "0");
+  assert.equal(host.style.getPropertyValue("pointer-events"), "none");
   assert.equal(host.style.getPropertyValue("z-index"), "2147483647");
   assert.equal(host.style.getPropertyPriority("position"), "important");
   assert.equal(host.shadowRoot, null, "shadow DOM fermé");
@@ -485,7 +487,7 @@ test("le bandeau d'enregistrement au même coin que la pastille", async () => {
   const banner = () => page.host("verrou-pill")?.shadow?.querySelector(".banner");
   await eventually(banner, "bandeau");
   assert.match(banner().textContent, /Enregistrer dans Verrou \?/);
-  assert.equal(page.host("verrou-pill").style.getPropertyValue("left"), "16px");
+  assert.equal(page.host("verrou-pill").style.getPropertyValue("left"), "0");
   page.press("Enregistrer", false);
   await sleep(20);
   assert.equal(background.sent("confirmSave").length, 0, "clic inventé : rien");
