@@ -26,7 +26,8 @@ around a Rust core.
   linked fields are shown and kept) for every type. The rest of an item
   (passkeys, attachments) is kept intact, the old password goes to the item's
   history, and a change made elsewhere in the meantime is never overwritten.
-  Trash can be restored from the web vault.
+  Trash can be restored from the web vault. Saving never waits for the
+  server (see *Local-first writes* below).
 - **Templates**: *Nouvel élément* also offers software license, Wi-Fi
   network, bank account, passport, driver's license, ID card, server,
   database, API key and membership. Bitwarden has no such types, so each one
@@ -42,11 +43,11 @@ around a Rust core.
   focused), Escape goes back to one item. The detail column then offers
   archive/unarchive, trash/restore, favorites and *Déplacer vers un
   dossier…* for the whole selection (also in the toolbar and the context
-  menu of a selected row). Vaultwarden's bulk routes are used (one request
-  per 500 items, one sync at the end; favorites go one by one); read-only
-  shared items and items in the trash are skipped and counted, offline the
-  changes wait in the outbox like single ones, and trashing more than one
-  item asks first.
+  menu of a selected row). The change shows at once and goes through the
+  outbox like single ones; sending uses Vaultwarden's bulk routes (one
+  request per 500 items, one sync at the end; favorites go one by one);
+  read-only shared items and items in the trash are skipped and counted, and
+  trashing more than one item asks first.
 - **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one
@@ -170,20 +171,35 @@ around a Rust core.
   on the item; 100 MB per file. File → *Nouveau document…* stores a file as
   a secure note named after it. Attachments are downloaded on demand, never
   cached: opening one needs the network.
+- **Local-first writes**: creating, editing, favorites, moving to a folder,
+  trash and restore, archives, bulk actions, and logins saved from Brave or
+  Firefox are encrypted by the SDK, put in an encrypted queue in the account
+  folder (the outbox) and applied to the displayed vault at once: the editor
+  closes, the list and the toast (*Enregistré*) update without waiting for
+  the server (the Rust core takes about 25 ms on a 900-item vault, whatever
+  the latency). The
+  queue is then sent in the background, in order, followed by a sync; the
+  extension gets its answer as soon as the login is queued. Until the server
+  confirms, the item shows *En attente de synchronisation*. A new item gets a
+  temporary id, replaced by the server's (the selection follows). If the
+  server refuses a change (not a network error), it is removed from the
+  queue, the displayed vault goes back to the server's version, and a toast
+  gives the reason. Syncs never block the window: network and decryption
+  run in Rust off the main thread, concurrent requests are merged (one
+  running, one queued), and the new list is published in one go without
+  touching the selection, the search or an open editor. Passkeys saved from
+  the browser and their counters still reach the server before the site gets
+  its answer.
 - **Offline**: the vault stays available without network, decrypted from the
   cache (the server's response, still encrypted). Edits keep working too:
-  creating, editing, favorites, moving to a folder, trash and restore,
-  archives, and logins or passkeys saved from Brave are applied right away
-  and wait in an encrypted queue in the account folder (they survive locking
-  and quitting). Waiting items show *En attente de synchronisation*, the
+  they wait in the same queue (they survive locking and quitting). The
   sidebar footer counts *N modifications en attente*, and Verrou retries
-  every 30 seconds. On reconnection (next sync, ⌘R or the next edit) the
-  queue is sent in order before the vault is downloaded; an item created
-  offline gets its server id. If an item changed elsewhere in the meantime,
-  both versions are kept: yours becomes a copy named *« … (conflit hors
-  ligne) »*. Attachments, sharing to a shared vault, Sends, emergency access
-  and import need the server and say so. Signing out discards the queue
-  (the confirmation says how many changes would be lost).
+  every 30 seconds. On reconnection (next sync or ⌘R) the queue is sent in
+  order before the vault is downloaded. If an item changed elsewhere in the
+  meantime, both versions are kept: yours becomes a copy named *« … (conflit
+  hors ligne) »*. Attachments, sharing to a shared vault, Sends, emergency
+  access and import need the server and say so. Signing out discards the
+  queue (the confirmation says how many changes would be lost).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
   [SECURITY.md](../SECURITY.md)).
 - **YubiKey unlock**: the vault key is sealed by a secret that never leaves
@@ -673,7 +689,8 @@ cargo test --workspace                     # core, sign-in, bindings, bridge, CL
 cargo run -p verrou-cli -- --mock search github   # CLI on the mock vault
 
 # Tests against a real (throwaway) Vaultwarden: see the header of
-# crates/verrou-vaultwarden/tests/server.rs (organizations: tests/organizations.rs, offline edits: tests/offline.rs)
+# crates/verrou-vaultwarden/tests/server.rs (organizations: tests/organizations.rs, offline edits: tests/offline.rs,
+# local-first writes behind a slow link: tests/optimistic.rs)
 VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden
 # Members and invited sign-up on a sign-ups-closed server (with or without
 # e-mail, through a Mailpit inbox): see the header of tests/members.rs
@@ -744,6 +761,12 @@ that every broken screen is listed.
   times each unlock step on a real account (830 items unlock in about 12 ms).
 - App: timings of launch, Touch ID, unlock and sync are logged (durations only):
   `log stream --predicate 'subsystem == "app.verrou.mac" AND category == "perf"'`.
+  After a sync, the line *synchronisation appliquée* splits the reload into
+  the part read off the main thread and the part on it.
+- Writes: `VERROU_TEST_SERVER=… cargo test --release -p verrou-ffi --test latency -- --ignored --nocapture`
+  times saving, favoriting and creating on a 900-item vault, from the call to
+  the list showing the change, directly and with 300 ms added to every round
+  trip.
 
 ## Roadmap
 

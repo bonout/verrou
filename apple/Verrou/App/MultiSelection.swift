@@ -54,6 +54,23 @@ extension AppModel {
         if isMultiSelection != multi { isMultiSelection = multi }
     }
 
+    /// Un élément créé a reçu son identifiant du serveur : la sélection (et
+    /// l'ancre) passent de l'identifiant provisoire à celui-ci, sans
+    /// changer d'élément.
+    func resolveTemporaryIDs() {
+        let resolve = { (id: String) in self.session.resolveItemId(id: id) }
+        let focus = selection.map(resolve)
+        let ids = selectedIDs.map(resolve)
+        guard focus != selection || ids != selectedIDs else { return }
+        withoutAnimation {
+            applyingGesture = true
+            selection = focus
+            applyingGesture = false
+            setSelected(ids)
+            selectionAnchor = selectionAnchor.map(resolve)
+        }
+    }
+
     /// Les résultats ont changé (recherche, filtre, écriture) : on oublie
     /// les éléments qui ne sont plus affichés.
     func pruneSelection() {
@@ -129,6 +146,7 @@ extension AppModel {
                                                       progress: BulkProgressRelay(model: self))
             Perf.log.notice("action groupée (\(ids.count) éléments) : \(Perf.ms(since: start)) ms")
             afterWrite(select: nil)
+            pushChanges()
             // Les éléments archivés, mis à la corbeille ou restaurés
             // quittent la liste : la sélection suit les résultats.
             pruneSelection()
@@ -186,7 +204,7 @@ extension AppModel {
             return Toast(message: message + ", \(result.failures.count) refusé\(result.failures.count > 1 ? "s" : "")",
                          detail: result.failures.joined(separator: "\n"), failure: true, seconds: 5)
         }
-        let detail = result.queued > 0 ? "Hors ligne : synchronisé dès que le serveur répondra" : nil
+        let detail = result.queued > 0 && syncState == .offline ? "Hors ligne : synchronisé dès que le serveur répondra" : nil
         return Toast(message: message, detail: detail, seconds: ignored.isEmpty ? 2.2 : 4)
     }
 }

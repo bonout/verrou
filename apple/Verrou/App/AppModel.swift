@@ -225,6 +225,12 @@ final class AppModel {
     /// parcours scriptés, qui n'ont personne pour toucher le capteur).
     private let autoTouchID: Bool
     private var syncLoop: Task<Void, Never>?
+    /// Synchronisations demandées et pas encore finies (le cœur Rust les
+    /// regroupe : une en cours, une après).
+    @ObservationIgnored private var syncsInFlight = 0
+    /// Incrémenté à chaque rechargement de la liste : un rechargement lu
+    /// hors du fil principal et dépassé entre-temps n'est pas publié.
+    @ObservationIgnored private var reloads = 0
 
     /// Préférence : proposer Touch ID après un déverrouillage par mot de passe.
     var touchIDWanted: Bool {
@@ -577,7 +583,16 @@ final class AppModel {
         }
     }
 
-    private func reloadVault() {
+    /// Ce que le rechargement lit du cœur Rust, lu hors du fil principal
+    /// après une synchronisation (`reloadVaultAfterSync`).
+    private struct LoadedVault: @unchecked Sendable {
+        let summaries: [ItemSummary]
+        let counts: SidebarCounts?
+        let organizations: [OrganizationView]
+    }
+
+    private func reloadVault(_ loaded: LoadedVault? = nil) {
+        reloads += 1
         if showAudit {
             audit = try? session.audit()
             watchtower.refresh(session, network: mode == .vaultwarden)
@@ -587,20 +602,36 @@ final class AppModel {
         if let known = breaches { breaches = session.stillBreached(breaches: known) }
         let start = ContinuousClock.now
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
-        summaries = (try? session.summaries()) ?? []
+        summaries = loaded?.summaries ?? (try? session.summaries()) ?? []
         summaryIndex = Dictionary(summaries.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
-        counts = try? session.counts()
-        organizations = session.organizations()
+        counts = loaded.map(\.counts) ?? (try? session.counts())
+        organizations = loaded?.organizations ?? session.organizations()
         refreshPending()
-        // Un élément créé hors ligne a reçu son identifiant du serveur.
-        if let current = selection {
-            let resolved = session.resolveItemId(id: current)
-            if resolved != current { selection = resolved }
-        }
+        // Un élément créé a reçu son identifiant du serveur : la sélection suit.
+        resolveTemporaryIDs()
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
             selection = results.first?.id
         }
+    }
+
+    /// Après une synchronisation : les résumés (plusieurs centaines) sont lus
+    /// hors du fil principal, puis publiés d'un coup ; la sélection, la
+    /// recherche, le défilement et l'éditeur ouvert restent.
+    private func reloadVaultAfterSync() async {
+        let session = session
+        let generation = reloads
+        let start = ContinuousClock.now
+        let loaded = await Task.detached(priority: .userInitiated) {
+            LoadedVault(summaries: (try? session.summaries()) ?? [], counts: try? session.counts(),
+                        organizations: session.organizations())
+        }.value
+        // Verrouillé, ou une écriture a rechargé plus récent entre-temps.
+        guard lockState == .unlocked, generation == reloads else { return }
+        let read = Perf.ms(since: start)
+        let main = ContinuousClock.now
+        reloadVault(loaded)
+        Perf.log.notice("synchronisation appliquée (\(loaded.summaries.count) éléments) : lecture \(read) ms hors du fil principal, \(Perf.ms(since: main)) ms sur le fil principal")
     }
 
     func lock() {
@@ -644,36 +675,50 @@ final class AppModel {
 
     // MARK: Synchronisation
 
-    func syncNow() async {
-        guard mode == .vaultwarden, lockState == .unlocked, syncState != .syncing else { return }
+    /// Envoie en arrière-plan ce qui vient d'être écrit (voir `outbox.rs`),
+    /// puis synchronise : l'interface n'attend pas le serveur.
+    func pushChanges() {
+        guard mode == .vaultwarden else { return }
+        Task { await syncNow(afterWrite: true) }
+    }
+
+    /// `afterWrite` : juste après une écriture ; hors ligne il y a peu, le
+    /// cœur ne retente pas tout de suite (la synchronisation périodique s'en
+    /// charge). Les demandes simultanées sont regroupées par le cœur Rust.
+    func syncNow(afterWrite: Bool = false) async {
+        guard mode == .vaultwarden, lockState == .unlocked else { return }
+        syncsInFlight += 1
         syncState = .syncing
-        // Les modifications hors ligne partent avant la lecture du coffre :
-        // leur bilan (conflits, refus) s'affiche après coup, réussite ou non.
+        var result: SyncState = .idle
+        // La file part avant la lecture du coffre : son bilan (conflits,
+        // refus) s'affiche après coup, réussite ou non.
         defer {
+            syncsInFlight -= 1
+            // Une autre synchronisation suit : c'est elle qui dira l'état.
+            if syncsInFlight == 0, lockState == .unlocked { syncState = result }
             refreshPending()
             Task { await self.showSyncReport() }
         }
         do {
-            let outcome = try await Perf.measure("synchronisation (réseau + déchiffrement)") {
-                try await session.sync()
+            let outcome = try await Perf.measure("synchronisation (réseau + déchiffrement, hors du fil principal)") {
+                try await afterWrite ? session.pushChanges() : session.sync()
             }
             guard lockState == .unlocked else { return }
             account = session.account()
-            syncState = .idle
             // Rien de nouveau : la liste affichée est à jour, on n'y touche pas.
             guard outcome.changed else { return }
-            reloadVault()
-            if outcome.failures > 0 { syncState = .failed("\(outcome.failures) élément(s) illisible(s)") }
+            await reloadVaultAfterSync()
+            if outcome.failures > 0 { result = .failed("\(outcome.failures) élément(s) illisible(s)") }
         } catch VerrouError.Locked {
-            syncState = .idle
+            result = .idle
         } catch VerrouError.SessionExpired {
-            syncState = .failed("Session expirée")
+            result = .failed("Session expirée")
             reloginRequired = true
             lock()
         } catch VerrouError.Network {
-            syncState = .offline
+            result = .offline
         } catch {
-            syncState = .failed(Self.describe(error))
+            result = .failed(Self.describe(error))
         }
     }
 
@@ -689,9 +734,10 @@ final class AppModel {
         return pendingChanges == 1 ? "1 modification en attente" : "\(pendingChanges) modifications en attente"
     }
 
-    /// Toast d'une écriture d'élément : hors ligne, elle attend le serveur.
+    /// Toast d'une écriture d'élément, aussitôt écrite (l'envoi suit en
+    /// arrière-plan) ; hors ligne, elle attend le serveur.
     func writeToast(_ message: String, detail: String? = nil) -> Toast {
-        guard pendingChanges > 0 else { return Toast(message: message, detail: detail) }
+        guard syncState == .offline else { return Toast(message: message, detail: detail) }
         return Toast(message: message, detail: "Hors ligne : synchronisé dès que le serveur répondra")
     }
 
@@ -706,8 +752,10 @@ final class AppModel {
                                               : "\(count) conflits : versions locales gardées en copie",
                           detail: report.conflicts.map { "« \($0) »" }.joined(separator: ", "), failure: true)
         } else if !report.rejected.isEmpty {
-            toast = Toast(message: "Modification hors ligne refusée par le serveur",
-                          detail: report.rejected.joined(separator: "\n"), failure: true)
+            // Retirée de la file : le coffre affiché est revenu à la version du serveur.
+            toast = Toast(message: report.rejected.count == 1 ? "Modification refusée par le serveur, annulée"
+                                                              : "\(report.rejected.count) modifications refusées par le serveur, annulées",
+                          detail: report.rejected.joined(separator: "\n"), failure: true, seconds: 6)
         } else if report.sent > 0 {
             toast = Toast(message: report.sent == 1 ? "Modification hors ligne synchronisée"
                                                     : "\(report.sent) modifications hors ligne synchronisées",
@@ -994,9 +1042,11 @@ final class AppModel {
             } else {
                 id = try await session.createItem(draft: draft)
             }
+            // Écrit localement : la feuille se ferme tout de suite, l'envoi suit.
             afterWrite(select: id)
             self.editor = nil
-            toast = writeToast(editor.itemID == nil ? "Élément créé" : "Modifications enregistrées")
+            toast = writeToast(editor.itemID == nil ? "Élément créé" : "Enregistré")
+            pushChanges()
         } catch VerrouError.Conflict {
             editorError = "L'élément a changé ailleurs entre-temps. Verrou vient de le recharger : rouvrez-le pour refaire la modification."
             await syncNow()
@@ -1015,6 +1065,7 @@ final class AppModel {
             editor = nil
             afterWrite(select: nil)
             toast = writeToast("Mis à la corbeille", detail: "Restaurable depuis le coffre web")
+            pushChanges()
         } catch {
             editorError = Self.describe(error)
             toast = Toast(message: "Corbeille impossible", detail: Self.describe(error), failure: true)
@@ -1022,11 +1073,13 @@ final class AppModel {
     }
 
     /// L'extension a enregistré un identifiant ou un code : le cœur Rust a
-    /// déjà remplacé le coffre, on recharge l'affichage sans changer de sélection.
+    /// déjà remplacé le coffre (et répondu à l'extension), on recharge
+    /// l'affichage sans changer de sélection, puis on envoie.
     func didSaveFromBrowser(title: String) {
         guard lockState == .unlocked else { return }
         afterWrite(select: selection)
         toast = writeToast("Enregistré depuis le navigateur", detail: title.isEmpty ? nil : title)
+        pushChanges()
     }
 
     // MARK: Rangement
@@ -1062,13 +1115,15 @@ final class AppModel {
             try await action()
             afterWrite(select: select)
             toast = writeToast(done, detail: detail)
+            pushChanges()
         } catch {
             toast = Toast(message: "Action impossible", detail: Self.describe(error), failure: true)
         }
     }
 
-    /// Le coffre a été resynchronisé (ou, hors ligne, la modification
-    /// attend le serveur) : on recharge.
+    /// Une écriture vient de changer le coffre affiché (la modification
+    /// attend le serveur, ou une écriture directe l'a resynchronisé) : on
+    /// recharge.
     func afterWrite(select id: String?) {
         guard lockState == .unlocked else { return }
         account = session.account()

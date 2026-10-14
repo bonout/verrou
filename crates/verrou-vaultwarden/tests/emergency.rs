@@ -100,6 +100,8 @@ async fn fill(camille: &mut Connection) {
         .await
         .unwrap();
     camille.trash(&trashed).await.unwrap();
+    // Les écritures partent en arrière-plan : ici, tout de suite.
+    camille.sync().await.unwrap();
 }
 
 #[tokio::test]

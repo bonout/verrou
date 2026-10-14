@@ -32,6 +32,8 @@ bitwarden-core.workspace = true
 bitwarden-crypto.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
+# Mesure de latence (`tests/latency.rs`) : un mandataire TCP qui retarde.
+tokio = { workspace = true, features = ["net", "time", "io-util"] }
 uuid.workspace = true
 
 [lints]

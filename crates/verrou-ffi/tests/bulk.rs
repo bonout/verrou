@@ -102,8 +102,14 @@ async fn bulk_actions_through_the_app_interface() {
     for name in ["Banque", "GitHub", "Impôts"] {
         ids.push(session.create_item(draft(name)).await.unwrap());
     }
+    // Ce que fait l'app après une écriture : l'envoi, en arrière-plan.
+    assert!(session.push_changes().await.unwrap().changed);
+    let ids: Vec<String> = ids
+        .into_iter()
+        .map(|id| session.resolve_item_id(id))
+        .collect();
 
-    // Favoris : un élément à la fois, avancement signalé à chacun.
+    // Favoris : appliqués tout de suite, avancement signalé à chacun.
     let steps = Arc::new(Steps::default());
     let outcome = session
         .bulk_action(
@@ -113,7 +119,14 @@ async fn bulk_actions_through_the_app_interface() {
         )
         .await
         .unwrap();
-    assert_eq!((outcome.done, outcome.queued), (3, 0));
+    assert_eq!((outcome.done, outcome.queued), (3, 3));
+    assert!(
+        session
+            .summaries()
+            .unwrap()
+            .iter()
+            .all(|s| s.favorite && s.pending_sync)
+    );
     assert_eq!(*steps.0.lock().unwrap(), [(1, 3), (2, 3), (3, 3)]);
 
     let folder = session.create_folder("Papiers".to_owned()).await.unwrap();
@@ -140,6 +153,9 @@ async fn bulk_actions_through_the_app_interface() {
         .unwrap();
     assert_eq!((outcome.done, outcome.in_trash), (2, 1));
     assert_eq!(outcome.failures, Vec::<String>::new());
+    session.push_changes().await.unwrap();
+    let report = session.take_sync_report().await;
+    assert!(report.rejected.is_empty() && report.conflicts.is_empty());
 
     let summaries = session.summaries().unwrap();
     let get = |id: &str| summaries.iter().find(|s| s.id == id).unwrap();

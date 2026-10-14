@@ -43,6 +43,8 @@ impl Connection {
         username: Option<String>,
         passkey: &Passkey,
     ) -> Result<(String, Decrypted), Error> {
+        // Sur le serveur avant de répondre au site (en ligne) : une passkey
+        // que le site enregistre doit exister dans le coffre.
         let access = self.online().await?;
         let item = item.map(|id| self.resolve(id));
         let mut view = if let Some(id) = &item {
@@ -103,7 +105,6 @@ impl Connection {
         item: &str,
         credential_id: &str,
     ) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let item = self.resolve(item);
         let mut view = self.editable_view(&item).await?;
         let list = view
@@ -119,6 +120,6 @@ impl Connection {
         if list.is_empty() {
             view.login.as_mut().map(|l| l.fido2_credentials.take());
         }
-        Ok(self.save_cipher(Some(&item), view, access).await?.1)
+        Ok(self.queue_save(Some(&item), view).await?.1)
     }
 }

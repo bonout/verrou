@@ -10,9 +10,10 @@
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
 //! d'un autre gestionnaire, corbeille de plusieurs éléments ; actions
-//! groupées sur une sélection (`bulk`) ; fusion de doublons (`merge`). Hors ligne
-//! (`outbox`), les écritures d'éléments attendent le serveur dans une file
-//! chiffrée, déjà appliquée au coffre affiché.
+//! groupées sur une sélection (`bulk`) ; fusion de doublons (`merge`). Les
+//! écritures d'éléments passent par une file chiffrée (`outbox`), appliquée
+//! tout de suite au coffre affiché puis envoyée en arrière-plan
+//! (`sync_shared`), ou au retour du réseau.
 //!
 //! Accès d'urgence (`emergency`) : confier son coffre à un proche, ou
 //! ouvrir en lecture seule celui qu'un proche nous a confié.
@@ -72,7 +73,7 @@ pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
 pub use merge::{MergeOutcome, MergeSummary};
 pub use organizations::{Collection, Organization};
-pub use outbox::{CONFLICT_SUFFIX, SyncReport};
+pub use outbox::{CONFLICT_SUFFIX, Closer, SyncReport, Synced, sync_shared};
 pub use store::{Account, KdfSettings, Store};
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
@@ -97,6 +98,10 @@ pub struct Decrypted {
     /// Éléments créés hors ligne puis envoyés : (identifiant provisoire,
     /// identifiant du serveur), depuis l'ouverture du coffre.
     pub remapped: Vec<(String, String)>,
+    /// État de la connexion (file et cache) dont ce coffre est l'image :
+    /// croissant. Un coffre plus ancien que celui affiché ne le remplace pas
+    /// (une synchronisation finie après une écriture locale).
+    pub version: u64,
 }
 
 /// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
@@ -115,6 +120,12 @@ pub struct Connection {
     report: SyncReport,
     /// Identifiants provisoires des éléments créés hors ligne → serveur.
     remapped: outbox::Remapped,
+    /// Envois en arrière-plan (`sync_shared`), partagés hors du verrou.
+    courier: std::sync::Arc<outbox::Courier>,
+    /// Synchronisations enregistrées comme cache.
+    generation: u64,
+    /// Changements de la file ou du cache (voir `Decrypted::version`).
+    version: u64,
 }
 
 pub struct Unlocked {
@@ -274,16 +285,8 @@ impl PendingLogin {
         // Une reconnexion (session expirée) garde les modifications faites
         // hors ligne : elles partent à la synchronisation suivante.
         let outbox = outbox::load(&self.store, &account.user_id, &sdk);
-        let connection = Connection {
-            api: self.api.clone(),
-            sdk,
-            store: self.store.clone(),
-            account,
-            outbox,
-            offline_at: None,
-            report: SyncReport::default(),
-            remapped: outbox::Remapped::new(),
-        };
+        let connection =
+            Connection::new(self.api.clone(), sdk, self.store.clone(), account, outbox);
         let vault = connection.decrypt_cache().await?;
         Ok(Unlocked { connection, vault })
     }
@@ -370,28 +373,60 @@ pub fn logout(store: &Store) -> Result<(), Error> {
 
 async fn open(store: &Store, account: Account, sdk: Client) -> Result<Unlocked, Error> {
     let outbox = outbox::load(store, &account.user_id, &sdk);
-    let connection = Connection {
-        api: Api::new(&account.server)?,
+    let connection = Connection::new(
+        Api::new(&account.server)?,
         sdk,
-        store: store.clone(),
+        store.clone(),
         account,
         outbox,
-        offline_at: None,
-        report: SyncReport::default(),
-        remapped: outbox::Remapped::new(),
-    };
+    );
     let vault = connection.decrypt_cache().await?;
     Ok(Unlocked { connection, vault })
 }
 
 impl Connection {
+    fn new(api: Api, sdk: Client, store: Store, account: Account, outbox: outbox::Outbox) -> Self {
+        Self {
+            api,
+            sdk,
+            store,
+            account,
+            outbox,
+            offline_at: None,
+            report: SyncReport::default(),
+            remapped: outbox::Remapped::new(),
+            courier: std::sync::Arc::default(),
+            generation: 0,
+            version: 0,
+        }
+    }
+
+    /// Une copie de l'état à déchiffrer hors du verrou de la connexion
+    /// (même SDK, donc mêmes clés).
+    pub(crate) fn snapshot(&self) -> Self {
+        Self {
+            api: self.api.clone(),
+            sdk: self.sdk.clone(),
+            store: self.store.clone(),
+            account: self.account.clone(),
+            outbox: self.outbox.clone(),
+            offline_at: self.offline_at,
+            report: SyncReport::default(),
+            remapped: self.remapped.clone(),
+            courier: std::sync::Arc::clone(&self.courier),
+            generation: self.generation,
+            version: self.version,
+        }
+    }
+
     pub fn account(&self) -> &Account {
         &self.account
     }
 
-    /// Renouvelle le jeton d'accès, envoie les modifications faites hors
-    /// ligne (bilan : `take_report`), télécharge le coffre, l'enregistre
-    /// comme cache et le déchiffre. `None` : rien n'a changé depuis le cache,
+    /// Renouvelle le jeton d'accès, envoie la file (bilan :
+    /// `take_report`), télécharge le coffre, l'enregistre comme cache et le
+    /// déchiffre, le tout sous `&mut self` (l'app passe par `sync_shared`,
+    /// qui ne garde pas la connexion pendant le réseau). `None` : rien n'a changé depuis le cache,
     /// le coffre déjà déchiffré reste valable (le cas courant : pas de
     /// déchiffrement ni de rechargement de l'affichage pour rien).
     pub async fn sync(&mut self) -> Result<Option<Decrypted>, Error> {
@@ -425,6 +460,8 @@ impl Connection {
     /// Enregistre une synchronisation comme cache ; ce que la file avait
     /// envoyé y figure désormais. Rend `true` si rien n'a changé.
     fn store_sync(&mut self, sync_json: String) -> Result<bool, Error> {
+        self.generation += 1;
+        self.version += 1;
         let unchanged = self.account.sync.as_deref() == Some(sync_json.as_str());
         self.account.sync = Some(sync_json);
         self.account.synced_at = Some(now());
@@ -438,21 +475,33 @@ impl Connection {
     /// Jeton d'accès neuf, obtenu par le jeton de renouvellement (enregistré
     /// aussitôt si le serveur en donne un nouveau).
     async fn access_token(&mut self) -> Result<String, Error> {
-        let refresh = self
-            .sdk
+        let refresh = self.refresh_token()?;
+        let tokens = self.api.refresh(refresh.expose()).await?;
+        self.keep_refresh_token(&refresh, tokens.refresh)?;
+        Ok(tokens.access)
+    }
+
+    /// Le jeton de renouvellement, déchiffré par la clé de l'utilisateur.
+    fn refresh_token(&self) -> Result<SecretString, Error> {
+        self.sdk
             .crypto()
             .decrypt_with_local_user_data_key(self.account.refresh_token.clone())
-            .map_err(Error::crypto)?;
-        let tokens = self.api.refresh(&refresh).await?;
-        if tokens.refresh != refresh {
-            self.account.refresh_token = self
-                .sdk
-                .crypto()
-                .encrypt_with_local_user_data_key(tokens.refresh)
-                .map_err(Error::crypto)?;
-            self.store.save_account(&self.account)?;
+            .map(SecretString::new)
+            .map_err(Error::crypto)
+    }
+
+    /// Enregistre le jeton de renouvellement que le serveur vient de donner,
+    /// s'il a changé.
+    fn keep_refresh_token(&mut self, previous: &SecretString, fresh: String) -> Result<(), Error> {
+        if fresh == previous.expose() {
+            return Ok(());
         }
-        Ok(tokens.access)
+        self.account.refresh_token = self
+            .sdk
+            .crypto()
+            .encrypt_with_local_user_data_key(fresh)
+            .map_err(Error::crypto)?;
+        self.store.save_account(&self.account)
     }
 
     async fn sync_with(&mut self, access: &str) -> Result<Decrypted, Error> {
@@ -530,6 +579,7 @@ impl Connection {
                 .iter()
                 .map(|(from, to)| (from.clone(), to.clone()))
                 .collect(),
+            version: self.version,
         })
     }
 

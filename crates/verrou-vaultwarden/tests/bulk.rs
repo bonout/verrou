@@ -144,12 +144,35 @@ async fn bulk(
     (outcome, steps.into_inner().unwrap())
 }
 
+/// Quatre éléments, envoyés : leurs identifiants sur le serveur.
 async fn four_items(connection: &mut Connection) -> [String; 4] {
     let mut ids = Vec::new();
     for name in ["Banque", "GitHub", "Impôts", "Mutuelle"] {
         ids.push(connection.create(login_draft(name, "x")).await.unwrap().0);
     }
-    ids.try_into().unwrap()
+    sent(connection).await;
+    ids.iter()
+        .map(|id| connection.resolve(id))
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap()
+}
+
+/// Envoie la file (ce que fait l'app juste après une écriture) : tout part,
+/// rien n'est refusé.
+async fn sent(connection: &mut Connection) -> Decrypted {
+    let vault = connection
+        .sync()
+        .await
+        .unwrap()
+        .expect("la file est partie");
+    let report = connection.take_report();
+    assert!(
+        report.conflicts.is_empty() && report.rejected.is_empty(),
+        "{report:?}"
+    );
+    assert_eq!(vault.pending_changes, 0);
+    vault
 }
 
 #[tokio::test]
@@ -160,22 +183,26 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
     let (mut connection, _) = sign_in(&store, &server, &email).await;
     let [a, b, c, d] = four_items(&mut connection).await;
 
-    // Archiver trois éléments : une requête, une synchronisation.
+    // Archiver trois éléments : tout de suite dans le coffre affiché, puis
+    // une requête et une synchronisation.
     let (outcome, steps) = bulk(&mut connection, &[&a, &b, &c, &b], BulkAction::Archive).await;
     assert_eq!(outcome.done, 3, "le doublon ne compte qu'une fois");
     assert!(outcome.skipped.is_empty() && outcome.failed.is_empty());
-    assert_eq!(outcome.queued, 0);
+    assert_eq!(outcome.queued, 3);
     assert_eq!(steps.last(), Some(&(3, 3)));
     for id in [&a, &b, &c] {
         assert_eq!(state(&outcome.vault, id), ItemState::Archived);
     }
     assert_eq!(state(&outcome.vault, &d), ItemState::Active);
+    let vault = sent(&mut connection).await;
+    assert_eq!(state(&vault, &b), ItemState::Archived);
 
     // Sortir des archives : déjà actif, `d` compte comme fait sans requête.
     let (outcome, _) = bulk(&mut connection, &[&a, &d], BulkAction::Unarchive).await;
-    assert_eq!(outcome.done, 2);
+    assert_eq!((outcome.done, outcome.queued), (2, 1));
     assert_eq!(state(&outcome.vault, &a), ItemState::Active);
     assert_eq!(state(&outcome.vault, &b), ItemState::Archived);
+    sent(&mut connection).await;
 
     // Favoris : un élément à la fois (pas de route groupée).
     let (outcome, steps) = bulk(&mut connection, &[&a, &c, &d], BulkAction::Favorite(true)).await;
@@ -186,6 +213,7 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
             .iter()
             .all(|id| item(&outcome.vault, id).favorite)
     );
+    sent(&mut connection).await;
 
     // Dossier : créé, puis trois éléments rangés en une requête.
     let (folder, _) = connection.create_folder(" Administratif ").await.unwrap();
@@ -202,8 +230,11 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
             Some("Administratif")
         );
     }
+    let vault = sent(&mut connection).await;
+    assert_eq!(item(&vault, &b).folder.as_deref(), Some("Administratif"));
     let (outcome, _) = bulk(&mut connection, &[&c], BulkAction::MoveToFolder(None)).await;
     assert_eq!(item(&outcome.vault, &c).folder, None);
+    sent(&mut connection).await;
     let unknown = connection
         .bulk(
             std::slice::from_ref(&a),
@@ -218,6 +249,7 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
     assert_eq!(outcome.done, 2);
     assert_eq!(state(&outcome.vault, &a), ItemState::Trashed);
     assert_eq!(state(&outcome.vault, &b), ItemState::Trashed);
+    sent(&mut connection).await;
     let gone = uuid::Uuid::new_v4().to_string();
     let (outcome, _) = bulk(&mut connection, &[&a, &c, &gone], BulkAction::Archive).await;
     assert_eq!(outcome.done, 1);
@@ -229,12 +261,15 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
         ]
     );
     assert_eq!(state(&outcome.vault, &c), ItemState::Archived);
+    assert_eq!(outcome.queued, 0, "déjà archivé : rien à envoyer");
 
     // Restaurer les deux en une requête.
     let (outcome, _) = bulk(&mut connection, &[&a, &b], BulkAction::Restore).await;
     assert_eq!(outcome.done, 2);
     assert_ne!(state(&outcome.vault, &a), ItemState::Trashed);
     assert_ne!(state(&outcome.vault, &b), ItemState::Trashed);
+    let vault = sent(&mut connection).await;
+    assert_ne!(state(&vault, &b), ItemState::Trashed);
 
     // Un autre appareil voit le même coffre.
     let other = temp_store();
@@ -273,8 +308,8 @@ async fn offline_bulk_actions_wait_in_the_outbox_then_reach_the_server() {
     assert!(item(&outcome.vault, &c).favorite, "les deux modifications");
     let (outcome, _) = bulk(&mut offline, &[&d], BulkAction::Trash).await;
     assert_eq!(state(&outcome.vault, &d), ItemState::Trashed);
-    // c : favori et dossier ne font qu'une modification.
-    assert_eq!(offline.pending_changes(), 5);
+    // Archives (2), favoris (2), dossier, corbeille.
+    assert_eq!(offline.pending_changes(), 6);
     let file = std::fs::read_to_string(store.dir().join("outbox.json")).unwrap();
     assert!(!file.contains("Mutuelle") && !file.contains("Impôts"));
     drop(offline);
@@ -282,7 +317,7 @@ async fn offline_bulk_actions_wait_in_the_outbox_then_reach_the_server() {
     let (mut reconnected, _) = reopen(&store, &server).await;
     let vault = reconnected.sync().await.unwrap().unwrap();
     let report = reconnected.take_report();
-    assert_eq!(report.sent, 5);
+    assert_eq!(report.sent, 6);
     assert!(report.conflicts.is_empty() && report.rejected.is_empty());
     assert_eq!(vault.pending_changes, 0);
 

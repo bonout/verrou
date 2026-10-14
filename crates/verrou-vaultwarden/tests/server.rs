@@ -326,6 +326,20 @@ impl Seeder {
     }
 }
 
+/// Envoie la file, comme l'app juste après une écriture (sans attendre en
+/// arrière-plan) : rien n'est refusé. Rend l'identifiant de `id` sur le
+/// serveur (une création porte d'abord un identifiant provisoire).
+async fn sent(connection: &mut verrou_vaultwarden::Connection, id: &str) -> String {
+    connection.sync().await.unwrap();
+    let report = connection.take_report();
+    assert!(
+        report.rejected.is_empty() && report.conflicts.is_empty(),
+        "{report:?}"
+    );
+    assert_eq!(connection.pending_changes(), 0);
+    connection.resolve(id)
+}
+
 fn unlocked(step: LoginStep) -> verrou_vaultwarden::Unlocked {
     match step {
         LoginStep::Unlocked(unlocked) => *unlocked,
@@ -823,6 +837,7 @@ async fn create_login_and_note(
         .unwrap();
     let note = vault.items.iter().find(|i| i.id == note).unwrap();
     assert_eq!(note.kind, ItemKind::SecureNote);
+    let id = sent(connection, &id).await;
     (id, vault)
 }
 
@@ -878,19 +893,15 @@ async fn create_edit_and_trash() {
         github.fields.iter().any(|f| f.label == "PIN"),
         "champs personnalisés gardés"
     );
+    sent(&mut connection, &github_id).await;
     let stored = seeder.fetch(&github_id).await;
     let history = stored.password_history.unwrap();
     assert_eq!(history.len(), 1);
     assert_eq!(history[0].password, "hunter2-hunter2");
     assert!(stored.login.unwrap().password_revision_date.is_some());
 
-    // Une copie périmée ne peut pas écraser la modification.
-    assert!(matches!(
-        stale.update(&github_id, draft).await,
-        Err(Error::Conflict)
-    ));
-    let refreshed = stale.sync().await.unwrap().expect("le serveur a changé");
-    assert!(refreshed.items.iter().any(|i| i.title == "GitHub perso"));
+    stale_edit_becomes_a_copy(&mut stale, &github_id, draft).await;
+    connection.sync().await.unwrap();
 
     amend_like_the_extension(&mut connection, &seeder, &github_id).await;
     link_to_a_mac_app(&mut connection, &seeder, &github_id).await;
@@ -926,6 +937,7 @@ async fn create_edit_and_trash() {
         vault.items.iter().find(|i| i.id == id).map(|i| i.state),
         Some(ItemState::Trashed)
     );
+    sent(&mut connection, &id).await;
     assert!(seeder.fetch(&id).await.deleted_date.is_some());
     assert!(matches!(
         connection.draft(&id).await,
@@ -935,6 +947,26 @@ async fn create_edit_and_trash() {
     archive_restore_and_favorite(&mut connection, &id, &github_id).await;
 
     std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Une copie périmée ne peut pas écraser la modification : elle devient
+/// une copie, la version du serveur reste.
+async fn stale_edit_becomes_a_copy(
+    stale: &mut verrou_vaultwarden::Connection,
+    github_id: &str,
+    mut draft: Draft,
+) {
+    "GitHub ailleurs".clone_into(&mut draft.name);
+    stale.update(github_id, draft).await.unwrap();
+    let refreshed = stale.sync().await.unwrap().expect("le serveur a changé");
+    assert_eq!(
+        stale.take_report().conflicts,
+        [format!(
+            "GitHub ailleurs{}",
+            verrou_vaultwarden::CONFLICT_SUFFIX
+        )]
+    );
+    assert!(refreshed.items.iter().any(|i| i.title == "GitHub perso"));
 }
 
 /// Ce que l'extension écrit : nouveau mot de passe et graine TOTP d'un
@@ -971,6 +1003,7 @@ async fn amend_like_the_extension(
             .expose(),
         "camille"
     );
+    sent(connection, github_id).await;
     let stored = seeder.fetch(github_id).await;
     assert_eq!(
         stored.password_history.unwrap()[0].password,
@@ -1006,6 +1039,7 @@ async fn link_to_a_mac_app(
         "com.github.githubclient"
     ));
     assert_eq!(github.primary_host().as_deref(), Some("github.com"));
+    sent(connection, github_id).await;
     let stored = seeder.fetch(github_id).await;
     let uris = stored.login.unwrap().uris.unwrap();
     let app = uris
@@ -1033,7 +1067,13 @@ async fn archive_restore_and_favorite(
     let vault = connection.set_archived(github_id, true).await.unwrap();
     assert_eq!(state(&vault, github_id), Some(ItemState::Archived));
     let index = verrou_core::Vault::new(vault.items);
-    assert_eq!(index.suggestions_for("https://github.com").len(), 0);
+    // (La copie de conflit faite plus haut reste proposée.)
+    assert!(
+        index
+            .suggestions_for("https://github.com")
+            .iter()
+            .all(|i| i.id != github_id)
+    );
     let vault = connection.set_archived(github_id, false).await.unwrap();
     assert_eq!(state(&vault, github_id), Some(ItemState::Active));
 
@@ -1054,6 +1094,8 @@ async fn archive_restore_and_favorite(
             .expose(),
         "depuis-brave"
     );
+    // Restauration, archives aller-retour et favori : acceptés dans l'ordre.
+    sent(connection, github_id).await;
 }
 
 /// Modèle Wi-Fi et champs personnalisés : le champ `verrou:type` part au
@@ -1092,6 +1134,7 @@ async fn templates_and_custom_fields() {
         .unwrap();
     let wifi = vault.items.iter().find(|i| i.id == id).unwrap();
     assert_eq!(wifi.kind, ItemKind::SecureNote);
+    let id = sent(&mut connection, &id).await;
     assert_eq!(wifi.template(), Some(verrou_core::Template::Wifi));
     assert_eq!(wifi.subtitle, "Martin-5G");
     let password = wifi.field_labelled("Mot de passe").unwrap();
@@ -1133,6 +1176,7 @@ async fn templates_and_custom_fields() {
         wifi.field_labelled("Réseau invité").unwrap().value.expose(),
         "Oui"
     );
+    sent(&mut connection, &id).await;
     let stored = seeder.fetch(&id).await;
     assert_eq!(stored.fields.unwrap().len(), 4);
     std::fs::remove_dir_all(store.dir()).unwrap();
@@ -1659,6 +1703,7 @@ async fn passkeys_round_trip_with_bitwarden() {
         .await
         .unwrap();
     assert!(vault.passkeys.iter().all(|p| p.item != github_id));
+    sent(connection, &github_id).await;
     let stored = seeder.fetch(&github_id).await;
     let login = stored.login.unwrap();
     assert!(login.fido2_credentials.is_none_or(|c| c.is_empty()));
@@ -1712,6 +1757,7 @@ async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
     assert_eq!(parsed.public_key().to_openssh().unwrap(), public_key);
 
     // Ce qu'un autre client Bitwarden lit sur le serveur.
+    let id = sent(&mut connection, &id).await;
     let stored = seeder.fetch(&id).await;
     assert_eq!(stored.r#type, CipherType::SshKey);
     assert!(stored.secure_note.is_none() && stored.login.is_none());

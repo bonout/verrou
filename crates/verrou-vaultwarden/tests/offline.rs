@@ -118,6 +118,16 @@ fn login_draft(name: &str, password: &str) -> Draft {
     }
 }
 
+/// Envoie la file, comme l'app juste après une écriture ; rend les
+/// identifiants du serveur de `ids` (créés sous un identifiant provisoire).
+async fn sent<const N: usize>(connection: &mut Connection, ids: [&str; N]) -> [String; N] {
+    connection.sync().await.unwrap();
+    let report = connection.take_report();
+    assert!(report.rejected.is_empty() && report.conflicts.is_empty());
+    assert_eq!(connection.pending_changes(), 0);
+    ids.map(|id| connection.resolve(id))
+}
+
 fn password(vault: &Decrypted, id: &str) -> String {
     vault
         .items
@@ -149,6 +159,7 @@ async fn offline_edits_wait_encrypted_then_reach_the_server() {
         })
         .await
         .unwrap();
+    let [github, notes] = sent(&mut online, [&github, &notes]).await;
     drop(online);
 
     // Hors ligne : modification, création, corbeille, favori.
@@ -259,6 +270,7 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     let store = temp_store();
     let (mut online, _) = sign_in(&store, &server, &email).await;
     let (bank, _) = online.create(login_draft("Banque", "avant")).await.unwrap();
+    let [bank] = sent(&mut online, [&bank]).await;
     drop(online);
     let other = temp_store();
     let (mut elsewhere, _) = sign_in(&other, &server, &email).await;
@@ -274,6 +286,7 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     let mut draft = elsewhere.draft(&bank).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("version-serveur"));
     elsewhere.update(&bank, draft).await.unwrap();
+    sent(&mut elsewhere, []).await;
 
     let (mut reconnected, _) = reopen(&store, &server).await;
     let vault = reconnected.sync().await.unwrap().unwrap();
@@ -302,10 +315,11 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     std::fs::remove_dir_all(other.dir()).unwrap();
 }
 
-/// Au retour du réseau, une écriture envoie d'abord la file : la création
-/// hors ligne reçoit son identifiant du serveur, la modification suit.
+/// Une création hors ligne modifiée avant d'être envoyée part en une
+/// fois, avec sa modification ; l'archive suit, sous l'identifiant du
+/// serveur.
 #[tokio::test]
-async fn the_next_write_sends_the_outbox_first() {
+async fn a_creation_edited_before_it_is_sent_goes_as_one() {
     let Some(server) = server() else { return };
     let email = register(&server).await;
     let store = temp_store();
@@ -326,13 +340,22 @@ async fn the_next_write_sends_the_outbox_first() {
     let mut draft = reconnected.draft(&temporary).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("glycine"));
     let vault = reconnected.update(&temporary, draft).await.unwrap();
+    assert_eq!(password(&vault, &temporary), "glycine", "tout de suite");
+    assert_eq!(
+        vault.pending_changes, 2,
+        "la création garde sa modification"
+    );
+
+    let vault = reconnected.sync().await.unwrap().unwrap();
     let id = reconnected.resolve(&temporary);
     assert_ne!(id, temporary);
     let item = vault.items.iter().find(|i| i.id == id).unwrap();
     assert_eq!(item.state, ItemState::Archived);
     assert_eq!(password(&vault, &id), "glycine");
     assert_eq!(vault.pending_changes, 0);
-    assert_eq!(reconnected.take_report().remapped, [(temporary, id)]);
+    let report = reconnected.take_report();
+    assert_eq!(report.remapped, [(temporary, id)]);
+    assert_eq!(report.sent, 2, "elles avaient attendu le serveur");
 
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
@@ -353,6 +376,7 @@ async fn merging_duplicates_offline_waits_then_reaches_the_server() {
     copy.notes = Some(SecretString::new("question secrète : Lilas"));
     copy.login.as_mut().unwrap().uris = vec!["https://login.exemple.fr/".to_owned()];
     let (other, _) = online.create(copy).await.unwrap();
+    let [kept, other] = sent(&mut online, [&kept, &other]).await;
     drop(online);
 
     let (mut offline, _) = reopen(&store, &dead_server()).await;

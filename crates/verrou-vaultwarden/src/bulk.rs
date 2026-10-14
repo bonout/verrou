@@ -2,18 +2,16 @@
 //! archivés, mis à la corbeille, restaurés, ajoutés aux favoris ou rangés
 //! dans un dossier d'un coup.
 //!
-//! Même chemin d'écriture qu'une action seule. Vaultwarden 1.37 a des
-//! routes groupées pour la corbeille (`PUT /api/ciphers/delete`), la
-//! restauration (`…/restore`), les archives (`…/archive`, `…/unarchive`)
-//! et les dossiers (`…/move`) : une requête par lot de 500. Il s'arrête au
-//! premier élément refusé : le lot est alors repris un par un, pour savoir
-//! lequel. Pas de route pour les favoris : un `PUT /api/ciphers/{id}` par
-//! élément, comme pour un seul (date de révision connue, conflit refusé).
-//! Une seule synchronisation à la fin, pas une par élément.
-//!
-//! Hors ligne (ou réseau perdu en route), le reste attend dans la file
-//! comme une action seule : corbeille et archives en actions, favoris et
-//! dossiers en modifications chiffrées (conflit géré au retour).
+//! Même chemin d'écriture qu'une action seule : chaque élément rejoint la
+//! file (`outbox`), appliquée tout de suite au coffre affiché, et l'envoi
+//! suit en arrière-plan. Il regroupe ce que Vaultwarden 1.37 sait faire en
+//! une requête : corbeille (`PUT /api/ciphers/delete`), restauration
+//! (`…/restore`), archives (`…/archive`, `…/unarchive`) et dossiers
+//! (`…/move`), par lots de 500 ; un lot refusé (Vaultwarden s'arrête au
+//! premier élément refusé) est repris un par un, pour savoir lequel. Pas de
+//! route pour les favoris : une modification chiffrée par élément, comme
+//! pour un seul (date de révision connue, conflit gardé en copie). Une
+//! seule synchronisation à la fin, pas une par élément.
 //!
 //! Les éléments auxquels l'action ne s'applique pas sont écartés avant tout
 //! envoi et comptés : lecture seule, dans la corbeille (sauf pour
@@ -26,8 +24,7 @@ use bitwarden_vault::CipherView;
 use chrono::Utc;
 
 use crate::edit::folder_id;
-use crate::import::BATCH;
-use crate::outbox::{Action, Change, Entry, request_of, sent_save};
+use crate::outbox::Action;
 use crate::{Connection, Decrypted, Error};
 
 /// Ce qu'on fait aux éléments sélectionnés.
@@ -55,19 +52,19 @@ pub enum Skipped {
 
 /// Bilan d'une action groupée.
 pub struct BulkOutcome {
-    /// Éléments traités : envoyés, en attente hors ligne, ou déjà dans
-    /// l'état voulu.
+    /// Éléments traités : mis dans la file, ou déjà dans l'état voulu.
     pub done: usize,
-    /// Partie de `done` qui attend le serveur (hors ligne).
+    /// Partie de `done` qui attend le serveur (dans la file).
     pub queued: usize,
     /// Éléments écartés avant tout envoi : (identifiant, raison).
     pub skipped: Vec<(String, Skipped)>,
-    /// Refusés par le serveur : (titre, raison).
+    /// Refusés avant tout envoi : (titre, raison). Les refus du serveur
+    /// arrivent plus tard, dans le bilan des envois (`take_report`).
     pub failed: Vec<(String, String)>,
     pub vault: Decrypted,
 }
 
-/// Avancement : (éléments envoyés, éléments à envoyer).
+/// Avancement : (éléments traités, éléments à traiter).
 pub type Progress<'a> = &'a (dyn Fn(usize, usize) + Send + Sync);
 
 enum Fit {
@@ -76,21 +73,9 @@ enum Fit {
     Skip(Skipped),
 }
 
-#[derive(Default)]
-struct Run {
-    done: usize,
-    queued: usize,
-    failed: Vec<(String, String)>,
-    /// Écritures acceptées : gardées en surimpression si la
-    /// synchronisation finale échoue.
-    sent: Vec<Entry>,
-    /// Le serveur a changé quelque chose (même sans entrée à garder).
-    wrote: bool,
-}
-
 impl Connection {
-    /// Applique `action` à ces éléments (dans cet ordre, sans doublon),
-    /// puis synchronise une fois.
+    /// Applique `action` à ces éléments (dans cet ordre, sans doublon) :
+    /// dans la file, envoyée ensuite par `sync_shared`.
     pub async fn bulk(
         &mut self,
         ids: &[String],
@@ -102,60 +87,43 @@ impl Connection {
         {
             return Err(Error::Invalid("ce dossier n'existe plus".to_owned()));
         }
-        let mut access = self.online().await?;
+        if let BulkAction::MoveToFolder(folder) = action {
+            folder_id(folder.clone())?;
+        }
         let (writes, already, skipped) = self.plan_bulk(ids, action).await?;
-        let mut run = Run {
-            done: already,
-            ..Run::default()
-        };
         let total = writes.len();
-        let result = match action {
-            BulkAction::Trash => {
-                self.bulk_actions(&mut access, writes, Action::Trash, &mut run, progress)
-                    .await
+        let mut failed = Vec::new();
+        let now = Utc::now();
+        for (index, (id, mut view)) in writes.into_iter().enumerate() {
+            let title = view.name.clone();
+            match action {
+                BulkAction::Trash => self.outbox.push_action(id, title, Action::Trash, now),
+                BulkAction::Restore => self.outbox.push_action(id, title, Action::Restore, now),
+                BulkAction::Archive => self.outbox.push_action(id, title, Action::Archive, now),
+                BulkAction::Unarchive => {
+                    self.outbox.push_action(id, title, Action::Unarchive, now);
+                }
+                BulkAction::MoveToFolder(folder) => {
+                    self.outbox.push_move(id, title, folder.clone());
+                }
+                BulkAction::Favorite(favorite) => {
+                    view.favorite = *favorite;
+                    match self.encrypt_context(view).await {
+                        Ok(encrypted) => self.outbox.push_save(id, title, false, encrypted),
+                        Err(error) => failed.push((title, error.to_string())),
+                    }
+                }
             }
-            BulkAction::Restore => {
-                self.bulk_actions(&mut access, writes, Action::Restore, &mut run, progress)
-                    .await
-            }
-            BulkAction::Archive => {
-                self.bulk_actions(&mut access, writes, Action::Archive, &mut run, progress)
-                    .await
-            }
-            BulkAction::Unarchive => {
-                self.bulk_actions(&mut access, writes, Action::Unarchive, &mut run, progress)
-                    .await
-            }
-            BulkAction::Favorite(favorite) => {
-                let favorite = *favorite;
-                let change = move |view: &mut CipherView| {
-                    view.favorite = favorite;
-                    Ok(())
-                };
-                self.bulk_saves(&mut access, writes, &change, &mut run, (0, total), progress)
-                    .await
-            }
-            BulkAction::MoveToFolder(folder) => {
-                self.bulk_move(&mut access, writes, folder.clone(), &mut run, progress)
-                    .await
-            }
-        };
-        // Ce qui a été mis dans la file reste, même si la suite échoue.
+            progress(index + 1, total);
+        }
         self.persist_outbox()?;
-        result?;
-        let vault = match access {
-            Some(token) if run.wrote => self.pull_after_writes(&token, run.sent).await?,
-            _ => {
-                self.keep_sent(run.sent)?;
-                self.decrypt_cache().await?
-            }
-        };
+        let queued = total - failed.len();
         Ok(BulkOutcome {
-            done: run.done,
-            queued: run.queued,
+            done: already + queued,
+            queued,
             skipped,
-            failed: run.failed,
-            vault,
+            failed,
+            vault: self.decrypt_cache().await?,
         })
     }
 
@@ -212,177 +180,6 @@ impl Connection {
         }
         Ok((writes, already, skipped))
     }
-
-    /// Corbeille, restauration, archives : par lots, un par un si le
-    /// serveur refuse un lot.
-    async fn bulk_actions(
-        &mut self,
-        access: &mut Option<String>,
-        writes: Vec<(String, CipherView)>,
-        action: Action,
-        run: &mut Run,
-        progress: Progress<'_>,
-    ) -> Result<(), Error> {
-        let total = writes.len();
-        let mut handled = 0;
-        let mut queue: Vec<(String, String)> = Vec::new();
-        for chunk in writes.chunks(BATCH) {
-            let Some(token) = access.clone() else {
-                queue.extend(chunk.iter().map(|(id, v)| (id.clone(), v.name.clone())));
-                continue;
-            };
-            let ids: Vec<String> = chunk.iter().map(|(id, _)| id.clone()).collect();
-            match self
-                .api
-                .bulk_cipher_action(&token, &ids, action.path())
-                .await
-            {
-                Ok(()) => {
-                    for (id, view) in chunk {
-                        run.sent.push(action_entry(id, &view.name, action));
-                    }
-                    run.done += chunk.len();
-                    run.wrote = true;
-                }
-                Err(Error::Network(_)) => {
-                    self.mark_offline();
-                    *access = None;
-                    queue.extend(chunk.iter().map(|(id, v)| (id.clone(), v.name.clone())));
-                }
-                Err(Error::SessionExpired) => return Err(Error::SessionExpired),
-                // Un élément refusé (le reste du lot a pu passer) : un par
-                // un, pour savoir lequel.
-                Err(_) => {
-                    run.wrote = true;
-                    for (id, view) in chunk {
-                        let Some(token) = access.clone() else {
-                            queue.push((id.clone(), view.name.clone()));
-                            continue;
-                        };
-                        match self.api.cipher_action(&token, id, action.path()).await {
-                            Ok(()) => {
-                                run.sent.push(action_entry(id, &view.name, action));
-                                run.done += 1;
-                            }
-                            Err(Error::Network(_)) => {
-                                self.mark_offline();
-                                *access = None;
-                                queue.push((id.clone(), view.name.clone()));
-                            }
-                            Err(Error::SessionExpired) => return Err(Error::SessionExpired),
-                            Err(error) => run.failed.push((view.name.clone(), error.to_string())),
-                        }
-                    }
-                }
-            }
-            handled += chunk.len();
-            progress(handled, total);
-        }
-        let now = Utc::now();
-        for (id, title) in queue {
-            self.outbox.push_action(id, title, action, now);
-            run.done += 1;
-            run.queued += 1;
-        }
-        Ok(())
-    }
-
-    /// Une modification par élément (favoris ; dossiers en repli),
-    /// chiffrée comme seule ; hors ligne, dans la file.
-    async fn bulk_saves(
-        &mut self,
-        access: &mut Option<String>,
-        writes: Vec<(String, CipherView)>,
-        change: &(dyn Fn(&mut CipherView) -> Result<(), Error> + Send + Sync),
-        run: &mut Run,
-        (offset, total): (usize, usize),
-        progress: Progress<'_>,
-    ) -> Result<(), Error> {
-        for (index, (id, mut view)) in writes.into_iter().enumerate() {
-            change(&mut view)?;
-            let title = view.name.clone();
-            let encrypted = self.encrypt_context(view).await?;
-            let sent = match access.clone() {
-                Some(token) => {
-                    let request = request_of(encrypted.clone())?;
-                    Some(self.api.put_cipher(&token, &id, &request).await)
-                }
-                None => None,
-            };
-            match sent {
-                Some(Ok(body)) => {
-                    run.sent.push(sent_save(id, title, encrypted, &body));
-                    run.done += 1;
-                    run.wrote = true;
-                }
-                Some(Err(Error::SessionExpired)) => return Err(Error::SessionExpired),
-                Some(Err(Error::Network(_))) | None => {
-                    if access.is_some() {
-                        self.mark_offline();
-                        *access = None;
-                    }
-                    self.outbox.push_save(id, title, false, encrypted);
-                    run.done += 1;
-                    run.queued += 1;
-                }
-                Some(Err(error)) => run.failed.push((title, error.to_string())),
-            }
-            progress(offset + index + 1, total);
-        }
-        Ok(())
-    }
-
-    /// Dossiers : `PUT /api/ciphers/move` par lots. Lot refusé ou serveur
-    /// injoignable : la modification de chaque élément, comme seul.
-    async fn bulk_move(
-        &mut self,
-        access: &mut Option<String>,
-        writes: Vec<(String, CipherView)>,
-        folder: Option<String>,
-        run: &mut Run,
-        progress: Progress<'_>,
-    ) -> Result<(), Error> {
-        let total = writes.len();
-        let target = folder_id(folder.clone())?;
-        let change = move |view: &mut CipherView| {
-            view.folder_id = target;
-            Ok(())
-        };
-        let mut rest = Vec::new();
-        let mut handled = 0;
-        let mut chunks = writes.into_iter().peekable();
-        while chunks.peek().is_some() {
-            let chunk: Vec<_> = chunks.by_ref().take(BATCH).collect();
-            let Some(token) = access.clone() else {
-                rest.extend(chunk);
-                continue;
-            };
-            let ids: Vec<String> = chunk.iter().map(|(id, _)| id.clone()).collect();
-            match self.api.move_ciphers(&token, &ids, folder.as_deref()).await {
-                // Le dossier est propre au compte, l'élément n'est pas
-                // réécrit : rien à garder en surimpression (si la
-                // synchronisation finale échoue, la suivante le montrera).
-                Ok(()) => {
-                    run.done += chunk.len();
-                    run.wrote = true;
-                    handled += chunk.len();
-                    progress(handled, total);
-                }
-                Err(Error::Network(_)) => {
-                    self.mark_offline();
-                    *access = None;
-                    rest.extend(chunk);
-                }
-                Err(Error::SessionExpired) => return Err(Error::SessionExpired),
-                Err(_) => {
-                    run.wrote = true;
-                    rest.extend(chunk);
-                }
-            }
-        }
-        self.bulk_saves(access, rest, &change, run, (handled, total), progress)
-            .await
-    }
 }
 
 /// L'action s'applique-t-elle à cet élément ?
@@ -401,17 +198,5 @@ fn fit(view: &CipherView, action: &BulkAction) -> Fit {
         BulkAction::Unarchive => done(!archived),
         BulkAction::Favorite(favorite) => done(view.favorite == *favorite),
         BulkAction::MoveToFolder(folder) => done(view.folder_id.map(|f| f.to_string()) == *folder),
-    }
-}
-
-fn action_entry(id: &str, title: &str, action: Action) -> Entry {
-    Entry {
-        id: id.to_owned(),
-        title: title.to_owned(),
-        change: Change::Action {
-            action,
-            at: Utc::now(),
-        },
-        sent: true,
     }
 }

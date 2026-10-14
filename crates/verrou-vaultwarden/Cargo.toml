@@ -25,6 +25,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
+# Envoi de la file en arrière-plan (`sync_shared`) : la connexion partagée
+# derrière un verrou asynchrone, comme dans l'app.
+tokio = { workspace = true, features = ["sync", "rt"] }
 # Déverrouillage par clé de sécurité : scellement de la clé de l'utilisateur
 # (HKDF-SHA256, AES-256-GCM), les primitives du pont vers l'extension.
 hkdf = "0.12"
@@ -43,7 +46,7 @@ getrandom = { version = "0.4", features = ["sys_rng"] }
 authenticator = { version = "0.5.0", default-features = false, features = ["crypto_rust"] }
 
 [dev-dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["net", "time", "io-util"] }
 # Clé de sécurité logicielle des tests : signe comme une YubiKey.
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 ciborium = "0.2"
