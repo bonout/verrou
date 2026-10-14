@@ -66,6 +66,44 @@ pub fn key_item<'v>(vault: &'v Vault, blob: &[u8]) -> Option<&'v Item> {
     })
 }
 
+/// En-tête des données que `ssh-keygen -Y sign` fait signer (PROTOCOL.sshsig
+/// d'OpenSSH) : pas de longueur devant, contrairement aux `string`.
+const SSHSIG_MAGIC: &[u8] = b"SSHSIG";
+
+/// Espace de noms (`-n`) des signatures de git (`gpg.format=ssh`) : commits,
+/// étiquettes et `push --signed`.
+pub const GIT_NAMESPACE: &str = "git";
+
+/// L'espace de noms d'une demande `ssh-keygen -Y sign` : `data` est alors
+/// « SSHSIG », `string` espace de noms, `string` réservé, `string`
+/// algorithme de hachage, `string` empreinte du message. `None` pour tout
+/// autre contenu (l'authentification SSH, notamment, commence par la
+/// longueur de l'identifiant de session : jamais « SSHS »).
+pub fn sshsig_namespace(data: &[u8]) -> Option<&str> {
+    let mut rest = data.strip_prefix(SSHSIG_MAGIC)?;
+    let mut string = || -> Option<&[u8]> {
+        let (length, tail) = rest.split_at_checked(4)?;
+        let length = u32::from_be_bytes(length.try_into().ok()?) as usize;
+        let (value, tail) = tail.split_at_checked(length)?;
+        rest = tail;
+        Some(value)
+    };
+    let namespace = string()?;
+    let _reserved = string()?;
+    let hash = string()?;
+    let _digest = string()?;
+    let known_hash = hash == b"sha256" || hash == b"sha512";
+    if !(rest.is_empty() && known_hash) || namespace.is_empty() {
+        return None;
+    }
+    std::str::from_utf8(namespace).ok()
+}
+
+/// La demande signe-t-elle pour git (commit, étiquette) ?
+pub fn is_git_signature(data: &[u8]) -> bool {
+    sshsig_namespace(data) == Some(GIT_NAMESPACE)
+}
+
 /// Signe `data` avec la clé de l'élément dont la clé publique est `blob`.
 /// Rend la signature au format de l'agent : `string` algorithme, `string`
 /// signature. Pour RSA, `flags` choisit SHA-512, SHA-256, ou SHA-1
@@ -222,6 +260,41 @@ mod tests {
             let signed = sign(&vault, &blob, b"session", flags).unwrap();
             assert_eq!(verify(&rsa, b"session", &signed).algorithm().as_str(), name);
         }
+    }
+
+    /// Ce que `ssh-keygen -Y sign -n <namespace>` fait signer à l'agent.
+    fn sshsig(namespace: &str, hash: &str) -> Vec<u8> {
+        let mut out = SSHSIG_MAGIC.to_vec();
+        for part in [namespace.as_bytes(), b"", hash.as_bytes(), &[7u8; 64][..]] {
+            out.extend_from_slice(&u32::try_from(part.len()).unwrap().to_be_bytes());
+            out.extend_from_slice(part);
+        }
+        out
+    }
+
+    #[test]
+    fn recognizes_git_signature_requests() {
+        assert_eq!(sshsig_namespace(&sshsig("git", "sha512")), Some("git"));
+        assert!(is_git_signature(&sshsig("git", "sha256")));
+        assert_eq!(sshsig_namespace(&sshsig("file", "sha512")), Some("file"));
+        assert!(!is_git_signature(&sshsig("file", "sha512")));
+        // Ni SSHSIG, ni bien formé : rien.
+        assert_eq!(sshsig_namespace(b"donnees de session"), None);
+        assert_eq!(sshsig_namespace(b"SSHSIG"), None);
+        assert_eq!(sshsig_namespace(&sshsig("", "sha512")), None);
+        assert_eq!(sshsig_namespace(&sshsig("git", "md5")), None);
+        let mut trailing = sshsig("git", "sha512");
+        trailing.push(0);
+        assert_eq!(sshsig_namespace(&trailing), None);
+        let mut truncated = sshsig("git", "sha512");
+        truncated.truncate(truncated.len() - 1);
+        assert_eq!(sshsig_namespace(&truncated), None);
+        // Une authentification SSH : `string` identifiant de session, puis
+        // SSH_MSG_USERAUTH_REQUEST (50)…
+        let mut userauth = vec![0, 0, 0, 32];
+        userauth.extend_from_slice(&[1u8; 32]);
+        userauth.push(50);
+        assert!(!is_git_signature(&userauth));
     }
 
     #[test]

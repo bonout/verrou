@@ -148,6 +148,8 @@ final class BrowserBridge {
         case .reveal: "autoriser le terminal à lire « \(title) »"
         case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
         case .passkey: "autoriser Brave à utiliser une passkey pour « \(title) »"
+        // `ssh-keygen -Y sign -n git` : git signe un commit (ou une étiquette).
+        case .gitSign: "signer un commit git avec la clé « \(title) »"
         }
         Task {
             let approved = if model.session.needsConfirmation(id: item) {

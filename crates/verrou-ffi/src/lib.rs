@@ -43,6 +43,7 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod import;
+mod ssh;
 mod watchtower;
 
 pub use import::{
@@ -1526,6 +1527,8 @@ pub enum AccessPurpose {
     /// vérification de l'utilisateur). `item` est l'élément, ou
     /// `passkey:<site>` pour un nouvel identifiant.
     Passkey,
+    /// Signer un commit git avec la clé SSH de l'élément.
+    GitSign,
 }
 
 impl From<Purpose> for AccessPurpose {
@@ -1534,6 +1537,7 @@ impl From<Purpose> for AccessPurpose {
             Purpose::Reveal => Self::Reveal,
             Purpose::Ssh => Self::Ssh,
             Purpose::Passkey => Self::Passkey,
+            Purpose::GitSign => Self::GitSign,
         }
     }
 }
