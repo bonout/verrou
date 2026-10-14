@@ -255,13 +255,18 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
+            // Sans fond, les dernières lignes de la liste défilent sous les
+            // boutons et le pied.
             VStack(spacing: 0) {
+                Divider()
+                    .padding(.bottom, 6)
                 AuditSidebarButton()
                 DuplicatesSidebarButton()
                 if model.mode == .vaultwarden { EmergencySidebarButton() }
                 if model.mode == .vaultwarden { SendsSidebarButton() }
                 VaultFooter()
             }
+            .background(.bar)
         }
     }
 
@@ -383,8 +388,6 @@ struct VaultFooter: View {
         .help(model.mode == .vaultwarden ? "Synchroniser (⌘R)" : "")
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        // Sans fond, les dernières lignes de la liste défilent sous le pied.
-        .background(.bar)
     }
 
     private var title: String {

@@ -36,7 +36,7 @@ struct AuditView: View {
                             Text("Même mot de passe sur \(group.count) éléments")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .padding(.horizontal, 8).padding(.top, 6)
-                            ForEach(group, id: \.id) { row($0) }
+                            ForEach(group, id: \.id) { row($0).id("reused-\($0.id)") }
                         }
                     }
                     if !audit.weak.isEmpty {
@@ -44,12 +44,13 @@ struct AuditView: View {
                               detail: "Trop courts ou trop simples pour résister à une attaque hors ligne.")
                         ForEach(audit.weak, id: \.item.id) { weak in
                             row(weak.item, note: "\(Int(weak.bits)) bits")
+                                .id("weak-\(weak.item.id)")
                         }
                     }
                     if !audit.insecure.isEmpty {
                         title("Sites en HTTP", count: audit.insecure.count,
                               detail: "Le mot de passe y circule en clair : Verrou ne le remplit pas dans Brave.")
-                        ForEach(audit.insecure, id: \.id) { row($0) }
+                        ForEach(audit.insecure, id: \.id) { row($0).id("http-\($0.id)") }
                     }
                     if audit.reused.isEmpty && audit.weak.isEmpty && audit.insecure.isEmpty {
                         Label("Aucun mot de passe réutilisé ou faible", systemImage: "checkmark.seal.fill")
@@ -85,6 +86,7 @@ struct AuditView: View {
                       : "Ces mots de passe circulent dans des fuites publiques : changez-les en premier.")
             ForEach(breaches, id: \.item.id) { breach in
                 row(breach.item, note: "vu \(breach.count.formatted()) fois")
+                    .id("breach-\(breach.item.id)")
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
@@ -153,6 +155,7 @@ private struct WatchtowerSections<Row: View>: View {
                       detail: "Mettez à jour la date et le cryptogramme de la nouvelle carte, ici et chez les marchands.")
                 ForEach(report.cards, id: \.item.id) { card in
                     row(card.item, cardNote(card))
+                        .id("card-\(card.item.id)")
                 }
             }
             if !report.old.isEmpty {
@@ -160,6 +163,7 @@ private struct WatchtowerSections<Row: View>: View {
                       detail: "Éléments inchangés depuis plus de 3 ans : leur mot de passe date au moins de cette époque.")
                 ForEach(report.old, id: \.item.id) { old in
                     row(old.item, age(days: old.days))
+                        .id("old-\(old.item.id)")
                 }
             }
         }
@@ -181,6 +185,7 @@ private struct WatchtowerSections<Row: View>: View {
                             .help("Activer la double authentification sur \(missing.site)")
                         }
                     }
+                    .id("2fa-\(missing.item.id)")
                 }
             }
         } else if watchtower.loadingTwoFactor {
