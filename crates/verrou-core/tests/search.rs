@@ -115,6 +115,26 @@ fn site_suggestions() {
     );
 }
 
+#[test]
+fn app_suggestions_use_macapp_uris() {
+    let v = vault();
+    let suggested: Vec<_> = v
+        .app_suggestions("com.tinyspeck.slackmacgap")
+        .iter()
+        .map(|i| i.title.clone())
+        .collect();
+    assert_eq!(suggested, ["Slack"]);
+    assert!(v.app_suggestions("com.apple.Terminal").is_empty());
+    assert!(v.app_suggestions("").is_empty());
+    // Une adresse d'app n'est pas un site : ni hôte, ni suggestion web.
+    let slack = v.items().iter().find(|i| i.title == "Slack").unwrap();
+    assert_eq!(slack.primary_host().as_deref(), Some("slack.com"));
+    assert!(
+        v.suggestions_for("https://com.tinyspeck.slackmacgap")
+            .is_empty()
+    );
+}
+
 /// Garde-fou de performance, en version optimisée seulement : 10 000 éléments,
 /// une frappe doit rester bien sous la durée d'une image à 60 Hz.
 #[test]

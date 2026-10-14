@@ -9,7 +9,9 @@
 //! Exceptions documentées : `user_key`, qui rend la clé de l'utilisateur pour
 //! que l'app la confie au Secure Enclave (déverrouillage par Touch ID), et
 //! `edit_draft`, qui rend les secrets d'un élément quand l'utilisateur ouvre
-//! l'écran de modification.
+//! l'écran de modification, et `autofill_keystrokes`, qui rend l'identifiant
+//! et le mot de passe à taper quand l'utilisateur choisit de remplir une app
+//! (⌘\).
 //!
 //! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
 //! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
@@ -27,6 +29,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use verrou_bridge::access::Write;
 use verrou_bridge::protocol::{CONFIRM_IN_APP, ClientKind, Credentials, SaveAction, Suggestion};
 use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
+use verrou_core::apps;
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
@@ -518,6 +521,28 @@ fn summary(item: &Item) -> ItemSummary {
         modified: item.modified,
         reprompt: item.reprompt,
         state: item.state.into(),
+    }
+}
+
+/// Une frappe du remplissage dans une app (voir `verrou_core::apps`). Le
+/// texte se tape en caractères Unicode, quelle que soit la disposition du
+/// clavier.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AutofillKeystroke {
+    Text { value: String },
+    Tab,
+    Return,
+}
+
+impl From<apps::Keystroke> for AutofillKeystroke {
+    fn from(key: apps::Keystroke) -> Self {
+        match key {
+            apps::Keystroke::Text(text) => Self::Text {
+                value: text.expose().to_owned(),
+            },
+            apps::Keystroke::Tab => Self::Tab,
+            apps::Keystroke::Return => Self::Return,
+        }
     }
 }
 
@@ -1049,6 +1074,34 @@ impl VaultSession {
         self.install_if_current(&connection, decrypted)
     }
 
+    /// Relie l'identifiant à une app du Mac : ajoute `macapp://<bundle_id>` à
+    /// ses sites, synchronisé comme le reste. Rend `false` s'il l'était déjà.
+    pub async fn link_to_app(&self, id: String, bundle_id: String) -> Result<bool, VerrouError> {
+        let uri = apps::mac_app_uri(&bundle_id).ok_or_else(|| VerrouError::Invalid {
+            message: "identifiant d'app invalide".to_owned(),
+        })?;
+        let already = self.with_vault(|v| {
+            let item = Self::item(v, &id)?;
+            if item.kind != ItemKind::Login {
+                return Err(VerrouError::Invalid {
+                    message: "seul un identifiant se relie à une app".to_owned(),
+                });
+            }
+            Ok(apps::matches_app(&item.urls, &bundle_id))
+        })?;
+        if already {
+            return Ok(false);
+        }
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection
+            .lock()
+            .await
+            .amend_login(&id, None, None, None, Some(uri))
+            .await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(true)
+    }
+
     /// Mots de passe fuités, par Have I Been Pwned (k-anonymat : seuls les 5
     /// premiers caractères du SHA-1 de chaque mot de passe partent). Seulement
     /// sur demande explicite de l'utilisateur.
@@ -1377,6 +1430,43 @@ impl VaultSession {
                 .into_iter()
                 .map(summary)
                 .collect())
+        })
+    }
+
+    // MARK: Remplissage dans les apps (⌘\)
+
+    /// Identifiants reliés à une app du Mac (`macapp://<identifiant de paquet>`).
+    pub fn app_suggestions(&self, bundle_id: String) -> Result<Vec<ItemSummary>, VerrouError> {
+        self.with_vault(|v| {
+            Ok(v.app_suggestions(&bundle_id)
+                .into_iter()
+                .map(summary)
+                .collect())
+        })
+    }
+
+    /// L'élément est déjà relié à cette app.
+    pub fn is_linked_to_app(&self, id: String, bundle_id: String) -> bool {
+        self.with_vault(|v| Ok(apps::matches_app(&Self::item(v, &id)?.urls, &bundle_id)))
+            .unwrap_or(false)
+    }
+
+    /// ⚠️ Frappes qui remplissent l'identifiant `id` dans l'app au premier
+    /// plan : son identifiant et son mot de passe, en clair. Seulement quand
+    /// l'utilisateur vient de le choisir ; un élément protégé doit avoir été
+    /// confirmé (`authorize_item`).
+    pub fn autofill_keystrokes(
+        &self,
+        id: String,
+        submit: bool,
+    ) -> Result<Vec<AutofillKeystroke>, VerrouError> {
+        self.with_vault(|v| {
+            let item = Self::item(v, &id)?;
+            self.require_authorized(item)?;
+            let keys = apps::item_keystrokes(item, submit).ok_or_else(|| VerrouError::Invalid {
+                message: "seul un identifiant se remplit dans une app".to_owned(),
+            })?;
+            Ok(keys.into_iter().map(Into::into).collect())
         })
     }
 }
@@ -1793,6 +1883,78 @@ mod tests {
         assert!(matches!(
             session.reveal(card.id, "number".to_owned()),
             Err(VerrouError::RepromptRequired)
+        ));
+    }
+
+    #[test]
+    fn app_autofill_types_the_login_and_respects_reprompt() {
+        let session = session();
+        let slack = session
+            .app_suggestions("com.tinyspeck.slackmacgap".to_owned())
+            .unwrap();
+        assert_eq!(slack.len(), 1);
+        let id = slack[0].id.clone();
+        assert!(session.is_linked_to_app(id.clone(), "COM.tinyspeck.SlackMacGap".to_owned()));
+        assert!(!session.is_linked_to_app(id.clone(), "com.apple.Terminal".to_owned()));
+        let keys = session.autofill_keystrokes(id.clone(), true).unwrap();
+        let password = session.reveal(id.clone(), "password".to_owned()).unwrap();
+        assert_eq!(
+            keys,
+            vec![
+                AutofillKeystroke::Text {
+                    value: slack[0].subtitle.clone()
+                },
+                AutofillKeystroke::Tab,
+                AutofillKeystroke::Text { value: password },
+                AutofillKeystroke::Return,
+            ]
+        );
+
+        // Élément protégé : rien sans confirmation.
+        let mut items = mock::vault_items(0, 42);
+        let protected = items.iter_mut().find(|i| i.id == id).unwrap();
+        protected.reprompt = true;
+        *session.vault.write().unwrap() = Some(Vault::new(items));
+        assert!(matches!(
+            session.autofill_keystrokes(id.clone(), false),
+            Err(VerrouError::RepromptRequired)
+        ));
+        session.authorize_item(id.clone());
+        assert_eq!(session.autofill_keystrokes(id, false).unwrap().len(), 3);
+
+        // Une note ne se tape pas.
+        let note = session
+            .summaries()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.category == ItemCategory::SecureNote && !s.reprompt)
+            .unwrap();
+        assert!(matches!(
+            session.autofill_keystrokes(note.id, false),
+            Err(VerrouError::Invalid { .. })
+        ));
+    }
+
+    #[test]
+    fn linking_to_an_app_needs_a_valid_bundle_id_and_a_connection() {
+        let session = session();
+        let github = session
+            .summaries()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.title == "GitHub")
+            .unwrap();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert!(matches!(
+            runtime.block_on(session.link_to_app(github.id.clone(), "pas valide".to_owned())),
+            Err(VerrouError::Invalid { .. })
+        ));
+        // Coffre fictif : pas de serveur où écrire.
+        assert!(matches!(
+            runtime.block_on(session.link_to_app(github.id, "com.github.GitHubClient".to_owned())),
+            Err(VerrouError::Locked)
         ));
     }
 

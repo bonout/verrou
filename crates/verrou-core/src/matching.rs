@@ -16,9 +16,11 @@ pub enum SiteMatch {
 }
 
 /// Hôte en minuscules et sans `www.`, à partir d'une URL ou d'un hôte nu.
+/// Une adresse d'application (`macapp://`, `iosapp://`, `androidapp://`)
+/// n'a pas d'hôte : ce n'est pas un site.
 pub fn host_of(input: &str) -> Option<String> {
     let trimmed = input.trim();
-    if trimmed.is_empty() {
+    if trimmed.is_empty() || crate::apps::is_app_uri(trimmed) {
         return None;
     }
     let parsed = Url::parse(trimmed)
@@ -84,6 +86,18 @@ mod tests {
         );
         assert_eq!(host_of("github.com").as_deref(), Some("github.com"));
         assert_eq!(host_of("  ").as_deref(), None);
+    }
+
+    #[test]
+    fn app_uris_are_not_sites() {
+        assert_eq!(host_of("macapp://com.apple.Terminal"), None);
+        assert_eq!(host_of("androidapp://com.github.android"), None);
+        let urls = vec!["macapp://com.github.GitHubClient".to_owned()];
+        assert_eq!(site_match(&urls, "https://github.com"), SiteMatch::None);
+        assert_eq!(
+            site_match(&urls, "https://com.github.githubclient"),
+            SiteMatch::None
+        );
     }
 
     #[test]

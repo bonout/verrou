@@ -891,6 +891,7 @@ async fn create_edit_and_trash() {
     assert!(refreshed.items.iter().any(|i| i.title == "GitHub perso"));
 
     amend_like_the_extension(&mut connection, &seeder, &github_id).await;
+    link_to_a_mac_app(&mut connection, &seeder, &github_id).await;
 
     // Un autre type : seul le titre change, la carte reste entière.
     let visa = vault
@@ -981,6 +982,35 @@ async fn amend_like_the_extension(
             .unwrap()
             .contains("GEZDGNBVGY3TQOJQ")
     );
+}
+
+/// Remplissage dans les apps (⌘\) : l'app se relie par une adresse
+/// `macapp://`, gardée sur le serveur avec la règle « jamais » (les
+/// extensions Bitwarden ne la proposent sur aucune page).
+async fn link_to_a_mac_app(
+    connection: &mut verrou_vaultwarden::Connection,
+    seeder: &Seeder,
+    github_id: &str,
+) {
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let uri = verrou_core::apps::mac_app_uri("com.github.GitHubClient").unwrap();
+    let vault = connection
+        .amend_login(github_id, None, None, None, Some(uri.clone()))
+        .await
+        .unwrap();
+    let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
+    assert!(verrou_core::apps::matches_app(
+        &github.urls,
+        "com.github.githubclient"
+    ));
+    assert_eq!(github.primary_host().as_deref(), Some("github.com"));
+    let stored = seeder.fetch(github_id).await;
+    let uris = stored.login.unwrap().uris.unwrap();
+    let app = uris
+        .iter()
+        .find(|u| u.uri.as_deref() == Some(&uri))
+        .unwrap();
+    assert_eq!(app.r#match, Some(bitwarden_vault::UriMatchType::Never));
 }
 
 /// Corbeille → restauration, archives aller-retour, favori, historique visible.

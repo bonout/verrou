@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use bitwarden_api_api::models::{CipherRequestModel, SyncResponseModel};
 use bitwarden_vault::{
     Cipher, CipherRepromptType, CipherType, CipherView, FolderId, LoginUriView, LoginView,
-    PasswordHistoryView, SecureNoteType, SecureNoteView, VaultClientExt,
+    PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType, VaultClientExt,
 };
 use chrono::{DateTime, Utc};
 use verrou_core::SecretString;
@@ -211,11 +211,16 @@ fn uris(list: Vec<String>, previous: &[LoginUriView]) -> Option<Vec<LoginUriView
         .map(|u| u.trim().to_owned())
         .filter(|u| !u.is_empty())
         .map(|uri| {
-            // Un site gardé garde sa règle de correspondance.
+            // Un site gardé garde sa règle de correspondance. Une nouvelle
+            // adresse d'app (`macapp://`) ne correspond jamais à une page web
+            // dans les extensions Bitwarden : règle « jamais ».
             let rule = previous
                 .iter()
                 .find(|p| p.uri.as_deref() == Some(uri.as_str()))
-                .and_then(|p| p.r#match);
+                .map_or_else(
+                    || verrou_core::apps::is_app_uri(&uri).then_some(UriMatchType::Never),
+                    |p| p.r#match,
+                );
             LoginUriView {
                 uri: Some(uri),
                 r#match: rule,
@@ -373,6 +378,31 @@ mod tests {
         let login = view.login.unwrap();
         assert_eq!(login.uris.unwrap().len(), 1);
         assert!(login.totp.is_none());
+    }
+
+    #[test]
+    fn app_uris_never_match_web_pages_in_bitwarden() {
+        let mut draft = login_draft("un");
+        draft.login.as_mut().unwrap().uris = vec![
+            "https://slack.com".to_owned(),
+            "macapp://com.tinyspeck.slackmacgap".to_owned(),
+        ];
+        let view = new_view(draft.clone(), Utc::now()).unwrap();
+        let uris = view.login.as_ref().unwrap().uris.clone().unwrap();
+        assert_eq!(uris[0].r#match, None);
+        assert_eq!(uris[1].r#match, Some(UriMatchType::Never));
+        // Une règle choisie ailleurs pour cette adresse est gardée.
+        let previous = vec![LoginUriView {
+            uri: Some("macapp://com.tinyspeck.slackmacgap".to_owned()),
+            r#match: Some(UriMatchType::Exact),
+            uri_checksum: None,
+        }];
+        let kept = uris_from(&draft, &previous);
+        assert_eq!(kept[1].r#match, Some(UriMatchType::Exact));
+    }
+
+    fn uris_from(draft: &Draft, previous: &[LoginUriView]) -> Vec<LoginUriView> {
+        uris(draft.login.as_ref().unwrap().uris.clone(), previous).unwrap()
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! avec Vaultwarden sont dans `verrou-vaultwarden`, construit sur le SDK Rust
 //! de Bitwarden.
 
+pub mod apps;
 pub mod audit;
 pub mod duplicates;
 pub mod generator;

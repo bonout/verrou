@@ -178,6 +178,8 @@ struct RootView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private(set) var quickAccess: QuickAccessController?
+    /// Remplissage dans les apps (⌘\), à travers l'accès rapide.
+    private(set) var autofill: UniversalAutofill?
     private var demo: DemoDriver?
     #if DEBUG
     private var endToEnd: EndToEndDriver?
@@ -195,7 +197,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        quickAccess = QuickAccessController(model: model)
+        let quickAccess = QuickAccessController(model: model)
+        self.quickAccess = quickAccess
+        autofill = UniversalAutofill(model: model, quickAccess: quickAccess)
+        quickAccess.autofill = autofill
         let environment = ProcessInfo.processInfo.environment
         if model.mode == .vaultwarden, environment["VERROU_E2E_SERVER"] == nil {
             let bridge = BrowserBridge(model: model)
@@ -209,7 +214,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 NSApp.windows.filter { $0.identifier?.rawValue == "main" }.forEach { $0.close() }
             }
         }
-        if ProcessInfo.processInfo.environment["VERROU_DEMO"] == "1", let quickAccess {
+        if ProcessInfo.processInfo.environment["VERROU_DEMO"] == "1" {
             demo = DemoDriver(model: model, quickAccess: quickAccess)
             demo?.start()
         }
