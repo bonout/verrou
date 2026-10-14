@@ -55,6 +55,8 @@ your logins in Brave and in any other Mac app. The interface is in French.
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on
   any item.
+- **Work offline**: edit, create, trash or archive items without network;
+  changes are synced, in order, as soon as the server answers.
 - **Move in**: import from Apple Passwords, 1Password and Proton Pass, then
   clean up duplicates.
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
@@ -132,7 +134,9 @@ Optional:
 The app only receives item summaries (titles, usernames, sites). A password
 crosses into Swift only when you reveal or copy it, and locking zeroes the
 decrypted vault. The server's encrypted response is cached, so the vault also
-opens offline.
+opens offline, and edits made offline wait in an encrypted queue until the
+server is back (an item changed elsewhere meanwhile is kept as a copy, never
+overwritten).
 
 ## Build from source
 

@@ -26,7 +26,7 @@ extension AppModel {
         let id = try await session.createSshKey(name: name, folderId: folderID, keyType: type)
         afterWrite(select: id)
         sshKeyGenerator = nil
-        toast = Toast(message: "Clé SSH créée", detail: "« Copier la clé publique » pour l'installer sur un serveur")
+        toast = writeToast("Clé SSH créée", detail: "« Copier la clé publique » pour l'installer sur un serveur")
     }
 
     /// La clé publique (`ssh-ed25519 AAAA…`) : pas un secret, copiée telle quelle.

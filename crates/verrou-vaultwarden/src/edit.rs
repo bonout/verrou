@@ -7,19 +7,23 @@
 //! historique, champs réservés `verrou:…`) repart intact. La date de
 //! révision envoyée permet au serveur de refuser une modification faite sur
 //! une copie périmée.
+//!
+//! Serveur injoignable : l'écriture, chiffrée de la même façon, attend dans
+//! la file des modifications hors ligne (`outbox`), déjà appliquée au coffre
+//! affiché.
 
 use std::collections::HashMap;
 
-use bitwarden_api_api::models::{CipherRequestModel, SyncResponseModel};
+use bitwarden_api_api::models::CipherRequestModel;
 use bitwarden_vault::{
-    Cipher, CipherRepromptType, CipherType, CipherView, FieldType, FieldView, FolderId,
-    LoginUriView, LoginView, PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType,
-    VaultClientExt,
+    CipherRepromptType, CipherType, CipherView, FieldType, FieldView, FolderId, LoginUriView,
+    LoginView, PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType, VaultClientExt,
 };
 use chrono::{DateTime, Utc};
 use verrou_core::SecretString;
 use verrou_core::template::{self, Template};
 
+use crate::outbox::{Action, request_of};
 use crate::{Connection, Decrypted, Error};
 
 /// Anciens mots de passe gardés par élément, comme les apps Bitwarden.
@@ -76,27 +80,24 @@ pub struct LoginDraft {
 impl Connection {
     /// Brouillon prérempli pour modifier un élément.
     pub async fn draft(&self, id: &str) -> Result<Draft, Error> {
-        self.editable_view(id).await.map(draft_of)
+        self.editable_view(&self.resolve(id)).await.map(draft_of)
     }
 
     /// Crée l'élément dans le coffre personnel ; rend son identifiant et le
-    /// coffre resynchronisé.
+    /// coffre resynchronisé. Hors ligne : un identifiant provisoire, et
+    /// l'élément attend le serveur.
     pub async fn create(&mut self, draft: Draft) -> Result<(String, Decrypted), Error> {
         let view = new_view(draft, Utc::now())?;
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        let id = self.api.create_cipher(&access, &request).await?;
-        let vault = self.sync_with(&access).await?;
-        Ok((id, vault))
+        let access = self.online().await?;
+        self.save_cipher(None, view, access).await
     }
 
     pub async fn update(&mut self, id: &str, draft: Draft) -> Result<Decrypted, Error> {
-        let mut view = self.editable_view(id).await?;
+        let access = self.online().await?;
+        let id = self.resolve(id);
+        let mut view = self.editable_view(&id).await?;
         apply(&mut view, draft, Utc::now())?;
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        self.api.update_cipher(&access, id, &request).await?;
-        self.sync_with(&access).await
+        Ok(self.save_cipher(Some(&id), view, access).await?.1)
     }
 
     /// Remplace, dans un identifiant existant, ce qui est fourni : le mot de
@@ -135,39 +136,46 @@ impl Connection {
     /// Corbeille du serveur : l'élément se restaure depuis le coffre web
     /// pendant 30 jours (réglage de Vaultwarden).
     pub async fn trash(&mut self, id: &str) -> Result<Decrypted, Error> {
-        self.editable_view(id).await?;
-        let access = self.access_token().await?;
-        self.api.trash_cipher(&access, id).await?;
-        self.sync_with(&access).await
+        let access = self.online().await?;
+        let id = self.resolve(id);
+        let view = self.editable_view(&id).await?;
+        self.cipher_action(&id, view.name, Action::Trash, access)
+            .await
     }
 
     /// Archive l'élément (ou le sort des archives) : il quitte la liste
     /// principale et le remplissage, sans être supprimé.
     pub async fn set_archived(&mut self, id: &str, archived: bool) -> Result<Decrypted, Error> {
-        self.editable_view(id).await?;
-        let access = self.access_token().await?;
-        let action = if archived { "archive" } else { "unarchive" };
-        self.api.cipher_action(&access, id, action).await?;
-        self.sync_with(&access).await
+        let access = self.online().await?;
+        let id = self.resolve(id);
+        let view = self.editable_view(&id).await?;
+        let action = if archived {
+            Action::Archive
+        } else {
+            Action::Unarchive
+        };
+        self.cipher_action(&id, view.name, action, access).await
     }
 
     /// Sort l'élément de la corbeille.
     pub async fn restore(&mut self, id: &str) -> Result<Decrypted, Error> {
-        let access = self.access_token().await?;
-        self.api.cipher_action(&access, id, "restore").await?;
-        self.sync_with(&access).await
+        let access = self.online().await?;
+        let id = self.resolve(id);
+        let title = self.cached_title(&id).await?;
+        self.cipher_action(&id, title, Action::Restore, access)
+            .await
     }
 
     pub async fn set_favorite(&mut self, id: &str, favorite: bool) -> Result<Decrypted, Error> {
-        let mut view = self.editable_view(id).await?;
+        let access = self.online().await?;
+        let id = self.resolve(id);
+        let mut view = self.editable_view(&id).await?;
         view.favorite = favorite;
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        self.api.update_cipher(&access, id, &request).await?;
-        self.sync_with(&access).await
+        Ok(self.save_cipher(Some(&id), view, access).await?.1)
     }
 
-    /// L'élément tel que le cache le connaît, déchiffré, s'il peut être modifié.
+    /// L'élément tel que le coffre affiché le connaît (cache et modifications
+    /// hors ligne), déchiffré, s'il peut être modifié.
     pub(crate) async fn editable_view(&self, id: &str) -> Result<CipherView, Error> {
         let mut views = self.editable_views(&[id.to_owned()]).await?;
         views.pop().ok_or(Error::NotFound)
@@ -177,19 +185,14 @@ impl Connection {
     /// qu'une fois. Un seul introuvable ou en lecture seule, et rien n'est
     /// rendu.
     pub(crate) async fn editable_views(&self, ids: &[String]) -> Result<Vec<CipherView>, Error> {
-        let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
-        let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
-        let mut models: HashMap<String, _> = sync
-            .ciphers
-            .unwrap_or_default()
+        let mut ciphers: HashMap<String, _> = self
+            .cached_ciphers()?
             .into_iter()
             .filter_map(|c| Some((c.id?.to_string(), c)))
             .collect();
         let mut views = Vec::with_capacity(ids.len());
         for id in ids {
-            let model = models.remove(id).ok_or(Error::NotFound)?;
-            let cipher = Cipher::try_from(model).map_err(Error::crypto)?;
+            let cipher = ciphers.remove(id).ok_or(Error::NotFound)?;
             let view = self
                 .sdk
                 .vault()
@@ -206,17 +209,7 @@ impl Connection {
     }
 
     pub(crate) async fn encrypt(&self, view: CipherView) -> Result<CipherRequestModel, Error> {
-        let encrypted = self
-            .sdk
-            .vault()
-            .ciphers()
-            .encrypt(view)
-            .await
-            .map_err(Error::crypto)?;
-        let mut request = CipherRequestModel::try_from(encrypted.cipher).map_err(Error::crypto)?;
-        request.encrypted_for = Some(encrypted.encrypted_for.into());
-        request.encrypted_by_key_id = encrypted.encrypted_by_key_id;
-        Ok(request)
+        request_of(self.encrypt_context(view).await?)
     }
 }
 

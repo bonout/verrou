@@ -6,7 +6,9 @@
 //! l'envoie (chiffrée), et le jeton de renouvellement est chiffré par Verrou
 //! avec la clé de l'utilisateur. Les clés de sécurité enrôlées
 //! (`security-keys.json`) n'y gardent la clé de l'utilisateur que scellée par
-//! un secret qui ne quitte pas la clé physique.
+//! un secret qui ne quitte pas la clé physique. Les modifications faites
+//! hors ligne (`outbox.json`, voir `outbox`) y attendent le serveur,
+//! chiffrées en bloc par la clé de l'utilisateur.
 
 use std::fs;
 use std::io::Write as _;
@@ -21,6 +23,9 @@ const ACCOUNT_FILE: &str = "account.json";
 const DEVICE_FILE: &str = "device-id";
 /// Clés de sécurité enrôlées pour déverrouiller (voir `unlock_keys`).
 pub(crate) const SECURITY_KEYS_FILE: &str = "security-keys.json";
+/// File des modifications faites hors ligne (voir `outbox`).
+const OUTBOX_FILE: &str = "outbox.json";
+const OUTBOX_VERSION: u32 = 1;
 const FORMAT_VERSION: u32 = 1;
 const SECURITY_KEYS_VERSION: u32 = 1;
 
@@ -29,6 +34,18 @@ const SECURITY_KEYS_VERSION: u32 = 1;
 struct SecurityKeysFile {
     version: u32,
     keys: Vec<EnrolledKey>,
+}
+
+/// Contenu de `outbox.json` : la file entière, chiffrée par la clé de
+/// l'utilisateur (`data`). En clair : le compte auquel elle appartient et le
+/// nombre de modifications en attente, pour prévenir avant une déconnexion
+/// sans déverrouiller.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub(crate) struct OutboxFile {
+    pub version: u32,
+    pub user_id: String,
+    pub pending: u32,
+    pub data: String,
 }
 
 /// Paramètres de dérivation du mot de passe principal, dans un format propre
@@ -115,6 +132,43 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(Error::storage(e)),
         }
+    }
+
+    /// La file des modifications hors ligne, telle qu'écrite (chiffrée).
+    /// Un fichier d'un autre format compte pour absent.
+    pub(crate) fn load_outbox(&self) -> Result<Option<OutboxFile>, Error> {
+        let data = match fs::read(self.dir.join(OUTBOX_FILE)) {
+            Ok(data) => data,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(Error::storage(e)),
+        };
+        Ok(serde_json::from_slice::<OutboxFile>(&data)
+            .ok()
+            .filter(|f| f.version == OUTBOX_VERSION))
+    }
+
+    /// Remplace la file ; vide (`None`), le fichier est supprimé.
+    pub(crate) fn save_outbox(&self, file: Option<OutboxFile>) -> Result<(), Error> {
+        let Some(mut file) = file else {
+            return self.delete_outbox();
+        };
+        file.version = OUTBOX_VERSION;
+        let data = serde_json::to_vec(&file).map_err(Error::storage)?;
+        self.write_private(OUTBOX_FILE, &data)
+    }
+
+    pub(crate) fn delete_outbox(&self) -> Result<(), Error> {
+        match fs::remove_file(self.dir.join(OUTBOX_FILE)) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(Error::storage(e)),
+        }
+    }
+
+    /// Modifications faites hors ligne qui attendent encore le serveur
+    /// (lisible coffre verrouillé : pour prévenir avant une déconnexion).
+    pub fn pending_changes(&self) -> u32 {
+        self.load_outbox().ok().flatten().map_or(0, |f| f.pending)
     }
 
     /// Les clés de sécurité enrôlées pour déverrouiller (aucune si le

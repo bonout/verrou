@@ -84,11 +84,8 @@ impl Connection {
             public_key: key.public_key,
             fingerprint: key.fingerprint,
         });
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        let id = self.api.create_cipher(&access, &request).await?;
-        let vault = self.sync_with(&access).await?;
-        Ok((id, vault))
+        let access = self.online().await?;
+        self.save_cipher(None, view, access).await
     }
 }
 

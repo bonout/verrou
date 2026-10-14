@@ -43,7 +43,9 @@ impl Connection {
         username: Option<String>,
         passkey: &Passkey,
     ) -> Result<(String, Decrypted), Error> {
-        let mut view = if let Some(id) = item {
+        let access = self.online().await?;
+        let item = item.map(|id| self.resolve(id));
+        let mut view = if let Some(id) = &item {
             let mut view = self.editable_view(id).await?;
             let Some(login) = view.login.as_mut() else {
                 return Err(Error::Invalid(
@@ -72,16 +74,7 @@ impl Connection {
         if let Some(login) = view.login.as_mut() {
             login.fido2_credentials = Some(vec![credential(passkey)]);
         }
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        let id = if let Some(id) = item {
-            self.api.update_cipher(&access, id, &request).await?;
-            id.to_owned()
-        } else {
-            self.api.create_cipher(&access, &request).await?
-        };
-        let vault = self.sync_with(&access).await?;
-        Ok((id, vault))
+        self.save_cipher(item.as_deref(), view, access).await
     }
 
     /// Nouveau compteur d'une passkey, après une authentification.
@@ -91,7 +84,9 @@ impl Connection {
         credential_id: &str,
         counter: u32,
     ) -> Result<Decrypted, Error> {
-        let mut view = self.editable_view(item).await?;
+        let access = self.online().await?;
+        let item = self.resolve(item);
+        let mut view = self.editable_view(&item).await?;
         let credential = view
             .login
             .as_mut()
@@ -99,10 +94,7 @@ impl Connection {
             .and_then(|list| list.iter_mut().find(|c| c.credential_id == credential_id))
             .ok_or(Error::NotFound)?;
         credential.counter = counter.to_string();
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        self.api.update_cipher(&access, item, &request).await?;
-        self.sync_with(&access).await
+        Ok(self.save_cipher(Some(&item), view, access).await?.1)
     }
 
     /// Retire une passkey de l'identifiant ; le reste de l'élément est gardé.
@@ -111,7 +103,9 @@ impl Connection {
         item: &str,
         credential_id: &str,
     ) -> Result<Decrypted, Error> {
-        let mut view = self.editable_view(item).await?;
+        let access = self.online().await?;
+        let item = self.resolve(item);
+        let mut view = self.editable_view(&item).await?;
         let list = view
             .login
             .as_mut()
@@ -125,9 +119,6 @@ impl Connection {
         if list.is_empty() {
             view.login.as_mut().map(|l| l.fido2_credentials.take());
         }
-        let request = self.encrypt(view).await?;
-        let access = self.access_token().await?;
-        self.api.update_cipher(&access, item, &request).await?;
-        self.sync_with(&access).await
+        Ok(self.save_cipher(Some(&item), view, access).await?.1)
     }
 }

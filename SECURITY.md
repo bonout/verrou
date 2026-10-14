@@ -24,7 +24,8 @@ PR qui touche à l'un de ces points le dit dans sa description.
    session. Verrouiller libère le coffre.
 6. **Écritures prudentes** : chiffrées par le SDK, envoyées avec la date de
    révision connue (le serveur refuse d'écraser une version plus récente),
-   en ne touchant qu'aux champs que l'écran d'édition montre.
+   en ne touchant qu'aux champs que l'écran d'édition montre. Hors ligne,
+   elles attendent chiffrées (voir « Modifications hors ligne »).
 7. **App sandboxée**, runtime renforcé ; en entrée, seulement le pont vers l'extension et le terminal, sur `127.0.0.1`.
 
 ## Connexion à Vaultwarden
@@ -152,6 +153,34 @@ PR qui touche à l'un de ces points le dit dans sa description.
   des éléments d'un même coffre, et jamais un élément en lecture seule. La
   gestion de l'organisation (membres, droits, collections) se fait dans le
   coffre web.
+- **Modifications hors ligne** (`outbox.rs`) : serveur injoignable (erreur
+  réseau seulement : un refus du serveur reste une erreur), une création,
+  une modification, un favori, un changement de dossier, la corbeille, la
+  restauration ou les archives s'appliquent au coffre affiché et attendent
+  dans une file, `outbox.json` (dossier du compte, mode 600). L'élément y
+  est **déjà chiffré par le SDK**, exactement comme il serait parti (même
+  clé, même date de révision connue) ; la file entière est en plus chiffrée
+  par la clé de l'utilisateur (comme le jeton de renouvellement). En clair
+  dans le fichier : l'identifiant du compte et le nombre de modifications en
+  attente (pour prévenir avant une déconnexion, coffre verrouillé). Un test
+  vérifie qu'aucun titre ni secret n'y figure. Verrouiller garde la file ;
+  se déconnecter l'efface (la confirmation dit combien de modifications
+  seraient perdues) ; une file d'un autre compte est ignorée et supprimée.
+  Au retour du réseau, la file part avant la lecture du coffre : créations
+  et modifications d'abord, dans l'ordre, puis corbeille et archives. Si
+  l'élément a changé (ou disparu) sur le serveur entre-temps, le serveur
+  refuse la modification ; Verrou ne l'écrase pas : la version locale
+  devient une copie, « titre (conflit hors ligne) », au même endroit, sans
+  ses pièces jointes, et la version du serveur revient. Une modification
+  refusée pour une autre raison (et dont la copie est refusée aussi) est
+  retirée de la file et signalée, jamais perdue en silence. Restent
+  impossibles hors ligne, avec un message clair : pièces jointes, partage
+  vers une organisation (et création dans une collection), envois, accès
+  d'urgence, import. Les éléments en lecture seule le restent. Les
+  identifiants enregistrés depuis Brave suivent le même chemin. Limite
+  connue : une écriture dont la réponse se perd (coupure pendant l'envoi)
+  peut repartir au retour du réseau ; une création peut alors être en
+  double, une modification devient une copie de conflit (rien n'est perdu).
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée.
 

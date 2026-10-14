@@ -201,9 +201,12 @@ private struct AccountSettings: View {
                 }
 
                 Section {
-                    Button("Se déconnecter de ce Mac…", role: .destructive) { confirmLogout = true }
+                    Button("Se déconnecter de ce Mac…", role: .destructive) {
+                        model.refreshPending()
+                        confirmLogout = true
+                    }
                 } footer: {
-                    Text("Efface le cache et les jetons de ce Mac. Le coffre reste intact sur le serveur.")
+                    Text("Efface le cache, les jetons et les modifications pas encore synchronisées de ce Mac. Le coffre reste intact sur le serveur.")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -213,7 +216,11 @@ private struct AccountSettings: View {
         .confirmationDialog("Se déconnecter de ce Mac ?", isPresented: $confirmLogout) {
             Button("Se déconnecter", role: .destructive) { model.logout() }
         } message: {
-            Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+            if model.pendingChanges > 0 {
+                Text("\(model.pendingChanges == 1 ? "1 modification non synchronisée sera perdue" : "\(model.pendingChanges) modifications non synchronisées seront perdues"). Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+            } else {
+                Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+            }
         }
     }
 }

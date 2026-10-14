@@ -242,6 +242,20 @@ impl Api {
         access_token: &str,
         cipher: &CipherRequestModel,
     ) -> Result<String, Error> {
+        let body = self.post_cipher(access_token, cipher).await?;
+        body.get("id")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))
+    }
+
+    /// Crée un élément (déjà chiffré) ; rend l'élément tel que le serveur
+    /// le garde (identifiant, date de révision).
+    pub async fn post_cipher(
+        &self,
+        access_token: &str,
+        cipher: &CipherRequestModel,
+    ) -> Result<Value, Error> {
         let response = self
             .http
             .post(format!("{}/api/ciphers", self.base))
@@ -249,11 +263,7 @@ impl Api {
             .json(cipher)
             .send()
             .await?;
-        let body = write_response(response).await?;
-        body.get("id")
-            .and_then(Value::as_str)
-            .map(str::to_owned)
-            .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))
+        write_response(response).await
     }
 
     /// Remplace un élément. Le serveur refuse si `lastKnownRevisionDate` ne
@@ -264,6 +274,17 @@ impl Api {
         id: &str,
         cipher: &CipherRequestModel,
     ) -> Result<(), Error> {
+        self.put_cipher(access_token, id, cipher).await.map(drop)
+    }
+
+    /// Comme `update_cipher`, en rendant l'élément tel que le serveur le
+    /// garde (nouvelle date de révision).
+    pub async fn put_cipher(
+        &self,
+        access_token: &str,
+        id: &str,
+        cipher: &CipherRequestModel,
+    ) -> Result<Value, Error> {
         let response = self
             .http
             .put(format!("{}/api/ciphers/{id}", self.base))
@@ -271,12 +292,7 @@ impl Api {
             .json(cipher)
             .send()
             .await?;
-        write_response(response).await.map(drop)
-    }
-
-    /// Met l'élément à la corbeille (suppression douce, restaurable).
-    pub async fn trash_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
-        self.cipher_action(access_token, id, "delete").await
+        write_response(response).await
     }
 
     /// `PUT /api/ciphers/{id}/{action}` : `delete` (corbeille), `restore`,
