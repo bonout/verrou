@@ -72,6 +72,15 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         model.reviewLogin(true, twoFactor: [.authenticator, .email])
         await screen("03-second-facteur", root: RootView(), expect: .init(identifiers: ["login-title"]))
         model.reviewLogin(false)
+        // « Créer un compte », lien d'invitation collé (lu hors ligne).
+        let registration = RegistrationFlow(server: "", email: "")
+        registration.link = Self.mockInviteLink
+        registration.name = "Léa Martin"
+        registration.password = "fixe-pivoine-monceaux-couteau"
+        registration.confirmation = registration.password
+        await screen("04-creer-un-compte", root: LoginView(registration: registration),
+                     expect: .init(identifiers: ["login-title"]))
+        registration.reset()
 
         // Coffre : une fiche de chaque sorte.
         model.openVault()
@@ -104,6 +113,18 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         model.emergency.set(Self.mockEmergency())
         model.pane = .emergency
         await screen("22-urgence", root: RootView(), expect: pane)
+        if let organization = model.organizations.first {
+            model.members.preview = true
+            model.openMembers(organization.id)
+            model.members.set(Self.mockMembers(collection: organization.collections.first?.id ?? ""),
+                              organizationID: organization.id)
+            model.members.selection = "mb-lea"
+            await screen("23-membres-a-confirmer", root: RootView(), expect: pane)
+            model.members.selection = "mb-alex"
+            await screen("24-membre-confirme", root: RootView(), expect: pane)
+        } else {
+            fail("23-membres-a-confirmer", "pas d'organisation dans le coffre fictif")
+        }
         model.filter = .all
 
         // Feuilles, rendues seules à leur taille (comme posées sur la fenêtre).
@@ -150,6 +171,23 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         for (name, tab) in tabs {
             defaults.set(tab.rawValue, forKey: "settingsTab")
             await screen(name, root: SettingsView(), size: nil, expect: .init(), chrome: false)
+        }
+
+        // Membres : invitation, puis modification d'un membre.
+        if model.membersOrganization != nil {
+            let collection = model.membersOrganization?.collections.first?.id ?? ""
+            await screen("39-inviter-membres",
+                         root: MemberEditorView(draft: MemberDraft(member: nil, emails: "tom@exemple.fr, sam@exemple.fr",
+                                                                   role: .user, access: [collection: .edit])),
+                         size: nil, expect: withTitle(sheet, "sheet-title"), chrome: false)
+            if let alex = model.members.members.first(where: { $0.id == "mb-alex" }) {
+                model.editMember(alex)
+                if let draft = model.members.draft {
+                    await screen("39-modifier-membre", root: MemberEditorView(draft: draft), size: nil,
+                                 expect: withTitle(sheet, "sheet-title"), chrome: false)
+                }
+                model.members.draft = nil
+            }
         }
 
         let duplicates = DuplicatesFlow(groups: (try? model.session.duplicates()) ?? [])
@@ -421,6 +459,34 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                         hasPassword: false, accessCount: 3, maxAccessCount: 3, disabled: false, hideEmail: false,
                         deletionDate: now + day, expirationDate: now - day, revisionDate: now - 5 * day,
                         available: false),
+        ]
+    }
+
+    private static let mockInviteLink = "https://vault.exemple.fr/#/accept-organization/?email=lea.martin%40exemple.fr"
+        + "&organizationName=Famille%20Martin&organizationId=8e2d4f1a-0000-4000-8000-000000000001"
+        + "&organizationUserId=8e2d4f1a-0000-4000-8000-000000000002&token=eyJ0eXAiOiJKV1QifQ.e30.c2lnbmF0dXJl"
+        + "&initOrganization=false&orgUserHasExistingUser=false"
+
+    private static func mockMembers(collection: String) -> [OrganizationMember] {
+        let access = { (readOnly: Bool, hide: Bool) in
+            [MemberCollectionAccess(collectionId: collection, readOnly: readOnly, hidePasswords: hide, manage: false)]
+        }
+        return [
+            OrganizationMember(id: "mb-camille", userId: "u-camille", name: "Camille Martin",
+                               email: "camille.martin@exemple.fr", role: .owner, status: .confirmed, accessAll: true,
+                               collections: [], twoFactorEnabled: true, hasAccount: true),
+            OrganizationMember(id: "mb-alex", userId: "u-alex", name: "Alex Martin", email: "alex.martin@exemple.fr",
+                               role: .user, status: .confirmed, accessAll: false, collections: access(false, false),
+                               twoFactorEnabled: true, hasAccount: true),
+            OrganizationMember(id: "mb-lea", userId: "u-lea", name: "Léa Martin", email: "lea.martin@exemple.fr",
+                               role: .user, status: .accepted, accessAll: false, collections: access(true, true),
+                               twoFactorEnabled: false, hasAccount: true),
+            OrganizationMember(id: "mb-tom", userId: "u-tom", name: nil, email: "tom@exemple.fr",
+                               role: .user, status: .invited, accessAll: false, collections: access(true, false),
+                               twoFactorEnabled: false, hasAccount: false),
+            OrganizationMember(id: "mb-sam", userId: "u-sam", name: "Sam Bernard", email: "sam@exemple.fr",
+                               role: .manager, status: .revoked, accessAll: false, collections: access(false, false),
+                               twoFactorEnabled: false, hasAccount: true),
         ]
     }
 

@@ -17,6 +17,10 @@
 //! Accès d'urgence (`emergency`) : confier son coffre à un proche, ou
 //! ouvrir en lecture seule celui qu'un proche nous a confié.
 //!
+//! Membres des organisations (`members`) : inviter, confirmer (empreinte
+//! vérifiée), rôles et collections. Création d'un compte sur invitation
+//! (`register`).
+//!
 //! Envois (`send`) : Bitwarden Send, partage d'un texte par un lien chiffré.
 //!
 //! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
@@ -32,9 +36,11 @@ mod edit;
 pub mod emergency;
 mod error;
 mod import;
+pub mod members;
 mod organizations;
 mod outbox;
 mod passkeys;
+pub mod register;
 pub mod security_key;
 pub mod send;
 pub mod ssh_key;

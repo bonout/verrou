@@ -16,6 +16,7 @@ struct MainView: View {
                 case .audit: AuditView()
                 case .sends: SendsListView()
                 case .emergency: EmergencyListView()
+                case .members: MembersListView()
                 case nil: ItemListView(searchFocused: $searchFocused)
                 }
             }
@@ -35,6 +36,13 @@ struct MainView: View {
                         .id(selected.contact.id)
                 } else {
                     EmptyPaneDetailView(title: "Aucun accès sélectionné", symbol: "person.2.badge.key")
+                }
+            case .members:
+                if let member = model.members.selected {
+                    MemberDetailView(member: member)
+                        .id(member.id)
+                } else {
+                    EmptyPaneDetailView(title: "Aucun membre sélectionné", symbol: "person.3")
                 }
             case .audit, nil:
                 if model.isMultiSelection {
@@ -59,6 +67,14 @@ struct MainView: View {
                         Label("Inviter un contact", systemImage: "plus")
                     }
                     .help("Inviter un contact d'urgence")
+                case .members:
+                    Button {
+                        model.inviteMembers()
+                    } label: {
+                        Label("Inviter", systemImage: "person.badge.plus")
+                    }
+                    .help("Inviter des personnes dans l'organisation")
+                    .disabled(model.membersOrganization?.canManageMembers != true)
                 case .audit, nil:
                     Menu {
                         Button("Nouvel identifiant") { model.newItem(login: true) }
@@ -93,7 +109,7 @@ struct MainView: View {
             // Absentes des volets des envois et des accès d'urgence, qui
             // n'affichent pas d'élément du coffre.
             ToolbarItemGroup(placement: .primaryAction) {
-                if model.pane != .sends && model.pane != .emergency {
+                if model.pane != .sends && model.pane != .emergency && model.pane != .members {
                     ItemToolbarActions()
                 }
             }
@@ -111,6 +127,7 @@ struct MainView: View {
         }
         .modifier(SendsPresentations())
         .modifier(EmergencyPresentations())
+        .modifier(MembersPresentations())
         .sheet(item: $model.editor) { editor in
             EditItemView(editor: editor)
                 .environment(model)

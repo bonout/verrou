@@ -162,9 +162,10 @@ PR qui touche à l'un de ces points le dit dans sa description.
   mots de passe ne sortent ni vers Swift (`reveal`), ni vers le terminal, ni
   dans un brouillon de modification ; seul le remplissage par l'extension
   reste permis, comme dans les apps Bitwarden. Les doublons ne comparent que
-  des éléments d'un même coffre, et jamais un élément en lecture seule. La
-  gestion de l'organisation (membres, droits, collections) se fait dans le
-  coffre web.
+  des éléments d'un même coffre, et jamais un élément en lecture seule. Les
+  membres se gèrent dans Verrou (voir « Membres des organisations ») ; la
+  création des collections et les règles de l'organisation, dans le coffre
+  web.
 - **Modifications hors ligne** (`outbox.rs`) : serveur injoignable (erreur
   réseau seulement : un refus du serveur reste une erreur), une création,
   une modification, un favori, un changement de dossier, la corbeille, la
@@ -358,6 +359,50 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   disparaît.
 - **Prise de contrôle** (nouveau mot de passe principal du concédant) : pas
   dans Verrou, seulement dans le coffre web.
+
+## Membres des organisations
+
+- **Sans jeton d'administration** : Verrou n'utilise jamais le panneau
+  d'administration de Vaultwarden (`/admin`, désactivé sur un serveur
+  prudent). Ce jeton donne tout le serveur (comptes, réglages, suppression)
+  à qui le détient ; le garder dans une app de bureau, ou le saisir à chaque
+  invitation, élargirait beaucoup la surface d'attaque pour un gain nul.
+  Ajouter quelqu'un passe par l'invitation d'une organisation
+  (`INVITATIONS_ALLOWED=true`), avec les droits du compte connecté :
+  propriétaires et administrateurs gèrent, un gestionnaire avec accès à
+  toutes les collections voit la liste, les autres rien. Les règles de
+  Vaultwarden (seul un propriétaire invite, confirme, retire ou promeut un
+  gestionnaire, un administrateur ou un propriétaire) sont vérifiées dans
+  Rust avant tout envoi ; le serveur les vérifie de toute façon. Avant
+  chaque action sur un membre, son état et son compte sont relus sur le
+  serveur : l'interface ne fournit que des identifiants.
+- **Confirmer un membre** revient à lui confier la clé de l'organisation :
+  elle est chiffrée pour sa clé publique (RSA-OAEP-SHA1, par le SDK, comme
+  le coffre web) et confiée au serveur, qui ne peut pas la lire. La clé
+  publique vient du serveur (`/api/users/{id}/public-key`) : un serveur
+  malveillant pourrait y mettre la sienne et lire tout le coffre partagé.
+  Verrou montre donc d'abord l'empreinte de cette clé (la phrase de 5 mots
+  des apps Bitwarden), à comparer de vive voix avec celle que le membre lit
+  dans son compte (Verrou : Réglages → Compte ; coffre web : Paramètres →
+  Mon compte) ; à l'envoi, le membre et sa clé sont relus et rien ne part si
+  l'empreinte n'est plus celle qui a été vérifiée. La même phrase, calculée
+  à partir de ma clé privée (jamais du serveur), s'affiche dans Réglages →
+  Compte pour celui qui me confirme.
+- **Créer un compte** (écran de connexion) : le SDK dérive la clé principale
+  du mot de passe (PBKDF2-SHA256 à 600 000 itérations, ou Argon2id 3 × 64 Mio
+  × 4, les défauts des apps Bitwarden), tire la clé de l'utilisateur et la
+  paire de clés RSA ; le serveur ne reçoit que l'empreinte d'authentification
+  et les clés chiffrées. Mot de passe de 12 caractères au moins, robustesse
+  affichée (zxcvbn, par le SDK), confirmation obligatoire ; l'indice, s'il y
+  en a un, est stocké **en clair** sur le serveur (l'écran le dit, et refuse
+  un indice égal au mot de passe). Inscriptions fermées, Vaultwarden 1.37.4
+  n'accepte que : le jeton signé du lien d'invitation (serveur avec
+  courriel ; l'adresse doit être celle de l'invitation), ou un jeton de
+  vérification qu'il ne rend directement qu'aux adresses invitées d'un
+  serveur sans courriel. Le lien collé est lu dans Rust ; son jeton ne sert
+  qu'à l'inscription et à l'acceptation, et n'est pas gardé au-delà de la
+  session. Limite connue : le mot de passe saisi passe par une `String`
+  Swift (comme à la connexion).
 
 ## Envois (Bitwarden Send)
 

@@ -54,6 +54,7 @@ mod attachments;
 mod bulk;
 mod emergency;
 mod import;
+mod members;
 mod passphrase;
 mod send;
 mod ssh;
@@ -65,6 +66,11 @@ pub use bulk::{
 };
 pub use emergency::{
     EmergencyContact, EmergencyOverview, EmergencyState, EmergencyType, EmergencyVault,
+};
+pub use members::{
+    MemberCollectionAccess, NewAccountKdfChoice, NewAccountRequest, OrganizationMember,
+    OrganizationMemberRole, OrganizationMemberStatus, SignupLinkInfo, master_password_strength,
+    parse_signup_link,
 };
 pub use passphrase::{
     GeneratedPassphrase, PassphraseLanguage, PassphraseSeparator, PassphraseSettings,
@@ -729,6 +735,9 @@ pub struct VaultSession {
     pending_items: RwLock<HashSet<String>>,
     /// Éléments créés hors ligne : identifiant provisoire → serveur.
     remapped: RwLock<HashMap<String, String>>,
+    /// Invitation d'une organisation à accepter une fois connecté, après la
+    /// création du compte (`members`).
+    pending_invite: Mutex<Option<verrou_vaultwarden::register::InviteLink>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -1016,6 +1025,7 @@ impl VaultSession {
             breached: Mutex::new(HashMap::new()),
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
+            pending_invite: Mutex::new(None),
         })
     }
 
@@ -1436,6 +1446,7 @@ impl VaultSession {
             breached: Mutex::new(HashMap::new()),
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
+            pending_invite: Mutex::new(None),
         })
     }
 
@@ -1734,6 +1745,7 @@ pub struct ItemSharing {
 
 /// Une organisation de la barre latérale, avec ses collections.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+#[allow(clippy::struct_excessive_bools)] // des droits, lus tels quels par Swift
 pub struct OrganizationView {
     pub id: String,
     pub name: String,
@@ -1746,6 +1758,15 @@ pub struct OrganizationView {
     /// Page de l'organisation dans le coffre web (membres, collections).
     pub manage_url: Option<String>,
     pub collections: Vec<CollectionView>,
+    /// Rôle du compte (`None` : inconnu).
+    pub role: Option<OrganizationMemberRole>,
+    /// Voir les membres (propriétaire, administrateur, gestionnaire avec
+    /// accès à toutes les collections).
+    pub can_view_members: bool,
+    /// Inviter, confirmer, modifier, retirer (propriétaire, administrateur).
+    pub can_manage_members: bool,
+    /// Propriétaire : rôles au-dessus d'« utilisateur » aussi.
+    pub is_owner: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -1770,6 +1791,7 @@ fn mock_organization() -> Organization {
         id: mock::MOCK_ORGANIZATION.0.to_owned(),
         name: mock::MOCK_ORGANIZATION.1.to_owned(),
         admin: true,
+        role: Some(verrou_vaultwarden::members::MemberRole::Owner),
         collections: vec![verrou_vaultwarden::Collection {
             id: mock::MOCK_COLLECTION.0.to_owned(),
             name: mock::MOCK_COLLECTION.1.to_owned(),
@@ -1801,6 +1823,10 @@ impl VaultSession {
             .into_iter()
             .map(|org| OrganizationView {
                 count: count(&counts.organizations, &org.id),
+                role: org.role.map(Into::into),
+                can_view_members: org.member_rights().view,
+                can_manage_members: org.member_rights().manage,
+                is_owner: org.member_rights().owner,
                 writable: org.is_writable(),
                 admin: org.admin,
                 manage_url: server

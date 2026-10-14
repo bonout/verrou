@@ -665,7 +665,7 @@ fn grant_error(body: &Value, with_two_factor: bool) -> Error {
 }
 
 /// Le message lisible d'une erreur du serveur, quel que soit son format.
-fn error_message(body: &Value) -> String {
+pub(crate) fn error_message(body: &Value) -> String {
     [
         "/ErrorModel/Message",
         "/errorModel/message",
