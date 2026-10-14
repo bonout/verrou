@@ -133,17 +133,39 @@ final class DemoDriver {
         await pause(0.5)
         await snap("07-identite")
 
+        // Modèle Wi-Fi : champs prédéfinis.
+        model.filter = .template(template: .wifi)
+        await pause(0.4)
+        select(title: "Wi-Fi maison")
+        await pause(0.6)
+        await snap("08-wifi")
+
+        // Coffre partagé de la famille (organisation Vaultwarden).
+        model.filter = .all
+        await pause(0.3)
+        await type("famille", into: \.query)
+        await pause(0.4)
+        select(title: "Google — famille")
+        await pause(0.6)
+        await snap("09-coffre-partage")
+        model.query = ""
+
+        // Audit de sécurité, dans la fenêtre principale.
+        withAnimation(.snappy) { model.openAudit() }
+        await pause(1.2)
+        await snap("10-audit")
+
         model.filter = .all
         await pause(0.3)
         quickAccess.show(anchor: NSApp.windows.first { $0.identifier?.rawValue == "main" }?.frame)
         await pause(0.6)
         await type("net", into: \.quickQuery)
         await pause(0.6)
-        await snap("08-acces-rapide")
+        await snap("11-acces-rapide")
         model.quickQuery = ""
         await type("cloud", into: \.quickQuery)
         await pause(0.8)
-        await snap("09-acces-rapide-code")
+        await snap("12-acces-rapide-code")
         quickAccess.close()
         await pause(0.8)
 
