@@ -60,6 +60,18 @@ final class EndToEndDriver {
         }
     }
 
+    /// Les colonnes tiennent dans la fenêtre : un texte à hauteur imposée
+    /// (`fixedSize`) hors d'une vue défilante agrandit toute la vue partagée,
+    /// centrée puis coupée en haut et en bas.
+    private func columnsFitWindow() -> Bool {
+        guard let content = NSApp.windows.first(where: { $0.isVisible && !($0 is NSPanel) })?.contentView else { return false }
+        func splitViews(_ view: NSView) -> [NSSplitView] {
+            (view as? NSSplitView).map { [$0] } ?? view.subviews.flatMap(splitViews)
+        }
+        let splits = splitViews(content)
+        return !splits.isEmpty && splits.allSatisfy { $0.frame.height <= content.frame.height + 0.5 }
+    }
+
     private func snap(_ name: String) async {
         try? await Task.sleep(for: .seconds(0.6))
         if let image = recorder?.snapshot() {
@@ -139,9 +151,15 @@ final class EndToEndDriver {
         model.openSends()
         await model.reloadSends()
         check(model.pane == .sends && model.sends.loaded, "volet des envois")
+        try? await Task.sleep(for: .seconds(1))
+        check(columnsFitWindow(), "volet des envois à la hauteur de la fenêtre")
+        await snap("25-envois")
         model.openEmergency()
         await model.reloadEmergency()
         check(model.pane == .emergency && model.emergency.loaded, "volet des accès d'urgence")
+        try? await Task.sleep(for: .seconds(1))
+        check(columnsFitWindow(), "volet des accès d'urgence à la hauteur de la fenêtre")
+        await snap("26-urgence")
         model.filter = .all
         check(model.pane == nil, "retour à la liste")
 
