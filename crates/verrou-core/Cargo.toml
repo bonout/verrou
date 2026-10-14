@@ -23,6 +23,8 @@ unicode-normalization.workspace = true
 serde_json.workspace = true
 csv.workspace = true
 zip.workspace = true
+# Passkeys : clés ECDSA P-256 (PKCS#8, comme Bitwarden), signatures ES256.
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 
 [lints]
 workspace = true

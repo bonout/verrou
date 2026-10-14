@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType};
-use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, SecretString};
+use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString};
 
 /// Les éléments archivés et ceux de la corbeille sont gardés, avec leur état :
 /// l'interface les montre à part.
@@ -339,6 +339,33 @@ fn password_history(view: &CipherView, item: &mut Item) {
             entry.password.clone(),
         ));
     }
+}
+
+/// Passkeys d'un identifiant, au format de Bitwarden. Celles dont
+/// l'élément n'a pas d'identifiant sont ignorées.
+pub(crate) fn passkeys(view: &CipherView) -> Vec<Passkey> {
+    let Some(item) = view.id.map(|id| id.to_string()) else {
+        return Vec::new();
+    };
+    view.login
+        .as_ref()
+        .and_then(|l| l.fido2_credentials.as_ref())
+        .into_iter()
+        .flatten()
+        .map(|c| Passkey {
+            item: item.clone(),
+            credential_id: c.credential_id.clone(),
+            rp_id: c.rp_id.clone(),
+            rp_name: c.rp_name.clone().filter(|n| !n.is_empty()),
+            user_handle: c.user_handle.clone().filter(|h| !h.is_empty()),
+            user_name: c.user_name.clone().filter(|n| !n.is_empty()),
+            user_display_name: c.user_display_name.clone().filter(|n| !n.is_empty()),
+            counter: c.counter.trim().parse().unwrap_or(0),
+            discoverable: c.discoverable.trim().eq_ignore_ascii_case("true"),
+            created: c.creation_date.timestamp(),
+            key: SecretString::new(c.key_value.clone()),
+        })
+        .collect()
 }
 
 #[cfg(test)]

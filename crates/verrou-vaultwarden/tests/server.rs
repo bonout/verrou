@@ -1191,3 +1191,232 @@ async fn import_again_then_trash_duplicates(
         Err(Error::NotFound)
     ));
 }
+
+// MARK: Passkeys
+
+/// Vérifie une assertion `WebAuthn` (ES256) avec une clé publique SPKI.
+fn verify_assertion(public_key: &[u8], assertion: &verrou_core::passkey::Assertion) {
+    use p256::ecdsa::signature::Verifier as _;
+    use p256::pkcs8::DecodePublicKey as _;
+    use sha2::Digest as _;
+    let key = p256::ecdsa::VerifyingKey::from_public_key_der(public_key).unwrap();
+    let mut message = assertion.authenticator_data.clone();
+    message.extend_from_slice(&sha2::Sha256::digest(&assertion.client_data_json));
+    let signature = p256::ecdsa::DerSignature::try_from(assertion.signature.as_slice()).unwrap();
+    key.verify(&message, &signature).expect("signature valide");
+}
+
+fn assertion_for(passkey: &verrou_core::Passkey, page: &str) -> verrou_core::passkey::Assertion {
+    verrou_core::passkey::assert(
+        passkey,
+        &verrou_core::passkey::AssertionRequest {
+            page_url: page,
+            rp_id: None,
+            challenge: &[42; 32],
+            user_verified: false,
+        },
+    )
+    .unwrap()
+}
+
+/// Une passkey écrite par un client Bitwarden est utilisable dans Verrou, et
+/// celle que Verrou crée se relit, champ par champ, avec le SDK des apps
+/// officielles ; le compteur avance et la suppression ne touche qu'à elle.
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+async fn passkeys_round_trip_with_bitwarden() {
+    use p256::pkcs8::{EncodePrivateKey as _, EncodePublicKey as _};
+    use verrou_core::passkey::{RegistrationRequest, b64url, register};
+
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+
+    // Comme le ferait l'extension Bitwarden : clé PKCS#8 P-256, identifiant UUID.
+    let key = p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng);
+    let bitwarden_id = seeder
+        .cipher(json!({
+            "name": "WebAuthn.io", "type": 1,
+            "login": {
+                "username": "camille", "password": null, "passwordRevisionDate": null,
+                "totp": null, "autofillOnPageLoad": null,
+                "uris": [{ "uri": "https://webauthn.io", "match": null, "uriChecksum": null }],
+                "fido2Credentials": [{
+                    "credentialId": "1d5d8a2f-0f4e-4c3b-9a55-8d7a1b3c2e10",
+                    "keyType": "public-key", "keyAlgorithm": "ECDSA", "keyCurve": "P-256",
+                    "keyValue": b64url(key.to_pkcs8_der().unwrap().as_bytes()),
+                    "rpId": "webauthn.io", "userHandle": "YWJj", "userName": "camille",
+                    "counter": "0", "rpName": "WebAuthn.io", "userDisplayName": "Camille",
+                    "discoverable": "true", "creationDate": "2024-01-01T00:00:00Z",
+                }],
+            },
+        }))
+        .await;
+    let github_id = seeder
+        .cipher(json!({
+            "name": "GitHub", "type": 1,
+            "login": {
+                "username": "camille", "password": "hunter2-hunter2",
+                "passwordRevisionDate": null, "totp": null, "autofillOnPageLoad": null,
+                "uris": [{ "uri": "https://github.com", "match": null, "uriChecksum": null }],
+                "fido2Credentials": null,
+            },
+        }))
+        .await;
+
+    let store = temp_store();
+    let mut opened = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    );
+    let theirs = opened
+        .vault
+        .passkeys
+        .iter()
+        .find(|p| p.item == bitwarden_id)
+        .unwrap()
+        .clone();
+    assert_eq!(theirs.rp_id, "webauthn.io");
+    assert_eq!(theirs.user_name.as_deref(), Some("camille"));
+    assert_eq!(theirs.counter, 0);
+    assert!(theirs.discoverable);
+    // Verrou signe avec la passkey de Bitwarden, puis enregistre le compteur.
+    let assertion = assertion_for(&theirs, "https://webauthn.io/");
+    verify_assertion(
+        key.verifying_key().to_public_key_der().unwrap().as_bytes(),
+        &assertion,
+    );
+    assert_eq!(assertion.user_handle.as_deref(), Some(&b"abc"[..]));
+    let connection = &mut opened.connection;
+    let vault = connection
+        .set_passkey_counter(&bitwarden_id, &theirs.credential_id, assertion.counter)
+        .await
+        .unwrap();
+    assert_eq!(vault.passkeys[0].counter, 1);
+    let stored = seeder.fetch(&bitwarden_id).await;
+    let credentials = stored.login.unwrap().fido2_credentials.unwrap();
+    assert_eq!(credentials[0].counter, "1");
+    assert_eq!(credentials[0].user_display_name.as_deref(), Some("Camille"));
+
+    // Verrou crée une passkey dans l'identifiant GitHub…
+    let (ours, registration) = register(
+        &RegistrationRequest {
+            page_url: "https://github.com/settings/security",
+            rp_id: Some("github.com"),
+            rp_name: Some("GitHub"),
+            user_id: b"id-github-camille",
+            user_name: Some("camille"),
+            user_display_name: Some("Camille Martin"),
+            challenge: &[1; 32],
+            user_verified: true,
+            self_attestation: false,
+        },
+        &github_id,
+        1_760_000_000,
+        &mut rand::rngs::OsRng,
+    )
+    .unwrap();
+    let (id, vault) = connection
+        .save_passkey(Some(&github_id), String::new(), String::new(), None, &ours)
+        .await
+        .unwrap();
+    assert_eq!(id, github_id);
+    let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
+    assert_eq!(
+        github.field("password").unwrap().value.expose(),
+        "hunter2-hunter2",
+        "le reste de l'élément est gardé"
+    );
+    // … que le SDK de Bitwarden relit tel quel.
+    let stored = seeder.fetch(&github_id).await;
+    let credential = &stored.login.unwrap().fido2_credentials.unwrap()[0];
+    assert_eq!(credential.credential_id, ours.credential_id);
+    assert_eq!(credential.key_type, "public-key");
+    assert_eq!(credential.key_algorithm, "ECDSA");
+    assert_eq!(credential.key_curve, "P-256");
+    assert_eq!(credential.key_value, ours.key.expose());
+    assert_eq!(credential.rp_id, "github.com");
+    assert_eq!(credential.rp_name.as_deref(), Some("GitHub"));
+    assert_eq!(
+        credential.user_handle.as_deref(),
+        Some(b64url(b"id-github-camille").as_str())
+    );
+    assert_eq!(credential.user_name.as_deref(), Some("camille"));
+    assert_eq!(
+        credential.user_display_name.as_deref(),
+        Some("Camille Martin")
+    );
+    assert_eq!(credential.counter, "0");
+    assert_eq!(credential.discoverable, "true");
+    assert_eq!(credential.creation_date.timestamp(), 1_760_000_000);
+
+    // Relue du cache (hors ligne), elle signe pour GitHub.
+    let reopened = unlock_with_password(&store, &SecretString::new(PASSWORD))
+        .await
+        .unwrap();
+    let read_back = reopened
+        .vault
+        .passkeys
+        .iter()
+        .find(|p| p.item == github_id)
+        .unwrap();
+    assert_eq!(read_back, &ours);
+    verify_assertion(
+        &registration.public_key,
+        &assertion_for(read_back, "https://github.com/login"),
+    );
+
+    // Une passkey dans un nouvel identifiant, pour un site inconnu.
+    let (fresh, _) = register(
+        &RegistrationRequest {
+            page_url: "https://exemple.fr/inscription",
+            rp_id: None,
+            rp_name: None,
+            user_id: b"dominique",
+            user_name: Some("dominique"),
+            user_display_name: None,
+            challenge: &[2; 32],
+            user_verified: false,
+            self_attestation: false,
+        },
+        "",
+        1_760_000_000,
+        &mut rand::rngs::OsRng,
+    )
+    .unwrap();
+    let (created, vault) = connection
+        .save_passkey(
+            None,
+            "exemple.fr".to_owned(),
+            "https://exemple.fr".to_owned(),
+            Some("dominique".to_owned()),
+            &fresh,
+        )
+        .await
+        .unwrap();
+    let item = vault.items.iter().find(|i| i.id == created).unwrap();
+    assert_eq!(item.title, "exemple.fr");
+    assert_eq!(item.urls, ["https://exemple.fr"]);
+    assert_eq!(item.subtitle, "dominique");
+    assert!(vault.passkeys.iter().any(|p| p.item == created));
+
+    // Suppression : seule la passkey part.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let vault = connection
+        .delete_passkey(&github_id, &ours.credential_id)
+        .await
+        .unwrap();
+    assert!(vault.passkeys.iter().all(|p| p.item != github_id));
+    let stored = seeder.fetch(&github_id).await;
+    let login = stored.login.unwrap();
+    assert!(login.fido2_credentials.is_none_or(|c| c.is_empty()));
+    assert_eq!(login.password.as_deref(), Some("hunter2-hunter2"));
+    assert!(matches!(
+        connection
+            .delete_passkey(&github_id, &ours.credential_id)
+            .await,
+        Err(Error::NotFound)
+    ));
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}

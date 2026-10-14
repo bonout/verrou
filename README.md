@@ -41,6 +41,14 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   too: pick a card or an identity and every field is filled, drop-down lists
   included. A site Verrou doesn't know yet can be linked to an existing login
   from the popup (*Remplir avec un autre identifiant…*).
+- **Passkeys in Brave**: when a site asks for a passkey, Verrou offers its
+  own for that site, or to save a new one in the site's login (or a new
+  one); "use the browser" hands over to Brave. Passkeys are stored the
+  Bitwarden way (`fido2Credentials`), so they work both ways with the
+  official apps and web vault. The private key stays in the Rust core:
+  Verrou signs (ES256) and only the public key and signatures reach the
+  extension. Touch ID when the site asks for user verification. An item's
+  passkeys (site, user, date) show in its details and can be deleted there.
 - **Security audit**: reused, weak and plain-HTTP passwords, computed
   locally; known breaches on request through Have I Been Pwned (k-anonymity:
   only 5 characters of each password's SHA-1 leave the Mac). Also: sites that
@@ -93,7 +101,8 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
 ```
 crates/
   verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault,
-                      import parsers (Apple, 1Password, Proton Pass), duplicates
+                      import parsers (Apple, 1Password, Proton Pass), duplicates, passkeys
+                      (WebAuthn creation and ES256 signing)
   verrou-vaultwarden  sign-in, second factor, cache, decryption, writes and bulk import
                       (Bitwarden Rust SDK), YubiKey unlock
   verrou-ffi          UniFFI interface to Swift (no secret without an explicit request)
@@ -208,6 +217,7 @@ Verrou from the Accessibility list and allow it again.
 
 ```sh
 node --test extension/test/bridge.test.mjs   # extension protocol against the real bridge
+node --test extension/test/passkeys.test.mjs # passkeys: page options, creation and sign-in
 node extension/e2e/brave.mjs                  # walkthrough in a real Brave (throwaway profile)
 ```
 

@@ -137,8 +137,9 @@ final class BrowserBridge {
         }
     }
 
-    /// Le terminal veut un secret ou une signature SSH : Touch ID, ou le mot
-    /// de passe de la session si Touch ID n'est pas disponible. L'accord est
+    /// Le terminal veut un secret ou une signature SSH, ou Brave une passkey
+    /// pour un site qui demande la vérification de l'utilisateur : Touch ID,
+    /// ou le mot de passe de la session si Touch ID n'est pas disponible. L'accord est
     /// gardé quelques minutes par le pont, pour ce terminal et cet élément.
     /// Élément protégé (« redemander le mot de passe principal ») : la même
     /// confirmation que dans l'app (Touch ID ou mot de passe principal).
@@ -146,6 +147,7 @@ final class BrowserBridge {
         let reason = switch purpose {
         case .reveal: "autoriser le terminal à lire « \(title) »"
         case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
+        case .passkey: "autoriser Brave à utiliser une passkey pour « \(title) »"
         }
         Task {
             let approved = if model.session.needsConfirmation(id: item) {

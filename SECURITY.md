@@ -96,8 +96,8 @@ PR qui touche à l'un de ces points le dit dans sa description.
   comme les autres, à l'import comme ici : seul le verdict en sort, aucun
   secret.
 - **Limites connues** : la demande de mot de passe principal par élément
-  (« reprompt ») n'est pas appliquée ; les pièces jointes et les passkeys ne
-  sont pas affichées.
+  (« reprompt ») n'est pas appliquée ; les pièces jointes ne sont pas
+  affichées.
 
 ## Extension de navigateur
 
@@ -170,6 +170,61 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
 - **Limites connues** : un programme qui lit le profil de Brave peut en tirer
   la clé du canal (comme les cookies) ; l'extension se charge en mode
   développeur (pas de Chrome Web Store).
+
+## Passkeys dans Brave
+
+```
+page ──postMessage──▶ passkeys.js ──▶ service worker ──pont chiffré──▶ Verrou (signe)
+```
+
+- **Interception** : `passkey-page.js`, injecté dans la page (monde MAIN)
+  avant ses scripts, fait passer `navigator.credentials.create` et `.get`
+  (avec `publicKey`) par Verrou. Il ne détient rien : il relaie des options
+  que la page pourrait donner elle-même au navigateur, et rend la réponse.
+  `mediation: "conditional"` (remplissage automatique du navigateur) reste au
+  navigateur. Cadre principal seulement.
+- **Choix de l'utilisateur** : la fenêtre de Verrou (shadow DOM fermé, clics
+  réels seulement) propose les passkeys du site, ou d'en enregistrer une
+  (dans un identifiant du site, ou un nouveau). « Utiliser le navigateur »
+  rend la main à l'implémentation d'origine, avec les mêmes options ; sans
+  passkey pour ce site, ou Verrou injoignable, c'est le navigateur d'emblée.
+- **Origine et site** : l'adresse vient du navigateur (`sender.url`, cadre
+  principal), jamais de la page. Le cœur Rust (`verrou-core/src/passkey.rs`)
+  en tire l'origine écrite dans `clientDataJSON` et vérifie le `rpId` : l'hôte
+  de la page ou l'un de ses domaines parents, jamais un suffixe public (Public
+  Suffix List), jamais une adresse IP. Une passkey ne signe que pour son
+  `rpId`. HTTPS seulement (HTTP vers `localhost`), coffre déverrouillé.
+- **Clé privée** : créée dans Rust (P-256, `OsRng`), gardée chiffrée dans
+  l'identifiant au format de Bitwarden (`login.fido2Credentials`, PKCS#8 en
+  base64url, chaque champ chiffré par le SDK) : les apps Bitwarden et le
+  coffre web la relisent, et Verrou utilise celles qu'elles ont créées. Elle
+  ne traverse ni la frontière Swift (l'app ne voit que site, utilisateur et
+  date), ni le pont : l'extension ne reçoit que la clé publique,
+  l'attestation et les signatures. Signature ES256 (`p256` de RustCrypto) de
+  `authenticatorData ‖ SHA-256(clientDataJSON)`.
+- **Attestation** : `none`, ou `packed` auto-signée si le site demande
+  `direct`/`enterprise` ; AAGUID nul (Verrou ne se fait passer pour aucun
+  modèle). Indicateurs « sauvegardable » et « sauvegardée » : la passkey est
+  synchronisée par le coffre.
+- **Vérification de l'utilisateur** : si le site la demande (`required` ou
+  `preferred`, le défaut), Verrou demande Touch ID (ou le mot de passe de la
+  session) avant de signer ou de créer, et seulement alors pose l'indicateur
+  UV ; l'accord vaut 5 minutes pour cette extension et cet élément. Sinon,
+  le clic dans la fenêtre de Verrou vaut présence. Un élément protégé
+  (« redemander le mot de passe principal ») attend sa confirmation, comme
+  au remplissage.
+- **Compteur** : augmenté à chaque signature et enregistré sur le serveur
+  avant que la réponse parte ; hors ligne, la passkey ne signe pas. Seule
+  exception : un élément partagé en lecture seule, dont le compteur reste
+  celui du serveur.
+- **Une passkey par identifiant**, comme Bitwarden : en enregistrer une dans
+  un identifiant qui en a déjà une la remplace (la fenêtre le dit). Une
+  passkey que le site exclut (`excludeCredentials`) et que le coffre contient
+  déjà n'est pas recréée (`InvalidStateError`).
+- **Limites connues** : clés ES256 seulement (un site qui n'accepte pas ES256
+  passe par le navigateur) ; pas d'extensions WebAuthn (PRF, `largeBlob`) ;
+  pas de passkey dans les cadres ni dans le remplissage automatique ; pendant
+  une demande de Touch ID, les autres requêtes de l'extension attendent.
 
 ## Éléments protégés et audit
 

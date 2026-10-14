@@ -24,6 +24,17 @@
       "js": ["generator.js", "content.js"],
       "all_frames": true,
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://*/*", "http://localhost/*"],
+      "js": ["passkey-codec.js", "passkey-page.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*/*", "http://localhost/*"],
+      "js": ["passkeys.js"],
+      "run_at": "document_start"
     }
   ]
 }

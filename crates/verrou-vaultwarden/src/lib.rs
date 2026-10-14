@@ -20,6 +20,7 @@ mod convert;
 mod edit;
 mod error;
 mod import;
+mod passkeys;
 pub mod security_key;
 mod store;
 pub mod two_factor_directory;
@@ -56,6 +57,9 @@ pub struct Decrypted {
     pub failures: usize,
     /// Dossiers (identifiant, nom), triés par nom : pour ranger un élément.
     pub folders: Vec<(String, String)>,
+    /// Passkeys des identifiants (clé privée comprise) : pour
+    /// `Vault::with_passkeys`.
+    pub passkeys: Vec<verrou_core::Passkey>,
 }
 
 /// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
@@ -406,6 +410,7 @@ impl Connection {
                 items: Vec::new(),
                 failures: 0,
                 folders: Vec::new(),
+                passkeys: Vec::new(),
             });
         };
         let sync: SyncResponseModel = serde_json::from_str(json)
@@ -414,6 +419,7 @@ impl Connection {
         let folder_names = self.decrypt_folders(sync.folders)?;
 
         let mut items = Vec::new();
+        let mut passkeys = Vec::new();
         let mut failures = 0;
         for model in sync.ciphers.unwrap_or_default() {
             let Ok(cipher) = Cipher::try_from(model) else {
@@ -421,7 +427,10 @@ impl Connection {
                 continue;
             };
             match self.sdk.vault().ciphers().decrypt(cipher).await {
-                Ok(view) => items.extend(convert::item(&view, &folder_names)),
+                Ok(view) => {
+                    passkeys.extend(convert::passkeys(&view));
+                    items.extend(convert::item(&view, &folder_names));
+                }
                 Err(_) => failures += 1,
             }
         }
@@ -431,6 +440,7 @@ impl Connection {
             items,
             failures,
             folders,
+            passkeys,
         })
     }
 

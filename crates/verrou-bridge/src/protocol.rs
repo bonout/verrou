@@ -189,6 +189,11 @@ pub enum Command {
         url: String,
         item: String,
     },
+    /// Passkeys : voir [`crate::passkeys`].
+    PasskeyList(PasskeyQuery),
+    PasskeyGet(PasskeyUse),
+    PasskeyTargets(PasskeyTargetsQuery),
+    PasskeyCreate(Box<PasskeyCreation>),
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -253,6 +258,16 @@ pub enum ReplyResult {
     Signature {
         signature: String,
     },
+    Passkeys {
+        items: Vec<PasskeySuggestion>,
+    },
+    PasskeyTargets {
+        /// Une passkey de `exclude` est déjà dans le coffre.
+        excluded: bool,
+        logins: Vec<PasskeyTarget>,
+    },
+    Assertion(PasskeyAssertion),
+    Registration(PasskeyRegistration),
 }
 
 /// Un élément dans une liste du terminal. Aucun secret.
@@ -370,4 +385,115 @@ pub struct Credentials {
     pub password: Option<String>,
     /// Code à usage unique du moment, s'il y a une graine.
     pub totp: Option<String>,
+}
+
+// MARK: Passkeys
+//
+// Octets en base64url, comme `PublicKeyCredential.toJSON()`. L'adresse
+// (`url`) est celle que le navigateur attribue à la page ; le reste vient de
+// la page (options de `navigator.credentials`).
+
+/// Passkeys du coffre pour le site : toutes les découvrables, ou celles de
+/// `allow` (identifiants d'accréditation).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyQuery {
+    pub url: String,
+    #[serde(default)]
+    pub rp_id: Option<String>,
+    #[serde(default)]
+    pub allow: Vec<String>,
+}
+
+/// Signer `challenge` avec la passkey `credential` de l'élément `item`.
+/// `uv` : le site demande la vérification de l'utilisateur (Touch ID).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyUse {
+    pub url: String,
+    #[serde(default)]
+    pub rp_id: Option<String>,
+    pub item: String,
+    pub credential: String,
+    pub challenge: String,
+    #[serde(default)]
+    pub uv: bool,
+}
+
+/// Où enregistrer une nouvelle passkey : les identifiants du site, et si
+/// l'une des passkeys `exclude` y est déjà.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyTargetsQuery {
+    pub url: String,
+    #[serde(default)]
+    pub rp_id: Option<String>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+}
+
+/// Créer une passkey (`navigator.credentials.create`) et l'enregistrer dans
+/// l'identifiant `item`, ou dans un nouvel identifiant.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyCreation {
+    pub url: String,
+    #[serde(default)]
+    pub rp_id: Option<String>,
+    #[serde(default)]
+    pub rp_name: Option<String>,
+    pub user_id: String,
+    #[serde(default)]
+    pub user_name: Option<String>,
+    #[serde(default)]
+    pub user_display_name: Option<String>,
+    pub challenge: String,
+    /// Algorithmes COSE acceptés par le site (`pubKeyCredParams`).
+    #[serde(default)]
+    pub algorithms: Vec<i64>,
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    #[serde(default)]
+    pub uv: bool,
+    /// `none`, `indirect`, `direct` ou `enterprise`.
+    #[serde(default)]
+    pub attestation: Option<String>,
+    #[serde(default)]
+    pub item: Option<String>,
+}
+
+/// Une passkey proposée dans la page. Aucun secret.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeySuggestion {
+    pub item: String,
+    pub title: String,
+    pub credential: String,
+    pub user_name: String,
+}
+
+/// Un identifiant du site qui peut recevoir la passkey.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyTarget {
+    pub id: String,
+    pub title: String,
+    pub username: String,
+    /// Il en a déjà une : elle serait remplacée.
+    pub has_passkey: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyAssertion {
+    pub credential: String,
+    pub client_data: String,
+    pub authenticator_data: String,
+    pub signature: String,
+    pub user_handle: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PasskeyRegistration {
+    pub item: String,
+    pub credential: String,
+    pub client_data: String,
+    pub authenticator_data: String,
+    pub attestation_object: String,
+    /// `SubjectPublicKeyInfo` (DER) de la clé publique.
+    pub public_key: String,
+    pub algorithm: i64,
 }

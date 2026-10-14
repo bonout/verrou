@@ -300,9 +300,67 @@ async function fillForm(url, item) {
   }
 }
 
+// MARK: Passkeys
+//
+// Demandes de passkeys.js (cadre principal seulement), pour l'adresse de
+// l'onglet. Les options viennent de la page : Verrou les vérifie (site,
+// longueurs) ; ici, seulement leur forme.
+
+const str = (value, max = 4096) => (typeof value === "string" && value ? value.slice(0, max) : null);
+const strings = (list) => (Array.isArray(list) ? list.filter((v) => typeof v === "string").slice(0, 64) : []);
+
+async function passkey(message, sender) {
+  if (sender.frameId !== 0 || !sender.url) return { state: "offline" };
+  const url = sender.url;
+  const rp_id = str(message.rp_id, 253);
+  const commands = {
+    passkeyList: () => ({ cmd: "passkey_list", url, rp_id, allow: strings(message.allow) }),
+    passkeyTargets: () => ({ cmd: "passkey_targets", url, rp_id, exclude: strings(message.exclude) }),
+    passkeyGet: () => ({
+      cmd: "passkey_get", url, rp_id, item: str(message.item), credential: str(message.credential),
+      challenge: str(message.challenge), uv: Boolean(message.uv),
+    }),
+    passkeyCreate: () => ({
+      cmd: "passkey_create", url, rp_id, rp_name: str(message.rp_name, 256),
+      user_id: str(message.user_id), user_name: str(message.user_name, 256),
+      user_display_name: str(message.user_display_name, 256), challenge: str(message.challenge),
+      algorithms: Array.isArray(message.algorithms) ? message.algorithms.filter(Number.isInteger).slice(0, 16) : [],
+      exclude: strings(message.exclude), uv: Boolean(message.uv), attestation: str(message.attestation, 32),
+      item: str(message.item),
+    }),
+  };
+  let reply;
+  try {
+    reply = await call(commands[message.kind]());
+  } catch (error) {
+    return { state: stateOf(error) };
+  }
+  const { id, result, ...data } = reply;
+  switch (result) {
+    case "locked":
+      return { state: "locked" };
+    case "passkeys":
+      return { state: "unlocked", items: data.items ?? [] };
+    case "passkey_targets":
+      return { state: "unlocked", excluded: Boolean(data.excluded), logins: data.logins ?? [] };
+    case "assertion":
+    case "registration":
+      return { ok: true, credential: data };
+    case "confirm":
+      return { ok: false, state: "confirm" };
+    default:
+      return {
+        ok: false,
+        state: data.reason === "cette passkey est déjà dans Verrou" ? "exists" : (result ?? "denied"),
+        reason: data.reason,
+      };
+  }
+}
+
 const fromPage = new Set([
   "suggest", "fill", "unlock", "forms", "fillForm",
   "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
+  "passkeyList", "passkeyGet", "passkeyTargets", "passkeyCreate",
 ]);
 
 async function activeTab() {
@@ -351,6 +409,11 @@ async function handle(message, sender) {
     case "neverSave":
       await neverSave(sender);
       return { ok: true };
+    case "passkeyList":
+    case "passkeyGet":
+    case "passkeyTargets":
+    case "passkeyCreate":
+      return passkey(message, sender);
 
     // Depuis la fenêtre de l'extension.
     case "status":
