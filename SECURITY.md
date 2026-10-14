@@ -497,6 +497,26 @@ page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont c
   les liens d'aide en HTTPS sont proposés.
 - **Cartes et mots de passe anciens** : calculés localement (échéance des
   cartes, date de modification des éléments).
+- **« Changer le mot de passe »** : pour une poignée de grands sites (Google,
+  GitHub, Amazon, Microsoft, Apple, Facebook, X, LinkedIn, Dropbox), la page
+  est connue d'avance, sans requête. Pour les autres, le cœur Rust vérifie si
+  le site suit la norme du W3C « A Well-Known URL for Changing Passwords » :
+  `/.well-known/change-password` doit répondre « OK » (après redirections) et
+  `/.well-known/resource-that-should-not-exist-whose-status-code-should-not-be-200`
+  ne doit pas répondre « OK » ; sur l'hôte de l'élément, puis son domaine
+  enregistrable. Seulement au clic, pour cet élément seul, jamais en masse :
+  les requêtes ne partent que vers le site que l'utilisateur s'apprête à
+  ouvrir, qui n'apprend donc rien de plus. HTTPS seulement (une redirection
+  vers HTTP n'est pas suivie), sans cookie ni `Referer`, délai de 5 s, corps
+  des réponses non lu. À défaut, l'accueil du site s'ouvre. Aucun secret
+  n'est envoyé : le nouveau mot de passe est proposé puis enregistré par
+  l'extension, comme d'habitude.
+- **Fuites et mots de passe changés** : le cœur Rust garde en mémoire
+  l'empreinte SHA-256 du mot de passe de chaque identifiant trouvé dans des
+  fuites, au moment de la vérification ; un mot de passe changé depuis
+  (Verrou, extension, synchronisation) sort de la liste sans nouvelle
+  requête. Ces empreintes ne sont jamais écrites sur le disque et s'effacent
+  au verrouillage.
 
 ## Générateur de mots de passe et de phrases de passe
 

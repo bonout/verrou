@@ -104,6 +104,9 @@ final class AppModel {
     private(set) var breaches: [BreachedPassword]?
     private(set) var checkingBreaches = false
     var breachError: String?
+    /// Élément dont on cherche la page de changement du mot de passe
+    /// (`changePassword`, dans `Watchtower.swift`).
+    var changingPassword: String?
     /// Cartes, mots de passe anciens, double authentification (`Watchtower.swift`).
     let watchtower = Watchtower()
     var query: String = "" { didSet { refresh() } }
@@ -509,6 +512,9 @@ final class AppModel {
             audit = try? session.audit()
             watchtower.refresh(session, network: mode == .vaultwarden)
         }
+        // Un mot de passe changé (ici, dans le navigateur ou ailleurs puis
+        // synchronisé) quitte la liste des fuites sans nouvelle vérification.
+        if let known = breaches { breaches = session.stillBreached(breaches: known) }
         let start = ContinuousClock.now
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
@@ -545,6 +551,7 @@ final class AppModel {
         audit = nil
         breaches = nil
         breachError = nil
+        changingPassword = nil
         watchtower.reset()
         // La fenêtre du coffre reste montée derrière l'écran verrouillé :
         // rien d'ouvert ne doit y survivre.
@@ -1145,6 +1152,8 @@ struct Toast: Equatable, Identifiable {
     let message: String
     let detail: String?
     var failure = false
+    /// Durée d'affichage.
+    var seconds = 2.2
 }
 
 /// Verrouillage automatique : inactivité (`autoLockMinutes`, 0 : jamais),

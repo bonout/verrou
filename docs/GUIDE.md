@@ -97,6 +97,19 @@ around a Rust core.
   3 years. A password created or changed in Verrou (editor, Brave, import) is
   checked against known breaches in the background, with an alert if it
   appears there (Settings → *Sécurité*, on by default).
+- **Change a password in one click**: *Changer le mot de passe* on the audit
+  rows (known breaches, reused, weak, old, plain HTTP), in a login's details
+  and in its context menu opens the site's change-password page. A short
+  built-in list covers big sites that don't follow the standard (Google,
+  GitHub, Amazon, Microsoft, Apple, Facebook, X, LinkedIn, Dropbox); other
+  sites are asked, when you click and for that site only, whether they follow
+  the W3C [Well-Known URL for Changing Passwords](https://w3c.github.io/webappsec-change-password-url/)
+  (`/.well-known/change-password`, on the login's host, then its registrable
+  domain; HTTPS only, no cookies, 5 s timeout). If not, Verrou opens the
+  site's home page and says so. On the page, the Brave/Firefox extension
+  suggests a strong password on the new-password field and offers to update
+  the login after you submit; the audit row then disappears (breaches
+  included: a changed password leaves the list without a new check).
 - **Shared vaults** (Vaultwarden organizations, like 1Password's shared
   vaults): the sidebar lists each organization and its collections with
   their counts; items show where they are shared. Shared items are edited

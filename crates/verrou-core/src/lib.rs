@@ -7,6 +7,7 @@
 
 pub mod apps;
 pub mod audit;
+pub mod change_password;
 pub mod duplicates;
 pub mod generator;
 pub mod import;

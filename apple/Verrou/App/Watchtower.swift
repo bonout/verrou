@@ -94,3 +94,42 @@ extension AppModel {
         }
     }
 }
+
+// MARK: Changer le mot de passe
+
+extension ItemSummary {
+    /// Identifiant avec un site, hors corbeille : « Changer le mot de passe »
+    /// a une page à ouvrir.
+    var canChangePassword: Bool {
+        category == .login && host != nil && state != .trashed
+    }
+}
+
+extension AppModel {
+    /// Ouvre la page où changer le mot de passe de l'élément : page connue
+    /// d'avance (grands sites), sinon `/.well-known/change-password` si le
+    /// site la propose (vérifié par le cœur Rust, pour ce site seul et
+    /// seulement maintenant), sinon l'accueil du site. L'extension propose
+    /// ensuite un mot de passe fort, puis sa mise à jour dans le coffre ; à
+    /// la synchronisation suivante, l'élément quitte l'audit.
+    func changePassword(of summary: ItemSummary) async {
+        guard summary.canChangePassword, changingPassword == nil, lockState == .unlocked else { return }
+        changingPassword = summary.id
+        defer { changingPassword = nil }
+        let hint = "Verrou proposera un mot de passe fort et l'enregistrement"
+        do {
+            let page = try await session.changePasswordPage(id: summary.id)
+            guard lockState == .unlocked, let url = URL(string: page.url) else { return }
+            NSWorkspace.shared.open(url)
+            switch page.source {
+            case .known, .wellKnown:
+                toast = Toast(message: "Page de changement du mot de passe ouverte", detail: hint, seconds: 5)
+            case .home:
+                toast = Toast(message: "Ce site n'indique pas sa page de changement de mot de passe : ouverture de l'accueil",
+                              detail: hint, seconds: 6)
+            }
+        } catch {
+            toast = Toast(message: "Page introuvable", detail: Self.describe(error), failure: true)
+        }
+    }
+}

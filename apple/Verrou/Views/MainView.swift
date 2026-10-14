@@ -102,7 +102,7 @@ struct MainView: View {
                     .padding(.bottom, 22)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast.id) {
-                        try? await Task.sleep(for: .seconds(2.2))
+                        try? await Task.sleep(for: .seconds(toast.seconds))
                         withAnimation(.snappy) { if model.toast?.id == toast.id { model.toast = nil } }
                     }
             }
@@ -619,6 +619,10 @@ struct RowMenu: View {
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
             Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }
+        }
+        if summary.canChangePassword {
+            Button("Changer le mot de passe") { Task { await model.changePassword(of: summary) } }
+                .disabled(model.changingPassword != nil)
         }
         if model.sendsAvailable, summary.state != .trashed,
            summary.category == .login || summary.category == .secureNote {

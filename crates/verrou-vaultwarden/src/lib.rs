@@ -24,6 +24,7 @@
 mod api;
 mod attachments;
 pub mod breach;
+pub mod change_password;
 mod convert;
 mod edit;
 pub mod emergency;

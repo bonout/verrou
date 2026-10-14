@@ -6,7 +6,9 @@
 use std::sync::{Arc, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use verrou_core::watchtower;
+use sha2::{Digest as _, Sha256};
+use verrou_core::{SecretString, watchtower};
+use verrou_vaultwarden::change_password::{self, Source};
 use verrou_vaultwarden::{Connection, Decrypted};
 
 use crate::{BreachedPassword, ItemSummary, VaultSession, VerrouError, summary};
@@ -68,7 +70,56 @@ pub struct MissingTwoFactor {
     pub documentation: Option<String>,
 }
 
+/// D'où vient la page proposée par « Changer le mot de passe ».
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ChangePasswordSource {
+    /// Grand site connu d'avance (Google, GitHub…), sans requête.
+    Known,
+    /// Le site suit la norme `/.well-known/change-password`.
+    WellKnown,
+    /// Le site n'indique pas sa page (ou ne répond pas) : son accueil.
+    Home,
+}
+
+impl From<Source> for ChangePasswordSource {
+    fn from(source: Source) -> Self {
+        match source {
+            Source::Known => Self::Known,
+            Source::WellKnown => Self::WellKnown,
+            Source::Home => Self::Home,
+        }
+    }
+}
+
+/// Page à ouvrir pour changer le mot de passe d'un identifiant (HTTPS).
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct ChangePasswordPage {
+    pub url: String,
+    pub source: ChangePasswordSource,
+}
+
+fn fingerprint(password: &str) -> [u8; 32] {
+    Sha256::digest(password.as_bytes()).into()
+}
+
 impl VaultSession {
+    /// Retient l'empreinte des mots de passe trouvés dans des fuites, tels
+    /// qu'ils ont été vérifiés (voir `still_breached`).
+    pub(crate) fn remember_breached(
+        &self,
+        checked: &[(String, SecretString)],
+        found: &[BreachedPassword],
+    ) {
+        let mut breached = self.breached.lock().unwrap_or_else(PoisonError::into_inner);
+        for (id, password) in checked {
+            if found.iter().any(|b| &b.item.id == id) {
+                breached.insert(id.clone(), fingerprint(password.expose()));
+            } else {
+                breached.remove(id);
+            }
+        }
+    }
+
     /// Installe le coffre renvoyé par une écriture faite depuis Verrou
     /// (éditeur, extension, import) et retient les identifiants dont le mot
     /// de passe est nouveau, pour `check_new_passwords`.
@@ -124,6 +175,31 @@ impl VaultSession {
                     .collect(),
             })
         })
+    }
+
+    /// Fuites encore d'actualité : les identifiants dont le mot de passe n'a
+    /// pas changé depuis leur vérification, avec leur résumé à jour. Un
+    /// élément supprimé, mis à la corbeille ou au mot de passe changé (dans
+    /// Verrou, le navigateur ou ailleurs, puis synchronisé) disparaît de la
+    /// liste. Local, sans réseau.
+    pub fn still_breached(&self, breaches: Vec<BreachedPassword>) -> Vec<BreachedPassword> {
+        let known = self.breached.lock().unwrap_or_else(PoisonError::into_inner);
+        self.with_vault(|v| {
+            Ok(breaches
+                .into_iter()
+                .filter_map(|b| {
+                    let item = v.get(&b.item.id).filter(|i| i.is_active())?;
+                    let password = verrou_core::audit::password_of(item)?;
+                    (known.get(&item.id) == Some(&fingerprint(password))).then(|| {
+                        BreachedPassword {
+                            item: summary(item),
+                            count: b.count,
+                        }
+                    })
+                })
+                .collect())
+        })
+        .unwrap_or_default()
     }
 
     /// Oublie les nouveaux mots de passe en attente (vérification désactivée).
@@ -206,7 +282,7 @@ impl VaultSession {
                 return Err(error.into());
             }
         };
-        self.with_vault(|v| {
+        let found: Vec<BreachedPassword> = self.with_vault(|v| {
             Ok(candidates
                 .iter()
                 .zip(counts)
@@ -218,6 +294,29 @@ impl VaultSession {
                     })
                 })
                 .collect())
+        })?;
+        self.remember_breached(&candidates, &found);
+        Ok(found)
+    }
+
+    /// Page où changer le mot de passe d'un identifiant : grand site connu,
+    /// sinon `/.well-known/change-password` vérifié sur son hôte puis son
+    /// domaine, sinon l'accueil du site. Seulement sur demande de
+    /// l'utilisateur, pour cet élément seul : les requêtes ne partent que
+    /// vers le site qu'il s'apprête à ouvrir.
+    pub async fn change_password_page(
+        &self,
+        id: String,
+    ) -> Result<ChangePasswordPage, VerrouError> {
+        let host = self
+            .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
+            .ok_or_else(|| VerrouError::Invalid {
+                message: "cet élément n'a pas de site".to_owned(),
+            })?;
+        let page = change_password::find(&host).await?;
+        Ok(ChangePasswordPage {
+            url: page.url,
+            source: page.source.into(),
         })
     }
 }
@@ -234,6 +333,49 @@ mod tests {
         // n'expire avant l'automne 2027.
         let report = session.watchtower().unwrap();
         assert!(report.cards.iter().all(|c| c.days_left <= 60));
+    }
+
+    #[test]
+    fn breaches_leave_the_list_once_the_password_changed() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42);
+        let (id, password, item) = session
+            .with_vault(|v| {
+                let item = v
+                    .items()
+                    .iter()
+                    .find(|i| i.is_active() && verrou_core::audit::password_of(i).is_some())
+                    .unwrap();
+                Ok((
+                    item.id.clone(),
+                    verrou_core::audit::password_of(item).unwrap().to_owned(),
+                    summary(item),
+                ))
+            })
+            .unwrap();
+        let found = vec![BreachedPassword { item, count: 3 }];
+        // Vérifié avec le mot de passe actuel : toujours d'actualité.
+        session.remember_breached(&[(id.clone(), SecretString::new(password))], &found);
+        assert_eq!(session.still_breached(found.clone()).len(), 1);
+        // Vérifié avec un autre mot de passe : il a changé depuis.
+        session.remember_breached(&[(id.clone(), SecretString::new("ancien"))], &found);
+        assert!(session.still_breached(found.clone()).is_empty());
+        // Revérifié et propre : oublié.
+        session.remember_breached(&[(id, SecretString::new("x"))], &[]);
+        assert!(session.still_breached(found.clone()).is_empty());
+        // Verrouillé : plus rien.
+        session.lock();
+        assert!(session.still_breached(found).is_empty());
+    }
+
+    #[tokio::test]
+    async fn change_password_page_needs_a_site() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42);
+        assert!(matches!(
+            session.change_password_page("absent".to_owned()).await,
+            Err(VerrouError::NotFound)
+        ));
     }
 
     #[tokio::test]

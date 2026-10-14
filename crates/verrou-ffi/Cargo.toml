@@ -22,6 +22,7 @@ uniffi = { workspace = true, features = ["cli", "tokio"] }
 thiserror.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zeroize.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [lints]
