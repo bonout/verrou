@@ -20,6 +20,7 @@ use verrou_cli::config::Config;
 use verrou_cli::git_signing;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
 use verrou_core::generator::{self, PasswordOptions};
+use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
 
 #[derive(Parser)]
@@ -80,14 +81,32 @@ enum Command {
     },
     /// Code à usage unique de l'élément trouvé (accord demandé dans Verrou).
     Totp { query: Vec<String> },
-    /// Générer un mot de passe (sur place, sans l'app).
+    /// Générer un mot de passe, ou une phrase de passe avec `--words`
+    /// (sur place, sans l'app).
     Generate {
-        #[arg(short, long, default_value_t = 20)]
+        #[arg(short, long, default_value_t = 20, conflicts_with = "words")]
         length: usize,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "words")]
         no_symbols: bool,
-        #[arg(long)]
+        #[arg(long, conflicts_with = "words")]
         no_digits: bool,
+        /// Phrase de passe de N mots (3 à 20), tirés dans une liste de
+        /// 7 776 mots.
+        #[arg(short, long, value_parser = clap::value_parser!(u8).range(3..=20))]
+        words: Option<u8>,
+        /// Séparateur des mots : `-`, `' '` (ou `space`), `.`, `_`, `,` ou
+        /// `digit` (un chiffre au hasard).
+        #[arg(long, default_value = "-", requires = "words", value_parser = parse_separator)]
+        separator: Separator,
+        /// Initiale de chaque mot en majuscule.
+        #[arg(long, requires = "words")]
+        capitalize: bool,
+        /// Ajouter un chiffre à la fin d'un des mots.
+        #[arg(long, requires = "words")]
+        number: bool,
+        /// Langue des mots.
+        #[arg(long, value_enum, default_value_t = LangArg::Fr, requires = "words")]
+        lang: LangArg,
     },
     /// Agent SSH : les clés SSH du coffre, signées par Verrou. Tourne au
     /// premier plan et affiche la ligne `export SSH_AUTH_SOCK=…`.
@@ -124,6 +143,17 @@ enum Command {
         #[arg(long, default_value_t = 10_000)]
         items: usize,
     },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum LangArg {
+    Fr,
+    En,
+}
+
+fn parse_separator(value: &str) -> Result<Separator, String> {
+    Separator::parse(value)
+        .ok_or_else(|| format!("séparateur inconnu « {value} » : -, ' ', ., _, , ou digit"))
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -389,24 +419,64 @@ fn run(cli: &Cli) -> Result<(), String> {
                 writeln!(out, "{code}").ok();
             }
         }
-        Command::Generate {
-            length,
-            no_symbols,
-            no_digits,
-        } => {
-            let password = generator::password(&PasswordOptions {
-                length: *length,
-                symbols: !no_symbols,
-                digits: !no_digits,
-                avoid_ambiguous: true,
-            });
-            writeln!(out, "{password}").ok();
-        }
+        Command::Generate { .. } => generate(cli, &mut out),
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
         Command::Bench { items } => bench(&mut out, *items),
     }
     Ok(())
+}
+
+/// `verrou generate` : mot de passe, ou phrase de passe avec `--words`.
+fn generate(cli: &Cli, out: &mut impl std::io::Write) {
+    let Command::Generate {
+        length,
+        no_symbols,
+        no_digits,
+        words,
+        separator,
+        capitalize,
+        number,
+        lang,
+    } = &cli.command
+    else {
+        return;
+    };
+    let (value, bits) = if let Some(words) = words {
+        let options = PassphraseOptions {
+            words: usize::from(*words),
+            separator: *separator,
+            capitalize: *capitalize,
+            include_number: *number,
+            language: match lang {
+                LangArg::Fr => Language::French,
+                LangArg::En => Language::English,
+            },
+        };
+        (
+            passphrase::passphrase(&options),
+            passphrase::entropy_bits(&options),
+        )
+    } else {
+        let password = generator::password(&PasswordOptions {
+            length: *length,
+            symbols: !no_symbols,
+            digits: !no_digits,
+            avoid_ambiguous: true,
+        });
+        let bits = generator::entropy_bits(&password);
+        (password, bits)
+    };
+    if cli.json {
+        writeln!(
+            out,
+            "{}",
+            serde_json::json!({ "value": value, "entropy_bits": bits })
+        )
+        .ok();
+    } else {
+        writeln!(out, "{value}").ok();
+    }
 }
 
 /// `verrou git-signing` : affiche (ou, avec `--apply`, écrit) les réglages

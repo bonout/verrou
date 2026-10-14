@@ -53,6 +53,7 @@ uniffi::setup_scaffolding!();
 mod attachments;
 mod emergency;
 mod import;
+mod passphrase;
 mod send;
 mod ssh;
 mod templates;
@@ -60,6 +61,10 @@ mod watchtower;
 
 pub use emergency::{
     EmergencyContact, EmergencyOverview, EmergencyState, EmergencyType, EmergencyVault,
+};
+pub use passphrase::{
+    GeneratedPassphrase, PassphraseLanguage, PassphraseSeparator, PassphraseSettings,
+    generate_passphrase,
 };
 pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 

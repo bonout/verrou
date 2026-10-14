@@ -438,6 +438,30 @@ page ──postMessage──▶ passkeys.js ──▶ service worker ──pont 
 - **Cartes et mots de passe anciens** : calculés localement (échéance des
   cartes, date de modification des éléments).
 
+## Générateur de mots de passe et de phrases de passe
+
+- **Hasard** : générateur du système (`OsRng`, c'est-à-dire `getrandom`) ;
+  une source déterministe ne sert qu'aux données fictives et aux tests.
+- **Mots de passe** : au moins un caractère de chaque classe demandée,
+  caractères ambigus (`l`, `I`, `O`, `0`, `1`) exclus, de 8 à 128 caractères.
+- **Phrases de passe** : 3 à 20 mots (5 par défaut) tirés dans une liste
+  embarquée à la compilation, la liste française de Tango pour Tails et Tor
+  (CC0, 7 775 mots distincts) ou la grande liste de l'EFF (CC BY 3.0 US,
+  7 776 mots), voir `crates/verrou-core/wordlists/NOTICE`. Chaque mot est
+  tiré uniformément par rejet (pas de biais de modulo), un test du χ² le
+  vérifie. Options : séparateur (`-`, espace, `.`, `_`, `,` ou un chiffre au
+  hasard), majuscule initiale, un chiffre ajouté à un mot tiré au hasard.
+- **Entropie affichée** : exacte pour une phrase de passe, log2(taille de la
+  liste) par mot, plus log2(10) + log2(nombre de mots) pour le chiffre, plus
+  log2(10) par séparateur chiffre ; la majuscule n'ajoute rien. 5 mots
+  donnent environ 64,6 bits, 6 mots 77,5 bits. Elle suppose que l'attaquant
+  connaît la liste et les réglages. La jauge de l'éditeur n'utilise cette
+  valeur que tant que le champ contient la phrase générée ; ailleurs (audit,
+  phrase tapée à la main), l'estimation d'après les caractères reste, et
+  surestime une phrase de passe.
+- **Extension** : la suggestion de mot de passe fort dans les pages reste un
+  mot de passe aléatoire (les sites refusent souvent les espaces).
+
 ## Remplissage dans les apps (⌘\)
 
 - **Ce qui est tapé** : l'identifiant, Tab, le mot de passe (Retour en
