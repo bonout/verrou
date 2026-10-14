@@ -4,17 +4,29 @@ import SwiftUI
 /// le demande. Sert aussi à se reconnecter quand la session a expiré.
 struct LoginView: View {
     @Environment(AppModel.self) private var model
+    /// « Créer un compte » ouvert (`RegisterView.swift`).
+    @State private var registration: RegistrationFlow?
+
+    init(registration: RegistrationFlow? = nil) {
+        _registration = State(initialValue: registration)
+    }
 
     var body: some View {
         ZStack {
             LockBackground()
             ScrollView {
                 VStack(spacing: 22) {
-                    AppMark(size: 72)
+                    if registration == nil || model.twoFactorOptions != nil {
+                        AppMark(size: 72)
+                    }
                     if let options = model.twoFactorOptions {
                         TwoFactorStep(options: options)
+                    } else if let registration {
+                        RegisterStep(flow: registration) { self.registration = nil }
                     } else {
-                        CredentialsStep()
+                        CredentialsStep {
+                            registration = RegistrationFlow(server: model.loginServer, email: model.loginEmail)
+                        }
                     }
                     if let error = model.loginError {
                         Text(error)
@@ -33,11 +45,14 @@ struct LoginView: View {
         .frame(minWidth: 520, minHeight: 560)
         .animation(.smooth, value: model.twoFactorOptions)
         .animation(.smooth, value: model.loginError)
+        .animation(.smooth, value: registration == nil)
     }
 }
 
 private struct CredentialsStep: View {
     @Environment(AppModel.self) private var model
+    /// « Créer un compte » : pour une personne invitée sur le serveur.
+    let createAccount: () -> Void
     @State private var password = ""
     @FocusState private var focus: Field?
 
@@ -97,6 +112,10 @@ private struct CredentialsStep: View {
             if model.reloginRequired {
                 Button("Continuer hors ligne") { model.continueOffline() }
                     .buttonStyle(.link)
+            } else {
+                Button("Créer un compte (invitation reçue)", action: createAccount)
+                    .buttonStyle(.link)
+                    .help("Rejoindre ce serveur avec le lien d'invitation reçu par e-mail")
             }
         }
         .onAppear { focus = model.loginEmail.isEmpty ? .email : .password }

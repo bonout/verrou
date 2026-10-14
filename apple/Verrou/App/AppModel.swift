@@ -23,6 +23,8 @@ final class AppModel {
         case audit
         case sends
         case emergency
+        /// Membres d'une organisation (`Members.swift`).
+        case members
     }
 
     /// `demo` : coffre fictif (captures, `VERROU_DEMO=1` ou `VERROU_MOCK=1`).
@@ -187,6 +189,8 @@ final class AppModel {
     let emergency = EmergencyModel()
     /// Envois (Bitwarden Send), voir `Sends.swift`.
     let sends = SendsModel()
+    /// Membres des organisations, voir `Members.swift`.
+    let members = MembersModel()
     /// Génération d'une clé SSH ouverte (voir `SshKeys.swift`).
     var sshKeyGenerator: SshKeyGenerator?
     /// Pièces jointes de l'élément affiché (voir `Attachments.swift`).
@@ -404,7 +408,7 @@ final class AppModel {
         return server.contains("://") ? server : "https://\(server)"
     }
 
-    private func handle(_ result: LoginResult) async {
+    func handle(_ result: LoginResult) async {
         switch result {
         case .twoFactorRequired(let options):
             twoFactorOptions = options
@@ -418,6 +422,8 @@ final class AppModel {
             biometricEnrolled = false
             removeAllUnlockKeys()
             didUnlock(failures: failures)
+            // Compte créé avec un lien d'invitation : l'accepter (`Members.swift`).
+            await acceptPendingInvitation()
             await enrollBiometricsIfWanted()
         }
     }
@@ -627,6 +633,7 @@ final class AppModel {
         importFlow = nil
         duplicatesFlow = nil
         emergency.clear()
+        members.clear()
         sends.clear()
         attachments.clear()
         autoLock = nil

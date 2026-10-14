@@ -181,6 +181,7 @@ private struct AccountSettings: View {
                 Section("Compte") {
                     LabeledContent("Serveur", value: account.server)
                     LabeledContent("E-mail", value: account.email)
+                    OwnFingerprintRow()
                     LabeledContent("Dernière synchronisation") {
                         Text(account.syncedAt.map {
                             Date(timeIntervalSince1970: TimeInterval($0)).formatted(date: .abbreviated, time: .shortened)

@@ -22,6 +22,9 @@ struct SharedVaultsSection: View {
                             .padding(.leading, 14)
                             .help(help(for: collection))
                     }
+                    if org.canViewMembers && model.showsAccountPanes {
+                        MembersSidebarRow(organization: org)
+                    }
                 }
                 if model.organizations.contains(where: { $0.manageUrl != nil }) {
                     Button {

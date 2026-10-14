@@ -60,6 +60,10 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
 - **Share**: shared vaults with family or a team (Vaultwarden organizations),
   encrypted links that expire for a text or a file (Send), and emergency
   access for trusted contacts.
+- **Bring people in**: invite them to a shared vault, choose their role and
+  collections, and confirm them after checking their key's fingerprint
+  phrase. Invited people create their account from Verrou's sign-in screen,
+  even on a server with sign-ups closed, with no admin token.
 - **Store more than passwords**: cards, identities, secure notes, SSH keys,
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on

@@ -29,6 +29,7 @@ use chrono::Utc;
 use verrou_core::Sharing;
 
 use crate::edit::new_view;
+use crate::members::MemberRole;
 use crate::{Connection, Decrypted, Draft, Error};
 
 /// Une organisation dont le compte est membre confirmé.
@@ -39,6 +40,8 @@ pub struct Organization {
     /// Propriétaire, administrateur ou gestionnaire : gère les collections
     /// dans le coffre web.
     pub admin: bool,
+    /// Rôle du compte dans l'organisation (`None` : inconnu du serveur).
+    pub role: Option<MemberRole>,
     /// Collections visibles par le compte, triées par nom.
     pub collections: Vec<Collection>,
 }
@@ -122,6 +125,10 @@ impl Connection {
                             .permissions
                             .as_ref()
                             .is_some_and(|p| p.edit_any_collection == Some(true)),
+                    role: org
+                        .r#type
+                        .as_ref()
+                        .and_then(|t| MemberRole::from_code(t.as_i64())),
                     collections: Vec::new(),
                 })
             })

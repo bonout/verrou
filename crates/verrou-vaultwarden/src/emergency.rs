@@ -346,7 +346,7 @@ impl Connection {
         Ok(GrantorVault { items, failures })
     }
 
-    async fn public_key(&mut self, user_id: &str) -> Result<Vec<u8>, Error> {
+    pub(crate) async fn public_key(&mut self, user_id: &str) -> Result<Vec<u8>, Error> {
         let access = self.access_token().await?;
         let body = self
             .api
