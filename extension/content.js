@@ -1,16 +1,26 @@
-// Dans chaque page (et chaque cadre) : repère les champs de connexion et
-// propose, sous le champ, les identifiants de Verrou pour ce site ; sur un
-// champ « nouveau mot de passe », un mot de passe fort ; après l'envoi d'un
-// formulaire, d'enregistrer l'identifiant dans Verrou.
+// Dans chaque page (et chaque cadre) : repère les formulaires de connexion
+// et, quand Verrou a un identifiant (ou une passkey) pour ce site, affiche
+// une pastille en haut à gauche de la page, comme 1Password : le site,
+// l'identifiant proposé, « Se connecter » et « ✕ ». Sous la pastille,
+// l'onglet « Autres identifiants » déroule les autres identifiants du site,
+// « Remplir avec un autre identifiant… » et, sur une inscription,
+// « Générer un mot de passe ». Sur un champ « nouveau mot de passe », la
+// pastille propose un mot de passe fort ; sur un formulaire de paiement ou
+// d'adresse, une carte ou une identité. Après l'envoi d'un formulaire, un
+// bandeau au même endroit propose d'enregistrer l'identifiant dans Verrou.
+//
+// Dans le champ actif, seule une petite icône Verrou, au bord droit, ouvre ou
+// ferme la pastille : plus de menu accroché sous le champ, qui gênait les
+// listes de suggestions des sites.
 //
 // Quand la page attend une passkey en remplissage automatique (`mediation:
-// "conditional"`), le menu propose aussi les passkeys de Verrou pour ce site
-// (passkeys.js, cadre principal).
+// "conditional"`), la pastille propose d'abord la passkey de Verrou pour ce
+// site (passkeys.js, cadre principal).
 //
-// Le menu et le bandeau vivent dans un shadow DOM fermé : la page ne peut ni
-// les lire ni les modifier, et seuls les clics réels (`isTrusted`) les
-// déclenchent. Les secrets n'arrivent qu'au moment du remplissage, pour
-// l'élément choisi.
+// La pastille, l'icône et le bandeau vivent dans des shadow DOM fermés : la
+// page ne peut ni les lire ni les modifier, et seuls les événements réels
+// (`isTrusted`) les déclenchent. Les secrets n'arrivent qu'au moment du
+// remplissage, pour l'élément choisi.
 
 (() => {
   if (globalThis.__verrouContent) return;
@@ -255,23 +265,40 @@
     }
   }
 
-  // Remplit le formulaire de `anchor` (ou la page) avec `credentials`.
+  // Le bouton d'envoi du formulaire : le premier du formulaire, ou, sans
+  // <form>, le premier qui suit le dernier champ rempli.
+  function submitButtonOf(scope, after) {
+    const buttons = [...scope.querySelectorAll("button, input[type=submit]")].filter((button) =>
+      !button.disabled && visible(button)
+      && (button instanceof HTMLInputElement || (button.getAttribute("type") ?? "submit").toLowerCase() === "submit"));
+    if (scope !== document || !after) return buttons[0] ?? null;
+    return buttons.find((b) => after.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ?? null;
+  }
+
+  // Remplit le formulaire de `anchor` (ou la page) avec `credentials`, puis
+  // place le curseur sur le bouton d'envoi : Entrée suffit, rien ne part tout
+  // seul.
   function apply(credentials, anchor) {
     withFilling(() => {
-      const inputs = inputsOf(anchor ? scopeOf(anchor) : document);
+      const scope = anchor ? scopeOf(anchor) : document;
+      const inputs = inputsOf(scope);
+      let last = null;
       if (anchor && classify(anchor) === "otp") {
         if (credentials.totp) setValue(anchor, credentials.totp);
-        return;
+        last = anchor;
+      } else {
+        const username = inputs.find((i) => classify(i) === "username");
+        const password = inputs.find(isLoginPassword);
+        if (credentials.username && username) setValue(username, credentials.username);
+        if (credentials.password && password) setValue(password, credentials.password);
+        last = password ?? username;
+        if (!username && !password) {
+          const otp = inputs.find((i) => classify(i) === "otp");
+          if (otp && credentials.totp) setValue(otp, credentials.totp);
+          last = otp ?? null;
+        }
       }
-      const username = inputs.find((i) => classify(i) === "username");
-      const password = inputs.find(isLoginPassword);
-      if (credentials.username && username) setValue(username, credentials.username);
-      if (credentials.password && password) setValue(password, credentials.password);
-      if (!username && !password) {
-        const otp = inputs.find((i) => classify(i) === "otp");
-        if (otp && credentials.totp) setValue(otp, credentials.totp);
-      }
-      (password ?? username)?.focus({ preventScroll: true });
+      (submitButtonOf(scope, last) ?? last)?.focus({ preventScroll: true });
     });
   }
 
@@ -290,55 +317,99 @@
 
   async function send(message) {
     try {
-      return await ext.runtime.sendMessage(message);
+      return (await ext.runtime.sendMessage(message)) ?? { state: "offline" };
     } catch {
       return { state: "offline" };
     }
   }
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const SITE = location.hostname.replace(/^www\./, "");
+
   // MARK: Style commun
 
+  // Une capsule sombre, liseré violet, comme celle de 1Password, quel que
+  // soit le thème ; l'animation d'arrivée disparaît avec « réduire les
+  // animations ».
   const STYLE = `
-    :host { all: initial; position: absolute; z-index: 2147483647; }
-    .menu, .banner {
-      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #1d1d1f; background: rgba(255,255,255,.98);
-      border: 1px solid rgba(0,0,0,.12); border-radius: 10px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.18); overflow: hidden;
+    :host { all: initial; }
+    * { box-sizing: border-box; }
+    .stack {
+      display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+      max-width: calc(100vw - 32px);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f4f6;
+      -webkit-font-smoothing: antialiased;
     }
-    .menu { min-width: 260px; }
-    .row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: default; }
-    .row.selected { background: #5b5bd6; color: #fff; }
-    .row.selected .sub { color: rgba(255,255,255,.8); }
-    .badge {
-      flex: none; width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
-      color: #fff; font-weight: 700; background: linear-gradient(135deg, #7b7bf0, #4b4bc4);
+    .pill { display: flex; flex-direction: column; align-items: flex-start; max-width: 100%; animation: drop .18s ease-out; }
+    .capsule, .tab, .list, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
+    .capsule {
+      display: flex; align-items: center; gap: 10px; max-width: 100%;
+      padding: 5px 5px 5px 7px; border-radius: 999px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2);
     }
-    .text { min-width: 0; }
-    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .icon { flex: none; position: relative; width: 26px; height: 26px; border-radius: 8px;
+      background: linear-gradient(135deg, #6f6ff2, #3b3bbd); }
+    .icon::before { content: ""; position: absolute; left: 8px; top: 4px; width: 10px; height: 10px;
+      border: 2px solid #fff; border-bottom: 0; border-radius: 5px 5px 0 0; }
+    .icon::after { content: ""; position: absolute; left: 6px; top: 11px; width: 14px; height: 10px;
+      border-radius: 2.5px; background: #fff; }
+    .text { min-width: 0; display: flex; flex-direction: column; }
+    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
     .title { font-weight: 600; }
-    .sub { color: #6e6e73; font-size: 12px; }
-    .sub.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .footer { padding: 5px 10px; font-size: 11px; color: #8e8e93; border-top: 1px solid rgba(0,0,0,.08); }
-    .banner { width: 340px; padding: 12px 14px; }
-    .banner .title { white-space: normal; }
+    .sub { color: #a3a3ad; font-size: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
+    button:focus-visible { outline: 2px solid #a5a5ff; outline-offset: 2px; }
+    .primary {
+      flex: none; max-width: 280px; padding: 7px 15px; border-radius: 999px;
+      background: #5b5bd6; color: #fff; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .primary:hover { background: #6b6be6; }
+    .close { flex: none; width: 28px; height: 28px; border-radius: 50%; color: #a3a3ad; }
+    .close:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .tab {
+      display: flex; align-items: center; gap: 6px; margin-left: 24px; padding: 3px 12px 5px;
+      border-top: 0; border-radius: 0 0 10px 10px; font-size: 12px; color: #d4d4da;
+    }
+    .chev { display: inline-block; transition: transform .15s ease; }
+    .tab[aria-expanded="true"] .chev { transform: rotate(180deg); }
+    .list {
+      margin-top: 6px; min-width: 280px; max-width: min(420px, calc(100vw - 32px)); max-height: 320px;
+      overflow-y: auto; padding: 4px; border-width: 1px; border-color: rgba(255,255,255,.14); border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; }
+    .row:hover, .row:focus-visible { background: rgba(108,108,240,.28); outline: none; }
+    .badge {
+      flex: none; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
+      font-weight: 700; font-size: 12px; color: #fff; background: rgba(255,255,255,.12);
+    }
+    .banner {
+      width: 360px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2); animation: drop .18s ease-out;
+    }
+    .banner .title { white-space: normal; max-width: none; }
     .head { display: flex; gap: 10px; align-items: center; }
     .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
-    button {
-      font: inherit; border: 0; border-radius: 7px; padding: 6px 11px; cursor: default;
-      background: rgba(0,0,0,.06); color: inherit;
+    .actions button { padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.1); }
+    .actions button.primary { background: #5b5bd6; }
+    .actions button.quiet { background: none; color: #a3a3ad; padding: 6px 4px; margin-right: auto; }
+    .field { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 6px; }
+    .field .icon { transform: scale(var(--scale, .75)); }
+    @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+    @media (prefers-reduced-motion: reduce) {
+      .pill, .banner { animation: none; }
+      .chev { transition: none; }
     }
-    button.primary { background: #5b5bd6; color: #fff; font-weight: 600; }
-    button.quiet { background: none; color: #8e8e93; padding: 6px 4px; margin-right: auto; }
     @media (prefers-color-scheme: dark) {
-      .menu, .banner { color: #f5f5f7; background: rgba(40,40,44,.98); border-color: rgba(255,255,255,.14); }
-      .sub, .footer { color: #a1a1a6; }
-      .footer { border-color: rgba(255,255,255,.1); }
-      button { background: rgba(255,255,255,.1); }
-      button.quiet { background: none; color: #a1a1a6; }
+      .capsule, .tab, .list, .banner { background: #222228; }
     }
   `;
 
+  // Un hôte de shadow DOM fermé. `pin` le tient en place par des styles en
+  // ligne `!important` : une feuille de style de la page ne le déplace ni ne
+  // le cache.
   function shadowHost(tag) {
     const host = document.createElement(tag);
     const root = host.attachShadow({ mode: "closed" });
@@ -348,6 +419,15 @@
     return { host, root };
   }
 
+  function pin(host, styles) {
+    for (const [name, value] of Object.entries(styles)) host.style.setProperty(name, value, "important");
+  }
+
+  const HOST_STYLES = {
+    display: "block", visibility: "visible", opacity: "1", transform: "none", filter: "none",
+    "pointer-events": "auto", margin: "0", padding: "0", "z-index": "2147483647",
+  };
+
   function div(className, text) {
     const node = document.createElement("div");
     node.className = className;
@@ -355,9 +435,18 @@
     return node;
   }
 
-  // Un bouton qui n'obéit qu'aux vrais clics.
+  function span(className, text) {
+    const node = document.createElement("span");
+    node.className = className;
+    node.textContent = text;
+    return node;
+  }
+
+  // Un bouton qui n'obéit qu'aux vrais clics (souris, ou Entrée et Espace
+  // sur le bouton, que le navigateur transforme en clic réel).
   function trustedButton(label, className, action) {
     const button = document.createElement("button");
+    button.setAttribute("type", "button");
     button.className = className;
     button.textContent = label;
     button.addEventListener("click", (event) => {
@@ -368,182 +457,278 @@
     return button;
   }
 
-  // MARK: Menu sous le champ
+  function textBlock(title, subtitle, mono = false) {
+    const text = div("text");
+    text.append(div("title", title), div(`sub${mono ? " mono" : ""}`, subtitle ?? ""));
+    return text;
+  }
 
-  const menu = {
+  function icon() {
+    const node = div("icon");
+    node.setAttribute("aria-hidden", "true");
+    return node;
+  }
+
+  // MARK: Pastille en haut à gauche (et bandeau d'enregistrement)
+
+  // Un seul hôte, fixé à 16 px du coin haut gauche, au-dessus de la page :
+  // la pastille, puis le bandeau d'enregistrement en dessous.
+  const ui = {
     host: null,
     root: null,
-    anchor: null,
-    kind: null,
-    rows: [],
-    selected: 0,
-    poll: null,
+    stack: null,
 
     ensure() {
       if (this.host) return;
-      ({ host: this.host, root: this.root } = shadowHost("verrou-menu"));
+      ({ host: this.host, root: this.root } = shadowHost("verrou-pill"));
+      this.stack = div("stack");
+      this.root.append(this.stack);
+      // Un clic dans la pastille ne prend pas le focus à la page.
+      this.root.addEventListener("mousedown", (event) => event.preventDefault());
+      this.root.addEventListener("keydown", (event) => pillKey(event));
     },
 
-    get open() {
-      return Boolean(this.host?.isConnected);
-    },
-
-    show(anchor, kind, rows) {
+    attach() {
       this.ensure();
-      this.anchor = anchor;
-      this.kind = kind;
-      this.rows = rows;
-      this.selected = 0;
-      this.render();
+      pin(this.host, { ...HOST_STYLES, position: "fixed", top: "16px", left: "16px", right: "auto", bottom: "auto" });
       if (!this.host.isConnected) document.documentElement.append(this.host);
-      this.place();
     },
 
-    render() {
-      this.root.querySelector(".menu")?.remove();
-      const box = div("menu");
-      box.setAttribute("role", "listbox");
-      this.rows.forEach((row, index) => {
-        const line = div(`row${index === this.selected ? " selected" : ""}`);
-        line.setAttribute("role", "option");
-        const text = div("text");
-        text.append(div("title", row.title), div(`sub${row.mono ? " mono" : ""}`, row.subtitle ?? ""));
-        line.append(div("badge", row.badge), text);
-        // mousedown : garder le curseur dans le champ de la page.
-        line.addEventListener("mousedown", (event) => {
-          event.preventDefault();
-          if (event.isTrusted) this.choose(index);
-        });
-        line.addEventListener("mousemove", () => {
-          if (this.selected !== index) {
-            this.selected = index;
-            this.render();
-          }
-        });
-        box.append(line);
-      });
-      box.append(div("footer", "Verrou"));
-      this.root.append(box);
-    },
-
-    place() {
-      if (!this.open || !this.anchor) return;
-      const box = this.anchor.getBoundingClientRect();
-      this.host.style.left = `${box.left + scrollX}px`;
-      this.host.style.top = `${box.bottom + scrollY + 4}px`;
-      this.host.style.width = `${Math.max(box.width, 260)}px`;
-    },
-
-    hide() {
-      clearInterval(this.poll);
-      this.poll = null;
-      this.host?.remove();
-      this.anchor = null;
-    },
-
-    move(offset) {
-      if (!this.rows.length) return;
-      this.selected = (this.selected + offset + this.rows.length) % this.rows.length;
-      this.render();
-    },
-
-    async choose(index) {
-      const row = this.rows[index];
-      const anchor = this.anchor;
-      if (!row || !anchor) return;
-      if (row.form) {
-        let reply = await send({ kind: "fillForm", item: row.id });
-        if (reply?.state === "confirm") {
-          this.rows = [{ badge: "🔐", title: "Confirmez dans Verrou", subtitle: `« ${row.title} » est protégé` }];
-          this.render();
-          reply = await this.retryUntilConfirmed(row.id, anchor, "fillForm");
-        }
-        this.hide();
-        if (reply?.ok) applyForm(reply.data, anchor);
-        return;
-      }
-      if (row.passkey) {
-        // La signature et sa fenêtre d'avancement : passkeys.js.
-        this.hide();
-        passkeyMenu()?.choose(row.passkey);
-        return;
-      }
-      if (row.action === "generate") {
-        this.hide();
-        applyGenerated(row.password, anchor);
-        return;
-      }
-      if (row.action === "unlock") {
-        await send({ kind: "unlock" });
-        this.rows = [{ badge: "…", title: "Déverrouillez Verrou", subtitle: "Touch ID ou mot de passe principal" }];
-        this.render();
-        this.waitForUnlock(anchor, this.kind);
-        return;
-      }
-      let credentials = await send({ kind: "fill", item: row.id });
-      if (credentials?.state === "confirm") {
-        // Élément protégé : Verrou demande Touch ID (ou le mot de passe
-        // principal) ; on réessaie jusqu'à la confirmation.
-        this.rows = [{ badge: "🔐", title: "Confirmez dans Verrou", subtitle: `« ${row.title} » est protégé` }];
-        this.render();
-        credentials = await this.retryUntilConfirmed(row.id, anchor);
-      }
-      this.hide();
-      if (credentials?.ok) apply(credentials, anchor);
-    },
-
-    async retryUntilConfirmed(item, anchor, kind = "fill") {
-      for (let tries = 0; tries < 60 && this.anchor === anchor; tries += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        const reply = await send({ kind, item });
-        if (reply?.state !== "confirm") return reply;
-      }
-      return null;
-    },
-
-    // Après « Déverrouiller » : les identifiants apparaissent dès que Verrou est ouvert.
-    waitForUnlock(anchor, kind) {
-      clearInterval(this.poll);
-      let tries = 0;
-      this.poll = setInterval(async () => {
-        tries += 1;
-        if (tries > 90 || this.anchor !== anchor) {
-          clearInterval(this.poll);
-          return;
-        }
-        const form = kind === "card" || kind === "identity";
-        const reply = await send({ kind: form ? "forms" : "suggest" });
-        if (reply.state === "unlocked") {
-          clearInterval(this.poll);
-          if (form) {
-            this.hide();
-            if (document.activeElement === anchor) offer(anchor);
-            return;
-          }
-          const rows = [...passkeyRows(await passkeyEntries(kind)), ...rowsFor(reply, kind)];
-          if (rows.length && this.anchor === anchor) this.show(anchor, kind, rows);
-          else this.hide();
-        }
-      }, 1000);
+    // Plus rien à montrer : l'hôte quitte la page.
+    sync() {
+      if (this.host && !this.stack.children.length) this.host.remove();
     },
   };
 
-  function rowsFor(reply, kind) {
-    if (reply.state === "locked") {
-      return [{ action: "unlock", badge: "🔒", title: "Déverrouiller Verrou", subtitle: "pour remplir ce formulaire" }];
+  // Formulaires de connexion déjà proposés, par « étape » (les champs
+  // présents : identifiant, mot de passe, code…) : la pastille vient d'elle-
+  // même une fois par étape, jamais à chaque focus. Fermée (✕, Échap) : plus
+  // rien d'elle-même sur cette page.
+  let dismissed = false;
+  const queried = new Set();
+  let offerSeq = 0;
+
+  const LOGIN_KINDS = new Set(["username", "password", "otp"]);
+  const sameGroup = (a, b) => a === b || (LOGIN_KINDS.has(a) && LOGIN_KINDS.has(b));
+
+  const pill = {
+    node: null,
+    anchor: null,
+    kind: null,
+    view: null,
+    expanded: false,
+    busy: false,
+    // Change à chaque fermeture : une attente (confirmation, déverrouillage)
+    // en cours s'arrête.
+    token: 0,
+
+    get open() {
+      return Boolean(this.node?.isConnected);
+    },
+
+    show(anchor, kind, view, { expanded = false } = {}) {
+      this.anchor = anchor;
+      this.kind = kind;
+      this.view = view;
+      this.busy = false;
+      this.expanded = expanded;
+      this.render();
+    },
+
+    // Un état d'attente : plus d'action, la croix seulement.
+    wait(title, subtitle) {
+      this.busy = true;
+      this.view = { title, subtitle, primary: null, others: [] };
+      this.expanded = false;
+      this.render();
+    },
+
+    render() {
+      ui.attach();
+      const focused = ui.root.activeElement?.getAttribute?.("data-key") ?? null;
+      const area = div("pill");
+      area.setAttribute("role", "dialog");
+      area.setAttribute("aria-label", "Verrou");
+      const { view } = this;
+      const capsule = div("capsule");
+      capsule.append(icon(), textBlock(view.title, view.subtitle, view.mono));
+      if (view.primary) {
+        const primary = trustedButton(view.primary.label, "primary", view.primary.run);
+        primary.setAttribute("data-key", "primary");
+        capsule.append(primary);
+      }
+      const close = trustedButton("✕", "close", () => this.dismiss());
+      close.setAttribute("aria-label", "Fermer Verrou sur cette page");
+      close.setAttribute("title", "Fermer");
+      close.setAttribute("data-key", "close");
+      capsule.append(close);
+      area.append(capsule);
+      if (view.others?.length) {
+        const tab = trustedButton(view.tab ?? "Autres identifiants", "tab", () => {
+          this.expanded = !this.expanded;
+          this.render();
+        });
+        tab.setAttribute("aria-expanded", String(this.expanded));
+        tab.setAttribute("data-key", "tab");
+        const chevron = span("chev", "⌄");
+        chevron.setAttribute("aria-hidden", "true");
+        tab.append(chevron);
+        area.append(tab);
+        if (this.expanded) {
+          const list = div("list");
+          list.setAttribute("role", "group");
+          list.setAttribute("aria-label", view.tab ?? "Autres identifiants");
+          view.others.forEach((row, index) => {
+            const line = trustedButton("", "row", row.run);
+            line.setAttribute("data-key", `row-${index}`);
+            line.setAttribute("aria-label", [row.title, row.subtitle].filter(Boolean).join(", "));
+            line.append(div("badge", row.badge), textBlock(row.title, row.subtitle, row.mono));
+            list.append(line);
+          });
+          area.append(list);
+        }
+      }
+      if (this.node?.isConnected) this.node.replaceWith(area);
+      else ui.stack.prepend(area);
+      this.node = area;
+      // Rendu au clavier : le focus reste sur le même bouton.
+      if (focused) this.buttons().find((b) => b.getAttribute("data-key") === focused)?.focus();
+    },
+
+    buttons() {
+      return this.node ? [...this.node.querySelectorAll("button")] : [];
+    },
+
+    hide() {
+      this.token += 1;
+      this.busy = false;
+      this.node?.remove();
+      this.node = null;
+      this.anchor = null;
+      this.view = null;
+      ui.sync();
+    },
+
+    // ✕ ou Échap : plus rien d'elle-même sur cette page.
+    dismiss() {
+      const anchor = this.anchor;
+      const inside = Boolean(ui.root?.activeElement);
+      dismissed = true;
+      observer?.disconnect();
+      this.hide();
+      if (inside && anchor?.isConnected) anchor.focus({ preventScroll: true });
+    },
+  };
+
+  // Clavier dans la pastille (vraies touches seulement) : Échap la ferme, les
+  // flèches passent d'un bouton à l'autre ; Entrée et Espace sont ceux des
+  // boutons.
+  function pillKey(event) {
+    if (!event.isTrusted || !pill.open) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      pill.dismiss();
+      return;
     }
-    if (reply.state !== "unlocked") return [];
-    return reply.items
-      .filter((item) => kind !== "otp" || item.has_totp)
-      .map((item) => ({
-        id: item.id,
-        badge: (item.title.trim()[0] ?? "?").toUpperCase(),
-        title: kind === "otp" ? `Code de ${item.title}` : item.title,
-        subtitle: item.username,
-      }));
+    const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+    if (!step) return;
+    const buttons = pill.buttons();
+    const index = buttons.indexOf(ui.root.activeElement);
+    if (index < 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    buttons[(index + step + buttons.length) % buttons.length].focus();
   }
 
-  // MARK: Passkeys (remplissage automatique)
+  // Le champ à remplir au moment du choix : le champ actif s'il est du même
+  // genre, sinon celui de la pastille, sinon celui que la page montre
+  // maintenant (application monopage qui a redessiné son formulaire).
+  function fillTarget(kind, anchor) {
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement && sameGroup(classify(active), kind)) return active;
+    if (anchor?.isConnected && usable(anchor)) return anchor;
+    return LOGIN_KINDS.has(kind) ? loginFields().anchor : null;
+  }
+
+  // Réessaie tant que Verrou attend la confirmation d'un élément protégé
+  // (Touch ID ou mot de passe principal), une minute au plus, pastille
+  // ouverte.
+  async function retryUntilConfirmed(kind, item, token) {
+    for (let tries = 0; tries < 60 && pill.token === token; tries += 1) {
+      await sleep(1000);
+      if (pill.token !== token) break;
+      const reply = await send({ kind, item });
+      if (reply?.state !== "confirm") return reply;
+    }
+    return null;
+  }
+
+  async function fillLogin(item, kind, anchor) {
+    const token = pill.token;
+    let credentials = await send({ kind: "fill", item: item.id });
+    if (credentials?.state === "confirm") {
+      pill.wait("Confirmez dans Verrou", `« ${item.title} » est protégé`);
+      credentials = await retryUntilConfirmed("fill", item.id, token);
+    }
+    if (pill.token !== token) return;
+    const target = fillTarget(kind, anchor);
+    pill.hide();
+    if (credentials?.ok) apply(credentials, target);
+  }
+
+  async function fillCardOrIdentity(item, kind, anchor) {
+    const token = pill.token;
+    let reply = await send({ kind: "fillForm", item: item.id });
+    if (reply?.state === "confirm") {
+      pill.wait("Confirmez dans Verrou", `« ${item.title} » est protégé`);
+      reply = await retryUntilConfirmed("fillForm", item.id, token);
+    }
+    if (pill.token !== token) return;
+    const target = fillTarget(kind, anchor) ?? anchor;
+    pill.hide();
+    if (reply?.ok && target) applyForm(reply.data, target);
+  }
+
+  // Après « Déverrouiller » : la pastille se remplit dès que Verrou est
+  // ouvert (une minute et demie au plus).
+  async function unlock(anchor, kind) {
+    await send({ kind: "unlock" });
+    pill.wait("Déverrouillez Verrou…", "Touch ID ou mot de passe principal");
+    const token = pill.token;
+    const form = kind === "card" || kind === "identity";
+    for (let tries = 0; tries < 90; tries += 1) {
+      await sleep(1000);
+      if (pill.token !== token) return;
+      const reply = await send({ kind: form ? "forms" : "suggest" });
+      if (pill.token !== token) return;
+      if (reply.state === "locked") continue;
+      const view = reply.state === "unlocked" ? await viewFor(anchor, kind, true) : null;
+      if (pill.token !== token) return;
+      if (view) pill.show(anchor, kind, view, { expanded: !view.primary });
+      else pill.hide();
+      return;
+    }
+    if (pill.token === token) pill.hide();
+  }
+
+  // MARK: Ce que propose la pastille
+
+  function lockedView(anchor, kind) {
+    return {
+      title: "Verrou est verrouillé",
+      subtitle: SITE,
+      primary: { label: "Déverrouiller", run: () => unlock(anchor, kind) },
+      others: [],
+    };
+  }
+
+  // Ouverte à la main (icône du champ) alors que Verrou ne répond pas.
+  function unavailableView(state) {
+    return state === "unpaired"
+      ? { title: "L'extension n'est pas reliée à Verrou", subtitle: "Reliez-la depuis son icône dans la barre d'outils", primary: null, others: [] }
+      : { title: "Verrou n'est pas joignable", subtitle: "Ouvrez l'app Verrou", primary: null, others: [] };
+  }
 
   // L'interface de passkeys.js, dans le cadre principal seulement.
   const passkeyMenu = () => (window === top ? globalThis.__verrouPasskeyMenu : undefined);
@@ -559,69 +744,295 @@
     }
   }
 
-  function passkeyRows(entries) {
-    if (entries.state !== "ready") return [];
-    return entries.items.map((item) => ({
-      passkey: item.credential,
-      badge: "🔑",
-      title: `Passkey · ${item.user_name || item.title}`,
-      subtitle: item.title,
-    }));
+  // Un champ « nouveau mot de passe » du formulaire de `anchor` (inscription).
+  function newPasswordField(anchor) {
+    for (const [input, role] of passwordRoles(anchor ? scopeOf(anchor) : document)) {
+      if (role === "new") return input;
+    }
+    return null;
   }
 
-  function generatorRow() {
+  function generateRow(field) {
     const password = globalThis.verrouGenerator.password();
-    return { action: "generate", badge: "✦", title: "Utiliser un mot de passe fort", subtitle: password, mono: true, password };
+    return {
+      badge: "✦", title: "Générer un mot de passe", subtitle: password, mono: true,
+      run: () => {
+        pill.hide();
+        applyGenerated(password, field);
+      },
+    };
   }
 
-  async function offer(input) {
-    const kind = classify(input);
-    if (!kind) return;
-    if (kind === "new") {
-      // Proposé même coffre verrouillé : rien ne sort de Verrou. Seulement
-      // sur un champ vide, pour ne pas écraser ce que l'utilisateur tape.
-      if (!input.value) menu.show(input, kind, [generatorRow()]);
-      return;
-    }
-    if (kind === "card" || kind === "identity") {
-      const reply = await send({ kind: "forms" });
-      if (document.activeElement !== input) return;
-      if (reply.state === "locked") {
-        menu.show(input, kind, [{ action: "unlock", badge: "🔒", title: "Déverrouiller Verrou",
-          subtitle: kind === "card" ? "pour remplir la carte" : "pour remplir l'adresse" }]);
-        return;
-      }
-      const list = (kind === "card" ? reply.cards : reply.identities) ?? [];
-      const rows = list.map((item) => ({ form: true, id: item.id, badge: kind === "card" ? "💳" : "👤",
-        title: item.title, subtitle: item.subtitle }));
-      if (rows.length) menu.show(input, kind, rows);
-      else menu.hide();
-      return;
-    }
-    const [reply, passkeys] = await Promise.all([send({ kind: "suggest" }), passkeyEntries(kind)]);
-    if (document.activeElement !== input) return;
-    // Verrouillé : on ne le signale que sur un vrai formulaire de connexion.
-    if (reply.state === "locked" && kind === "otp") return;
-    // Les passkeys d'abord, comme le navigateur ; « Déverrouiller » suffit
-    // pour les deux.
-    let rows = rowsFor(reply, kind);
-    if (passkeys.state === "locked" && !rows.some((row) => row.action === "unlock")) {
-      rows = [{ action: "unlock", badge: "🔒", title: "Déverrouiller Verrou", subtitle: "pour utiliser une passkey" }, ...rows];
-    }
-    rows = [...passkeyRows(passkeys), ...rows];
-    if (rows.length) menu.show(input, kind, rows);
-    else menu.hide();
+  // « Remplir avec un autre identifiant… » : la fenêtre de l'extension, où
+  // l'on choisit l'identifiant à relier à ce site. La page n'y voit rien.
+  function linkRow() {
+    return {
+      badge: "…", title: "Remplir avec un autre identifiant…", subtitle: "Relier ce site à un identifiant de Verrou",
+      run: () => {
+        pill.hide();
+        send({ kind: "openLinkSite" });
+      },
+    };
   }
+
+  async function loginView(anchor, kind, manual) {
+    const [reply, passkeys] = await Promise.all([send({ kind: "suggest" }), passkeyEntries(kind)]);
+    if (reply.state === "locked" || passkeys.state === "locked") {
+      // Verrouillé : pas pour un simple code de vérification, sauf à la main.
+      return kind === "otp" && !manual ? null : lockedView(anchor, kind);
+    }
+    if (reply.state !== "unlocked" && passkeys.state !== "ready") return manual ? unavailableView(reply.state) : null;
+    // Les passkeys d'abord, comme le navigateur.
+    const rows = [
+      ...(passkeys.state === "ready" ? passkeys.items : []).map((item) => ({
+        badge: "🔑",
+        title: `Passkey · ${item.user_name || item.title}`,
+        subtitle: item.title,
+        username: item.user_name || item.title,
+        action: "Se connecter avec une passkey",
+        run: () => {
+          // La signature et sa fenêtre d'avancement : passkeys.js.
+          pill.hide();
+          passkeyMenu()?.choose(item.credential);
+        },
+      })),
+      ...(reply.state === "unlocked" ? reply.items : [])
+        .filter((item) => kind !== "otp" || item.has_totp)
+        .map((item) => ({
+          badge: (item.title.trim()[0] ?? "?").toUpperCase(),
+          title: kind === "otp" ? `Code de ${item.title}` : item.title,
+          subtitle: item.username,
+          username: item.username,
+          action: kind === "otp" ? "Remplir le code" : "Se connecter",
+          run: () => fillLogin(item, kind, anchor),
+        })),
+    ];
+    if (!rows.length && !manual) return null;
+    const [top, ...rest] = rows;
+    const fresh = newPasswordField(anchor);
+    const extras = [
+      ...(fresh ? [generateRow(fresh)] : []),
+      ...(reply.state === "unlocked" ? [linkRow()] : []),
+    ];
+    return {
+      title: SITE,
+      subtitle: top ? top.username || "—" : kind === "otp" ? "Aucun code pour ce site" : "Aucun identifiant pour ce site",
+      primary: top ? { label: top.action, run: top.run } : null,
+      tab: "Autres identifiants",
+      others: [...rest, ...extras],
+    };
+  }
+
+  async function formView(anchor, kind, manual) {
+    const card = kind === "card";
+    const reply = await send({ kind: "forms" });
+    if (reply.state === "locked") return lockedView(anchor, kind);
+    if (reply.state !== "unlocked") return manual ? unavailableView(reply.state) : null;
+    const rows = ((card ? reply.cards : reply.identities) ?? []).map((item) => ({
+      badge: card ? "💳" : "👤",
+      title: item.title,
+      subtitle: item.subtitle,
+      run: () => fillCardOrIdentity(item, kind, anchor),
+    }));
+    if (!rows.length && !manual) return null;
+    const [top, ...rest] = rows;
+    return {
+      title: SITE,
+      subtitle: top ? top.title : card ? "Aucune carte dans Verrou" : "Aucune adresse dans Verrou",
+      primary: top
+        ? { label: card ? `Remplir la carte ${top.subtitle}`.trim() : "Remplir l'adresse", run: top.run }
+        : null,
+      tab: card ? "Autres cartes" : "Autres adresses",
+      others: rest,
+    };
+  }
+
+  function generatorView(anchor) {
+    const password = globalThis.verrouGenerator.password();
+    return {
+      title: SITE,
+      subtitle: password,
+      mono: true,
+      primary: {
+        label: "Suggérer un mot de passe fort",
+        run: () => {
+          pill.hide();
+          applyGenerated(password, anchor);
+        },
+      },
+      others: [],
+    };
+  }
+
+  async function viewFor(anchor, kind, manual) {
+    // Proposé même coffre verrouillé : rien ne sort de Verrou.
+    if (kind === "new") return generatorView(anchor);
+    if (kind === "card" || kind === "identity") return formView(anchor, kind, manual);
+    return loginView(anchor, kind, manual);
+  }
+
+  // Affiche la pastille pour `anchor`. D'elle-même (`manual` faux) : rien
+  // sans identifiant pour ce site, ni après une fermeture. `refresh` : mise à
+  // jour de la pastille ouverte, qui s'efface s'il n'y a plus rien.
+  async function offer(anchor, kind, { manual = false, refresh = false } = {}) {
+    const seq = ++offerSeq;
+    const view = await viewFor(anchor, kind, manual);
+    if (seq !== offerSeq) return;
+    if (!view) {
+      if (refresh && pill.open && !pill.busy) pill.hide();
+      return;
+    }
+    if (!manual && (dismissed || pill.busy)) return;
+    const keepOpen = refresh && pill.open && pill.expanded;
+    pill.show(anchor, kind, view, { expanded: keepOpen || (manual && !view.primary) });
+  }
+
+  // MARK: Formulaires de connexion de la page
+
+  // Un identifiant seul (connexion en plusieurs étapes) ne compte que s'il
+  // se présente comme tel : pas le champ e-mail d'une lettre d'information.
+  function strongUsername(input) {
+    const autocomplete = (input.autocomplete || "").toLowerCase();
+    return /\b(username|webauthn)\b/.test(autocomplete)
+      || /user|login|identifiant|account|compte|pseudo/i.test(`${input.name} ${input.id}`);
+  }
+
+  // Le champ de connexion de la page, son genre, et l'étape (les genres de
+  // champs présents).
+  function loginFields() {
+    const found = new Map();
+    for (const input of inputsOf(document)) {
+      const kind = classify(input);
+      if ((LOGIN_KINDS.has(kind) || kind === "new") && !found.has(kind)) found.set(kind, input);
+    }
+    let anchor = null;
+    if (found.has("password")) anchor = found.get("username") ?? found.get("password");
+    else if (!found.has("new") && found.has("username") && strongUsername(found.get("username"))) anchor = found.get("username");
+    else if (found.has("otp")) anchor = found.get("otp");
+    const kinds = [...found.keys()].filter((kind) => LOGIN_KINDS.has(kind)).sort();
+    return { anchor, kind: anchor ? classify(anchor) : null, signature: `login:${kinds.join("+")}` };
+  }
+
+  // Cherche un formulaire de connexion et, la première fois pour cette
+  // étape, propose les identifiants du site.
+  function scan() {
+    if (dismissed || filling) return;
+    const { anchor, kind, signature } = loginFields();
+    if (!anchor || queried.has(signature) || pill.busy) return;
+    queried.add(signature);
+    offer(anchor, kind);
+  }
+
+  let scanTimer = null;
+  function scheduleScan(delay = 400) {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(scan, delay);
+  }
+
+  // Formulaires qui arrivent après le chargement (applications monopages,
+  // fenêtres de connexion).
+  // Les mouvements de nos propres hôtes ne comptent pas.
+  const ours = (node) => node === ui.host || node === badge.host;
+  const observer = typeof MutationObserver === "function"
+    ? new MutationObserver((records) => {
+      const relevant = records.some((r) => !ours(r.target)
+        && (r.type !== "childList" || ![...r.addedNodes, ...r.removedNodes].every(ours)));
+      if (!relevant) return;
+      badge.place();
+      scheduleScan();
+    })
+    : null;
 
   // La page vient de demander une passkey (ou la demande s'est terminée) :
-  // le menu ouvert se met à jour, et un champ de connexion déjà actif reçoit
-  // le menu, comme s'il venait d'être sélectionné.
-  passkeyMenu()?.subscribe(() => {
-    const active = menu.open ? menu.anchor : document.activeElement;
-    if (filling || !(active instanceof HTMLInputElement)) return;
-    const kind = classify(active);
-    if (kind === "username" || kind === "password") offer(active);
+  // la pastille ouverte se met à jour ; fermée, elle revient proposer la
+  // passkey (nouvelle demande de la page), jamais pour un simple mot de passe
+  // déjà proposé.
+  passkeyMenu()?.subscribe(async () => {
+    if (dismissed || filling || pill.busy) return;
+    const { anchor, kind, signature } = loginFields();
+    if (pill.open && LOGIN_KINDS.has(pill.kind)) {
+      offer(pill.anchor?.isConnected ? pill.anchor : anchor ?? pill.anchor, pill.kind, { refresh: true });
+      return;
+    }
+    if (!anchor || (kind !== "username" && kind !== "password")) return;
+    if ((await passkeyEntries(kind)).state !== "ready" || pill.open || dismissed) return;
+    queried.add(signature);
+    offer(anchor, kind);
   });
+
+  // MARK: Icône Verrou dans le champ actif
+
+  const badge = {
+    host: null,
+    root: null,
+    input: null,
+
+    ensure() {
+      if (this.host) return;
+      ({ host: this.host, root: this.root } = shadowHost("verrou-field"));
+      const button = trustedButton("", "field", () => this.toggle());
+      button.setAttribute("aria-label", "Verrou : identifiants pour ce site");
+      button.setAttribute("title", "Verrou");
+      // Hors de l'ordre de tabulation de la page ; un clic garde le focus
+      // dans le champ.
+      button.setAttribute("tabindex", "-1");
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.append(icon());
+      this.root.append(button);
+      this.button = button;
+    },
+
+    show(input) {
+      this.ensure();
+      this.input = input;
+      if (!this.place()) return;
+      if (!this.host.isConnected) document.documentElement.append(this.host);
+    },
+
+    // Au bord droit du champ, centrée verticalement ; trop petit : rien.
+    place() {
+      if (!this.input) return false;
+      if (!this.input.isConnected) {
+        this.hide();
+        return false;
+      }
+      const box = this.input.getBoundingClientRect();
+      const size = Math.min(22, box.height - 6);
+      if (size < 14 || box.width < 80) {
+        this.host?.remove();
+        return false;
+      }
+      this.button.style.setProperty("--scale", String(size / 26));
+      pin(this.host, {
+        ...HOST_STYLES, position: "absolute", width: `${size}px`, height: `${size}px`,
+        left: `${box.right + scrollX - size - 6}px`, top: `${box.top + scrollY + (box.height - size) / 2}px`,
+        right: "auto", bottom: "auto", "z-index": "2147483646",
+      });
+      return true;
+    },
+
+    hide() {
+      this.host?.remove();
+      this.input = null;
+    },
+
+    // Ouvre la pastille pour ce champ (même après une fermeture), ou la ferme.
+    toggle() {
+      const input = this.input;
+      if (pill.open) {
+        pill.hide();
+        return;
+      }
+      const kind = input && classify(input);
+      if (kind) offer(input, kind, { manual: true });
+    },
+  };
+
+  // Les secrets ne vont qu'au cadre dont l'adresse est celle pour laquelle
+  // Verrou les a donnés (la page a pu changer entre-temps).
+  function forThisPage(message) {
+    return typeof message.origin === "string" && message.origin === location.origin;
+  }
 
   // MARK: Enregistrement après l'envoi d'un formulaire
 
@@ -673,37 +1084,39 @@
     if (button) captureFrom(button);
   }, true);
 
+
   // MARK: Bandeau « Enregistrer dans Verrou » (cadre principal)
 
+  // Au même coin que la pastille, sous elle, dans la même capsule sombre.
   const banner = {
-    host: null,
-    root: null,
+    node: null,
     timer: null,
 
     show(...nodes) {
-      if (!this.host) {
-        ({ host: this.host, root: this.root } = shadowHost("verrou-banner"));
-        Object.assign(this.host.style, { position: "fixed", top: "12px", right: "12px" });
-      }
+      ui.attach();
       clearTimeout(this.timer);
-      this.root.querySelector(".banner")?.remove();
       const box = div("banner");
+      box.setAttribute("role", "dialog");
+      box.setAttribute("aria-label", "Verrou : enregistrement");
       box.append(...nodes);
-      this.root.append(box);
-      if (!this.host.isConnected) document.documentElement.append(this.host);
+      if (this.node?.isConnected) this.node.replaceWith(box);
+      else ui.stack.append(box);
+      this.node = box;
     },
 
     hide(after = 0) {
       clearTimeout(this.timer);
-      this.timer = setTimeout(() => this.host?.remove(), after);
+      this.timer = setTimeout(() => {
+        this.node?.remove();
+        this.node = null;
+        ui.sync();
+      }, after);
     },
   };
 
   function bannerHead(title, subtitle) {
     const head = div("head");
-    const text = div("text");
-    text.append(div("title", title), div("sub", subtitle));
-    head.append(div("badge", "V"), text);
+    head.append(icon(), textBlock(title, subtitle));
     return head;
   }
 
@@ -718,7 +1131,7 @@
     banner.hide(2500);
   }
 
-  async function dismiss() {
+  async function dismissSave() {
     await send({ kind: "dismissSave" });
     banner.hide();
   }
@@ -732,7 +1145,7 @@
       banner.show(
         bannerHead("Enregistrer dans Verrou ?", who),
         actions(
-          trustedButton("Pas maintenant", "", dismiss),
+          trustedButton("Pas maintenant", "", dismissSave),
           trustedButton("Déverrouiller", "primary", async () => {
             await send({ kind: "unlock" });
             banner.show(bannerHead("Déverrouillez Verrou…", "Touch ID ou mot de passe principal"));
@@ -750,7 +1163,7 @@
           await send({ kind: "neverSave" });
           banner.hide();
         }),
-        trustedButton("Pas maintenant", "", dismiss),
+        trustedButton("Pas maintenant", "", dismissSave),
         trustedButton(update ? "Mettre à jour" : "Enregistrer", "primary", async () => {
           banner.show(bannerHead("Enregistrement…", offer.site));
           const result = await send({ kind: "confirmSave" });
@@ -779,67 +1192,94 @@
 
   // MARK: Écouteurs
 
+  // Le site gère lui-même une liste de suggestions sous ce champ : la flèche
+  // vers le bas reste la sienne.
+  function siteListOpen(input) {
+    return Boolean(input.getAttribute("list")) || input.getAttribute("aria-expanded") === "true";
+  }
+
   document.addEventListener("focusin", (event) => {
     if (filling) return;
     const target = event.composedPath()[0];
-    if (target instanceof HTMLInputElement) offer(target);
+    if (!(target instanceof HTMLInputElement)) return;
+    const kind = classify(target);
+    if (!kind) {
+      badge.hide();
+      return;
+    }
+    badge.show(target);
+    if (LOGIN_KINDS.has(kind)) {
+      // Formulaire apparu sans mutation visible (style d'un parent…).
+      scheduleScan(0);
+      return;
+    }
+    // Mot de passe à créer (champ vide : ne pas écraser ce qu'on tape),
+    // carte, adresse : la pastille vient au premier passage dans le champ.
+    if (dismissed || (kind === "new" && target.value) || pill.busy) return;
+    if (queried.has(kind)) return;
+    queried.add(kind);
+    offer(target, kind);
   }, true);
 
   document.addEventListener("focusout", (event) => {
-    if (event.target === menu.anchor) setTimeout(() => {
-      if (document.activeElement !== menu.anchor) menu.hide();
+    if (event.target !== badge.input) return;
+    setTimeout(() => {
+      if (document.activeElement !== badge.input) badge.hide();
     }, 120);
   }, true);
 
   document.addEventListener("input", (event) => {
-    // On tape soi-même son nouveau mot de passe : le générateur s'efface.
-    if (event.isTrusted && menu.open && menu.kind === "new" && event.target === menu.anchor) menu.hide();
-  }, true);
-
-  document.addEventListener("mousedown", (event) => {
-    // Clic sur le champ déjà actif après « Échap » : on rouvre.
-    const target = event.composedPath()[0];
-    if (event.isTrusted && target instanceof HTMLInputElement && target === document.activeElement
-      && !menu.open && !filling) offer(target);
+    // On tape soi-même son nouveau mot de passe : la suggestion s'efface.
+    if (event.isTrusted && pill.open && pill.kind === "new" && !pill.busy && event.target === pill.anchor) pill.hide();
   }, true);
 
   document.addEventListener("keydown", (event) => {
     // Seulement les vraies touches : la page ne choisit pas à la place de
     // l'utilisateur.
-    if (event.isTrusted && menu.open && event.target === menu.anchor) {
-      const keys = {
-        ArrowDown: () => menu.move(1),
-        ArrowUp: () => menu.move(-1),
-        Enter: () => menu.choose(menu.selected),
-        Escape: () => menu.hide(),
-      };
-      const action = keys[event.key];
-      if (!action) return;
+    if (!event.isTrusted) return;
+    if (pill.open && event.key === "Escape") {
+      // Pas d'arrêt de l'événement : la page ferme aussi ses propres listes.
+      pill.dismiss();
+      return;
+    }
+    // Flèche vers le bas dans le champ de la pastille : le clavier passe
+    // dans la pastille, sur son action principale.
+    if (pill.open && event.key === "ArrowDown" && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
+      && event.target instanceof HTMLInputElement && event.target === badge.input
+      && sameGroup(classify(event.target), pill.kind) && !siteListOpen(event.target)) {
+      const first = pill.buttons()[0];
+      if (!first) return;
       event.preventDefault();
       event.stopPropagation();
-      action();
+      first.focus();
       return;
     }
     // Envoi au clavier : certains formulaires partent sans « submit ».
-    if (event.isTrusted && event.key === "Enter" && event.target instanceof HTMLInputElement) {
+    if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
       captureFrom(event.target);
     }
   }, true);
 
-  addEventListener("scroll", () => menu.place(), true);
-  addEventListener("resize", () => menu.place());
+  addEventListener("scroll", () => badge.place(), true);
+  addEventListener("resize", () => badge.place());
 
   ext.runtime.onMessage.addListener((message) => {
-    if (window !== top) return;
-    // Remplissage demandé depuis la fenêtre de l'extension (cadre principal).
-    if (message?.kind === "apply") {
+    // Remplissage demandé depuis la fenêtre de l'extension : seulement dans
+    // le cadre visé, et s'il est toujours à l'adresse remplie.
+    if (message?.kind === "apply" && forThisPage(message)) {
       const active = document.activeElement;
       apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null);
+      pill.hide();
     }
     // Formulaire envoyé sans changer de page (application monopage).
-    if (message?.kind === "offerSave") showOffer();
+    if (message?.kind === "offerSave" && window === top) showOffer();
   });
 
   // Page suivante d'un formulaire envoyé : une proposition attend peut-être.
   showOffer();
+  // Formulaire de connexion déjà là, ou à venir.
+  scan();
+  observer?.observe(document.documentElement, {
+    childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden", "type"],
+  });
 })();

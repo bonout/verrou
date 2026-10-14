@@ -230,21 +230,46 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   dans l'extension ; l'image n'est ni gardée ni envoyée. Seule l'URI
   `otpauth://` part vers Verrou, pour l'identifiant choisi. Firefox n'a pas
   de lecteur de codes-barres : la clé s'y saisit à la main.
-- **Cartes et identités** : le menu d'un formulaire de paiement ou
+- **Cartes et identités** : la pastille d'un formulaire de paiement ou
   d'adresse ne reçoit que des titres et des sous-titres masqués (« Visa ••••
   4242 ») ; les champs ne sortent qu'au choix d'un élément, vers une page en
   HTTPS, et un élément protégé attend la confirmation dans Verrou. Une carte
   n'étant liée à aucun site, toute page sûre peut la proposer : c'est
   l'utilisateur qui choisit de la remplir.
 - **Relier un site à un identifiant** : seulement depuis la fenêtre de
-  l'extension, jamais depuis une page. La recherche n'y montre que titres et
-  identifiants ; choisir un élément lui ajoute l'origine de l'onglet (après un
-  avertissement sur l'hameçonnage), et le remplissage suit la règle habituelle
-  du même site.
-- **Dans la page** : le menu et le bandeau vivent dans un shadow DOM fermé et
+  l'extension, jamais depuis une page. « Remplir avec un autre
+  identifiant… » de la pastille (vrai clic) ne fait que l'ouvrir sur ce choix,
+  pour l'onglet et le cadre d'où vient le clic (adresse donnée par le
+  navigateur, `sender.url`) ; Firefox n'ouvrant pas la fenêtre de
+  l'extension hors d'un clic sur son icône, c'est alors une petite fenêtre de
+  l'extension. La recherche n'y montre que titres et identifiants ; choisir un
+  élément lui ajoute l'origine du cadre (après un avertissement sur
+  l'hameçonnage), et le remplissage suit la règle habituelle du même site.
+- **Remplissage demandé par la fenêtre de l'extension** : les identifiants
+  partent vers le cadre visé avec l'origine pour laquelle Verrou les a
+  donnés ; `content.js` ne remplit que si son cadre est toujours à cette
+  origine (la page a pu changer entre-temps).
+- **Dans la page** : la pastille (en haut à gauche), l'icône Verrou du champ
+  actif et le bandeau d'enregistrement vivent dans des shadow DOM fermés et
   n'obéissent qu'aux événements réels (`isTrusted`) ; la page ne peut ni les
-  lire ni les déclencher. Les secrets n'arrivent qu'au remplissage, pour
-  l'élément choisi ; le bandeau d'enregistrement ne reçoit pas le mot de passe.
+  lire ni les déclencher (un clic qu'elle envoie à l'hôte n'atteint pas les
+  boutons). Leurs hôtes sont tenus en place par des styles en ligne
+  `!important` (position fixe, `z-index` maximal, opacité) : une feuille de
+  style de la page ne les cache ni ne les déplace ; un script de la page peut
+  toujours les retirer ou dessiner une imitation, mais une imitation ne
+  remplit rien. La pastille ne prend pas le focus ; elle ne montre que le
+  site, les titres et les identifiants. Les secrets n'arrivent qu'au
+  remplissage, pour l'élément choisi, et rien n'est envoyé : le curseur va sur
+  le bouton d'envoi. Le bandeau d'enregistrement ne reçoit pas le mot de
+  passe.
+- **Quand l'extension interroge Verrou** : au chargement d'une page qui
+  montre un formulaire de connexion (champ mot de passe, identifiant qui se
+  présente comme tel, ou code de vérification), une fois par étape du
+  formulaire, pour savoir s'il faut montrer la pastille ; avant, c'était au
+  premier passage dans le champ. La demande ne porte que l'adresse du cadre,
+  donnée par le navigateur, et ouvre Verrou en arrière-plan s'il ne tourne pas
+  (comme une demande de passkey). Cartes et adresses : au premier passage
+  dans un de leurs champs seulement.
 - **Ce qui est sur le disque** : côté Verrou, `bridge-clients.json` (conteneur
   de l'app, mode 600) garde la clé de chaque extension appairée ; côté Brave
   ou Firefox,
@@ -373,13 +398,13 @@ page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont c
   que la page pourrait donner elle-même au navigateur, et rend la réponse.
   Cadre principal seulement.
 - **Remplissage automatique** (`mediation: "conditional"`) : la demande reste
-  en attente dans `passkeys.js`, et le menu sous le champ de connexion
-  (`content.js`, même monde isolé de l'extension : la page n'atteint ni l'un
-  ni l'autre) propose les passkeys de Verrou pour ce site (« Passkey ·
-  utilisateur »). Seul un vrai clic ou une vraie touche (`isTrusted`) les
+  en attente dans `passkeys.js`, et la pastille de `content.js` (même monde
+  isolé de l'extension : la page n'atteint ni l'un ni l'autre) propose en
+  premier la passkey de Verrou pour ce site (« Se connecter avec une
+  passkey »), les autres dans son onglet. Seul un vrai clic ou une vraie touche (`isTrusted`) les
   choisit ; la signature suit le même chemin qu'une demande explicite
   (Touch ID si demandé, élément protégé, compteur). La page annule
-  (`AbortSignal`) ou lance une autre demande : la passkey quitte le menu.
+  (`AbortSignal`) ou lance une autre demande : la passkey quitte la pastille.
   Sans passkey de Verrou pour ce site, ou Verrou injoignable ou non relié, la
   demande passe aussitôt au navigateur.
 - **Choix de l'utilisateur** : la fenêtre de Verrou (shadow DOM fermé, clics

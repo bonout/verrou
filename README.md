@@ -40,12 +40,15 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   one-time code without opening the main window.
 - **Fill in any app** (⌘\\): Verrou types the username and password into the
   app in front of you, like 1Password's Universal Autofill.
-- **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses. It suggests
+- **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses,
+  from a 1Password-style pill at the top left of the page (*Se connecter*,
+  other logins in a tab under it), with only a small Verrou icon in the field:
+  nothing gets in the way of the site's own suggestion lists. It suggests
   strong passwords, offers to save new accounts, and reads two-factor QR codes
   shown on a page (Brave).
 - **Passkeys in Brave and Firefox**: create and use passkeys stored in your vault, in the
   Bitwarden format, so they work with the official apps too. Sites with
-  passkey autofill get them right in the field menu, next to passwords.
+  passkey autofill get them as the pill's top suggestion, before passwords.
   In Brave, the extension reloads itself when Verrou is updated.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer

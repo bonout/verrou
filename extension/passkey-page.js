@@ -5,8 +5,8 @@
 // site, l'implémentation d'origine prend le relais avec les mêmes options.
 //
 // Remplissage automatique (`mediation: "conditional"`) : la demande reste en
-// attente chez Verrou, qui propose ses passkeys dans le menu sous le champ
-// de connexion (content.js) ; sans passkey de Verrou pour ce site, ou sans
+// attente chez Verrou, qui propose ses passkeys dans sa pastille en haut de
+// la page (content.js) ; sans passkey de Verrou pour ce site, ou sans
 // Verrou, elle passe au navigateur, dont le remplissage marche comme avant.
 //
 // Ce script vit dans le monde de la page : il ne détient rien de secret et
@@ -94,7 +94,7 @@
     } catch {
       return nativeGet(options);
     }
-    // Remplissage automatique : proposé dans le menu de Verrou sous le champ.
+    // Remplissage automatique : proposé dans la pastille de Verrou.
     const kind = options.mediation === "conditional" ? "conditional" : "get";
     const reply = await ask(kind, request, options.signal);
     return outcome(reply, () => nativeGet(options), (credential) => codec.assertionCredential(credential));

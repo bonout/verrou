@@ -173,7 +173,38 @@ async function openTab(url) {
   const { sessionId } = await cdp("Target.attachToTarget", { targetId, flatten: true });
   await cdp("Page.enable", {}, sessionId);
   await cdp("Runtime.enable", {}, sessionId);
+  await cdp("DOM.enable", {}, sessionId);
   return sessionId;
+}
+
+// Le texte de la pastille de Verrou (shadow DOM fermé : DevTools le
+// traverse, pas la page).
+async function pillText(sessionId) {
+  const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
+  const texts = [];
+  const walk = (node, inside) => {
+    if (node.nodeName === "STYLE") return;
+    const here = inside || node.nodeName === "VERROU-PILL";
+    if (here && node.nodeType === 3 && node.nodeValue) texts.push(node.nodeValue);
+    for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) walk(child, here);
+  };
+  walk(tree, false);
+  return texts.join(" | ");
+}
+
+// Le centre du bouton `label` dans l'hôte `tag` (shadow DOM fermé).
+async function shadowButton(sessionId, tag, label) {
+  const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
+  let found = null;
+  const walk = (node, inside) => {
+    const here = inside || node.nodeName === tag;
+    if (here && node.nodeName === "BUTTON" && (label === null || node.children?.[0]?.nodeValue === label)) found ??= node.nodeId;
+    for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) walk(child, here);
+  };
+  walk(tree, false);
+  if (!found) return null;
+  const { model } = await cdp("DOM.getBoxModel", { nodeId: found }, sessionId);
+  return [(model.content[0] + model.content[4]) / 2, (model.content[1] + model.content[5]) / 2];
 }
 
 async function evaluate(sessionId, expression) {
@@ -221,16 +252,23 @@ try {
     "extension reliée");
   step("extension reliée");
 
-  // Formulaire : focus sur l'identifiant, menu Verrou, Entrée.
+  // Formulaire : la pastille vient d'elle-même en haut à gauche ; au
+  // clavier, flèche vers le bas depuis l'identifiant, puis Entrée.
   const tab = await openTab(pageUrl);
   await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page chargée");
   await cdp("Page.bringToFront", {}, tab);
-  await evaluate(tab, `document.getElementById("email").focus()`);
-  await eventually(() => evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), "menu Verrou");
-  step("menu proposé sous le champ");
-  await evaluate(tab, `document.querySelector("verrou-menu").shadowRoot === null`).then((closed) => {
-    assert.equal(closed, true, "le menu doit être invisible pour la page (shadow DOM fermé)");
+  await eventually(async () => (await pillText(tab)).includes("Se connecter"), "pastille Verrou");
+  const corner = await evaluate(tab, `(() => { const r = document.querySelector("verrou-pill").getBoundingClientRect(); return [r.left, r.top]; })()`);
+  assert.deepEqual(corner, [16, 16]);
+  step(`pastille en haut à gauche : ${await pillText(tab)}`);
+  await evaluate(tab, `document.querySelector("verrou-pill").shadowRoot === null`).then((closed) => {
+    assert.equal(closed, true, "la pastille doit être invisible pour la page (shadow DOM fermé)");
   });
+  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "la pastille ne prend pas le focus");
+  await evaluate(tab, `document.getElementById("email").focus()`);
+  await eventually(() => evaluate(tab, `Boolean(document.querySelector("verrou-field"))`), "icône dans le champ");
+  assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), false, "plus de menu sous le champ");
+  await press(tab, "ArrowDown");
   await press(tab, "Enter");
   const filled = await eventually(() => evaluate(tab,
     `document.getElementById("password").value && [document.getElementById("email").value, document.getElementById("password").value]`),
@@ -238,17 +276,20 @@ try {
   assert.deepEqual(filled, ["camille@exemple.fr", "mot-de-passe-local"]);
   step("identifiant et mot de passe remplis au clavier");
 
-  // Un champ sans rapport avec la connexion : pas de menu.
+  // Un champ sans rapport avec la connexion : pas d'icône Verrou.
   await evaluate(tab, `document.getElementById("newsletter").focus()`);
   await sleep(800);
-  assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), false);
-  step("aucun menu hors des champs de connexion");
+  assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-field"))`), false);
+  step("aucune icône hors des champs de connexion");
 
-  // Un clic simulé par la page ne remplit rien.
+  // L'icône du champ rouvre la pastille (vrai clic) ; un clic simulé par la
+  // page ne remplit rien.
   await evaluate(tab, `document.getElementById("password").value = ""; document.getElementById("email").value = ""`);
   await evaluate(tab, `document.getElementById("password").focus()`);
-  await eventually(() => evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), "menu Verrou");
-  await evaluate(tab, `document.querySelector("verrou-menu").dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))`);
+  const icon = await eventually(() => shadowButton(tab, "VERROU-FIELD", null), "icône dans le champ");
+  await click(tab, ...icon);
+  await eventually(async () => (await pillText(tab)).includes("Se connecter"), "pastille rouverte");
+  await evaluate(tab, `document.querySelector("verrou-pill").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
   await sleep(600);
   assert.equal(await evaluate(tab, `document.getElementById("password").value`), "");
   step("un clic simulé par la page ne remplit rien");
@@ -259,7 +300,8 @@ try {
   await cdp("Page.bringToFront", {}, signup);
   await evaluate(signup, `document.getElementById("new-email").value = "dominique@exemple.fr"`);
   await evaluate(signup, `document.getElementById("new-password").focus()`);
-  await eventually(() => evaluate(signup, `Boolean(document.querySelector("verrou-menu"))`), "générateur");
+  await eventually(async () => (await pillText(signup)).includes("Suggérer un mot de passe fort"), "générateur");
+  await press(signup, "ArrowDown");
   await press(signup, "Enter");
   const generated = await eventually(() => evaluate(signup,
     `document.getElementById("new-password").value && [document.getElementById("new-password").value, document.getElementById("confirm").value]`),
@@ -272,25 +314,23 @@ try {
   const box = await evaluate(signup, `(() => { const r = document.getElementById("create").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
   await click(signup, ...box);
   await eventually(() => evaluate(signup, `location.pathname === "/bienvenue" && document.readyState === "complete"`), "page suivante");
-  const bannerBox = await eventually(() => evaluate(signup,
-    `(() => { const b = document.querySelector("verrou-banner"); if (!b) return null; const r = b.getBoundingClientRect(); return r.height > 40 && [r.right, r.bottom]; })()`),
-  "bandeau « Enregistrer »");
+  const saveButton = await eventually(() => shadowButton(signup, "VERROU-PILL", "Enregistrer"), "bandeau « Enregistrer »");
   step("bandeau d'enregistrement après l'envoi du formulaire");
   // Un clic simulé par la page sur le bandeau n'enregistre rien.
-  await evaluate(signup, `document.querySelector("verrou-banner").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
+  await evaluate(signup, `document.querySelector("verrou-pill").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
   await sleep(500);
   assert.deepEqual(saved, []);
-  // Le bouton « Enregistrer », en bas à droite du bandeau.
-  await click(signup, bannerBox[0] - 50, bannerBox[1] - 26);
+  await click(signup, ...saveButton);
   await eventually(() => saved.length > 0, "enregistrement dans Verrou");
   step(`identifiant enregistré dans Verrou (${saved[0]})`);
 
-  // Paiement : la carte, puis l'adresse, depuis le menu sous le champ.
+  // Paiement : la carte, puis l'adresse, depuis la pastille.
   const checkout = await openTab(pageUrl.replace("/connexion", "/paiement"));
   await eventually(() => evaluate(checkout, `document.readyState === "complete"`), "page de paiement");
   await cdp("Page.bringToFront", {}, checkout);
   await evaluate(checkout, `document.getElementById("cc").focus()`);
-  await eventually(() => evaluate(checkout, `Boolean(document.querySelector("verrou-menu"))`), "menu des cartes");
+  await eventually(async () => (await pillText(checkout)).includes("Remplir la carte"), "pastille des cartes");
+  await press(checkout, "ArrowDown");
   await press(checkout, "Enter");
   const card = await eventually(() => evaluate(checkout, `(() => {
     const v = (id) => document.getElementById(id).value;
@@ -299,7 +339,8 @@ try {
   assert.deepEqual(card, ["4242424242424242", "09", "29", "123"]);
   step("carte remplie (numéro, mois en liste, année sur 2 chiffres, cryptogramme)");
   await evaluate(checkout, `document.getElementById("given").focus()`);
-  await eventually(() => evaluate(checkout, `Boolean(document.querySelector("verrou-menu"))`), "menu des adresses");
+  await eventually(async () => (await pillText(checkout)).includes("Remplir l'adresse"), "pastille des adresses");
+  await press(checkout, "ArrowDown");
   await press(checkout, "Enter");
   const address = await eventually(() => evaluate(checkout, `(() => {
     const v = (id) => document.getElementById(id).value;

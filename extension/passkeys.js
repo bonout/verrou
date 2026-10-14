@@ -8,8 +8,8 @@
 // vérifie le site (`rpId`), signe, et garde la clé privée.
 //
 // Remplissage automatique (`mediation: "conditional"`) : la demande reste en
-// attente, et le menu de content.js (même monde isolé, hors de portée de la
-// page) propose les passkeys de Verrou sous le champ de connexion, par
+// attente, et la pastille de content.js (même monde isolé, hors de portée de
+// la page) propose d'abord la passkey de Verrou pour ce site, par
 // `globalThis.__verrouPasskeyMenu`. Rien pour ce site, ou Verrou absent : la
 // demande passe au navigateur.
 //
@@ -41,7 +41,7 @@
   }
 
   // La demande explicite en cours (une à la fois, comme le navigateur), et la
-  // demande de remplissage automatique, qui attend un choix dans le menu.
+  // demande de remplissage automatique, qui attend un choix dans la pastille.
   let current = null;
   let conditional = null;
   const listeners = new Set();
@@ -476,12 +476,12 @@
     if (entries.state !== "none") changed();
   }
 
-  // Pour le menu de content.js (même monde isolé : la page n'y a pas accès).
+  // Pour la pastille de content.js (même monde isolé : la page n'y a pas accès).
   globalThis.__verrouPasskeyMenu = Object.freeze({
-    // Les passkeys à proposer sous le champ (relues : Verrou a pu être
+    // Les passkeys à proposer dans la pastille (relues : Verrou a pu être
     // déverrouillé entre-temps).
     entries: () => conditionalEntries(conditional),
-    // Choisie dans le menu, d'un vrai clic ou d'une vraie touche : la même
+    // Choisie dans la pastille, d'un vrai clic ou d'une vraie touche : la même
     // signature qu'une connexion explicite (Touch ID, élément protégé…).
     choose(credential) {
       const request = conditional;
