@@ -2,8 +2,9 @@
 // un profil jetable :
 //
 // - remplissage automatique : la page attend une passkey (`mediation:
-//   "conditional"`), le menu de Verrou sous le champ de connexion la propose,
-//   une vraie touche Entrée signe, et la page vérifie la signature ;
+//   "conditional"`), la pastille de Verrou en haut de la page la propose en
+//   premier, une vraie touche (flèche vers le bas depuis le champ, puis
+//   Entrée) signe, et la page vérifie la signature ;
 // - mise à jour (SEAMLESS_UPDATE=1, voir plus bas) : la version du
 //   manifest.json change sur le disque (comme quand Verrou.app est
 //   remplacée), l'extension se recharge d'elle-même, une seule fois, et reste
@@ -154,14 +155,14 @@ async function evaluate(sessionId, expression) {
   return result.value;
 }
 
-// Le texte du menu de Verrou sous le champ (shadow DOM fermé : DevTools le
+// Le texte de la pastille de Verrou (shadow DOM fermé : DevTools le
 // traverse, pas la page).
-async function menuText(sessionId) {
+async function pillText(sessionId) {
   const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
   const texts = [];
   const walk = (node, inside) => {
     if (node.nodeName === "STYLE") return;
-    const here = inside || node.nodeName === "VERROU-MENU";
+    const here = inside || node.nodeName === "VERROU-PILL";
     if (here && node.nodeType === 3 && node.nodeValue) texts.push(node.nodeValue);
     for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) walk(child, here);
   };
@@ -203,7 +204,7 @@ try {
   assert.equal(await evaluate(popup, `document.querySelector(".warning") === null`), true, "aucun avertissement");
   step("extension reliée, versions concordantes");
 
-  // MARK: Passkey dans le menu
+  // MARK: Passkey dans la pastille
 
   const tab = await openTab(pageUrl);
   await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page chargée");
@@ -240,22 +241,20 @@ try {
   step(`passkey créée dans Verrou (${saved[0]})`);
 
   // La page demande une passkey en remplissage automatique, comme
-  // github.com ou google.com : rien ne s'affiche avant le champ.
+  // github.com ou google.com : la pastille la propose en premier, sans
+  // prendre le focus.
   await evaluate(tab, `window.challenge = crypto.getRandomValues(new Uint8Array(32));
     window.conditional = navigator.credentials.get({ mediation: "conditional",
       publicKey: { challenge: window.challenge, rpId: "localhost", userVerification: "discouraged" } })
       .then((c) => ({ ok: true, c }), (e) => ({ ok: false, error: e.name + ": " + e.message })); true`);
-  await sleep(500);
-  assert.equal(await menuText(tab), "", "pas de menu sans champ actif");
-
-  // Le champ de connexion : le menu propose la passkey, en premier.
-  await evaluate(tab, `document.getElementById("username").focus()`);
   const text = await eventually(async () => {
-    const value = await menuText(tab);
-    return value.includes("Passkey · dominique") ? value : null;
-  }, "passkey dans le menu");
-  assert.match(text, /^🔑 \| Passkey · dominique/);
-  step(`menu : ${text}`);
+    const value = await pillText(tab);
+    return value.includes("Se connecter avec une passkey") ? value : null;
+  }, "passkey dans la pastille");
+  assert.match(text, /dominique/);
+  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "la pastille ne prend pas le focus");
+  step(`pastille : ${text}`);
+  await evaluate(tab, `document.getElementById("username").focus()`);
 
   // Une touche Entrée inventée par la page ne choisit rien.
   await evaluate(tab, `document.getElementById("username").dispatchEvent(new KeyboardEvent("keydown",
@@ -264,7 +263,10 @@ try {
   assert.equal(await evaluate(tab, `Promise.race([window.conditional.then(() => "réglée"), new Promise((r) => setTimeout(() => r("attente"), 100))])`),
     "attente", "la page ne choisit pas à la place de l'utilisateur");
 
-  // Une vraie touche Entrée : Verrou signe, la page reçoit la passkey.
+  // Vraies touches : flèche vers le bas (dans la pastille), Entrée sur
+  // « Se connecter avec une passkey » ; Verrou signe, la page reçoit la
+  // passkey.
+  await press(tab, "ArrowDown");
   await press(tab, "Enter");
   const assertion = await evaluate(tab, `window.conditional.then(async (r) => {
     if (!r.ok) return r;
@@ -285,20 +287,20 @@ try {
       user: new TextDecoder().decode(c.response.userHandle) };
   })`);
   assert.deepEqual(assertion, { ok: true, pkc: true, valid: true, counter: 1, type: "webauthn.get", user: "id-dominique" });
-  await eventually(async () => !(await menuText(tab)).includes("Passkey"), "menu refermé");
-  step("passkey choisie dans le menu, signature vérifiée par la page");
+  await eventually(async () => !(await pillText(tab)).includes("avec une passkey"), "pastille refermée");
+  step("passkey choisie dans la pastille, signature vérifiée par la page");
 
-  // La page abandonne sa demande : la passkey quitte le menu.
+  // La page abandonne sa demande : la passkey quitte la pastille.
   await evaluate(tab, `document.getElementById("password").focus();
     window.controller = new AbortController();
     window.aborted = navigator.credentials.get({ mediation: "conditional", signal: window.controller.signal,
       publicKey: { challenge: new Uint8Array(32), rpId: "localhost" } }).catch((e) => e.name); true`);
   await evaluate(tab, `document.getElementById("username").focus()`);
-  await eventually(async () => (await menuText(tab)).includes("Passkey · dominique"), "passkey proposée de nouveau");
+  await eventually(async () => (await pillText(tab)).includes("Se connecter avec une passkey"), "passkey proposée de nouveau");
   await evaluate(tab, `window.controller.abort()`);
   assert.equal(await evaluate(tab, "window.aborted"), "AbortError");
-  await eventually(async () => !(await menuText(tab)).includes("Passkey"), "passkey retirée du menu");
-  step("annulation par la page : passkey retirée du menu");
+  await eventually(async () => !(await pillText(tab)).includes("avec une passkey"), "passkey retirée de la pastille");
+  step("annulation par la page : passkey retirée de la pastille");
 
   // MARK: Mise à jour de l'app
   //

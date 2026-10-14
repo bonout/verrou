@@ -379,8 +379,57 @@ async function passkey(message, sender) {
   }
 }
 
+// MARK: Relier un site à un identifiant
+//
+// « Remplir avec un autre identifiant… » de la pastille (content.js) ouvre
+// la fenêtre de l'extension sur ce choix, pour le cadre d'où vient la
+// demande. Le choix et l'avertissement restent dans la fenêtre : la page ne
+// voit ni la recherche ni les identifiants.
+
+const LINK_INTENT = "linkIntent";
+
+async function openLinkSite(sender) {
+  const tabId = sender.tab?.id;
+  if (tabId === undefined || !sender.url) return { ok: false };
+  await ext.storage.session.set({
+    [LINK_INTENT]: { tabId, frameId: sender.frameId ?? 0, url: sender.url, at: Date.now() },
+  });
+  // La fenêtre de l'extension sous son icône (Brave) ; sinon (Firefox
+  // l'interdit hors d'un clic sur l'extension elle-même) une petite fenêtre.
+  try {
+    await ext.action.openPopup();
+    return { ok: true };
+  } catch {
+    // Repli ci-dessous.
+  }
+  try {
+    await ext.windows.create({ url: ext.runtime.getURL("popup.html"), type: "popup", width: 360, height: 560 });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+// L'onglet (et le cadre) à relier : celui de la demande de la pastille, sinon
+// l'onglet actif.
+async function linkTarget(target) {
+  if (target && Number.isInteger(target.tabId) && typeof target.url === "string") {
+    return { tabId: target.tabId, frameId: Number.isInteger(target.frameId) ? target.frameId : 0, url: target.url };
+  }
+  const tab = await activeTab();
+  return tab?.url ? { tabId: tab.id, frameId: 0, url: tab.url } : null;
+}
+
+const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
+};
+
 const fromPage = new Set([
-  "suggest", "fill", "unlock", "forms", "fillForm",
+  "suggest", "fill", "unlock", "forms", "fillForm", "openLinkSite",
   "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
   "passkeyList", "passkeyGet", "passkeyTargets", "passkeyCreate",
 ]);
@@ -410,6 +459,8 @@ async function handle(message, sender) {
     case "unlock":
       await call({ cmd: "unlock" }).catch(() => {});
       return { ok: true };
+    case "openLinkSite":
+      return openLinkSite(sender);
     case "capture":
       await capture(sender, message);
       return { ok: true };
@@ -457,7 +508,7 @@ async function handle(message, sender) {
       if (!tab?.url) return { ok: false };
       const credentials = await fill(tab.url, message.item);
       if (!credentials.ok) return credentials;
-      await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
+      await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials, origin: originOf(tab.url) }, { frameId: 0 });
       return { ok: true };
     }
     case "setTotpTab": {
@@ -486,17 +537,21 @@ async function handle(message, sender) {
     }
     case "linkSiteTab": {
       // Choisi dans la fenêtre de l'extension : rattacher le site de l'onglet
-      // à cet identifiant, puis remplir comme d'habitude.
-      const tab = await activeTab();
-      if (!tab?.url) return { ok: false, reason: "aucun onglet" };
+      // (ou du cadre de la pastille) à cet identifiant, puis remplir comme
+      // d'habitude.
+      const target = await linkTarget(message.target);
+      if (!target) return { ok: false, reason: "aucun onglet" };
       try {
-        const reply = await call({ cmd: "link_site", url: tab.url, item: message.item });
+        const reply = await call({ cmd: "link_site", url: target.url, item: message.item });
         if (reply.result !== "saved") return { ok: false, reason: reply.reason ?? reply.result };
       } catch (error) {
         return { ok: false, reason: error.message };
       }
-      const credentials = await fill(tab.url, message.item);
-      if (credentials.ok) await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
+      const credentials = await fill(target.url, message.item);
+      if (credentials.ok) {
+        await ext.tabs.sendMessage(target.tabId, { kind: "apply", credentials, origin: originOf(target.url) },
+          { frameId: target.frameId }).catch(() => {});
+      }
       return { ok: true };
     }
     case "neverList":

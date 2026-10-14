@@ -427,9 +427,9 @@ function derToRaw(der) {
 
 const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
 
-// MARK: B. Passkeys dans le menu (remplissage automatique)
+// MARK: B. Passkeys dans la pastille (remplissage automatique)
 
-test("remplissage automatique : la passkey de Verrou au menu, une signature valide", async () => {
+test("remplissage automatique : la passkey de Verrou à la pastille, une signature valide", async () => {
   const channel = await pairedChannel();
   const origin = "http://localhost:8000";
   // Une passkey dans l'identifiant du site de test.
@@ -449,8 +449,8 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
   let settled = null;
   const pending = page.credentials.get({ mediation: "conditional", publicKey: { challenge, rpId: "localhost", userVerification: "discouraged" } })
     .then((c) => { settled = { ok: true, c }; }, (e) => { settled = { ok: false, e }; });
-  // La demande reste en attente ; le menu est prévenu, et propose la passkey.
-  await eventually(() => notified.length > 0, "menu prévenu");
+  // La demande reste en attente ; la pastille est prévenue, et propose la passkey.
+  await eventually(() => notified.length > 0, "pastille prévenue");
   const entries = await page.menu().entries();
   assert.equal(entries.state, "ready");
   assert.deepEqual(entries.items.map((i) => [i.item, i.credential, i.user_name]), [["local", created.credential, "camille@exemple.fr"]]);
@@ -460,7 +460,7 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
 
   // Une passkey inconnue ne se choisit pas.
   assert.equal(page.menu().choose("inconnue"), false);
-  // Choisie dans le menu : la même signature qu'une connexion explicite.
+  // Choisie dans la pastille : la même signature qu'une connexion explicite.
   assert.equal(page.menu().choose(created.credential), true);
   await pending;
   assert.equal(settled.ok, true, String(settled.e));
@@ -476,11 +476,11 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
   assert.equal(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signature, data), true, "signature ES256 valide");
   assert.equal(Buffer.from(credential.response.authenticatorData).readUInt32BE(33), 1, "compteur enregistré");
   assert.equal(Buffer.from(credential.response.userHandle).toString(), "id-camille");
-  // Terminé : plus rien au menu.
+  // Terminé : plus rien à la pastille.
   assert.equal((await page.menu().entries()).state, "none");
   assert.equal(page.menu().choose(created.credential), false);
 
-  // La page annule (AbortSignal) : la promesse est rejetée, le menu vidé.
+  // La page annule (AbortSignal) : la promesse est rejetée, la pastille vidée.
   const controller = new AbortController();
   const aborted = page.credentials.get({ mediation: "conditional", signal: controller.signal, publicKey: { challenge, rpId: "localhost" } })
     .then(() => "résolue", (e) => e.name);
@@ -488,7 +488,7 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
   const before = notified.length;
   controller.abort();
   assert.equal(await aborted, "AbortError");
-  await eventually(() => notified.length > before, "menu prévenu de l'annulation");
+  await eventually(() => notified.length > before, "pastille prévenue de l'annulation");
   assert.equal((await page.menu().entries()).state, "none");
   assert.equal(page.menu().choose(created.credential), false);
 
@@ -505,7 +505,7 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
   assert.deepEqual(page.native, []);
 });
 
-test("Firefox : les mêmes passkeys au menu, par l'API `browser`", async () => {
+test("Firefox : les mêmes passkeys à la pastille, par l'API `browser`", async () => {
   const channel = await pairedChannel();
   const origin = "http://localhost:8000";
   const created = await channel.request({

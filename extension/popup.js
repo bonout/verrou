@@ -8,6 +8,21 @@ const main = document.getElementById("main");
 const stateLabel = document.getElementById("state");
 const send = (message) => ext.runtime.sendMessage(message);
 
+// Ouverte par « Remplir avec un autre identifiant… » de la pastille dans la
+// page (background.js, `openLinkSite`) : l'onglet et le cadre à relier,
+// pris une seule fois, s'ils sont tout frais.
+const linkIntent = (async () => {
+  try {
+    const { linkIntent: intent } = await ext.storage.session.get("linkIntent");
+    if (!intent) return null;
+    await ext.storage.session.remove("linkIntent");
+    return Date.now() - intent.at < 60_000 ? intent : null;
+  } catch {
+    return null;
+  }
+})();
+let linkIntentShown = false;
+
 function element(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children);
@@ -93,11 +108,12 @@ async function renderUnlocked() {
 // Un site que Verrou ne relie à aucun identifiant (nouveau domaine, site de
 // connexion unique…) : on en choisit un, Verrou lui ajoute ce site, puis
 // remplit comme d'habitude. Le site reste ensuite associé.
-async function renderOtherLogin() {
-  const tab = (await ext.tabs.query({ active: true, currentWindow: true }))[0];
+// `target` : l'onglet et le cadre de la pastille ; sinon l'onglet actif.
+async function renderOtherLogin(target = null) {
+  const url = target?.url ?? (await ext.tabs.query({ active: true, currentWindow: true }))[0]?.url;
   let host = "";
   try {
-    host = new URL(tab?.url ?? "").hostname;
+    host = new URL(url ?? "").hostname;
   } catch {
     // Page sans adresse (onglet système) : rien à relier.
   }
@@ -111,7 +127,7 @@ async function renderOtherLogin() {
         element("div", {},
           element("div", { className: "title", textContent: item.title }),
           element("div", { className: "sub", textContent: item.username })));
-      row.addEventListener("click", () => confirmLink(item, host));
+      row.addEventListener("click", () => confirmLink(item, host, target));
       return row;
     }));
   };
@@ -128,11 +144,11 @@ async function renderOtherLogin() {
   search();
 }
 
-function confirmLink(item, host) {
+function confirmLink(item, host, target) {
   const go = element("button", { textContent: "Ajouter et remplir" });
   go.addEventListener("click", async () => {
     go.disabled = true;
-    const result = await send({ kind: "linkSiteTab", item: item.id });
+    const result = await send({ kind: "linkSiteTab", item: item.id, target });
     if (result?.ok) window.close();
     else show(element("p", { className: "error", textContent: `Impossible : ${result?.reason ?? "Verrou ne répond pas"}` }), backLink());
   });
@@ -283,8 +299,8 @@ function versionWarning(extension) {
 // MARK: Accès aux sites (Firefox)
 //
 // Firefox laisse l'utilisateur accorder ou retirer l'accès aux sites d'une
-// extension Manifest V3 (`host_permissions`) : sans lui, ni menu sous les
-// champs, ni passkeys. Brave l'accorde à l'installation : rien à demander.
+// extension Manifest V3 (`host_permissions`) : sans lui, ni pastille dans
+// les pages, ni passkeys. Brave l'accorde à l'installation : rien à demander.
 
 function siteOrigins() {
   return ext.runtime.getManifest().host_permissions ?? [];
@@ -350,8 +366,15 @@ async function render() {
       show(element("p", { textContent: "Verrou est verrouillé." }), button);
       break;
     }
-    default:
-      await renderUnlocked();
+    default: {
+      const intent = await linkIntent;
+      if (intent && !linkIntentShown) {
+        linkIntentShown = true;
+        await renderOtherLogin(intent);
+      } else {
+        await renderUnlocked();
+      }
+    }
   }
   if (versionNote) main.prepend(versionNote);
   if (accessNote) main.prepend(accessNote);

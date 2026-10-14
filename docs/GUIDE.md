@@ -42,26 +42,38 @@ around a Rust core.
   anything is written (new, already there, different password), sent in one
   request; Vault → *Nettoyer les doublons…* moves duplicates to the trash.
   See [Import from another password manager](#import-from-another-password-manager).
-- **Browser extension (Brave, Firefox)**: under a login field, a menu offers Verrou's logins for
-  that site; Enter or a click fills the username and password (or the
-  one-time code). Vault locked: the menu offers to unlock it (Touch ID). The
-  extension is linked to the app once, by comparing a 6-digit code; the
-  channel is then end-to-end encrypted, and it only receives the logins of the
-  site in front of it, over HTTPS. On a "new password" field it suggests a
-  strong password (and fills the confirmation too); after a form is submitted,
-  a banner offers to save the account or update its password. A two-factor QR
-  code shown by a site can be added to the login from the extension's popup
-  (or its secret key, typed by hand). Payment and address forms get a menu
-  too: pick a card or an identity and every field is filled, drop-down lists
-  included. A site Verrou doesn't know yet can be linked to an existing login
-  from the popup (*Remplir avec un autre identifiant…*).
+- **Browser extension (Brave, Firefox)**: like 1Password, a dark pill at the
+  top left of the page instead of a menu under the field. On a page with a
+  login form and a login (or passkey) for that site, it appears once per page
+  load: the site, the suggested username, *Se connecter* (sign in) and ✕.
+  *Se connecter* fills the username and password (or the one-time code) and
+  puts the cursor on the form's submit button: nothing is sent until you
+  press Enter. The *Autres identifiants ⌄* tab under the pill lists the
+  site's other logins and passkeys, *Remplir avec un autre identifiant…*
+  (link the site to an existing login, in the extension's popup) and, on a
+  sign-up form, *Générer un mot de passe*. In the focused field there is only
+  a small Verrou icon at the right edge, which opens or closes the pill (even
+  when the site has no login in Verrou); ↓ from that field moves the keyboard
+  into the pill. ✕ or Escape hides it for the rest of the page. Nothing is
+  attached to the field anymore, so the site's own suggestion lists are left
+  alone. Vault locked: the pill says *Verrou est verrouillé* with
+  *Déverrouiller* (Touch ID). The extension is linked to the app once, by
+  comparing a 6-digit code; the channel is then end-to-end encrypted, and it
+  only receives the logins of the site in front of it, over HTTPS. On a "new
+  password" field the pill suggests a strong password (and fills the
+  confirmation too); after a form is submitted, a banner in the same corner
+  offers to save the account or update its password. A two-factor QR code
+  shown by a site can be added to the login from the extension's popup (or
+  its secret key, typed by hand). Payment and address forms get the same pill
+  when you enter a field (*Remplir la carte Visa •••• 4242*, other cards in
+  the tab): every field is filled, drop-down lists included.
 - **Passkeys in Brave and Firefox**: when a site asks for a passkey, Verrou offers its
   own for that site, or to save a new one in the site's login (or a new
   one); "use the browser" hands over to the browser. Sites that offer passkey
   autofill (`mediation: "conditional"`, e.g. a username field with
-  `autocomplete="username webauthn"`) get them in the field menu, like
-  1Password: *Passkey · user* sits above the passwords, and Enter or a click
-  signs in. No passkey in Verrou for that site, or Verrou not reachable:
+  `autocomplete="username webauthn"`) get them in the pill, like 1Password:
+  the passkey is the top suggestion (*Se connecter avec une passkey*), the
+  passwords stay in the tab, and a click (or Enter on the button) signs in. No passkey in Verrou for that site, or Verrou not reachable:
   the browser's own autofill takes over. When Verrou cannot take a passkey request
   (app not running, extension not linked, key type it cannot create), a short
   notice says so instead of silently handing over to the browser. Passkeys are stored the
@@ -360,7 +372,7 @@ manifest:
   `data_collection_permissions: none` (nothing leaves the Mac);
 - `host_permissions` listing the content scripts' sites. Firefox lets you grant
   or withdraw site access for a Manifest V3 extension; without it there is no
-  field menu and no passkeys. When access is missing, the popup shows
+  pill and no passkeys. When access is missing, the popup shows
   *Autoriser Verrou sur les sites* (allow Verrou on sites); reload the pages
   that were already open afterwards;
 - no `key` or `minimum_chrome_version` (Chrome-only).
@@ -429,12 +441,14 @@ node --test extension/test/bridge.test.mjs   # extension protocol against the re
 node --test extension/test/passkeys.test.mjs # passkeys: page options, creation and sign-in
 node --test extension/test/seamless.test.mjs # self-reload, passkey autofill (Brave and Firefox APIs), fallback notices
 node --test extension/test/firefox.test.mjs  # Firefox manifest, shared files and version, ids, Firefox reload rule
+node --test extension/test/content.test.mjs  # the pill (content.js) in a fake DOM: when it shows, what it fills, trusted events only
 VERROU_LINT_FIREFOX=1 node --test extension/test/firefox.test.mjs  # also Mozilla's `web-ext lint` (via npx)
 node extension/e2e/brave.mjs                  # walkthrough in a real Brave (throwaway profile)
 node extension/e2e/seamless.mjs               # passkey autofill in a real Brave (SEAMLESS_UPDATE=1: self-reload)
 ```
 
-(They need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)
+(They need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`,
+except `content.test.mjs`, which needs nothing but Node.)
 There is no automated walkthrough in a real Firefox yet; the steps above are
 checked by hand.
 
@@ -581,7 +595,7 @@ Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).
 
 1. ✅ Core, search, macOS app and CLI on a mock vault
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
-3. ✅ Browser extension (Brave, Firefox): in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
+3. ✅ Browser extension (Brave, Firefox): top-of-page pill, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
 4. iPhone and iPad: Face ID, system AutoFill extension
 5. YubiKey: ✅ FIDO2 sign-in over USB, ✅ `hmac-secret` unlock
 
