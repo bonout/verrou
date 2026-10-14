@@ -649,6 +649,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitwarden-send"
+version = "4.0.0"
+source = "git+https://github.com/bitwarden/sdk-internal?rev=229c5b9a897b670ca988b6c03ee8a3c5e90128a6#229c5b9a897b670ca988b6c03ee8a3c5e90128a6"
+dependencies = [
+ "async-trait",
+ "bitwarden-api-api",
+ "bitwarden-api-base",
+ "bitwarden-core",
+ "bitwarden-crypto",
+ "bitwarden-encoding",
+ "bitwarden-error",
+ "bitwarden-state",
+ "bitwarden-sync",
+ "bitwarden-uuid",
+ "bitwarden-vault",
+ "chrono",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_bytes",
+ "serde_json",
+ "serde_repr",
+ "sha2 0.11.1",
+ "thiserror",
+ "tracing",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "bitwarden-sensitive-value"
 version = "4.0.0"
 source = "git+https://github.com/bitwarden/sdk-internal?rev=229c5b9a897b670ca988b6c03ee8a3c5e90128a6#229c5b9a897b670ca988b6c03ee8a3c5e90128a6"
@@ -4972,6 +5001,7 @@ dependencies = [
 name = "verrou-ffi"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "thiserror",
  "tokio",
  "uniffi",
@@ -4991,6 +5021,7 @@ dependencies = [
  "bitwarden-collections",
  "bitwarden-core",
  "bitwarden-crypto",
+ "bitwarden-send",
  "bitwarden-vault",
  "chrono",
  "ciborium",
@@ -4998,6 +5029,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hkdf 0.12.4",
+ "hmac 0.12.1",
  "p256 0.13.2",
  "rand 0.8.8",
  "reqwest 0.12.28",

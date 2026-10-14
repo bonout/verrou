@@ -117,6 +117,15 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   history apps skip them) and cleared after 90 s.
 - **Auto-lock**: after 10 min of inactivity by default (1 min to never, in
   Settings), on sleep, and when the screen locks.
+- **Send** (sidebar → *Envois*): share a text through an end-to-end encrypted
+  link (Bitwarden Send), readable by anyone with the link, with or without an
+  account. Deletion date (7 days by default, 31 at most), optional expiration,
+  maximum number of accesses, password, hidden e-mail address; the list shows
+  access counts and dates, and copies the link, edits, deletes or removes the
+  password. From a login or a note, right-click → *Envoyer de façon
+  sécurisée…* prefills a Send with its password (or the note), hidden from the
+  recipient and limited to one access, to confirm before creating it. Text
+  Sends only: file Sends made in the web vault are listed, not created.
 - **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `--json` output, on
   the real vault served by the running app (`--mock` for the mock vault and
   `bench`). Secrets ask for Touch ID in the app.

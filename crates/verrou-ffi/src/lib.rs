@@ -12,7 +12,10 @@
 //! l'écran de modification, `autofill_keystrokes`, qui rend l'identifiant
 //! et le mot de passe à taper quand l'utilisateur choisit de remplir une app
 //! (⌘\), et `wifi_qr_code`, qui rend le contenu du QR code d'un réseau
-//! Wi-Fi (mot de passe compris) quand l'utilisateur l'affiche.
+//! Wi-Fi (mot de passe compris) quand l'utilisateur l'affiche. De même pour
+//! les envois (`send`) : `send_link` (le lien porte la clé de l'envoi),
+//! `send_fields` et `send_fields_for_field`, à l'ouverture de l'écran d'un
+//! envoi.
 //!
 //! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
 //! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
@@ -45,9 +48,12 @@ uniffi::setup_scaffolding!();
 
 mod attachments;
 mod import;
+mod send;
 mod ssh;
 mod templates;
 mod watchtower;
+
+pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
 pub use import::{

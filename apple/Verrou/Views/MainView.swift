@@ -205,6 +205,7 @@ struct SidebarView: View {
             VStack(spacing: 0) {
                 AuditSidebarButton()
                 DuplicatesSidebarButton()
+                if model.mode == .vaultwarden { SendsSidebarButton() }
                 VaultFooter()
             }
         }
@@ -459,6 +460,7 @@ struct ItemRow: View {
 
 struct RowMenu: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     let summary: ItemSummary
 
     var body: some View {
@@ -471,6 +473,12 @@ struct RowMenu: View {
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
             Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }
+        }
+        if model.sendsAvailable, summary.state != .trashed,
+           summary.category == .login || summary.category == .secureNote {
+            Button("Envoyer de façon sécurisée…") {
+                model.composeSend(from: summary) { openWindow(id: $0) }
+            }
         }
         if model.canEdit, !model.canModify(summary) {
             Divider()

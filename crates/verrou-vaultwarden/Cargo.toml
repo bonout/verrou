@@ -12,6 +12,8 @@ bitwarden-core.workspace = true
 bitwarden-crypto.workspace = true
 bitwarden-vault.workspace = true
 bitwarden-api-api.workspace = true
+# Bitwarden Send : chiffrement des envois (clé de l'envoi, dérivation, mot de passe).
+bitwarden-send.workspace = true
 bitwarden-collections.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 data-encoding.workspace = true
@@ -45,6 +47,8 @@ tokio.workspace = true
 # Clé de sécurité logicielle des tests : signe comme une YubiKey.
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 ciborium = "0.2"
+# Vecteurs de Bitwarden Send recalculés sans le SDK (PBKDF2 à la main).
+hmac.workspace = true
 
 [lints]
 workspace = true

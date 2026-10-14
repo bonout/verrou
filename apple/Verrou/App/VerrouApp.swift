@@ -48,6 +48,13 @@ struct VerrouApp: App {
             }
         }
 
+        // Envois (Bitwarden Send) : fenêtre à part, ouverte depuis la barre latérale.
+        Window("Envois", id: "sends") {
+            SendsWindow()
+                .environment(delegate.model)
+        }
+        .defaultSize(width: 640, height: 520)
+
         Settings {
             SettingsView()
                 .environment(delegate.model)

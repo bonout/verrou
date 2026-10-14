@@ -11,6 +11,8 @@
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
 //! d'un autre gestionnaire, corbeille de plusieurs éléments.
 //!
+//! Envois (`send`) : Bitwarden Send, partage d'un texte par un lien chiffré.
+//!
 //! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
 //! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
 
@@ -24,6 +26,7 @@ mod import;
 mod organizations;
 mod passkeys;
 pub mod security_key;
+pub mod send;
 pub mod ssh_key;
 mod store;
 pub mod two_factor_directory;
