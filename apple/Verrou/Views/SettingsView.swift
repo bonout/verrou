@@ -1,19 +1,81 @@
 import SwiftUI
 
-/// Réglages (⌘,) : démarrage, apparence, compte, synchronisation, Touch ID,
-/// clés de sécurité, déconnexion.
+/// Réglages (⌘,), en onglets : Général, Sécurité (verrouillage, Touch ID,
+/// clés de sécurité), Compte (synchronisation, import, déconnexion),
+/// Navigateur et terminal.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
-    @State private var confirmLogout = false
+    @AppStorage("settingsTab") private var tab = SettingsTab.general
+
+    var body: some View {
+        TabView(selection: $tab) {
+            GeneralSettings()
+                .tabItem { Label("Général", systemImage: "gearshape") }
+                .tag(SettingsTab.general)
+            SecuritySettings()
+                .tabItem { Label("Sécurité", systemImage: "lock.shield") }
+                .tag(SettingsTab.security)
+            AccountSettings()
+                .tabItem { Label("Compte", systemImage: "person.crop.circle") }
+                .tag(SettingsTab.account)
+            Group {
+                if let bridge = model.browserBridge {
+                    SettingsPane { BrowserSection(bridge: bridge) }
+                } else {
+                    SettingsPane {
+                        Section {
+                            Text("Indisponible dans ce mode.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .tabItem { Label("Navigateur et terminal", systemImage: "terminal") }
+            .tag(SettingsTab.integrations)
+        }
+        .frame(width: 500)
+    }
+}
+
+enum SettingsTab: String {
+    case general, security, account, integrations
+}
+
+/// Formulaire d'un onglet : largeur fixe, hauteur ajustée au contenu.
+private struct SettingsPane<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Form { content }
+            .formStyle(.grouped)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// Texte affiché à la place d'un onglet qui demande un compte relié.
+private struct NoAccountSection: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            Text(model.mode == .demo
+                 ? "Coffre fictif : aucun compte n'est relié en mode démonstration."
+                 : "Aucun compte n'est relié : connectez-vous depuis la fenêtre principale.")
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+/// Démarrage et apparence.
+private struct GeneralSettings: View {
+    @Environment(AppModel.self) private var model
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
     @State private var launchAtLoginError: String?
-    @AppStorage(AutoLock.minutesKey) private var autoLockMinutes = 10
-    @AppStorage(AutoLock.sleepKey) private var lockOnSleep = true
 
     var body: some View {
         @Bindable var model = model
-        Form {
+        SettingsPane {
             Section {
                 Toggle("Ouvrir Verrou à l'ouverture de session", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, wanted in setLaunchAtLogin(wanted) }
@@ -22,88 +84,13 @@ struct SettingsView: View {
                     Toggle("Afficher les icônes des sites", isOn: $model.showSiteIcons)
                 }
             } footer: {
-                Text(generalFooter)
+                Text(footer)
                     .foregroundStyle(launchAtLoginError == nil ? .secondary : Color.red)
             }
-
-            if let bridge = model.browserBridge {
-                BrowserSection(bridge: bridge)
-            }
-
-            if model.mode == .demo {
-                Section {
-                    Text("Coffre fictif : aucun compte n'est relié en mode démonstration.")
-                        .foregroundStyle(.secondary)
-                }
-            } else if let account = model.account {
-                Section("Compte") {
-                    LabeledContent("Serveur", value: account.server)
-                    LabeledContent("E-mail", value: account.email)
-                    LabeledContent("Dernière synchronisation") {
-                        Text(account.syncedAt.map {
-                            Date(timeIntervalSince1970: TimeInterval($0)).formatted(date: .abbreviated, time: .shortened)
-                        } ?? "jamais")
-                    }
-                    Button("Synchroniser maintenant") { Task { await model.syncNow() } }
-                        .disabled(model.lockState != .unlocked || model.syncState == .syncing)
-                }
-
-                Section("Verrouillage") {
-                    Picker("Verrouiller après", selection: $autoLockMinutes) {
-                        Text("1 minute d'inactivité").tag(1)
-                        Text("5 minutes d'inactivité").tag(5)
-                        Text("10 minutes d'inactivité").tag(10)
-                        Text("30 minutes d'inactivité").tag(30)
-                        Text("1 heure d'inactivité").tag(60)
-                        Text("Jamais").tag(0)
-                    }
-                    Toggle("Verrouiller à la mise en veille et au verrouillage de l'écran", isOn: $lockOnSleep)
-                }
-
-                Section {
-                    LabeledContent("Importer") {
-                        Button("Choisir un fichier…") { model.startImport() }
-                            .disabled(!model.canEdit)
-                    }
-                } footer: {
-                    Text("Exports des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV). Les doublons sont repérés avant l'import ; Coffre → Nettoyer les doublons… traite ceux du coffre.")
-                        .foregroundStyle(.secondary)
-                }
-
-                Section {
-                    Toggle("Déverrouiller avec Touch ID", isOn: touchID)
-                        .disabled(!Biometrics.isAvailable)
-                } footer: {
-                    Text(touchIDFooter)
-                        .foregroundStyle(.secondary)
-                }
-
-                SecurityKeysSection()
-
-                Section {
-                    Button("Se déconnecter de ce Mac…", role: .destructive) { confirmLogout = true }
-                } footer: {
-                    Text("Efface le cache et les jetons de ce Mac. Le coffre reste intact sur le serveur.")
-                        .foregroundStyle(.secondary)
-                }
-            } else {
-                Section {
-                    Text("Aucun compte n'est relié : connectez-vous depuis la fenêtre principale.")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
-        .confirmationDialog("Se déconnecter de ce Mac ?", isPresented: $confirmLogout) {
-            Button("Se déconnecter", role: .destructive) { model.logout() }
-        } message: {
-            Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
         }
     }
 
-    private var generalFooter: String {
+    private var footer: String {
         if let launchAtLoginError { return launchAtLoginError }
         if LaunchAtLogin.needsApproval {
             return "À autoriser dans Réglages Système → Général → Ouverture."
@@ -120,6 +107,43 @@ struct SettingsView: View {
             launchAtLoginError = "Impossible de modifier l'ouverture de session : \(error.localizedDescription)"
         }
         launchAtLogin = LaunchAtLogin.isEnabled || LaunchAtLogin.needsApproval
+    }
+}
+
+/// Verrouillage automatique, Touch ID, clés de sécurité.
+private struct SecuritySettings: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(AutoLock.minutesKey) private var autoLockMinutes = 10
+    @AppStorage(AutoLock.sleepKey) private var lockOnSleep = true
+
+    var body: some View {
+        SettingsPane {
+            if model.account == nil || model.mode == .demo {
+                NoAccountSection()
+            } else {
+                Section("Verrouillage") {
+                    Picker("Verrouiller après", selection: $autoLockMinutes) {
+                        Text("1 minute d'inactivité").tag(1)
+                        Text("5 minutes d'inactivité").tag(5)
+                        Text("10 minutes d'inactivité").tag(10)
+                        Text("30 minutes d'inactivité").tag(30)
+                        Text("1 heure d'inactivité").tag(60)
+                        Text("Jamais").tag(0)
+                    }
+                    Toggle("Verrouiller à la mise en veille et au verrouillage de l'écran", isOn: $lockOnSleep)
+                }
+
+                Section {
+                    Toggle("Déverrouiller avec Touch ID", isOn: touchID)
+                        .disabled(!Biometrics.isAvailable)
+                } footer: {
+                    Text(touchIDFooter)
+                        .foregroundStyle(.secondary)
+                }
+
+                SecurityKeysSection()
+            }
+        }
     }
 
     private var touchID: Binding<Bool> {
@@ -140,6 +164,54 @@ struct SettingsView: View {
             return "S'active au prochain déverrouillage par mot de passe."
         }
         return "La clé du coffre est scellée par le Secure Enclave : ajouter ou retirer une empreinte désactive Touch ID."
+    }
+}
+
+/// Serveur, synchronisation, import, déconnexion.
+private struct AccountSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var confirmLogout = false
+
+    var body: some View {
+        SettingsPane {
+            if let account = model.account, model.mode != .demo {
+                Section("Compte") {
+                    LabeledContent("Serveur", value: account.server)
+                    LabeledContent("E-mail", value: account.email)
+                    LabeledContent("Dernière synchronisation") {
+                        Text(account.syncedAt.map {
+                            Date(timeIntervalSince1970: TimeInterval($0)).formatted(date: .abbreviated, time: .shortened)
+                        } ?? "jamais")
+                    }
+                    Button("Synchroniser maintenant") { Task { await model.syncNow() } }
+                        .disabled(model.lockState != .unlocked || model.syncState == .syncing)
+                }
+
+                Section {
+                    LabeledContent("Importer") {
+                        Button("Choisir un fichier…") { model.startImport() }
+                            .disabled(!model.canEdit)
+                    }
+                } footer: {
+                    Text("Exports des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV). Les doublons sont repérés avant l'import ; Coffre → Nettoyer les doublons… traite ceux du coffre.")
+                        .foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Button("Se déconnecter de ce Mac…", role: .destructive) { confirmLogout = true }
+                } footer: {
+                    Text("Efface le cache et les jetons de ce Mac. Le coffre reste intact sur le serveur.")
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                NoAccountSection()
+            }
+        }
+        .confirmationDialog("Se déconnecter de ce Mac ?", isPresented: $confirmLogout) {
+            Button("Se déconnecter", role: .destructive) { model.logout() }
+        } message: {
+            Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+        }
     }
 }
 
