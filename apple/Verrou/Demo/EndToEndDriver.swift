@@ -135,6 +135,16 @@ final class EndToEndDriver {
         model.filter = .all
         check(!model.showAudit, "retour à la liste")
 
+        // Envois et accès d'urgence : des volets de la fenêtre principale.
+        model.openSends()
+        await model.reloadSends()
+        check(model.pane == .sends && model.sends.loaded, "volet des envois")
+        model.openEmergency()
+        await model.reloadEmergency()
+        check(model.pane == .emergency && model.emergency.loaded, "volet des accès d'urgence")
+        model.filter = .all
+        check(model.pane == nil, "retour à la liste")
+
         // Écriture : créer, modifier, mettre à la corbeille.
         model.newItem(login: true)
         let generated = model.editor?.draft.login?.password ?? ""
@@ -193,6 +203,8 @@ final class EndToEndDriver {
 
         model.lock()
         check(model.lockState == .locked && !model.needsLogin, "verrouillé, compte conservé")
+        check(model.pane == nil && !model.sends.loaded && model.emergency.selection == nil,
+              "volets et envois oubliés au verrouillage")
         await snap("23-verrouille")
 
         await model.unlock(masterPassword: "faux")

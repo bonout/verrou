@@ -2,9 +2,10 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Envois (Bitwarden Send) : la liste de la fenêtre « Envois » et l'écran de
-/// création ou de modification. Le texte et le lien (qui porte la clé) ne
-/// viennent de Rust qu'à la demande : copie du lien, ouverture de l'écran.
+/// Envois (Bitwarden Send) : la liste du volet « Envois » de la fenêtre
+/// principale, l'envoi sélectionné et l'écran de création ou de modification.
+/// Le texte et le lien (qui porte la clé) ne viennent de Rust qu'à la
+/// demande : copie du lien, ouverture de l'écran.
 @MainActor
 @Observable
 final class SendsModel {
@@ -14,8 +15,12 @@ final class SendsModel {
     var error: String?
     /// Écran de création ou de modification ouvert.
     var composer: Composer?
-    /// Dernier envoi créé ou lien copié, pour le signaler dans la fenêtre.
+    /// Dernier envoi créé ou lien copié, pour le signaler dans le volet.
     var notice: String?
+    /// Envoi affiché dans la colonne de droite.
+    var selection: String?
+    /// Suppression à confirmer.
+    var confirmDelete: SendSummary?
 
     struct Composer: Identifiable {
         let id = UUID()
@@ -27,9 +32,16 @@ final class SendsModel {
         let source: String?
     }
 
+    var selected: SendSummary? {
+        selection.flatMap { id in items.first { $0.id == id } }
+    }
+
     func set(_ items: [SendSummary]) {
         self.items = items
         loaded = true
+        if selection.map({ id in !items.contains { $0.id == id } }) ?? true {
+            selection = items.first?.id
+        }
     }
 
     /// Au verrouillage : rien ne doit survivre, brouillon compris.
@@ -40,6 +52,8 @@ final class SendsModel {
         error = nil
         composer = nil
         notice = nil
+        selection = nil
+        confirmDelete = nil
     }
 }
 
@@ -56,7 +70,16 @@ extension AppModel {
         }
     }
 
+    /// Barre latérale ou menu Coffre : le volet des envois dans la fenêtre principale.
+    func openSends() {
+        guard sendsAvailable else { return }
+        showMainWindow()
+        pane = .sends
+    }
+
     func newSend() {
+        guard sendsAvailable else { return }
+        pane = .sends
         sends.notice = nil
         sends.composer = .init(sendID: nil, fields: session.newSendFields(), hasPassword: false, source: nil)
     }
@@ -71,17 +94,17 @@ extension AppModel {
     }
 
     /// « Envoyer de façon sécurisée… » depuis un élément : un envoi prérempli
-    /// avec son mot de passe (ou ses notes), à confirmer dans la fenêtre des envois.
-    func composeSend(from summary: ItemSummary, openWindow: @escaping (String) -> Void) {
+    /// avec son mot de passe (ou ses notes), à confirmer dans le volet des envois.
+    func composeSend(from summary: ItemSummary) {
         if awaitsConfirmation(summary.id, retry: { [weak self] in
-            self?.composeSend(from: summary, openWindow: openWindow)
+            self?.composeSend(from: summary)
         }) { return }
         let field = summary.category == .login ? "password" : "notes"
         do {
             let fields = try session.sendFieldsForField(itemId: summary.id, fieldId: field)
             sends.notice = nil
             sends.composer = .init(sendID: nil, fields: fields, hasPassword: false, source: summary.title)
-            openWindow("sends")
+            openSends()
         } catch {
             toast = Toast(message: "Envoi impossible", detail: Self.describe(error), failure: true)
         }
@@ -99,6 +122,7 @@ extension AppModel {
             } else {
                 let created = try await session.createSend(fields: fields)
                 copy(created.link, label: "Lien de l'envoi", secret: true)
+                sends.selection = created.id
                 sends.notice = "Envoi « \(fields.name) » créé : lien copié (effacé du presse-papiers dans 90 s)."
             }
             sends.composer = nil

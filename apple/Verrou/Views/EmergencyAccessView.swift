@@ -1,33 +1,15 @@
 import SwiftUI
 
-/// Entrée de la barre latérale : ouvre la fenêtre des accès d'urgence.
+/// Entrée de la barre latérale : le volet des accès d'urgence remplace la liste.
 struct EmergencySidebarButton: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button {
-            openWindow(id: "emergency")
-        } label: {
-            Label {
-                HStack {
-                    Text("Accès d'urgence")
-                    Spacer()
-                    if pending > 0 {
-                        Text("\(pending)").monospacedDigit().foregroundStyle(.orange).font(.callout)
-                    }
-                }
-            } icon: {
-                Image(systemName: "person.2.badge.key").foregroundStyle(Theme.accent)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+        SidebarPaneButton(title: "Accès d'urgence", symbol: "person.2.badge.key", active: model.pane == .emergency,
+                          badge: pending > 0 ? pending : nil, badgeTint: .orange,
+                          help: "Confier son coffre à un proche, ou ouvrir celui qu'un proche vous a confié") {
+            model.openEmergency()
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
-        .help("Confier son coffre à un proche, ou ouvrir celui qu'un proche vous a confié")
     }
 
     /// Ce qui attend une action de ma part : contact à confirmer, demande à traiter.
@@ -36,148 +18,180 @@ struct EmergencySidebarButton: View {
     }
 }
 
-/// Fenêtre « Accès d'urgence ».
-struct EmergencyWindow: View {
+/// Volet « Accès d'urgence », dans la colonne centrale : mes contacts de
+/// confiance et ceux qui m'ont choisi. L'accès sélectionné s'affiche à droite.
+struct EmergencyListView: View {
     @Environment(AppModel.self) private var model
-    @State private var confirmRequest: EmergencyContact?
-    @State private var confirmDelete: EmergencyContact?
 
     var body: some View {
-        Group {
-            if model.emergencyAvailable {
-                content
-            } else {
-                ContentUnavailableView(
-                    model.mode == .demo ? "Coffre fictif" : "Coffre verrouillé",
-                    systemImage: model.mode == .demo ? "person.2" : "lock",
-                    description: Text(model.mode == .demo
-                                      ? "L'accès d'urgence demande un compte Vaultwarden."
-                                      : "Déverrouillez Verrou pour gérer vos accès d'urgence."))
-            }
-        }
-        .frame(minWidth: 620, minHeight: 460)
-        .task(id: model.lockState) { await model.reloadEmergency() }
-        .sheet(item: Binding(get: { model.emergency.invite }, set: { model.emergency.invite = $0 })) { draft in
-            InviteContactView(draft: draft).environment(model)
-        }
-        .sheet(item: Binding(get: { model.emergency.grantorVault }, set: { if $0 == nil { model.emergency.closeGrantorVault() } })) { vault in
-            GrantorVaultView(vault: vault).environment(model)
-        }
-        .alert("Vérifier l'empreinte de \(model.emergency.confirmation?.contact.displayName ?? "")",
-               isPresented: Binding(get: { model.emergency.confirmation != nil },
-                                    set: { if !$0 { model.emergency.confirmation = nil } }),
-               presenting: model.emergency.confirmation) { confirmation in
-            Button("Confirmer") { Task { await model.confirmContact(confirmation) } }
-            Button("Annuler", role: .cancel) { model.emergency.confirmation = nil }
-        } message: { confirmation in
-            Text("« \(confirmation.fingerprint) »\n\nDemandez à \(confirmation.contact.displayName) la phrase d'empreinte de son compte (coffre web : Réglages → Mon compte). Confirmez seulement si elle est identique : la clé de votre coffre sera chiffrée pour lui.")
-        }
-        .confirmationDialog("Demander l'accès au coffre de \(confirmRequest?.displayName ?? "") ?",
-                            isPresented: Binding(get: { confirmRequest != nil }, set: { if !$0 { confirmRequest = nil } }),
-                            presenting: confirmRequest) { contact in
-            Button("Demander l'accès") { Task { await model.requestEmergency(contact) } }
-        } message: { contact in
-            Text("\(contact.displayName) sera prévenu. Sans refus de sa part, l'accès vous sera accordé dans \(days(contact.waitTimeDays)).")
-        }
-        .confirmationDialog("Supprimer cet accès d'urgence ?",
-                            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-                            presenting: confirmDelete) { contact in
-            Button("Supprimer", role: .destructive) { Task { await model.deleteEmergency(contact) } }
-        } message: { contact in
-            Text("L'accès entre vous et \(contact.displayName) sera retiré.")
-        }
-    }
-
-    private var content: some View {
+        @Bindable var emergency = model.emergency
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "person.2.badge.key")
-                    .font(.system(size: 26))
-                    .foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Accès d'urgence").font(.title3.weight(.semibold))
-                    Text("Un proche de confiance peut demander l'accès à votre coffre ; sans refus de votre part, il l'obtient après le délai choisi.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if model.emergency.busy { ProgressView().controlSize(.small) }
-                Button {
-                    model.emergency.invite = .init(contactID: nil, email: "", type: .view, waitDays: 7)
-                } label: {
-                    Label("Inviter un contact", systemImage: "plus")
-                }
-            }
-            .padding(16)
-            if let notice = model.emergency.notice {
-                banner(notice, symbol: "checkmark.circle.fill", tint: .green)
-            }
-            if let error = model.emergency.error {
-                banner(error, symbol: "exclamationmark.triangle.fill", tint: .red)
+            PaneHeader(title: "Accès d'urgence",
+                       caption: "Un proche de confiance peut demander l'accès à votre coffre ; sans refus de votre part, il l'obtient après le délai choisi.",
+                       busy: emergency.busy, notice: emergency.notice, error: emergency.error) {
+                Button("Inviter un contact", systemImage: "plus") { emergency.inviteNew() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .help("Désigner un proche comme contact d'urgence")
             }
             Divider()
-            List {
+            List(selection: $emergency.selection) {
                 Section("Mes contacts de confiance") {
-                    if model.emergency.trusted.isEmpty {
-                        Text(model.emergency.loaded ? "Aucun contact pour l'instant." : "Chargement…")
+                    if emergency.trusted.isEmpty {
+                        Text(emergency.loaded ? "Aucun contact pour l'instant." : "Chargement…")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(model.emergency.trusted, id: \.id) { contact in
-                        ContactRow(contact: contact, subtitle: trustedStatus(contact)) {
-                            trustedActions(contact)
-                        }
-                        .contextMenu {
-                            Button("Modifier…") {
-                                model.emergency.invite = .init(contactID: contact.id, email: contact.email ?? "",
-                                                               type: contact.accessType, waitDays: Int(contact.waitTimeDays))
-                            }
-                            Divider()
-                            Button("Supprimer…", role: .destructive) { confirmDelete = contact }
-                        }
+                    ForEach(emergency.trusted, id: \.id) { contact in
+                        ContactRow(contact: contact, trusted: true)
+                            .tag(contact.id)
                     }
                 }
                 Section("Ils vous ont choisi") {
-                    if model.emergency.granted.isEmpty {
-                        Text(model.emergency.loaded ? "Personne ne vous a désigné comme contact d'urgence." : "Chargement…")
+                    if emergency.granted.isEmpty {
+                        Text(emergency.loaded ? "Personne ne vous a désigné comme contact d'urgence." : "Chargement…")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(model.emergency.granted, id: \.id) { contact in
-                        ContactRow(contact: contact, subtitle: grantedStatus(contact)) {
-                            grantedActions(contact)
-                        }
-                        .contextMenu {
-                            Button("Renoncer à cet accès…", role: .destructive) { confirmDelete = contact }
-                        }
+                    ForEach(emergency.granted, id: \.id) { contact in
+                        ContactRow(contact: contact, trusted: false)
+                            .tag(contact.id)
                     }
                 }
             }
             .listStyle(.inset)
+            .contextMenu(forSelectionType: String.self) { ids in
+                if let id = ids.first {
+                    if let contact = emergency.trusted.first(where: { $0.id == id }) {
+                        Button("Modifier…") { emergency.edit(contact) }
+                        Divider()
+                        Button("Supprimer…", role: .destructive) { emergency.confirmDelete = contact }
+                    } else if let contact = emergency.granted.first(where: { $0.id == id }) {
+                        Button("Renoncer à cet accès…", role: .destructive) { emergency.confirmDelete = contact }
+                    }
+                }
+            }
         }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .task { await model.reloadEmergency() }
+    }
+}
+
+private struct ContactRow: View {
+    let contact: EmergencyContact
+    let trusted: Bool
+
+    var body: some View {
+        HStack(spacing: 11) {
+            Image(systemName: contact.accessType == .view ? "eye" : "key")
+                .font(.system(size: 16))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(contact.displayName).lineLimit(1)
+                Text(contact.status(trusted: trusted)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            }
+            Spacer()
+            if trusted, contact.state == .accepted || contact.state == .recoveryInitiated {
+                Circle().fill(.orange).frame(width: 7, height: 7)
+                    .help("En attente de votre réponse")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// Colonne de droite du volet « Accès d'urgence » : l'accès sélectionné et
+/// ce qu'on peut en faire selon son état.
+struct EmergencyDetailView: View {
+    @Environment(AppModel.self) private var model
+    let contact: EmergencyContact
+    /// Un de mes contacts (je suis le concédant) ; sinon, quelqu'un qui m'a choisi.
+    let trusted: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                Text(contact.status(trusted: trusted))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 10) {
+                    if trusted { trustedActions } else { grantedActions }
+                    Spacer()
+                    if trusted {
+                        Button("Modifier…", systemImage: "pencil") { model.emergency.edit(contact) }
+                        Button("Supprimer…", systemImage: "trash", role: .destructive) {
+                            model.emergency.confirmDelete = contact
+                        }
+                    } else {
+                        Button("Renoncer…", systemImage: "trash", role: .destructive) {
+                            model.emergency.confirmDelete = contact
+                        }
+                        .help("Renoncer à cet accès d'urgence")
+                    }
+                }
+                .disabled(model.emergency.busy)
+
+                SectionTitle(trusted ? "Ce que ce contact peut faire" : "Ce qui vous est confié")
+                FieldCard {
+                    line("Accès", contact.accessType.label)
+                    Divider().padding(.leading, 14)
+                    line("Délai d'attente", days(contact.waitTimeDays))
+                    if let email = contact.email {
+                        Divider().padding(.leading, 14)
+                        line("E-mail", email)
+                    }
+                }
+                Text(contact.accessType == .view
+                     ? (trusted ? "Il pourra voir les éléments de votre coffre, sans les modifier."
+                                : "Vous pourrez voir les éléments de son coffre, sans les modifier.")
+                     : (trusted ? "Il pourra choisir un nouveau mot de passe principal pour votre compte (depuis le coffre web)."
+                                : "Vous pourrez choisir un nouveau mot de passe principal pour son compte (depuis le coffre web)."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(systemName: contact.accessType == .view ? "eye" : "key")
+                .font(.system(size: 28))
+                .foregroundStyle(Theme.accent)
+                .frame(width: 64, height: 64)
+                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(contact.displayName)
+                    .font(.system(size: 24, weight: .bold))
+                    .textSelection(.enabled)
+                HStack(spacing: 8) {
+                    Chip(text: trusted ? "Mon contact" : "M'a choisi", symbol: "person.2.badge.key", tint: Theme.accent)
+                    Chip(text: contact.accessType.label, symbol: contact.accessType == .view ? "eye" : "key",
+                         tint: .secondary)
+                }
+            }
+            Spacer()
+        }
+        .padding(.bottom, 4)
     }
 
     // MARK: Mes contacts (je suis le concédant)
 
-    private func trustedStatus(_ contact: EmergencyContact) -> String {
-        let base = "\(contact.accessType.label) · délai \(days(contact.waitTimeDays))"
-        switch contact.state {
-        case .invited: return base + " · invitation envoyée, en attente d'acceptation"
-        case .accepted: return base + " · invitation acceptée : à confirmer"
-        case .confirmed: return base + " · confirmé"
-        case .recoveryInitiated: return base + " · demande d'accès en cours"
-        case .recoveryApproved: return base + " · accès accordé"
-        }
-    }
-
     @ViewBuilder
-    private func trustedActions(_ contact: EmergencyContact) -> some View {
+    private var trustedActions: some View {
         switch contact.state {
         case .accepted:
             Button("Confirmer…") { Task { await model.prepareConfirmation(contact) } }
+                .buttonStyle(.borderedProminent)
                 .disabled(contact.userId == nil)
         case .recoveryInitiated:
-            Button("Refuser") { Task { await model.rejectEmergency(contact) } }
             Button("Approuver") { Task { await model.approveEmergency(contact) } }
                 .buttonStyle(.borderedProminent)
+            Button("Refuser") { Task { await model.rejectEmergency(contact) } }
         case .recoveryApproved:
             Button("Retirer l'accès") { Task { await model.rejectEmergency(contact) } }
         case .invited, .confirmed:
@@ -187,25 +201,12 @@ struct EmergencyWindow: View {
 
     // MARK: Ceux qui m'ont choisi (je suis le contact)
 
-    private func grantedStatus(_ contact: EmergencyContact) -> String {
-        let base = "\(contact.accessType.label) · délai \(days(contact.waitTimeDays))"
-        switch contact.state {
-        case .invited: return base + " · acceptez l'invitation depuis le lien reçu par e-mail"
-        case .accepted: return base + " · en attente de sa confirmation"
-        case .confirmed: return base + " · vous pouvez demander l'accès"
-        case .recoveryInitiated: return base + " · demande envoyée, accès à la fin du délai sauf refus"
-        case .recoveryApproved:
-            return contact.accessType == .takeover
-                ? base + " · accès accordé : la prise de contrôle se fait depuis le coffre web"
-                : base + " · accès accordé"
-        }
-    }
-
     @ViewBuilder
-    private func grantedActions(_ contact: EmergencyContact) -> some View {
+    private var grantedActions: some View {
         switch contact.state {
         case .confirmed:
-            Button("Demander l'accès…") { confirmRequest = contact }
+            Button("Demander l'accès…") { model.emergency.confirmRequest = contact }
+                .buttonStyle(.borderedProminent)
         case .recoveryApproved where contact.accessType == .view:
             Button("Ouvrir le coffre") { Task { await model.openGrantorVault(contact) } }
                 .buttonStyle(.borderedProminent)
@@ -219,42 +220,85 @@ struct EmergencyWindow: View {
         }
     }
 
-    private func days(_ count: UInt32) -> String {
-        count > 1 ? "\(count) jours" : "\(count) jour"
-    }
-
-    private func banner(_ text: String, symbol: String, tint: Color) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.callout)
-            .foregroundStyle(tint)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
+    private func line(_ label: String, _ value: String) -> some View {
+        LabeledContent(label) {
+            Text(value).textSelection(.enabled)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
     }
 }
 
-private struct ContactRow<Actions: View>: View {
-    let contact: EmergencyContact
-    let subtitle: String
-    @ViewBuilder let actions: () -> Actions
+/// Feuilles, alertes et confirmations des accès d'urgence, posées sur la
+/// fenêtre principale. Le coffre d'un concédant reste une feuille.
+struct EmergencyPresentations: ViewModifier {
+    @Environment(AppModel.self) private var model
 
-    var body: some View {
-        HStack(spacing: 11) {
-            Image(systemName: contact.accessType == .view ? "eye" : "key")
-                .font(.system(size: 16))
-                .foregroundStyle(Theme.accent)
-                .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(contact.displayName).lineLimit(1)
-                if let email = contact.email, contact.name != nil {
-                    Text(email).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Text(subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+    func body(content: Content) -> some View {
+        @Bindable var emergency = model.emergency
+        content
+            .sheet(item: $emergency.invite) { draft in
+                InviteContactView(draft: draft).environment(model)
             }
-            Spacer()
-            actions()
+            .sheet(item: Binding(get: { emergency.grantorVault },
+                                 set: { if $0 == nil { emergency.closeGrantorVault() } })) { vault in
+                GrantorVaultView(vault: vault).environment(model)
+            }
+            .alert("Vérifier l'empreinte de \(emergency.confirmation?.contact.displayName ?? "")",
+                   isPresented: Binding(get: { emergency.confirmation != nil },
+                                        set: { if !$0 { emergency.confirmation = nil } }),
+                   presenting: emergency.confirmation) { confirmation in
+                Button("Confirmer") { Task { await model.confirmContact(confirmation) } }
+                Button("Annuler", role: .cancel) { emergency.confirmation = nil }
+            } message: { confirmation in
+                Text("« \(confirmation.fingerprint) »\n\nDemandez à \(confirmation.contact.displayName) la phrase d'empreinte de son compte (coffre web : Réglages → Mon compte). Confirmez seulement si elle est identique : la clé de votre coffre sera chiffrée pour lui.")
+            }
+            .confirmationDialog("Demander l'accès au coffre de \(emergency.confirmRequest?.displayName ?? "") ?",
+                                isPresented: Binding(get: { emergency.confirmRequest != nil },
+                                                     set: { if !$0 { emergency.confirmRequest = nil } }),
+                                presenting: emergency.confirmRequest) { contact in
+                Button("Demander l'accès") { Task { await model.requestEmergency(contact) } }
+            } message: { contact in
+                Text("\(contact.displayName) sera prévenu. Sans refus de sa part, l'accès vous sera accordé dans \(days(contact.waitTimeDays)).")
+            }
+            .confirmationDialog("Supprimer cet accès d'urgence ?",
+                                isPresented: Binding(get: { emergency.confirmDelete != nil },
+                                                     set: { if !$0 { emergency.confirmDelete = nil } }),
+                                presenting: emergency.confirmDelete) { contact in
+                Button("Supprimer", role: .destructive) { Task { await model.deleteEmergency(contact) } }
+            } message: { contact in
+                Text("L'accès entre vous et \(contact.displayName) sera retiré.")
+            }
+    }
+}
+
+private func days(_ count: UInt32) -> String {
+    count > 1 ? "\(count) jours" : "\(count) jour"
+}
+
+private extension EmergencyContact {
+    /// État de l'accès, vu de mon côté : concédant (`trusted`) ou contact.
+    func status(trusted: Bool) -> String {
+        let base = "\(accessType.label) · délai \(days(waitTimeDays))"
+        if trusted {
+            switch state {
+            case .invited: return base + " · invitation envoyée, en attente d'acceptation"
+            case .accepted: return base + " · invitation acceptée : à confirmer"
+            case .confirmed: return base + " · confirmé"
+            case .recoveryInitiated: return base + " · demande d'accès en cours"
+            case .recoveryApproved: return base + " · accès accordé"
+            }
         }
-        .padding(.vertical, 4)
+        switch state {
+        case .invited: return base + " · acceptez l'invitation depuis le lien reçu par e-mail"
+        case .accepted: return base + " · en attente de sa confirmation"
+        case .confirmed: return base + " · vous pouvez demander l'accès"
+        case .recoveryInitiated: return base + " · demande envoyée, accès à la fin du délai sauf refus"
+        case .recoveryApproved:
+            return accessType == .takeover
+                ? base + " · accès accordé : la prise de contrôle se fait depuis le coffre web"
+                : base + " · accès accordé"
+        }
     }
 }
 

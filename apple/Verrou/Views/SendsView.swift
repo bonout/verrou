@@ -1,118 +1,71 @@
 import SwiftUI
 
-/// Entrée de la barre latérale : ouvre la fenêtre des envois.
+/// Entrée de la barre latérale : le volet des envois remplace la liste.
 struct SendsSidebarButton: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button {
-            openWindow(id: "sends")
-        } label: {
-            Label {
-                HStack {
-                    Text("Envois")
-                    Spacer()
-                    if model.sends.loaded, !model.sends.items.isEmpty {
-                        Text("\(model.sends.items.count)").monospacedDigit().foregroundStyle(.secondary).font(.callout)
-                    }
-                }
-            } icon: {
-                Image(systemName: "paperplane").foregroundStyle(Theme.accent)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .contentShape(Rectangle())
+        SidebarPaneButton(title: "Envois", symbol: "paperplane", active: model.pane == .sends,
+                          badge: model.sends.loaded && !model.sends.items.isEmpty ? model.sends.items.count : nil,
+                          help: "Partager un texte par un lien chiffré (Bitwarden Send)") {
+            model.openSends()
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
-        .help("Partager un texte par un lien chiffré (Bitwarden Send)")
     }
 }
 
-/// Fenêtre « Envois » : les envois du compte, avec leurs accès et leur
-/// échéance ; copier le lien, modifier, supprimer.
-struct SendsWindow: View {
+/// Volet « Envois », dans la colonne centrale : les envois du compte, avec
+/// leurs accès et leur échéance. L'envoi sélectionné s'affiche à droite.
+struct SendsListView: View {
     @Environment(AppModel.self) private var model
-    @State private var confirmDelete: SendSummary?
 
     var body: some View {
-        Group {
-            if model.sendsAvailable {
-                content
-            } else {
-                ContentUnavailableView(
-                    model.mode == .demo ? "Coffre fictif" : "Coffre verrouillé",
-                    systemImage: model.mode == .demo ? "paperplane" : "lock",
-                    description: Text(model.mode == .demo
-                                      ? "Les envois demandent un compte Vaultwarden."
-                                      : "Déverrouillez Verrou pour voir vos envois."))
-            }
-        }
-        .frame(minWidth: 560, minHeight: 380)
-        .task(id: model.lockState) { await model.reloadSends() }
-        .sheet(item: Binding(get: { model.sends.composer }, set: { model.sends.composer = $0 })) { composer in
-            SendEditorView(composer: composer)
-                .environment(model)
-        }
-        .confirmationDialog("Supprimer « \(confirmDelete?.name ?? "") » ?",
-                            isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-                            presenting: confirmDelete) { send in
-            Button("Supprimer", role: .destructive) { Task { await model.deleteSend(send) } }
-        } message: { _ in
-            Text("Le lien ne mènera plus à rien. Cette suppression est définitive.")
-        }
-    }
-
-    private var content: some View {
+        @Bindable var sends = model.sends
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "paperplane")
-                    .font(.system(size: 26))
-                    .foregroundStyle(Theme.accent)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Envois").font(.title3.weight(.semibold))
-                    Text("Un texte partagé par un lien, chiffré de bout en bout : la clé est dans le lien, jamais sur le serveur.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if model.sends.busy { ProgressView().controlSize(.small) }
-                Button {
-                    model.newSend()
-                } label: {
-                    Label("Nouvel envoi", systemImage: "plus")
-                }
-            }
-            .padding(16)
-            if let notice = model.sends.notice {
-                banner(notice, symbol: "checkmark.circle.fill", tint: .green)
-            }
-            if let error = model.sends.error {
-                banner(error, symbol: "exclamationmark.triangle.fill", tint: .red)
+            PaneHeader(title: "Envois",
+                       caption: "Un texte partagé par un lien, chiffré de bout en bout : la clé est dans le lien, jamais sur le serveur.",
+                       busy: sends.busy, notice: sends.notice, error: sends.error) {
+                Button("Nouvel envoi", systemImage: "plus") { model.newSend() }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .help("Créer un envoi de texte")
             }
             Divider()
-            if model.sends.items.isEmpty {
+            if sends.items.isEmpty {
                 ContentUnavailableView {
-                    Label(model.sends.loaded ? "Aucun envoi" : "Chargement…", systemImage: "paperplane")
+                    Label(sends.loaded ? "Aucun envoi" : "Chargement…", systemImage: "paperplane")
                 } description: {
                     Text("Créez un envoi ici, ou depuis un élément : clic droit → « Envoyer de façon sécurisée… ».")
                 }
                 .frame(maxHeight: .infinity)
             } else {
-                List(model.sends.items, id: \.id) { send in
+                List(sends.items, id: \.id, selection: $sends.selection) { send in
                     SendRow(send: send)
-                        .contextMenu { menu(send) }
-                        .onTapGesture(count: 2) { Task { await model.editSend(send) } }
+                        .tag(send.id)
                 }
                 .listStyle(.inset)
+                .contextMenu(forSelectionType: String.self) { ids in
+                    if let send = sends.items.first(where: { ids.contains($0.id) }) {
+                        SendMenu(send: send)
+                    }
+                } primaryAction: { ids in
+                    // Double clic : modifier l'envoi.
+                    if let send = sends.items.first(where: { ids.contains($0.id) }), send.content == .text {
+                        Task { await model.editSend(send) }
+                    }
+                }
             }
         }
+        .background(Color(nsColor: .controlBackgroundColor))
+        .task { await model.reloadSends() }
     }
+}
 
-    @ViewBuilder
-    private func menu(_ send: SendSummary) -> some View {
+/// Actions d'un envoi, pour le menu contextuel de la liste.
+private struct SendMenu: View {
+    @Environment(AppModel.self) private var model
+    let send: SendSummary
+
+    var body: some View {
         Button("Copier le lien") { Task { await model.copySendLink(send) } }
         if send.content == .text {
             Button("Modifier…") { Task { await model.editSend(send) } }
@@ -121,21 +74,137 @@ struct SendsWindow: View {
             Button("Retirer le mot de passe") { Task { await model.removeSendPassword(send) } }
         }
         Divider()
-        Button("Supprimer…", role: .destructive) { confirmDelete = send }
+        Button("Supprimer…", role: .destructive) { model.sends.confirmDelete = send }
+    }
+}
+
+/// Colonne de droite du volet « Envois » : l'envoi sélectionné.
+struct SendDetailView: View {
+    @Environment(AppModel.self) private var model
+    let send: SendSummary
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+                HStack(spacing: 10) {
+                    Button("Copier le lien", systemImage: "link") { Task { await model.copySendLink(send) } }
+                        .buttonStyle(.borderedProminent)
+                    if send.content == .text {
+                        Button("Modifier…", systemImage: "pencil") { Task { await model.editSend(send) } }
+                    }
+                    if send.hasPassword {
+                        Button("Retirer le mot de passe", systemImage: "lock.open") {
+                            Task { await model.removeSendPassword(send) }
+                        }
+                    }
+                    Spacer()
+                    Button("Supprimer…", systemImage: "trash", role: .destructive) {
+                        model.sends.confirmDelete = send
+                    }
+                }
+                .disabled(model.sends.busy)
+
+                SectionTitle("Accès")
+                FieldCard {
+                    line("Ouvertures", send.maxAccessCount.map { "\(send.accessCount) sur \($0) au plus" }
+                        ?? "\(send.accessCount)")
+                    if let expiry = send.expirationDate {
+                        Divider().padding(.leading, 14)
+                        line(date(expiry) < Date() ? "Expiré" : "Expiration", formatted(expiry))
+                    }
+                    Divider().padding(.leading, 14)
+                    line("Suppression", formatted(send.deletionDate))
+                    if let file = send.fileName {
+                        Divider().padding(.leading, 14)
+                        line("Fichier", file)
+                    }
+                }
+                Text("Modifié \(date(send.revisionDate).formatted(.relative(presentation: .named))).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity)
+        }
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
-    private func banner(_ text: String, symbol: String, tint: Color) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.callout)
-            .foregroundStyle(tint)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 10)
+    private var header: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Image(systemName: send.content == .file ? "doc" : "text.alignleft")
+                .font(.system(size: 28))
+                .foregroundStyle(send.available ? Theme.accent : .secondary)
+                .frame(width: 64, height: 64)
+                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(send.name)
+                    .font(.system(size: 24, weight: .bold))
+                    .textSelection(.enabled)
+                HStack(spacing: 8) {
+                    Chip(text: send.content == .file ? "Fichier" : "Texte", symbol: "paperplane", tint: Theme.accent)
+                    if !send.available {
+                        Chip(text: send.disabled ? "Désactivé" : "Lien inactif", symbol: "exclamationmark.circle",
+                             tint: .orange)
+                            .help("Le lien ne mène plus au contenu : désactivé, expiré ou nombre d'accès atteint")
+                    }
+                    if send.hasPassword {
+                        Chip(text: "Mot de passe", symbol: "key.fill", tint: .secondary)
+                    }
+                    if send.hideEmail {
+                        Chip(text: "E-mail masqué", symbol: "eye.slash", tint: .secondary)
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func line(_ label: String, _ value: String) -> some View {
+        LabeledContent(label) {
+            Text(value).monospacedDigit().textSelection(.enabled)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
+    private func formatted(_ timestamp: Int64) -> String {
+        let value = date(timestamp)
+        return "\(value.formatted(date: .abbreviated, time: .shortened)) · \(value.formatted(.relative(presentation: .named)))"
+    }
+
+    private func date(_ timestamp: Int64) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(timestamp))
+    }
+}
+
+/// Feuilles et confirmations des envois, posées sur la fenêtre principale :
+/// « Envoyer de façon sécurisée… » les ouvre aussi depuis la liste des éléments.
+struct SendsPresentations: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        @Bindable var sends = model.sends
+        content
+            .sheet(item: $sends.composer) { composer in
+                SendEditorView(composer: composer)
+                    .environment(model)
+            }
+            .confirmationDialog("Supprimer « \(sends.confirmDelete?.name ?? "") » ?",
+                                isPresented: Binding(get: { sends.confirmDelete != nil },
+                                                     set: { if !$0 { sends.confirmDelete = nil } }),
+                                presenting: sends.confirmDelete) { send in
+                Button("Supprimer", role: .destructive) { Task { await model.deleteSend(send) } }
+            } message: { _ in
+                Text("Le lien ne mènera plus à rien. Cette suppression est définitive.")
+            }
     }
 }
 
 struct SendRow: View {
-    @Environment(AppModel.self) private var model
     let send: SendSummary
 
     var body: some View {
@@ -162,13 +231,6 @@ struct SendRow: View {
                     .lineLimit(1)
             }
             Spacer()
-            Button {
-                Task { await model.copySendLink(send) }
-            } label: {
-                Image(systemName: "link")
-            }
-            .buttonStyle(.borderless)
-            .help("Copier le lien")
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
@@ -269,7 +331,7 @@ struct SendEditorView: View {
                                 text: $password,
                                 prompt: Text(isNew || !composer.hasPassword ? "facultatif" : "laisser vide pour garder l'actuel"))
                     if !isNew, composer.hasPassword {
-                        Text("Pour retirer le mot de passe : clic droit sur l'envoi → « Retirer le mot de passe ».")
+                        Text("Pour retirer le mot de passe : « Retirer le mot de passe » sur la fiche de l'envoi.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle("Masquer mon adresse e-mail", isOn: $fields.hideEmail)

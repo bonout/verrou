@@ -5,29 +5,11 @@ struct AuditSidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Button {
+        SidebarPaneButton(title: "Audit de sécurité", symbol: "checkmark.shield", tint: .orange,
+                          active: model.showAudit,
+                          badge: model.showAudit ? model.audit.map(issues) : nil) {
             model.openAudit()
-        } label: {
-            Label {
-                HStack {
-                    Text("Audit de sécurité")
-                    Spacer()
-                    if let audit = model.audit, model.showAudit {
-                        Text("\(issues(audit))").monospacedDigit().foregroundStyle(.secondary).font(.callout)
-                    }
-                }
-            } icon: {
-                Image(systemName: "checkmark.shield").foregroundStyle(.orange)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(model.showAudit ? Color.primary.opacity(0.08) : .clear,
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
     }
 
     private func issues(_ audit: AuditReport) -> Int {

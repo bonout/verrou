@@ -42,25 +42,30 @@ struct VerrouApp: App {
                     .disabled(delegate.model.lockState != .unlocked || delegate.model.mode == .demo)
                 Button("Nettoyer les doublons…") { delegate.model.openDuplicates() }
                     .disabled(delegate.model.lockState != .unlocked)
+                // Volets de la fenêtre principale, comme dans la barre latérale.
+                Divider()
+                Button("Audit de sécurité") {
+                    delegate.model.showMainWindow()
+                    delegate.model.openAudit()
+                }
+                .disabled(delegate.model.lockState != .unlocked)
+                if delegate.model.mode == .vaultwarden {
+                    Button("Envois") { delegate.model.openSends() }
+                        .disabled(!delegate.model.sendsAvailable)
+                    Button("Nouvel envoi…") {
+                        delegate.model.showMainWindow()
+                        delegate.model.newSend()
+                    }
+                    .disabled(!delegate.model.sendsAvailable)
+                    Button("Accès d'urgence") { delegate.model.openEmergency() }
+                        .disabled(!delegate.model.emergencyAvailable)
+                }
+                Divider()
                 Button("Verrouiller") { delegate.model.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(delegate.model.lockState != .unlocked)
             }
         }
-
-        // Accès d'urgence : fenêtre à part, ouverte depuis la barre latérale.
-        Window("Accès d'urgence", id: "emergency") {
-            EmergencyWindow()
-                .environment(delegate.model)
-        }
-        .defaultSize(width: 720, height: 560)
-
-        // Envois (Bitwarden Send) : fenêtre à part, ouverte depuis la barre latérale.
-        Window("Envois", id: "sends") {
-            SendsWindow()
-                .environment(delegate.model)
-        }
-        .defaultSize(width: 640, height: 520)
 
         Settings {
             SettingsView()

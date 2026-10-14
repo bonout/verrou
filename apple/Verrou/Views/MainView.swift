@@ -12,39 +12,74 @@ struct MainView: View {
                 .navigationSplitViewColumnWidth(min: 190, ideal: 220, max: 280)
         } content: {
             Group {
-                if model.showAudit {
-                    AuditView()
-                } else {
-                    ItemListView(searchFocused: $searchFocused)
+                switch model.pane {
+                case .audit: AuditView()
+                case .sends: SendsListView()
+                case .emergency: EmergencyListView()
+                case nil: ItemListView(searchFocused: $searchFocused)
                 }
             }
             .navigationSplitViewColumnWidth(min: 280, ideal: 330, max: 440)
         } detail: {
-            if let detail = model.selectedDetail {
-                ItemDetailView(detail: detail)
-                    .id(detail.summary.id)
-            } else {
-                EmptyDetailView()
+            switch model.pane {
+            case .sends:
+                if let send = model.sends.selected {
+                    SendDetailView(send: send)
+                        .id(send.id)
+                } else {
+                    EmptyPaneDetailView(title: "Aucun envoi sélectionné", symbol: "paperplane")
+                }
+            case .emergency:
+                if let selected = model.emergency.selected {
+                    EmergencyDetailView(contact: selected.contact, trusted: selected.trusted)
+                        .id(selected.contact.id)
+                } else {
+                    EmptyPaneDetailView(title: "Aucun accès sélectionné", symbol: "person.2.badge.key")
+                }
+            case .audit, nil:
+                if let detail = model.selectedDetail {
+                    ItemDetailView(detail: detail)
+                        .id(detail.summary.id)
+                } else {
+                    EmptyDetailView()
+                }
             }
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button("Nouvel identifiant") { model.newItem(login: true) }
-                    Button("Nouvelle note sécurisée") { model.newItem(login: false) }
-                    Button("Nouvelle clé SSH…") { model.newSshKey() }
-                    Button("Nouveau document…") { model.newDocument() }
-                    Divider()
-                    ForEach(ItemTemplate.menuOrder, id: \.self) { template in
-                        Button(template.menuTitle) { model.newItem(template: template) }
+                switch model.pane {
+                case .sends:
+                    Button {
+                        model.newSend()
+                    } label: {
+                        Label("Nouvel envoi", systemImage: "plus")
                     }
-                } label: {
-                    Label("Nouvel élément", systemImage: "plus")
-                } primaryAction: {
-                    model.newItem(login: true)
+                    .help("Nouvel envoi")
+                case .emergency:
+                    Button {
+                        model.emergency.inviteNew()
+                    } label: {
+                        Label("Inviter un contact", systemImage: "plus")
+                    }
+                    .help("Inviter un contact d'urgence")
+                case .audit, nil:
+                    Menu {
+                        Button("Nouvel identifiant") { model.newItem(login: true) }
+                        Button("Nouvelle note sécurisée") { model.newItem(login: false) }
+                        Button("Nouvelle clé SSH…") { model.newSshKey() }
+                        Button("Nouveau document…") { model.newDocument() }
+                        Divider()
+                        ForEach(ItemTemplate.menuOrder, id: \.self) { template in
+                            Button(template.menuTitle) { model.newItem(template: template) }
+                        }
+                    } label: {
+                        Label("Nouvel élément", systemImage: "plus")
+                    } primaryAction: {
+                        model.newItem(login: true)
+                    }
+                    .disabled(!model.canEdit)
+                    .help(model.canEdit ? "Nouvel identifiant (⌘N)" : "Coffre fictif : lecture seule")
                 }
-                .disabled(!model.canEdit)
-                .help(model.canEdit ? "Nouvel identifiant (⌘N)" : "Coffre fictif : lecture seule")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -58,48 +93,12 @@ struct MainView: View {
             // Actions de l'élément sélectionné : toujours les mêmes boutons,
             // grisés quand ils ne s'appliquent pas. Ici plutôt que dans la
             // fiche, recréée à chaque sélection : la barre ne clignote plus.
+            // Absentes des volets des envois et des accès d'urgence, qui
+            // n'affichent pas d'élément du coffre.
             ToolbarItemGroup(placement: .primaryAction) {
-                let item = model.selectedSummary
-                Button {
-                    if let item { Task { await model.setArchived(item.id, true) } }
-                } label: {
-                    Label("Archiver", systemImage: "archivebox")
+                if model.pane != .sends && model.pane != .emergency {
+                    ItemToolbarActions()
                 }
-                .help("Archiver : garder l'élément hors du chemin")
-                .disabled(!model.canModify(item) || item?.state != .active)
-                Button {
-                    if let item { Task { await model.edit(item.id) } }
-                } label: {
-                    Label("Modifier", systemImage: "pencil")
-                }
-                .help(item?.sharing?.readOnly == true ? "Partagé en lecture seule" : "Modifier (⌘E)")
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
-                Button {
-                    if let item { model.openSharing(item.id) }
-                } label: {
-                    Label("Partager", systemImage: "person.2")
-                }
-                .help(item?.sharing == nil ? "Partager dans un coffre partagé…" : "Collections…")
-                .disabled(!model.canModify(item) || item?.state != .active
-                          || (item?.sharing == nil && model.writableOrganizations.isEmpty))
-                Button {
-                    if let item { model.copyPassword(of: item.id) }
-                } label: {
-                    Label("Copier le mot de passe", systemImage: "key")
-                }
-                .help("Copier le mot de passe (⇧⌘C)")
-                .keyboardShortcut("c", modifiers: [.command, .shift])
-                .disabled(item?.category != .login)
-                Button {
-                    if let host = item?.host, let url = URL(string: "https://\(host)") {
-                        NSWorkspace.shared.open(url)
-                    }
-                } label: {
-                    Label("Ouvrir le site", systemImage: "safari")
-                }
-                .help(item?.host.map { "Ouvrir \($0)" } ?? "Ouvrir le site")
-                .disabled(item?.host == nil)
             }
         }
         .overlay(alignment: .bottom) {
@@ -113,6 +112,8 @@ struct MainView: View {
                     }
             }
         }
+        .modifier(SendsPresentations())
+        .modifier(EmergencyPresentations())
         .sheet(item: $model.editor) { editor in
             EditItemView(editor: editor)
                 .environment(model)
@@ -153,6 +154,55 @@ struct MainView: View {
     }
 }
 
+/// Actions de l'élément sélectionné, dans la barre d'outils.
+private struct ItemToolbarActions: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        let item = model.selectedSummary
+        Button {
+            if let item { Task { await model.setArchived(item.id, true) } }
+        } label: {
+            Label("Archiver", systemImage: "archivebox")
+        }
+        .help("Archiver : garder l'élément hors du chemin")
+        .disabled(!model.canModify(item) || item?.state != .active)
+        Button {
+            if let item { Task { await model.edit(item.id) } }
+        } label: {
+            Label("Modifier", systemImage: "pencil")
+        }
+        .help(item?.sharing?.readOnly == true ? "Partagé en lecture seule" : "Modifier (⌘E)")
+        .keyboardShortcut("e", modifiers: .command)
+        .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
+        Button {
+            if let item { model.openSharing(item.id) }
+        } label: {
+            Label("Partager", systemImage: "person.2")
+        }
+        .help(item?.sharing == nil ? "Partager dans un coffre partagé…" : "Collections…")
+        .disabled(!model.canModify(item) || item?.state != .active
+                  || (item?.sharing == nil && model.writableOrganizations.isEmpty))
+        Button {
+            if let item { model.copyPassword(of: item.id) }
+        } label: {
+            Label("Copier le mot de passe", systemImage: "key")
+        }
+        .help("Copier le mot de passe (⇧⌘C)")
+        .keyboardShortcut("c", modifiers: [.command, .shift])
+        .disabled(item?.category != .login)
+        Button {
+            if let host = item?.host, let url = URL(string: "https://\(host)") {
+                NSWorkspace.shared.open(url)
+            }
+        } label: {
+            Label("Ouvrir le site", systemImage: "safari")
+        }
+        .help(item?.host.map { "Ouvrir \($0)" } ?? "Ouvrir le site")
+        .disabled(item?.host == nil)
+    }
+}
+
 // MARK: Barre latérale
 
 struct SidebarView: View {
@@ -160,7 +210,10 @@ struct SidebarView: View {
 
     var body: some View {
         @Bindable var model = model
-        List(selection: Binding(get: { model.filter }, set: { if let f = $0 { model.filter = f } })) {
+        // Un volet ouvert (audit, envois…) : aucun filtre en surbrillance, et
+        // un clic sur n'importe lequel ramène à la liste.
+        List(selection: Binding(get: { model.pane == nil ? model.filter : nil },
+                                set: { if let f = $0 { model.filter = f } })) {
             Section {
                 row(.all, "Tous les éléments", "square.grid.2x2", count: model.counts?.all)
                 row(.favorites, "Favoris", "star.fill", count: model.counts?.favorites, tint: .yellow)
@@ -225,6 +278,86 @@ struct SidebarView: View {
             Image(systemName: symbol).foregroundStyle(tint)
         }
         .tag(filter)
+    }
+}
+
+/// Entrée du bas de la barre latérale (audit, doublons, envois, accès
+/// d'urgence) : un bouton plutôt qu'une ligne de la liste, en surbrillance
+/// quand son volet occupe la colonne centrale.
+struct SidebarPaneButton: View {
+    let title: String
+    let symbol: String
+    var tint: Color = Theme.accent
+    var active = false
+    var badge: Int?
+    var badgeTint: Color = .secondary
+    var help: String?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label {
+                HStack {
+                    Text(title)
+                    Spacer()
+                    if let badge {
+                        Text("\(badge)").monospacedDigit().foregroundStyle(badgeTint).font(.callout)
+                    }
+                }
+            } icon: {
+                Image(systemName: symbol).foregroundStyle(tint)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(active ? Color.primary.opacity(0.08) : .clear,
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+        .help(help ?? "")
+    }
+}
+
+/// En-tête d'un volet de la colonne centrale : titre, explication, action,
+/// et le dernier message (réussite ou erreur).
+struct PaneHeader<Action: View>: View {
+    let title: String
+    let caption: String
+    var busy = false
+    var notice: String?
+    var error: String?
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).font(.title3.weight(.semibold))
+                Spacer()
+                if busy { ProgressView().controlSize(.small) }
+                action
+            }
+            Text(caption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let notice {
+                Label(notice, systemImage: "checkmark.circle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.green)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let error {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
     }
 }
 
@@ -461,7 +594,6 @@ struct ItemRow: View {
 
 struct RowMenu: View {
     @Environment(AppModel.self) private var model
-    @Environment(\.openWindow) private var openWindow
     let summary: ItemSummary
 
     var body: some View {
@@ -478,7 +610,7 @@ struct RowMenu: View {
         if model.sendsAvailable, summary.state != .trashed,
            summary.category == .login || summary.category == .secureNote {
             Button("Envoyer de façon sécurisée…") {
-                model.composeSend(from: summary) { openWindow(id: $0) }
+                model.composeSend(from: summary)
             }
         }
         if model.canEdit, !model.canModify(summary) {
@@ -535,5 +667,16 @@ struct EmptyDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Colonne de droite d'un volet, rien de sélectionné.
+struct EmptyPaneDetailView: View {
+    let title: String
+    let symbol: String
+
+    var body: some View {
+        ContentUnavailableView(title, systemImage: symbol)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
