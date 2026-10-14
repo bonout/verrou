@@ -1,0 +1,276 @@
+//! Envois (Bitwarden Send) : partager un texte par un lien chiffré.
+//!
+//! La liste ne porte ni le texte ni le lien (qui contient la clé) : Swift
+//! les demande à part, quand l'utilisateur copie le lien ou ouvre l'écran de
+//! modification.
+
+use verrou_core::SecretString;
+use verrou_vaultwarden::send::{SendDraft, SendInfo, SendKind};
+
+use crate::{VaultSession, VerrouError};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SendContent {
+    Text,
+    File,
+}
+
+/// Un envoi tel que la liste l'affiche. Aucun secret.
+// Les options d'un envoi Bitwarden sont des booléens : le modèle les garde tels quels.
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SendSummary {
+    pub id: String,
+    pub name: String,
+    pub content: SendContent,
+    pub file_name: Option<String>,
+    pub has_password: bool,
+    pub access_count: u32,
+    pub max_access_count: Option<u32>,
+    pub disabled: bool,
+    pub hide_email: bool,
+    /// Horodatages Unix.
+    pub deletion_date: i64,
+    pub expiration_date: Option<i64>,
+    pub revision_date: i64,
+    /// Le lien mène encore au contenu (ni désactivé, ni expiré, ni épuisé).
+    pub available: bool,
+}
+
+impl From<SendInfo> for SendSummary {
+    fn from(info: SendInfo) -> Self {
+        let available = info.is_available(now());
+        Self {
+            id: info.id,
+            name: info.name,
+            content: match info.kind {
+                SendKind::Text => SendContent::Text,
+                SendKind::File => SendContent::File,
+            },
+            file_name: info.file_name,
+            has_password: info.has_password,
+            access_count: info.access_count,
+            max_access_count: info.max_access_count,
+            disabled: info.disabled,
+            hide_email: info.hide_email,
+            deletion_date: info.deletion_date,
+            expiration_date: info.expiration_date,
+            revision_date: info.revision_date,
+            available,
+        }
+    }
+}
+
+/// L'écran de création ou de modification d'un envoi.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SendFields {
+    pub name: String,
+    pub text: String,
+    pub hidden: bool,
+    pub notes: Option<String>,
+    /// Horodatages Unix.
+    pub deletion_date: i64,
+    pub expiration_date: Option<i64>,
+    pub max_access_count: Option<u32>,
+    /// Nouveau mot de passe ; vide ou absent : aucun (création) ou inchangé.
+    pub password: Option<String>,
+    pub hide_email: bool,
+    pub disabled: bool,
+}
+
+/// Un envoi créé : son identifiant et son lien de partage (qui porte la clé).
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct CreatedSend {
+    pub id: String,
+    pub link: String,
+}
+
+fn now() -> i64 {
+    chrono::Utc::now().timestamp()
+}
+
+fn date(timestamp: i64) -> Result<chrono::DateTime<chrono::Utc>, VerrouError> {
+    chrono::DateTime::from_timestamp(timestamp, 0).ok_or_else(|| VerrouError::Invalid {
+        message: "date invalide".to_owned(),
+    })
+}
+
+impl TryFrom<SendFields> for SendDraft {
+    type Error = VerrouError;
+
+    fn try_from(fields: SendFields) -> Result<Self, VerrouError> {
+        Ok(Self {
+            name: fields.name,
+            text: SecretString::new(fields.text),
+            hidden: fields.hidden,
+            notes: fields.notes,
+            deletion_date: date(fields.deletion_date)?,
+            expiration_date: fields.expiration_date.map(date).transpose()?,
+            max_access_count: fields.max_access_count,
+            password: fields
+                .password
+                .filter(|p| !p.is_empty())
+                .map(SecretString::new),
+            hide_email: fields.hide_email,
+            disabled: fields.disabled,
+        })
+    }
+}
+
+impl From<SendDraft> for SendFields {
+    fn from(draft: SendDraft) -> Self {
+        Self {
+            name: draft.name,
+            text: draft.text.expose().to_owned(),
+            hidden: draft.hidden,
+            notes: draft.notes,
+            deletion_date: draft.deletion_date.timestamp(),
+            expiration_date: draft.expiration_date.map(|d| d.timestamp()),
+            max_access_count: draft.max_access_count,
+            password: None,
+            hide_email: draft.hide_email,
+            disabled: draft.disabled,
+        }
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl VaultSession {
+    /// Les envois de la dernière synchronisation, du plus récent au plus ancien.
+    pub async fn sends(&self) -> Result<Vec<SendSummary>, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let sends = connection.lock().await.sends()?;
+        Ok(sends.into_iter().map(Into::into).collect())
+    }
+
+    /// ⚠️ Lien de partage d'un envoi : il porte la clé, donc le contenu.
+    pub async fn send_link(&self, id: String) -> Result<String, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let link = connection.lock().await.send_link(&id)?;
+        Ok(link.expose().to_owned())
+    }
+
+    /// ⚠️ Brouillon prérempli pour modifier un envoi, texte compris.
+    pub async fn send_fields(&self, id: String) -> Result<SendFields, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let draft = connection.lock().await.send_draft(&id)?;
+        Ok(draft.into())
+    }
+
+    /// Crée un envoi de texte et resynchronise ; rend son identifiant et
+    /// son lien. Les positions de `summaries()` changent.
+    pub async fn create_send(&self, fields: SendFields) -> Result<CreatedSend, VerrouError> {
+        let draft = SendDraft::try_from(fields)?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (id, link, decrypted) = connection.lock().await.create_send(draft).await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(CreatedSend {
+            id,
+            link: link.expose().to_owned(),
+        })
+    }
+
+    pub async fn update_send(&self, id: String, fields: SendFields) -> Result<(), VerrouError> {
+        let draft = SendDraft::try_from(fields)?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.update_send(&id, draft).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    pub async fn delete_send(&self, id: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.delete_send(&id).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    pub async fn remove_send_password(&self, id: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection.lock().await.remove_send_password(&id).await?;
+        self.install_if_current(&connection, decrypted)
+    }
+}
+
+#[uniffi::export]
+impl VaultSession {
+    /// ⚠️ Un nouvel envoi prérempli avec un champ d'un élément (le mot de
+    /// passe, par exemple) : nommé d'après l'élément, texte masqué chez le
+    /// destinataire, suppression dans 7 jours, un seul accès. L'élément
+    /// protégé demande d'abord sa confirmation.
+    pub fn send_fields_for_field(
+        &self,
+        item_id: String,
+        field_id: String,
+    ) -> Result<SendFields, VerrouError> {
+        self.with_vault(|v| {
+            let item = Self::item(v, &item_id)?;
+            self.require_authorized(item)?;
+            let (label, value) = if field_id == "notes" {
+                (
+                    "Notes".to_owned(),
+                    item.notes.as_ref().ok_or(VerrouError::NotFound)?.clone(),
+                )
+            } else {
+                let field = item.field(&field_id).ok_or(VerrouError::NotFound)?;
+                // Mot de passe masqué par l'organisation : il ne sort pas,
+                // pas plus par un envoi que par `reveal`.
+                if item.hides(field) {
+                    return Err(crate::hidden_by_organization());
+                }
+                (field.label.clone(), field.value.clone())
+            };
+            let mut draft = SendDraft::text(
+                format!("{} — {label}", item.title),
+                value,
+                chrono::Utc::now(),
+            );
+            draft.hidden = true;
+            draft.max_access_count = Some(1);
+            Ok(draft.into())
+        })
+    }
+
+    /// Un nouvel envoi vide, avec les réglages par défaut.
+    pub fn new_send_fields(&self) -> SendFields {
+        SendDraft::text(String::new(), SecretString::default(), chrono::Utc::now()).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use verrou_core::{Vault, mock};
+
+    use super::*;
+
+    #[test]
+    fn send_from_a_field_is_prefilled_and_respects_hidden_passwords() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42);
+        let shared = mock::vault_items(0, 42)
+            .into_iter()
+            .find(|i| i.shared.is_some() && i.field("password").is_some())
+            .expect("élément partagé du coffre fictif");
+        let fields = session
+            .send_fields_for_field(shared.id.clone(), "password".to_owned())
+            .unwrap();
+        assert!(fields.name.starts_with(&shared.title));
+        assert_eq!(
+            fields.text,
+            shared.field("password").unwrap().value.expose()
+        );
+        assert!(fields.hidden);
+        assert_eq!(fields.max_access_count, Some(1));
+
+        // L'organisation masque les mots de passe : pas d'envoi non plus.
+        let mut items = mock::vault_items(0, 42);
+        for item in &mut items {
+            if let Some(sharing) = item.shared.as_mut() {
+                sharing.hide_passwords = true;
+            }
+        }
+        *session.vault.write().unwrap() = Some(Vault::new(items));
+        assert!(matches!(
+            session.send_fields_for_field(shared.id.clone(), "password".to_owned()),
+            Err(VerrouError::Invalid { .. })
+        ));
+    }
+}

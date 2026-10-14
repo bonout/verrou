@@ -227,6 +227,31 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   la clé du canal (comme les cookies) ; l'extension se charge en mode
   développeur (pas de Chrome Web Store).
 
+## Envois (Bitwarden Send)
+
+- **Cryptographie** : celle du SDK (`bitwarden-send`), comme le coffre web.
+  Chaque envoi a sa clé, 16 octets tirés au hasard ; HKDF-SHA256 (sel
+  `bitwarden-send`, info `send`) en dérive la clé de 64 octets qui chiffre
+  le nom, les notes et le texte. La clé de l'envoi est gardée sur le serveur
+  chiffrée par la clé de l'utilisateur. Des tests recalculent la dérivation
+  et le hachage du mot de passe sans le SDK.
+- **Lien** : `<serveur>/#/send/<accès>/<clé>`. La clé suit le `#` : le
+  navigateur du destinataire ne l'envoie jamais au serveur. Le lien donne
+  donc le contenu : Verrou le copie comme un secret (presse-papiers masqué,
+  effacé après 90 s) et ne le garde pas. Swift ne reçoit le lien et le texte
+  d'un envoi que sur demande (copie, écran de modification) ; la liste n'en
+  porte que le nom, les compteurs et les dates.
+- **Mot de passe** : jamais envoyé ; seulement son empreinte (PBKDF2-SHA256,
+  100 000 itérations, salé par la clé de l'envoi), que le serveur compare.
+  Une modification sans nouveau mot de passe garde l'ancien ; le retirer est
+  une action à part (`PUT /api/sends/{id}/remove-password`).
+- **Depuis un élément** (« Envoyer de façon sécurisée… ») : le champ ne sort
+  du cœur Rust qu'après la confirmation d'un élément protégé, et l'envoi
+  prérempli (masqué chez le destinataire, un seul accès, 7 jours) attend
+  la validation de l'utilisateur.
+- **Limites** : le texte d'un envoi vit dans une `String` Swift tant que
+  l'écran est ouvert ; les envois de fichier ne se créent pas dans Verrou.
+
 ## Passkeys dans Brave
 
 ```

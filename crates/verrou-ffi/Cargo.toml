@@ -20,6 +20,7 @@ verrou-vaultwarden.workspace = true
 verrou-bridge.workspace = true
 uniffi = { workspace = true, features = ["cli", "tokio"] }
 thiserror.workspace = true
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zeroize.workspace = true
 tokio.workspace = true
 

@@ -344,6 +344,82 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
+    /// Requête JSON authentifiée vers `/api/{path}` (envois, accès d'urgence) :
+    /// le JSON renvoyé (`Null` si vide), ou l'erreur traduite.
+    pub async fn call(
+        &self,
+        method: reqwest::Method,
+        access_token: &str,
+        path: &str,
+        body: Option<&Value>,
+    ) -> Result<Value, Error> {
+        let mut request = self
+            .http
+            .request(method, format!("{}/api/{path}", self.base))
+            .bearer_auth(access_token);
+        if let Some(body) = body {
+            request = request.json(body);
+        }
+        write_response(request.send().await?).await
+    }
+
+    /// Jeton d'accès anonyme à un envoi (`grant_type=send_access`), avec
+    /// l'empreinte du mot de passe s'il en a un.
+    pub async fn send_access_token(
+        &self,
+        access_id: &str,
+        password_hash: Option<&str>,
+    ) -> Result<String, Error> {
+        let mut form = vec![
+            ("grant_type", "send_access"),
+            ("client_id", "send"),
+            ("scope", "api.send.access"),
+            ("send_id", access_id),
+        ];
+        if let Some(hash) = password_hash {
+            form.push(("password_hash_b64", hash));
+        }
+        let response = self
+            .http
+            .post(format!("{}/identity/connect/token", self.base))
+            .form(&form)
+            .send()
+            .await?;
+        let status = response.status();
+        let body: Value = response.json().await.unwrap_or(Value::Null);
+        if status.is_success() {
+            return body
+                .get("access_token")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| Error::Server("jeton d'accès absent".to_owned()));
+        }
+        Err(
+            match body.get("send_access_error_type").and_then(Value::as_str) {
+                Some("password_hash_b64_required") => {
+                    Error::Invalid("cet envoi est protégé par un mot de passe".to_owned())
+                }
+                Some("password_hash_b64_invalid") => {
+                    Error::Invalid("mot de passe de l'envoi incorrect".to_owned())
+                }
+                Some(_) => Error::NotFound,
+                None => Error::Server(error_message(&body)),
+            },
+        )
+    }
+
+    /// Contenu d'un envoi (chiffré), avec le jeton de `send_access_token`.
+    /// Le serveur compte un accès.
+    pub async fn send_access(&self, token: &str) -> Result<Value, Error> {
+        let response = self
+            .http
+            .post(format!("{}/api/sends/access", self.base))
+            .bearer_auth(token)
+            .send()
+            .await?;
+        write_response(response).await
+    }
+
     /// Écriture JSON authentifiée (`path` commence par `/api/`) ; rend le
     /// JSON de la réponse.
     pub async fn send_json(

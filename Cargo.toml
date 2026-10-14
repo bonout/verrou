@@ -51,6 +51,7 @@ bitwarden-crypto = { git = "https://github.com/bitwarden/sdk-internal", rev = "2
 bitwarden-vault = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
 bitwarden-collections = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
 bitwarden-api-api = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
+bitwarden-send = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
