@@ -17,6 +17,10 @@
 //! `send_fields` et `send_fields_for_field`, à l'ouverture de l'écran d'un
 //! envoi.
 //!
+//! Le coffre d'un concédant (accès d'urgence, `emergency`) suit les mêmes
+//! règles, dans un objet à part (`EmergencyVault`) qui se vide au
+//! verrouillage.
+//!
 //! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
 //! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
 //! traversent la frontière.
@@ -47,12 +51,16 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod attachments;
+mod emergency;
 mod import;
 mod send;
 mod ssh;
 mod templates;
 mod watchtower;
 
+pub use emergency::{
+    EmergencyContact, EmergencyOverview, EmergencyState, EmergencyType, EmergencyVault,
+};
 pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
@@ -586,6 +594,35 @@ fn summary(item: &Item) -> ItemSummary {
             hide_passwords: s.hide_passwords,
         }),
         template: item.template().map(Into::into),
+    }
+}
+
+/// L'écran de détail d'un élément : les champs secrets sans leur valeur.
+fn detail(item: &Item) -> ItemDetail {
+    let fields = item
+        .fields
+        .iter()
+        // Morceaux d'adresse (pour remplir les formulaires) et champs
+        // réservés à Verrou (`verrou:type`) : pas à afficher.
+        .filter(|f| !templates::is_reserved_field(&f.id))
+        .map(|f| {
+            let secret = f.kind.is_secret();
+            FieldView {
+                id: f.id.clone(),
+                label: f.label.clone(),
+                field_type: f.kind.into(),
+                secret,
+                value: (!secret).then(|| f.value.expose().to_owned()),
+                hidden: item.hides(f),
+            }
+        })
+        .collect();
+    ItemDetail {
+        summary: summary(item),
+        urls: item.urls.clone(),
+        fields,
+        has_notes: item.notes.is_some(),
+        created: item.created,
     }
 }
 
@@ -1407,34 +1444,7 @@ impl VaultSession {
     }
 
     pub fn detail(&self, id: String) -> Result<ItemDetail, VerrouError> {
-        self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
-            let fields = item
-                .fields
-                .iter()
-                // Morceaux d'adresse (pour remplir les formulaires) et champs
-                // réservés à Verrou (`verrou:type`) : pas à afficher.
-                .filter(|f| !templates::is_reserved_field(&f.id))
-                .map(|f| {
-                    let secret = f.kind.is_secret();
-                    FieldView {
-                        id: f.id.clone(),
-                        label: f.label.clone(),
-                        field_type: f.kind.into(),
-                        secret,
-                        value: (!secret).then(|| f.value.expose().to_owned()),
-                        hidden: item.hides(f),
-                    }
-                })
-                .collect();
-            Ok(ItemDetail {
-                summary: summary(item),
-                urls: item.urls.clone(),
-                fields,
-                has_notes: item.notes.is_some(),
-                created: item.created,
-            })
-        })
+        self.with_vault(|v| Ok(detail(Self::item(v, &id)?)))
     }
 
     /// Valeur d'un champ secret (ou `notes`), à la demande de l'utilisateur.

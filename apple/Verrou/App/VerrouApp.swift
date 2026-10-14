@@ -48,6 +48,13 @@ struct VerrouApp: App {
             }
         }
 
+        // Accès d'urgence : fenêtre à part, ouverte depuis la barre latérale.
+        Window("Accès d'urgence", id: "emergency") {
+            EmergencyWindow()
+                .environment(delegate.model)
+        }
+        .defaultSize(width: 720, height: 560)
+
         // Envois (Bitwarden Send) : fenêtre à part, ouverte depuis la barre latérale.
         Window("Envois", id: "sends") {
             SendsWindow()

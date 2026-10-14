@@ -205,6 +205,7 @@ struct SidebarView: View {
             VStack(spacing: 0) {
                 AuditSidebarButton()
                 DuplicatesSidebarButton()
+                if model.mode == .vaultwarden { EmergencySidebarButton() }
                 if model.mode == .vaultwarden { SendsSidebarButton() }
                 VaultFooter()
             }

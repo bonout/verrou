@@ -130,6 +130,8 @@ final class AppModel {
     var importFlow: ImportFlow?
     /// Nettoyage des doublons ouvert.
     var duplicatesFlow: DuplicatesFlow?
+    /// Accès d'urgence, voir `EmergencyAccess.swift`.
+    let emergency = EmergencyModel()
     /// Envois (Bitwarden Send), voir `Sends.swift`.
     let sends = SendsModel()
     /// Génération d'une clé SSH ouverte (voir `SshKeys.swift`).
@@ -528,6 +530,7 @@ final class AppModel {
         if keyExchange == .enroll { session.cancelSecurityKey() }
         importFlow = nil
         duplicatesFlow = nil
+        emergency.clear()
         sends.clear()
         attachments.clear()
         autoLock = nil

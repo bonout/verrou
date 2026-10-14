@@ -4,7 +4,7 @@
 //! docker run -d --rm --name verrou-vw -p 127.0.0.1:8099:80 \
 //!   -e I_REALLY_WANT_VOLATILE_STORAGE=true -e SIGNUPS_ALLOWED=true \
 //!   -e LOGIN_RATELIMIT_MAX_BURST=1000 -e LOGIN_RATELIMIT_SECONDS=1 \
-//!   -e DOMAIN=http://localhost:8099 \
+//!   -e DOMAIN=http://localhost:8099 -e UNAUTHENTICATED_RATELIMIT_MAX_BURST=1000 \
 //!   vaultwarden/server:1.37.4
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test server
 //! ```
