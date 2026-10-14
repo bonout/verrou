@@ -9,15 +9,16 @@ const FOLLOWING = 4;
 const PRECEDING = 2;
 
 // Sélecteurs simples, séparés par des virgules : `tag`, `.classe`,
-// `[attr=valeur]`, `tag[attr=valeur]`.
+// `[attr]`, `[attr=valeur]`, `tag[attr=valeur]`.
 function matches(element, selector) {
   return selector.split(",").map((part) => part.trim()).some((part) => {
-    const match = /^([a-z-]*)(?:\.([\w-]+))?(?:\[([\w-]+)=["']?([^\]"']*)["']?\])?$/i.exec(part);
+    const match = /^([a-z-]*)(?:\.([\w-]+))?(?:\[([\w-]+)(?:=["']?([^\]"']*)["']?)?\])?$/i.exec(part);
     if (!match) throw new Error(`sélecteur non géré : ${part}`);
     const [, tag, className, attr, value] = match;
     if (tag && element.tagName !== tag.toUpperCase()) return false;
     if (className && !element.className.split(" ").includes(className)) return false;
-    if (attr && String(element.getAttribute(attr) ?? "").toLowerCase() !== value.toLowerCase()) return false;
+    if (attr && value === undefined && element.getAttribute(attr) === null) return false;
+    if (attr && value !== undefined && String(element.getAttribute(attr) ?? "").toLowerCase() !== value.toLowerCase()) return false;
     return Boolean(tag || className || attr);
   });
 }
@@ -181,6 +182,11 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
       return this.querySelectorAll(selector)[0] ?? null;
     }
 
+    contains(other) {
+      for (let node = other; node; node = node.parent) if (node === this) return true;
+      return false;
+    }
+
     closest(selector) {
       for (let node = this; node && node.tagName; node = node.parent) if (matches(node, selector)) return node;
       return null;
@@ -280,6 +286,31 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     get value() {
       return "";
     }
+
+    get form() {
+      return this.closest("form");
+    }
+  }
+
+  // `requestSubmit(submitter)` : comme le navigateur, refuse un bouton qui
+  // n'envoie pas ce formulaire, puis émet « submit » (avec `submitter`).
+  // `submissions` garde chaque envoi.
+  class FakeForm extends FakeElement {
+    constructor() {
+      super("form");
+      this.submissions = [];
+    }
+
+    requestSubmit(submitter = null) {
+      if (submitter) {
+        const type = (submitter.getAttribute("type") ?? "submit").toLowerCase();
+        if (type !== "submit") throw new TypeError("pas un bouton d'envoi");
+        if (submitter.form !== this) throw new Error("NotFoundError");
+      }
+      const event = new FakeEvent("submit", { bubbles: true, extra: { submitter } });
+      dispatch(this, event);
+      if (!event.defaultPrevented) this.submissions.push({ submitter });
+    }
   }
 
   // Ordre du document (shadow DOM compris, après l'hôte).
@@ -345,6 +376,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     if (name === "input") return new FakeInput();
     if (name === "select") return new FakeSelect();
     if (name === "button") return new FakeButton();
+    if (name === "form") return new FakeForm();
     return new FakeElement(name);
   };
   // SVG (icône de Verrou) : un élément ordinaire suffit ici.
@@ -386,6 +418,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     location: { origin: url.origin, hostname: url.hostname, href: url.href },
     HTMLInputElement: FakeInput,
     HTMLSelectElement: FakeSelect,
+    HTMLFormElement: FakeForm,
     Element: FakeElement,
     Node: { DOCUMENT_POSITION_FOLLOWING: FOLLOWING, DOCUMENT_POSITION_PRECEDING: PRECEDING },
     Event: FakeEvent,
@@ -408,6 +441,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     for (const [name, value] of Object.entries(attributes)) {
       if (name === "value") element.value = value;
       else if (name === "hidden") element.hidden = value;
+      else if (name === "class") element.className = value;
       else if (name === "maxLength" || name === "disabled") element[name] = value;
       else element.setAttribute(name, value);
     }

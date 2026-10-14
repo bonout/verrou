@@ -68,7 +68,8 @@ function fakeBackground({ state = "unlocked", items = LOGINS, cards = [], identi
 // Une page, ses champs (`build(h)` rend les éléments de <body>), le
 // générateur et content.js. `passkeys` : la demande de passkey en attente
 // (interface de passkeys.js). `firefox` : l'API `browser`, `chrome` piégé.
-function openPage(build, background, { origin = "https://connect.maif.fr", passkeys = null, firefox = false } = {}) {
+// `settings` : `storage.local` de l'extension (réglage `autoSubmit`…).
+function openPage(build, background, { origin = "https://connect.maif.fr", passkeys = null, firefox = false, settings = {} } = {}) {
   const dom = createDom({ origin });
   const { context, document, h } = dom;
   for (const node of [build(h)].flat()) document.body.append(node);
@@ -78,11 +79,17 @@ function openPage(build, background, { origin = "https://connect.maif.fr", passk
     sendMessage: (message) => background.handle(message),
     onMessage: { addListener: (listener) => onMessage.push(listener) },
   };
+  const storage = {
+    local: {
+      get: async (key) => (Object.hasOwn(settings, key) ? { [key]: settings[key] } : {}),
+      set: async (values) => Object.assign(settings, values),
+    },
+  };
   if (firefox) {
-    context.browser = { runtime };
+    context.browser = { runtime, storage };
     context.chrome = { runtime: { id: "extension", sendMessage: () => { throw new Error("chrome.runtime utilisé dans Firefox"); } } };
   } else {
-    context.chrome = { runtime };
+    context.chrome = { runtime, storage };
   }
   if (passkeys) context.__verrouPasskeyMenu = passkeys;
   dom.run(source("generator.js"));
@@ -189,11 +196,16 @@ test("un champ e-mail isolé (lettre d'information) n'appelle pas Verrou", async
 
 // MARK: Se connecter
 
-test("« Se connecter » remplit l'identifiant et le mot de passe, sans envoyer le formulaire", async () => {
+const formOf = (page) => page.document.documentElement.querySelector("form");
+const buttonById = (page, id) => page.document.documentElement.querySelectorAll("button").find((b) => b.id === id);
+
+test("« Se connecter » remplit l'identifiant et le mot de passe, puis envoie le formulaire", async () => {
   const background = fakeBackground();
   const page = openPage(loginForm, background);
-  let submitted = false;
-  page.document.addEventListener("submit", () => { submitted = true; });
+  const seen = [];
+  page.document.addEventListener("submit", (event) => {
+    seen.push([page.byId("email").value, page.byId("password").value, event.submitter]);
+  });
   await eventually(() => page.pillText().includes("Se connecter"), "pastille");
   page.press("Se connecter");
   await eventually(() => page.byId("password").value, "remplissage");
@@ -201,9 +213,126 @@ test("« Se connecter » remplit l'identifiant et le mot de passe, sans envoyer 
   assert.equal(page.byId("email").value, "camille@exemple.fr");
   assert.equal(page.byId("password").value, "mot-de-passe-camille");
   assert.equal(page.pillNode(), null, "la pastille s'efface");
-  const submit = page.document.documentElement.querySelectorAll("button").find((b) => b.id === "submit");
-  assert.equal(page.document.activeElement, submit, "le bouton d'envoi a le focus : Entrée suffit");
+  const submit = buttonById(page, "submit");
+  assert.equal(page.document.activeElement, submit, "le bouton d'envoi a le focus");
+  assert.equal(seen.length, 0, "pas tout de suite : la page traite d'abord la saisie");
+  await eventually(() => formOf(page).submissions.length, "formulaire envoyé");
+  assert.deepEqual(seen, [["camille@exemple.fr", "mot-de-passe-camille", submit]], "envoyé une fois, par son bouton");
+  // Identifiants venus de Verrou, inchangés : rien à proposer d'enregistrer.
+  await sleep(30);
+  assert.equal(background.sent("capture").length, 0);
+});
+
+test("réglage désactivé : rempli, le curseur sur le bouton d'envoi, rien ne part", async () => {
+  const page = openPage(loginForm, fakeBackground(), { settings: { autoSubmit: false } });
+  let submitted = false;
+  page.document.addEventListener("submit", () => { submitted = true; });
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+  page.press("Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage");
+  await sleep(300);
+  assert.equal(page.document.activeElement, buttonById(page, "submit"), "Entrée suffit");
   assert.equal(submitted, false);
+});
+
+test("un champ vide de plus (« Code client ») : rien ne part", async () => {
+  const page = openPage((h) => h("form", { id: "login" },
+    h("input", { id: "client", type: "text", name: "client", placeholder: "Code client" }),
+    h("input", { id: "email", type: "email", autocomplete: "username" }),
+    h("input", { id: "password", type: "password", autocomplete: "current-password" }),
+    h("input", { id: "remember", type: "checkbox", name: "remember" }),
+    h("button", { id: "submit", type: "submit" }, "Se connecter")), fakeBackground());
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+  page.press("Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage");
+  await sleep(300);
+  assert.equal(formOf(page).submissions.length, 0);
+  assert.equal(page.document.activeElement, buttonById(page, "submit"));
+});
+
+test("captcha visible : rien ne part ; le badge reCAPTCHA invisible ne gêne pas", async () => {
+  const withCaptcha = (extra) => (h) => [loginForm(h), extra(h)];
+  const captchas = [
+    (h) => h("iframe", { src: "https://www.google.com/recaptcha/api2/anchor?k=cle&size=normal" }),
+    (h) => h("div", { class: "h-captcha", "data-sitekey": "cle" }),
+    (h) => h("div", { class: "cf-turnstile" }),
+    (h) => h("iframe", { src: "https://challenges.cloudflare.com/cdn-cgi/challenge-platform/turnstile" }),
+  ];
+  for (const captcha of captchas) {
+    const page = openPage(withCaptcha(captcha), fakeBackground());
+    await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+    page.press("Se connecter");
+    await eventually(() => page.byId("password").value, "remplissage");
+    await sleep(250);
+    assert.equal(formOf(page).submissions.length, 0, `captcha : ${captcha(page.h).getAttribute("src") ?? captcha(page.h).className}`);
+  }
+
+  // reCAPTCHA v3 : le badge en bas de page, et un bouton porteur du widget invisible.
+  const page = openPage((h) => [
+    h("form", { id: "login" },
+      h("input", { id: "email", type: "email", autocomplete: "username" }),
+      h("input", { id: "password", type: "password", autocomplete: "current-password" }),
+      h("button", { id: "submit", type: "submit", class: "g-recaptcha", "data-sitekey": "cle" }, "Se connecter")),
+    h("div", { class: "grecaptcha-badge" },
+      h("iframe", { src: "https://www.google.com/recaptcha/api2/anchor?k=cle&size=invisible" })),
+    // Caché : la page ne le montre pas.
+    h("div", { class: "h-captcha", hidden: true }),
+  ], fakeBackground());
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+  page.press("Se connecter");
+  await eventually(() => formOf(page).submissions.length, "envoyé malgré le badge");
+});
+
+test("connexion en deux étapes : l'étape de l'identifiant part aussi", async () => {
+  const background = fakeBackground();
+  const page = openPage((h) => h("form", { id: "step" },
+    h("input", { id: "user", type: "email", name: "username", autocomplete: "username" }),
+    h("button", { type: "submit" }, "Suivant")), background);
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille de l'étape 1");
+  page.press("Se connecter");
+  await eventually(() => formOf(page).submissions.length, "étape 1 envoyée");
+  assert.equal(background.sent("fill").length, 1);
+  assert.deepEqual(background.sent("rememberUsername").map((m) => m.username), ["camille@exemple.fr"]);
+});
+
+test("code de vérification rempli depuis la pastille : envoyé", async () => {
+  const page = openPage((h) => h("form", {},
+    h("input", { id: "otp", autocomplete: "one-time-code", maxLength: 6 }),
+    h("button", { type: "submit" }, "Valider")), fakeBackground());
+  await eventually(() => page.pillText().includes("Remplir le code"), "code proposé");
+  page.press("Remplir le code");
+  await eventually(() => formOf(page).submissions.length, "code envoyé");
+  assert.equal(page.byId("otp").value, "123456");
+});
+
+test("sans <form> : le clic sur le bouton qui suit les champs", async () => {
+  const page = openPage((h) => [
+    h("div", { id: "header" }, h("input", { id: "search", type: "text", name: "q" })),
+    h("div", { id: "box" },
+      h("input", { id: "email", type: "email", autocomplete: "username" }),
+      h("input", { id: "password", type: "password", autocomplete: "current-password" }),
+      h("button", { id: "go" }, "Se connecter")),
+  ], fakeBackground());
+  let clicks = 0;
+  buttonById(page, "go").addEventListener("click", () => { clicks += 1; });
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+  page.press("Se connecter");
+  await eventually(() => clicks, "bouton cliqué");
+  await sleep(200);
+  assert.equal(clicks, 1);
+});
+
+test("identifiant modifié avant l'envoi : le bandeau peut proposer l'enregistrement", async () => {
+  const background = fakeBackground();
+  const page = openPage(loginForm, background, { settings: { autoSubmit: false } });
+  await eventually(() => page.pillText().includes("Se connecter"), "pastille");
+  page.press("Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage");
+  page.fire(buttonById(page, "submit"), "click");
+  assert.equal(background.sent("capture").length, 0, "inchangé : rien");
+  page.byId("password").value = "nouveau-mot-de-passe";
+  formOf(page).requestSubmit();
+  assert.deepEqual(background.sent("capture").map((m) => m.password), ["nouveau-mot-de-passe"]);
 });
 
 test("connexion en deux étapes : la pastille revient pour l'étape suivante", async () => {
@@ -385,9 +514,10 @@ test("les clics inventés par la page ne remplissent rien", async () => {
   page.fire(page.host("verrou-pill"), "click", { trusted: false });
   page.press("Autres identifiants", false);
   page.press("✕", false);
-  await sleep(50);
+  await sleep(300);
   assert.equal(background.sent("fill").length, 0);
   assert.equal(page.byId("password").value, "");
+  assert.equal(formOf(page).submissions.length, 0, "rien ne part");
   assert.ok(page.pillNode(), "toujours là, liste fermée");
   assert.doesNotMatch(page.pillText(), /MAIF pro/);
 });
@@ -398,8 +528,11 @@ test("remplissage depuis la fenêtre de l'extension : seulement pour l'adresse r
   page.deliver({ kind: "apply", credentials, origin: "https://piege.example" });
   page.deliver({ kind: "apply", credentials });
   assert.equal(page.byId("password").value, "", "autre adresse, ou aucune : rien");
+  await sleep(300);
+  assert.equal(formOf(page).submissions.length, 0, "rien d'envoyé non plus");
   page.deliver({ kind: "apply", credentials, origin: "https://connect.maif.fr" });
   assert.equal(page.byId("password").value, "secret");
+  await eventually(() => formOf(page).submissions.length === 1, "envoyé après le remplissage");
 });
 
 // MARK: Inscription, cartes, codes
@@ -447,7 +580,8 @@ test("formulaire de paiement : « Remplir la carte Visa •••• 0005 », le
     h("input", { id: "cc", name: "cardnumber" }),
     h("input", { id: "name", name: "cc-name", autocomplete: "cc-name" }),
     h("input", { id: "year", name: "exp-year", maxLength: 2 }),
-    h("input", { id: "cvc", name: "cvc" })), background, { origin: "https://boutique.exemple.fr" });
+    h("input", { id: "cvc", name: "cvc" }),
+    h("button", { type: "submit" }, "Payer")), background, { origin: "https://boutique.exemple.fr" });
   await sleep(50);
   assert.equal(background.sent("forms").length, 0, "rien avant le champ");
   page.byId("cc").focus();
@@ -458,6 +592,8 @@ test("formulaire de paiement : « Remplir la carte Visa •••• 0005 », le
   await eventually(() => page.byId("cc").value, "carte remplie");
   assert.deepEqual(background.sent("fillForm").map((m) => m.item), ["visa"]);
   assert.deepEqual(["cc", "name", "year", "cvc"].map((id) => page.byId(id).value), ["4000000000000005", "Camille Martin", "29", "321"]);
+  await sleep(300);
+  assert.equal(formOf(page).submissions.length, 0, "un paiement ne part jamais tout seul");
 });
 
 test("code de vérification : la pastille propose le code, pas quand Verrou est verrouillé", async () => {

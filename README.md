@@ -42,7 +42,9 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   app in front of you, like 1Password's Universal Autofill.
 - **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses,
   from a 1Password-style pill at the top left of the page (*Se connecter*,
-  other logins in a tab under it), with only a small Verrou icon in the field:
+  other logins in a tab under it; logins are submitted once filled, unless
+  something is left to type or a captcha shows, which can be turned off in
+  the popup), with only a small Verrou icon in the field:
   nothing gets in the way of the site's own suggestion lists. It suggests
   strong passwords, offers to save new accounts, and reads two-factor QR codes
   shown on a page (Brave).

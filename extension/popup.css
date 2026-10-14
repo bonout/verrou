@@ -36,3 +36,5 @@ input[type=text] { width: 100%; font: 13px ui-monospace, SFMono-Regular, monospa
 .warning button { display: block; margin-top: 8px; }
 .warning .hint { margin: 6px 0 0; }
 .warning .hint:empty { display: none; }
+label.toggle { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; margin-bottom: 4px; }
+label.toggle input { margin: 0; accent-color: var(--accent); }
