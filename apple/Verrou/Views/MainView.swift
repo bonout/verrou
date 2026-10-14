@@ -256,6 +256,9 @@ struct VaultFooter: View {
 struct ItemListView: View {
     @Environment(AppModel.self) private var model
     var searchFocused: FocusState<Bool>.Binding
+    // Un clic sur une ligne donne le focus à la liste : les flèches font
+    // alors défiler les éléments, pas la barre latérale.
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         @Bindable var model = model
@@ -305,7 +308,10 @@ struct ItemListView: View {
                                     .background(selected ? Theme.accent : .clear,
                                                 in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                                     .contentShape(Rectangle())
-                                    .onTapGesture { model.selection = row.id }
+                                    .onTapGesture {
+                                        model.selection = row.id
+                                        listFocused = true
+                                    }
                                     .contextMenu { RowMenu(summary: row.summary) }
                                     .id(row.id)
                             }
@@ -313,6 +319,11 @@ struct ItemListView: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 6)
                     }
+                    .focusable()
+                    .focusEffectDisabled()
+                    .focused($listFocused)
+                    .onKeyPress(.downArrow) { model.moveSelection(by: 1); return .handled }
+                    .onKeyPress(.upArrow) { model.moveSelection(by: -1); return .handled }
                     .onChange(of: model.selection) { _, id in
                         if let id { proxy.scrollTo(id) }
                     }
