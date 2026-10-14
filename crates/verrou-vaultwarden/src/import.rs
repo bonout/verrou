@@ -273,8 +273,8 @@ impl Connection {
 }
 
 /// Reporte un élément importé sur le brouillon d'un identifiant du coffre :
-/// mot de passe (l'ancien rejoindra l'historique), code à usage unique et
-/// notes s'ils manquent, sites d'hôtes absents. `false` si l'élément du
+/// mot de passe (l'ancien rejoindra l'historique), identifiant, code à usage
+/// unique et notes s'ils manquent, sites d'hôtes absents. `false` si l'élément du
 /// coffre n'est pas un identifiant.
 fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     let Some(login) = draft.login.as_mut() else {
@@ -282,6 +282,14 @@ fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     };
     if item.password.is_some() {
         login.password.clone_from(&item.password);
+    }
+    // Un doublon probable sans identifiant dans le coffre : l'import le donne.
+    if login
+        .username
+        .as_deref()
+        .is_none_or(|u| u.trim().is_empty())
+    {
+        login.username.clone_from(&item.username);
     }
     if login.totp.as_ref().is_none_or(SecretString::is_empty) {
         login.totp.clone_from(&item.totp);

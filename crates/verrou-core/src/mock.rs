@@ -390,6 +390,230 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
     items
 }
 
+/// (titre, adresses, identifiant, mot de passe, jours depuis la
+/// modification, graine TOTP)
+type Duplicate = (
+    &'static str,
+    &'static [&'static str],
+    &'static str,
+    &'static str,
+    i64,
+    Option<&'static str>,
+);
+
+/// Le même compte, arrivé plusieurs fois par les imports d'Apple, de
+/// 1Password et de Proton Pass : adresses, titres et identifiants qui
+/// varient. Ces mots de passe fictifs ne servent qu'à la comparaison.
+const DUPLICATES: &[Duplicate] = &[
+    (
+        "Maif",
+        &["https://www.maif.fr"],
+        "camille.martin@exemple.fr",
+        "maif-Lilas-42",
+        3,
+        Some("JBSWY3DPEHPK3PXP"),
+    ),
+    (
+        "MAIF - Espace sociétaire",
+        &["https://connect.maif.fr/espace-perso"],
+        "Camille.Martin@exemple.fr",
+        "maif-Lilas-42",
+        400,
+        None,
+    ),
+    (
+        "maif.fr",
+        &[],
+        "camille.martin@exemple.fr",
+        "maif-Lilas-42",
+        700,
+        None,
+    ),
+    ("Maif", &[], "", "maif-Lilas-42", 900, None),
+    (
+        "Google",
+        &["https://accounts.google.com"],
+        "camille.martin@exemple.fr",
+        "g-Tilleul-77",
+        10,
+        Some("GEZDGNBVGY3TQOJQ"),
+    ),
+    (
+        "google.com",
+        &["https://google.com/"],
+        "camille.martin+news@exemple.fr",
+        "g-ancien-2019",
+        800,
+        None,
+    ),
+    (
+        "Gmail",
+        &["https://mail.google.com"],
+        "camille.martin@exemple.fr",
+        "g-Tilleul-77",
+        200,
+        None,
+    ),
+    (
+        "Facebook",
+        &["https://m.facebook.com"],
+        "camille.martin@exemple.fr",
+        "fb-Erable-13",
+        30,
+        None,
+    ),
+    (
+        "facebook.com (camille)",
+        &["http://facebook.com:443/login"],
+        "camille.martin@exemple.fr",
+        "fb-Erable-13",
+        600,
+        None,
+    ),
+    (
+        "Netflix",
+        &["https://www.netflix.com"],
+        "camille@exemple.fr",
+        "partage-Saule-8",
+        50,
+        None,
+    ),
+    (
+        "Netflix — Dominique",
+        &["https://netflix.com/browse"],
+        "dominique@exemple.fr",
+        "partage-Saule-8",
+        90,
+        None,
+    ),
+    (
+        "Nextcloud",
+        &["https://cloud.exemple.fr"],
+        "camille",
+        "nc-Bouleau-1",
+        20,
+        None,
+    ),
+    (
+        "Vaultwarden",
+        &["https://vault.exemple.fr"],
+        "camille",
+        "vw-Charme-2",
+        25,
+        None,
+    ),
+    ("Routeur", &[], "admin", "routeur-Hetre-5", 100, None),
+    ("routeur", &[], "Admin", "routeur-ancien", 1000, None),
+    (
+        "Slack",
+        &["https://slack.com", "macapp://com.tinyspeck.slackmacgap"],
+        "camille.martin@exemple.fr",
+        "slack-Orme-3",
+        40,
+        None,
+    ),
+    (
+        "Slack (app)",
+        &["macapp://com.tinyspeck.slackmacgap"],
+        "camille.martin@exemple.fr",
+        "slack-Orme-3",
+        300,
+        None,
+    ),
+    (
+        "Amazon",
+        &["https://www.amazon.fr"],
+        "camille.martin@exemple.fr",
+        "amz-Peuplier-4",
+        60,
+        None,
+    ),
+    (
+        "Amazon",
+        &["https://amazon.fr/ap/signin"],
+        "",
+        "amz-Frene-6",
+        500,
+        None,
+    ),
+];
+
+/// Doublons fictifs (identifiants et cartes), pour les tests et la revue
+/// visuelle de la feuille des doublons. Identifiants `dup-N`.
+pub fn duplicate_items() -> Vec<Item> {
+    let mut items: Vec<Item> = DUPLICATES
+        .iter()
+        .enumerate()
+        .map(|(n, (title, urls, username, password, age, totp))| {
+            let mut fields = Vec::new();
+            if !username.is_empty() {
+                fields.push(Field::new(
+                    "username",
+                    "Identifiant",
+                    FieldKind::Username,
+                    *username,
+                ));
+            }
+            fields.push(Field::new(
+                "password",
+                "Mot de passe",
+                FieldKind::Password,
+                *password,
+            ));
+            if let Some(secret) = totp {
+                fields.push(Field::new(
+                    "totp",
+                    "Code à usage unique",
+                    FieldKind::Totp,
+                    *secret,
+                ));
+            }
+            Item {
+                id: format!("dup-{n}"),
+                kind: ItemKind::Login,
+                title: (*title).to_owned(),
+                subtitle: (*username).to_owned(),
+                urls: urls.iter().map(|u| (*u).to_owned()).collect(),
+                folder: None,
+                tags: Vec::new(),
+                favorite: false,
+                created: NOW - 2000 * DAY,
+                modified: NOW - age * DAY,
+                fields,
+                notes: None,
+                reprompt: false,
+                state: crate::ItemState::Active,
+                shared: None,
+            }
+        })
+        .collect();
+    for (n, title) in [(100, "Visa Boursorama"), (101, "Carte Visa")] {
+        items.push(Item {
+            id: format!("dup-{n}"),
+            kind: ItemKind::Card,
+            title: title.to_owned(),
+            subtitle: "Visa •••• 4242".to_owned(),
+            urls: Vec::new(),
+            folder: None,
+            tags: Vec::new(),
+            favorite: false,
+            created: NOW - 900 * DAY,
+            modified: NOW - (n - 90) * DAY,
+            fields: vec![Field::new(
+                "number",
+                "Numéro",
+                FieldKind::CardNumber,
+                "4242 4242 4242 4242",
+            )],
+            notes: None,
+            reprompt: false,
+            state: crate::ItemState::Active,
+            shared: None,
+        });
+    }
+    items
+}
+
 struct Builder<'a> {
     rng: &'a mut ChaCha20Rng,
     next_id: u64,

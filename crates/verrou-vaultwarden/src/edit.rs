@@ -27,7 +27,7 @@ use crate::outbox::{Action, request_of};
 use crate::{Connection, Decrypted, Error};
 
 /// Anciens mots de passe gardés par élément, comme les apps Bitwarden.
-const MAX_PASSWORD_HISTORY: usize = 5;
+pub(crate) const MAX_PASSWORD_HISTORY: usize = 5;
 
 /// Ce que l'écran d'édition modifie. Un brouillon sans `login` crée une note
 /// sécurisée.
@@ -270,7 +270,7 @@ fn is_reserved(field: &FieldView) -> bool {
     field.name.as_deref().is_some_and(template::is_reserved)
 }
 
-fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
+pub(crate) fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
     if template::is_reserved(field.name.trim()) {
         return Err(Error::Invalid(format!(
             "« {} » est un nom réservé à Verrou",

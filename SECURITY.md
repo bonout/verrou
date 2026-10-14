@@ -100,9 +100,17 @@ PR qui touche à l'un de ces points le dit dans sa description.
   de l'élément. Verrou recommande de supprimer le fichier d'export après
   l'import (et de vider la corbeille du Finder). Les exports chiffrés (PGP de
   Proton Pass) sont refusés : il faut exporter sans chiffrement.
-- **Doublons** : comparés dans Rust (même site, même identifiant) ; Swift ne
-  reçoit que les groupes et le verdict « mot de passe identique ou non ». La
-  corbeille en masse (`PUT /api/ciphers/delete`) est celle du serveur,
+- **Doublons** : comparés dans Rust (sites et domaines, titre et marque,
+  identifiant ; mots de passe et graines TOTP en temps constant, regroupés
+  le temps du calcul par une empreinte en mémoire, jamais écrite) ; Swift ne
+  reçoit que les groupes, leur degré (certain, probable, à vérifier), la
+  raison en clair et le verdict « mot de passe identique ou non ». La fusion
+  (`merge.rs`) se fait dans Rust sur l'élément déchiffré, par le chemin
+  d'écriture d'une modification (date de révision, file hors ligne) ; les
+  pièces jointes et les passkeys ne sont jamais déplacées (fusion refusée).
+  Les groupes ignorés sont retenus dans les préférences de l'app par une
+  empreinte SHA-256 tronquée des identifiants des éléments, sans titre ni
+  site. La corbeille en masse (`PUT /api/ciphers/delete`) est celle du serveur,
   restaurable, et rien n'est envoyé si un élément n'est pas modifiable. Les
   éléments protégés (« redemander le mot de passe principal ») sont comparés
   comme les autres, à l'import comme ici : seul le verdict en sort, aucun

@@ -80,8 +80,9 @@ pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
 pub use import::{
-    DuplicateGroupView, ImportChoice, ImportDestination, ImportEntry, ImportFormat, ImportOutcome,
-    ImportReview, ImportSkipped, ImportStatus,
+    DuplicateConfidence, DuplicateGroupView, DuplicateMemberView, ImportChoice, ImportDestination,
+    ImportEntry, ImportFormat, ImportOutcome, ImportReview, ImportSkipped, ImportStatus,
+    MergeReport, demo_duplicates,
 };
 pub use templates::{
     CustomField, CustomFieldType, ItemTemplate, ItemTemplateCount, template_draft,

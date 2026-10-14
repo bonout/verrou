@@ -25,6 +25,7 @@
 //! la libération). Le cache du coffre ne contient que les métadonnées
 //! chiffrées, comme le reste de la synchronisation.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use bitwarden_api_api::models::CipherRequestModel;
@@ -77,6 +78,20 @@ impl Connection {
         Ok(readable
             .chain(unreadable)
             .filter(|a| !a.id.is_empty())
+            .collect())
+    }
+
+    /// Nombre de pièces jointes de chaque élément qui en a, d'après le cache
+    /// et sans rien déchiffrer : pour choisir quel doublon garder.
+    pub fn attachment_counts(&self) -> Result<HashMap<String, usize>, Error> {
+        Ok(self
+            .cached_ciphers()?
+            .into_iter()
+            .filter_map(|c| {
+                let count = c.attachments.as_ref().map_or(0, Vec::len);
+                let id = c.id?;
+                (count > 0).then(|| (id.to_string(), count))
+            })
             .collect())
     }
 

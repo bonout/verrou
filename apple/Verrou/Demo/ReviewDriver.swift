@@ -190,9 +190,21 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             }
         }
 
-        let duplicates = DuplicatesFlow(groups: (try? model.session.duplicates()) ?? [])
+        // Doublons fictifs (imports d'Apple, de 1Password, de Proton Pass) :
+        // le coffre fictif n'en a pas.
+        let duplicates = DuplicatesFlow(defaults: defaults)
+        duplicates.load(demoDuplicates())
         await screen("37-doublons", root: DuplicatesView(flow: duplicates), size: nil,
                      expect: withTitle(sheet, "sheet-title"), chrome: false)
+        // Un groupe ignoré, un élément gardé à la main.
+        if let google = duplicates.visible.first(where: { $0.label == "google.com" }),
+           let routeur = duplicates.visible.first(where: { $0.members.count == 2 && $0.confidence == .probable }) {
+            duplicates.ignore(routeur)
+            duplicates.keep(google.members[2].item.id, in: google)
+        }
+        await screen("37b-doublons-ignores", root: DuplicatesView(flow: duplicates), size: nil,
+                     expect: withTitle(sheet, "sheet-title"), chrome: false)
+        duplicates.clearIgnored()
 
         // Import : un export d'Apple fictif, comparé au coffre fictif.
         let csv = output.appending(path: "export-fictif.csv")

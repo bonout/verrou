@@ -198,7 +198,7 @@ private struct ReviewList: View {
     var body: some View {
         let fresh = indices([.new])
         let present = indices([.alreadyPresent, .repeatedInFile])
-        let conflicts = indices([.newPassword, .conflictInFile, .addsCode])
+        let conflicts = indices([.newPassword, .conflictInFile, .addsCode, .similar])
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
@@ -206,7 +206,7 @@ private struct ReviewList: View {
                     CountTile(count: present.count, label: "déjà présents", tint: .secondary)
                     CountTile(count: indices([.newPassword, .conflictInFile]).count,
                               label: "mot de passe différent", tint: .orange)
-                    CountTile(count: indices([.addsCode]).count, label: "code à ajouter", tint: .teal)
+                    CountTile(count: indices([.addsCode, .similar]).count, label: "à compléter", tint: .teal)
                     CountTile(count: review.skipped.count, label: "ignorés", tint: .secondary)
                 }
 
@@ -216,7 +216,7 @@ private struct ReviewList: View {
 
                 if !conflicts.isEmpty {
                     Text("À décider").font(.headline)
-                    Text("Même site et même identifiant qu'un élément existant. Remplacer garde l'ancien mot de passe dans l'historique de l'élément.")
+                    Text("Ressemble à un élément existant (même site ou même titre, même identifiant). Remplacer garde l'ancien mot de passe dans l'historique de l'élément.")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(conflicts, id: \.self) { index in
                         ConflictRow(entry: review.entries[index], choice: $flow.choices[index])
@@ -348,11 +348,13 @@ private struct ConflictRow: View {
     private var existing: String { entry.existingTitle.map { "« \($0) »" } ?? "un élément" }
 
     private var explanation: String {
-        switch entry.status {
+        let base = switch entry.status {
         case .addsCode: "Comme \(existing) du coffre, qui n'a pas de code à usage unique."
-        case .conflictInFile: "Autre mot de passe que \(existing), plus haut dans le fichier."
+        case .conflictInFile: "Comme \(existing), plus haut dans le fichier."
+        case .similar: "Ressemble à \(existing) du coffre."
         default: "Autre mot de passe que \(existing) du coffre."
         }
+        return entry.reason.isEmpty ? base : "\(base) \(entry.reason.prefix(1).uppercased())\(entry.reason.dropFirst())."
     }
 
     private var options: [ImportChoice] {
@@ -362,6 +364,7 @@ private struct ConflictRow: View {
     private func label(_ option: ImportChoice) -> String {
         switch (option, entry.status) {
         case (.update, .addsCode): "Ajouter le code"
+        case (.update, .similar): "Compléter l'existant"
         case (.update, _): "Remplacer le mot de passe"
         case (.skip, .conflictInFile): "Ignorer"
         case (.skip, _): "Garder l'existant"

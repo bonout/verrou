@@ -10,7 +10,7 @@
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
 //! d'un autre gestionnaire, corbeille de plusieurs éléments ; actions
-//! groupées sur une sélection (`bulk`). Hors ligne
+//! groupées sur une sélection (`bulk`) ; fusion de doublons (`merge`). Hors ligne
 //! (`outbox`), les écritures d'éléments attendent le serveur dans une file
 //! chiffrée, déjà appliquée au coffre affiché.
 //!
@@ -37,6 +37,7 @@ pub mod emergency;
 mod error;
 mod import;
 pub mod members;
+mod merge;
 mod organizations;
 mod outbox;
 mod passkeys;
@@ -69,6 +70,7 @@ pub use bulk::{BulkAction, BulkOutcome, Progress, Skipped};
 pub use edit::{CustomFieldDraft, CustomFieldKind, Draft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
+pub use merge::{MergeOutcome, MergeSummary};
 pub use organizations::{Collection, Organization};
 pub use outbox::{CONFLICT_SUFFIX, SyncReport};
 pub use store::{Account, KdfSettings, Store};

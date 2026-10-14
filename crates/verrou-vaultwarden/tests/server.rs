@@ -1262,7 +1262,8 @@ async fn import_again_then_trash_duplicates(
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].label, "forum.fr");
     assert!(groups[0].same_password);
-    let extra = groups[0].items[1..].to_vec();
+    assert!(groups[0].members[1].preselected, "certain : coché d'office");
+    let extra = groups[0].ids()[1..].to_vec();
     let vault = connection.trash_many(&extra).await.unwrap();
     assert_eq!(find_duplicates(&vault.items), Vec::new());
     assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 6);
@@ -1273,6 +1274,172 @@ async fn import_again_then_trash_duplicates(
             .trash_many(&[uuid::Uuid::new_v4().to_string()])
             .await,
         Err(Error::NotFound)
+    ));
+}
+
+// MARK: Fusion de doublons
+
+/// Le même compte, importé trois fois : fusionné dans l'élément gardé, les
+/// copies à la corbeille.
+#[tokio::test]
+async fn merge_duplicates_into_the_kept_item() {
+    use verrou_core::duplicates::{Confidence, find_duplicates};
+
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    let (stale, plain, with_totp) = seed_maif(&seeder).await;
+    let store = temp_store();
+    let first = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    );
+    let mut connection = first.connection;
+    let groups = find_duplicates(&first.vault.items);
+    assert_eq!(groups.len(), 1, "{groups:#?}");
+    let group = &groups[0];
+    assert_eq!(group.kept(), with_totp, "le code à usage unique d'abord");
+    assert_eq!(group.confidence, Confidence::Certain);
+    let level = |id: &str| {
+        group
+            .members
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap()
+            .confidence
+    };
+    assert_eq!(level(&plain), Some(Confidence::Certain));
+    assert_eq!(level(&stale), Some(Confidence::Probable));
+
+    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let outcome = connection
+        .merge_duplicates(group.kept(), &group.ids()[1..])
+        .await
+        .unwrap();
+    assert_eq!(outcome.trashed, 2);
+    assert_eq!(
+        outcome.summary.uris, 1,
+        "www.maif.fr ; connect.maif.fr déjà là"
+    );
+    assert_eq!(outcome.summary.notes, 2);
+    assert_eq!(outcome.summary.fields, 1);
+    assert_eq!(outcome.summary.history, 1);
+    assert!(!outcome.summary.newer_password);
+    assert_eq!(find_duplicates(&outcome.vault.items), Vec::new());
+
+    let stored = seeder.fetch(&with_totp).await;
+    let stored_login = stored.login.clone().unwrap();
+    assert_eq!(stored_login.password.as_deref(), Some("lilas"));
+    assert_eq!(stored_login.totp.as_deref(), Some("JBSWY3DPEHPK3PXP"));
+    let uris: Vec<String> = stored_login
+        .uris
+        .unwrap()
+        .into_iter()
+        .filter_map(|u| u.uri)
+        .collect();
+    assert_eq!(
+        uris,
+        [
+            "https://connect.maif.fr/espace-perso",
+            "https://www.maif.fr"
+        ]
+    );
+    assert_eq!(
+        stored.password_history.unwrap()[0].password,
+        "ancien-maif",
+        "le mot de passe périmé, gardé dans l'historique"
+    );
+    let notes = stored.notes.unwrap();
+    assert!(notes.contains("Contrat habitation") && notes.contains("Contrat auto"));
+    assert!(notes.contains("— Fusionné depuis « "));
+    assert_eq!(stored.fields.unwrap()[0].name.as_deref(), Some("Agence"));
+    for id in [&plain, &stale] {
+        assert!(
+            seeder.fetch(id).await.deleted_date.is_some(),
+            "{id} à la corbeille"
+        );
+    }
+    merging_is_refused(&mut connection, &seeder, &with_totp, &plain).await;
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+fn seeded_login(username: &str, password: &str, uri: Option<&str>, totp: Option<&str>) -> Value {
+    json!({
+        "username": username, "password": password, "passwordRevisionDate": null,
+        "totp": totp,
+        "uris": uri.map(|u| vec![json!({ "uri": u, "match": null, "uriChecksum": null })]),
+        "autofillOnPageLoad": null, "fido2Credentials": null,
+    })
+}
+
+/// Le même compte, trois fois (le plus ancien d'abord : son mot de passe
+/// est périmé), et deux services d'un même domaine, qui ne sont pas des
+/// doublons. Rend (périmé, simple, avec code).
+async fn seed_maif(seeder: &Seeder) -> (String, String, String) {
+    let stale = seeder
+        .cipher(json!({
+            "name": "maif.fr", "type": 1, "notes": "Contrat auto",
+            "login": seeded_login("camille@exemple.fr", "ancien-maif", None, None),
+        }))
+        .await;
+    let plain = seeder
+        .cipher(json!({
+            "name": "Maif", "type": 1, "notes": "Contrat habitation",
+            "login": seeded_login("Camille@exemple.fr", "lilas", Some("https://www.maif.fr"), None),
+            "fields": [{ "name": "Agence", "value": "Niort", "type": 0, "linkedId": null }],
+        }))
+        .await;
+    let with_totp = seeder
+        .cipher(json!({
+            "name": "MAIF - Espace sociétaire", "type": 1,
+            "login": seeded_login(
+                "camille@exemple.fr", "lilas",
+                Some("https://connect.maif.fr/espace-perso"), Some("JBSWY3DPEHPK3PXP"),
+            ),
+        }))
+        .await;
+    for (name, password, uri) in [
+        ("Nextcloud", "nc", "https://cloud.exemple.fr"),
+        ("Vaultwarden", "vw", "https://vault.exemple.fr"),
+    ] {
+        seeder
+            .cipher(json!({
+                "name": name, "type": 1,
+                "login": seeded_login("camille", password, Some(uri), None),
+            }))
+            .await;
+    }
+    (stale, plain, with_totp)
+}
+
+/// Une copie à la corbeille ne se fusionne plus ; une carte non plus.
+async fn merging_is_refused(
+    connection: &mut verrou_vaultwarden::Connection,
+    seeder: &Seeder,
+    with_totp: &str,
+    plain: &str,
+) {
+    assert!(matches!(
+        connection
+            .merge_duplicates(with_totp, &[plain.to_owned()])
+            .await,
+        Err(Error::ReadOnly | Error::NotFound)
+    ));
+    let card = seeder
+        .cipher(json!({
+            "name": "Visa", "type": 3,
+            "card": {
+                "cardholderName": "CAMILLE", "expMonth": "9", "expYear": "2029",
+                "code": "123", "brand": "Visa", "number": "4242424242424242",
+            },
+        }))
+        .await;
+    connection.sync().await.unwrap();
+    assert!(matches!(
+        connection.merge_duplicates(with_totp, &[card]).await,
+        Err(Error::Invalid(_))
     ));
 }
 

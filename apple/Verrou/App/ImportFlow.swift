@@ -81,28 +81,6 @@ final class ImportFlow: Identifiable {
     }
 }
 
-/// Doublons du coffre : groupes, élément suggéré, corbeille.
-@MainActor
-@Observable
-final class DuplicatesFlow: Identifiable {
-    let id = UUID()
-    private(set) var groups: [DuplicateGroupView]
-    /// Éléments à mettre à la corbeille : par défaut, tous sauf le suggéré.
-    var selected: Set<String>
-    var busy = false
-    var error: String?
-
-    init(groups: [DuplicateGroupView]) {
-        self.groups = groups
-        selected = Set(groups.flatMap { $0.items.dropFirst().map(\.id) })
-    }
-
-    /// Groupes dont tous les éléments partiraient à la corbeille.
-    var emptiedGroups: [DuplicateGroupView] {
-        groups.filter { group in group.items.allSatisfy { selected.contains($0.id) } }
-    }
-}
-
 extension AppModel {
     // MARK: Import
 
@@ -159,31 +137,5 @@ extension AppModel {
     func closeImport() {
         session.cancelImport()
         importFlow = nil
-    }
-
-    // MARK: Doublons
-
-    /// Coffre → Nettoyer les doublons…
-    func openDuplicates() {
-        guard lockState == .unlocked else { return }
-        showMainWindow()
-        duplicatesFlow = DuplicatesFlow(groups: (try? session.duplicates()) ?? [])
-    }
-
-    func trashDuplicates(_ flow: DuplicatesFlow) async {
-        guard canEdit, !flow.busy, !flow.selected.isEmpty else { return }
-        flow.busy = true
-        flow.error = nil
-        defer { flow.busy = false }
-        let count = flow.selected.count
-        do {
-            try await session.trashItems(ids: Array(flow.selected))
-            afterWrite(select: nil)
-            duplicatesFlow = nil
-            toast = writeToast("\(count) élément\(count > 1 ? "s" : "") mis à la corbeille",
-                               detail: "Restaurables depuis le coffre web")
-        } catch {
-            flow.error = Self.describe(error)
-        }
     }
 }

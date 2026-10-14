@@ -76,7 +76,8 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   words, like `fixe-pivoine-monceaux-couteau-ponctue`), with their real
   strength, in the app and with `verrou generate`.
 - **Move in**: import from Apple Passwords, 1Password and Proton Pass, then
-  clean up duplicates.
+  clean up duplicates: the same account under different URLs, titles or
+  usernames is found (certain, probable, to check) and merged into one item.
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
   that signs with the keys in your vault, and git commit signing. Each secret
   is approved with Touch ID.
