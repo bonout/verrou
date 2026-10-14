@@ -141,7 +141,7 @@ pub struct BulkResult {
     pub failures: Vec<String>,
 }
 
-#[uniffi::export]
+#[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
     /// Applique l'action aux éléments, puis resynchronise une fois. Les
     /// éléments auxquels elle ne s'applique pas sont écartés et comptés.
