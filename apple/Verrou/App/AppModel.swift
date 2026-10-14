@@ -111,7 +111,43 @@ final class AppModel {
     let watchtower = Watchtower()
     var query: String = "" { didSet { refresh() } }
     var sort: ResultOrder = .relevance { didSet { refresh() } }
-    var selection: String? { didSet { if oldValue != selection { revealed.removeAll() } } }
+    /// L'élément actif : montré dans la colonne de détail, cible des
+    /// actions d'un seul élément. Le changer directement revient à une
+    /// sélection simple (voir `MultiSelection.swift` pour ⌘-clic, ⇧-clic, ⌘A).
+    var selection: String? {
+        didSet {
+            if oldValue != selection { revealed.removeAll() }
+            if !applyingGesture { collapseSelection() }
+            scheduleDetail()
+        }
+    }
+    /// Éléments sélectionnés, dans l'ordre affiché : l'élément actif seul,
+    /// ou plusieurs (`MultiSelection.swift`).
+    var selectedIDs: [String] = []
+    /// Les mêmes, pour savoir en temps constant si une ligne est sélectionnée.
+    var selectedSet: Set<String> = []
+    /// Plusieurs éléments sélectionnés : la colonne de détail montre leur
+    /// résumé, et les actions s'appliquent à tous. Gardé à part (et non
+    /// calculé) : la fenêtre ne se redessine que quand il change, pas à
+    /// chaque clic.
+    var isMultiSelection = false
+    /// Ancre des plages (⇧-clic, ⇧↑/⇧↓).
+    var selectionAnchor: String?
+    @ObservationIgnored var applyingGesture = false
+    /// L'élément montré dans la colonne de détail. Il suit `selection` au
+    /// tour de boucle suivant : la ligne cliquée s'allume sans attendre la
+    /// fiche, et des flèches maintenues ne construisent que la dernière.
+    private(set) var detailID: String?
+    @ObservationIgnored private var detailScheduled = false
+    /// Identifiants des résultats affichés, dans l'ordre (calculés une fois
+    /// par recherche, pas à chaque geste).
+    @ObservationIgnored private(set) var resultIDs: [String] = []
+    /// Position de chaque élément dans `summaries`.
+    @ObservationIgnored private var summaryIndex: [String: Int] = [:]
+    /// Action groupée en cours : (éléments envoyés, à envoyer).
+    var bulkProgress: (done: Int, total: Int)?
+    /// « Déplacer vers un dossier… » ouvert, pour ces éléments.
+    var moveRequest: MoveRequest?
     /// Champs révélés pour l'élément sélectionné, effacés dès qu'on en change.
     var revealed: [String: String] = [:]
     var toast: Toast?
@@ -131,7 +167,7 @@ final class AppModel {
     // Édition
     /// Écran de création ou de modification ouvert.
     var editor: Editor?
-    private(set) var editorBusy = false
+    var editorBusy = false
     var editorError: String?
 
     struct Editor: Identifiable {
@@ -518,6 +554,7 @@ final class AppModel {
         let start = ContinuousClock.now
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
+        summaryIndex = Dictionary(summaries.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         counts = try? session.counts()
         organizations = session.organizations()
         refreshPending()
@@ -796,7 +833,9 @@ final class AppModel {
         let effectiveSort = query.isEmpty && sort == .relevance ? ResultOrder.title : sort
         results = (try? session.search(query: query, filter: filter, order: effectiveSort)) ?? []
         rows = results.compactMap { hit in summary(for: hit).map { ResultRow(summary: $0, highlights: hit.highlights) } }
+        resultIDs = rows.map(\.id)
         lastSearchDuration = clock.now - start
+        pruneSelection()
     }
 
     /// Le résumé d'un résultat, s'il désigne toujours le même élément : entre
@@ -807,13 +846,18 @@ final class AppModel {
         if summaries.indices.contains(position), summaries[position].id == hit.id {
             return summaries[position]
         }
-        return summaries.first { $0.id == hit.id }
+        return summaryIndex[hit.id].map { summaries[$0] }
+    }
+
+    /// Résumé d'un élément du coffre (sans appel au cœur Rust).
+    func summary(id: String) -> ItemSummary? {
+        summaryIndex[id].flatMap { summaries.indices.contains($0) && summaries[$0].id == id ? summaries[$0] : nil }
     }
 
     /// Résumé de l'élément sélectionné (sans appel au cœur Rust).
     var selectedSummary: ItemSummary? {
         guard let selection else { return nil }
-        return rows.first { $0.id == selection }?.summary ?? summaries.first { $0.id == selection }
+        return summary(id: selection)
     }
 
     var selectedDetail: ItemDetail? {
@@ -821,12 +865,28 @@ final class AppModel {
         return try? session.detail(id: selection)
     }
 
+    /// La fiche de la colonne de détail (voir `detailID`).
+    var displayedDetail: ItemDetail? {
+        guard let detailID else { return nil }
+        return try? session.detail(id: detailID)
+    }
+
+    private func scheduleDetail() {
+        guard !detailScheduled else { return }
+        detailScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            detailScheduled = false
+            if detailID != selection { detailID = selection }
+        }
+    }
+
     func moveSelection(by offset: Int) {
-        guard !results.isEmpty else { return }
-        let ids = results.map(\.id)
+        let ids = resultIDs
+        guard !ids.isEmpty else { return }
         let current = selection.flatMap { ids.firstIndex(of: $0) } ?? -1
         let next = min(max(current + offset, 0), ids.count - 1)
-        selection = ids[next]
+        withoutAnimation { selection = ids[next] }
     }
 
     // MARK: Édition

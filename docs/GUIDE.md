@@ -37,6 +37,16 @@ around a Rust core.
   every edit. Templates get their own icon and sidebar category, and
   `type:wifi`, `type:passeport`… in search. A Wi-Fi network shows a **QR
   code** that phones scan to join it.
+- **Select several items** like in Finder: ⌘-click adds or removes one,
+  ⇧-click selects a range, ⇧↑/⇧↓ extend it, ⌘A selects every result (list
+  focused), Escape goes back to one item. The detail column then offers
+  archive/unarchive, trash/restore, favorites and *Déplacer vers un
+  dossier…* for the whole selection (also in the toolbar and the context
+  menu of a selected row). Vaultwarden's bulk routes are used (one request
+  per 500 items, one sync at the end; favorites go one by one); read-only
+  shared items and items in the trash are skipped and counted, offline the
+  changes wait in the outbox like single ones, and trashing more than one
+  item asks first.
 - **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one

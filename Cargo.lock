@@ -5001,11 +5001,16 @@ dependencies = [
 name = "verrou-ffi"
 version = "0.1.0"
 dependencies = [
+ "bitwarden-core",
+ "bitwarden-crypto",
  "chrono",
+ "reqwest 0.12.28",
+ "serde_json",
  "sha2 0.10.9",
  "thiserror",
  "tokio",
  "uniffi",
+ "uuid",
  "verrou-bridge",
  "verrou-core",
  "verrou-vaultwarden",

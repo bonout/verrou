@@ -18,6 +18,7 @@ pub mod passkey;
 pub mod passphrase;
 pub mod search;
 pub mod secret;
+pub mod selection;
 pub mod template;
 pub mod totp;
 pub mod vault;

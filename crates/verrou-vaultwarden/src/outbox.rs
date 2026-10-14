@@ -62,7 +62,7 @@ pub(crate) enum Action {
 }
 
 impl Action {
-    fn path(self) -> &'static str {
+    pub(crate) fn path(self) -> &'static str {
         match self {
             Self::Trash => "delete",
             Self::Restore => "restore",
@@ -488,10 +488,30 @@ impl Connection {
     /// juste avant, l'écriture reste visible (envoyée, dans la file) jusqu'à
     /// la synchronisation suivante.
     async fn pull_after_write(&mut self, access: &str, entry: Entry) -> Result<Decrypted, Error> {
+        self.pull_after_writes(access, vec![entry]).await
+    }
+
+    /// Écritures acceptées alors que le réseau est tombé ensuite : gardées
+    /// en surimpression jusqu'à la synchronisation suivante.
+    pub(crate) fn keep_sent(&mut self, entries: Vec<Entry>) -> Result<(), Error> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        self.outbox.entries.extend(entries);
+        self.persist_outbox()
+    }
+
+    /// Comme `pull_after_write`, pour plusieurs écritures acceptées : une
+    /// seule synchronisation à la fin (actions groupées).
+    pub(crate) async fn pull_after_writes(
+        &mut self,
+        access: &str,
+        entries: Vec<Entry>,
+    ) -> Result<Decrypted, Error> {
         match self.sync_with(access).await {
             Err(Error::Network(_)) => {
                 self.mark_offline();
-                self.outbox.entries.push(entry);
+                self.outbox.entries.extend(entries);
                 self.persist_outbox()?;
                 self.decrypt_cache().await
             }
@@ -687,7 +707,12 @@ fn body_id(body: &Value) -> Result<String, Error> {
 /// Une modification acceptée : l'élément porte désormais l'identifiant et
 /// la date de révision du serveur (une modification suivante, faite avant
 /// la synchronisation, ne passera pas pour périmée).
-fn sent_save(id: String, title: String, mut cipher: EncryptionContext, body: &Value) -> Entry {
+pub(crate) fn sent_save(
+    id: String,
+    title: String,
+    mut cipher: EncryptionContext,
+    body: &Value,
+) -> Entry {
     cipher.cipher.id = id.parse().ok();
     if let Some(revision) = body
         .get("revisionDate")

@@ -9,7 +9,8 @@
 //!
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
-//! d'un autre gestionnaire, corbeille de plusieurs éléments. Hors ligne
+//! d'un autre gestionnaire, corbeille de plusieurs éléments ; actions
+//! groupées sur une sélection (`bulk`). Hors ligne
 //! (`outbox`), les écritures d'éléments attendent le serveur dans une file
 //! chiffrée, déjà appliquée au coffre affiché.
 //!
@@ -24,6 +25,7 @@
 mod api;
 mod attachments;
 pub mod breach;
+mod bulk;
 pub mod change_password;
 mod convert;
 mod edit;
@@ -57,6 +59,7 @@ use verrou_core::{Item, SecretString};
 
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
 pub use attachments::AttachmentInfo;
+pub use bulk::{BulkAction, BulkOutcome, Progress, Skipped};
 pub use edit::{CustomFieldDraft, CustomFieldKind, Draft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};

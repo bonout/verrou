@@ -51,6 +51,7 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod attachments;
+mod bulk;
 mod emergency;
 mod import;
 mod passphrase;
@@ -59,6 +60,9 @@ mod ssh;
 mod templates;
 mod watchtower;
 
+pub use bulk::{
+    BulkItemAction, BulkProgress, BulkResult, ItemSelection, SelectionGesture, select_items,
+};
 pub use emergency::{
     EmergencyContact, EmergencyOverview, EmergencyState, EmergencyType, EmergencyVault,
 };
