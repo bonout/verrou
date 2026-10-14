@@ -31,6 +31,10 @@ pub enum Filter {
     Archived,
     /// Éléments à la corbeille.
     Trash,
+    /// Éléments d'une organisation (coffre partagé), par identifiant.
+    Organization(String),
+    /// Éléments d'une collection d'organisation, par identifiant.
+    Collection(String),
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -127,6 +131,12 @@ impl SearchIndex {
                 let mut extra = vec![item.kind.label().to_owned(), item.kind.keyword().to_owned()];
                 extra.extend(item.folder.iter().cloned());
                 extra.extend(item.tags.iter().cloned());
+                // Un élément partagé se retrouve aussi par le nom de son
+                // organisation ou de ses collections.
+                if let Some(shared) = &item.shared {
+                    extra.push(shared.organization.clone());
+                    extra.extend(shared.collections.iter().map(|(_, name)| name.clone()));
+                }
                 let hosts = hosts.join(" ");
                 let extra = extra.join(" ");
                 Entry {
@@ -247,6 +257,14 @@ fn filter_accepts(filter: &Filter, item: &Item, entry: &Entry) -> bool {
         Filter::Folder(folder) => entry.folder.as_deref() == Some(fold(folder).as_str()),
         Filter::Tag(tag) => entry.tags.contains(&fold(tag)),
         Filter::WithTotp => item.has_totp(),
+        Filter::Organization(id) => item
+            .shared
+            .as_ref()
+            .is_some_and(|s| &s.organization_id == id),
+        Filter::Collection(id) => item
+            .shared
+            .as_ref()
+            .is_some_and(|s| s.collections.iter().any(|(c, _)| c == id)),
     }
 }
 

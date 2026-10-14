@@ -8,6 +8,8 @@ struct EditItemView: View {
     @Environment(AppModel.self) private var model
     let editor: AppModel.Editor
     @State private var draft: ItemDraft
+    /// Création : coffre personnel (`nil`) ou collection d'une organisation.
+    @State private var destination: SharedDestination?
     @State private var showPassword = false
     @State private var showGenerator = false
     @State private var confirmTrash = false
@@ -16,6 +18,7 @@ struct EditItemView: View {
     init(editor: AppModel.Editor) {
         self.editor = editor
         _draft = State(initialValue: editor.draft)
+        _destination = State(initialValue: editor.destination)
     }
 
     private var isNew: Bool { editor.itemID == nil }
@@ -62,6 +65,8 @@ struct EditItemView: View {
                         .buttonStyle(.borderless)
                     }
                 }
+
+                vaultSection
 
                 Section {
                     Picker("Dossier", selection: $draft.folderId) {
@@ -121,6 +126,33 @@ struct EditItemView: View {
         }
     }
 
+    /// Coffre de l'élément : choisi à la création, rappelé ensuite (les
+    /// collections se changent par « Collections… »).
+    @ViewBuilder private var vaultSection: some View {
+        if isNew, !model.writableOrganizations.isEmpty {
+            Section {
+                Picker("Coffre", selection: $destination) {
+                    Text("Personnel").tag(SharedDestination?.none)
+                    ForEach(model.writableOrganizations, id: \.id) { org in
+                        ForEach(org.collections.filter { !$0.readOnly }, id: \.id) { collection in
+                            Text("\(org.name) › \(collection.name)")
+                                .tag(Optional(SharedDestination(organizationID: org.id, collectionIDs: [collection.id])))
+                        }
+                    }
+                }
+            } footer: {
+                if destination != nil {
+                    Text("Chiffré avec la clé de l'organisation : les membres de la collection le verront.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        } else if let id = editor.itemID, let sharing = model.summaries.first(where: { $0.id == id })?.sharing {
+            Section {
+                LabeledContent("Coffre partagé", value: sharing.label)
+            }
+        }
+    }
+
     private var passwordRow: some View {
         HStack(spacing: 8) {
             Group {
@@ -159,7 +191,7 @@ struct EditItemView: View {
     private func save() {
         // Les sites laissés vides ne partent pas.
         draft.login?.urls.removeAll { $0.trimmingCharacters(in: .whitespaces).isEmpty }
-        Task { await model.saveEditor(draft) }
+        Task { await model.saveEditor(draft, destination: isNew ? destination : nil) }
     }
 
     private func loginText(_ path: WritableKeyPath<LoginFields, String?>) -> Binding<String> {

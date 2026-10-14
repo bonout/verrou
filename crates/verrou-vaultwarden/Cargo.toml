@@ -12,6 +12,7 @@ bitwarden-core.workspace = true
 bitwarden-crypto.workspace = true
 bitwarden-vault.workspace = true
 bitwarden-api-api.workspace = true
+bitwarden-collections.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 data-encoding.workspace = true
 sha1.workspace = true

@@ -62,15 +62,23 @@ struct MainView: View {
                     Label("Archiver", systemImage: "archivebox")
                 }
                 .help("Archiver : garder l'élément hors du chemin")
-                .disabled(!model.canEdit || item?.state != .active)
+                .disabled(!model.canModify(item) || item?.state != .active)
                 Button {
                     if let item { Task { await model.edit(item.id) } }
                 } label: {
                     Label("Modifier", systemImage: "pencil")
                 }
-                .help("Modifier (⌘E)")
+                .help(item?.sharing?.readOnly == true ? "Partagé en lecture seule" : "Modifier (⌘E)")
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(!model.canEdit || item == nil || item?.state == .trashed)
+                .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
+                Button {
+                    if let item { model.openSharing(item.id) }
+                } label: {
+                    Label("Partager", systemImage: "person.2")
+                }
+                .help(item?.sharing == nil ? "Partager dans un coffre partagé…" : "Collections…")
+                .disabled(!model.canModify(item) || item?.state != .active
+                          || (item?.sharing == nil && model.writableOrganizations.isEmpty))
                 Button {
                     if let item { model.copyPassword(of: item.id) }
                 } label: {
@@ -118,6 +126,10 @@ struct MainView: View {
             NewSshKeyView(generator: generator)
                 .environment(model)
         }
+        .sheet(item: $model.sharingFlow) { flow in
+            SharingView(flow: flow)
+                .environment(model)
+        }
         // La vue reste montée derrière l'écran verrouillé (voir RootView) :
         // c'est le déverrouillage qui lui rend la main.
         .onAppear { searchFocused = model.lockState == .unlocked }
@@ -163,6 +175,7 @@ struct SidebarView: View {
                     }
                 }
             }
+            SharedVaultsSection()
             if let counts = model.counts, counts.archived + counts.trashed > 0 {
                 Section("Rangement") {
                     row(.archived, "Archives", "archivebox", count: counts.archived, tint: .secondary)
@@ -409,6 +422,12 @@ struct ItemRow: View {
                     if summary.favorite {
                         Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow)
                     }
+                    if let sharing = summary.sharing {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 9))
+                            .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.indigo))
+                            .help(sharing.label)
+                    }
                 }
                 Text(summary.subtitle)
                     .font(.callout)
@@ -444,8 +463,15 @@ struct RowMenu: View {
         if let host = summary.host, let url = URL(string: "https://\(host)") {
             Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }
         }
-        if model.canEdit {
+        if model.canEdit, !model.canModify(summary) {
             Divider()
+            // Collection en lecture seule : rien à modifier depuis ce compte.
+            Text("Partagé en lecture seule")
+        } else if model.canEdit {
+            Divider()
+            if summary.state == .active, summary.sharing != nil || !model.writableOrganizations.isEmpty {
+                Button(summary.sharing == nil ? "Partager…" : "Collections…") { model.openSharing(summary.id) }
+            }
             switch summary.state {
             case .active:
                 Button("Modifier…") { Task { await model.edit(summary.id) } }

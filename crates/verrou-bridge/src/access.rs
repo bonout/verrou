@@ -72,7 +72,21 @@ fn item_summary(item: &Item) -> ItemSummary {
         tags: item.tags.clone(),
         favorite: item.favorite,
         has_totp: item.has_totp(),
+        shared: item.shared.as_ref().map(shared_label),
     }
+}
+
+/// « Organisation › Collection, Collection » (ou l'organisation seule).
+pub fn shared_label(sharing: &verrou_core::Sharing) -> String {
+    if sharing.collections.is_empty() {
+        return sharing.organization.clone();
+    }
+    let collections: Vec<&str> = sharing
+        .collections
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect();
+    format!("{} › {}", sharing.organization, collections.join(", "))
 }
 
 /// Recherche du terminal : les `limit` premiers résultats et leur total.
@@ -145,9 +159,14 @@ pub fn field_needs_confirmation(vault: &Vault, item_id: &str, field: &str) -> Re
             .map(|_| true)
             .ok_or_else(|| format!("« {} » n'a pas de notes", item.title));
     }
-    item.field(field)
-        .map(|f| f.kind.is_secret())
-        .ok_or_else(|| format!("« {} » n'a pas de champ « {field} »", item.title))
+    match item.field(field) {
+        Some(f) if item.hides(f) => Err(format!(
+            "l'organisation de « {} » masque ce champ",
+            item.title
+        )),
+        Some(f) => Ok(f.kind.is_secret()),
+        None => Err(format!("« {} » n'a pas de champ « {field} »", item.title)),
+    }
 }
 
 /// La valeur du champ `field` (ou des notes) de l'élément.
@@ -155,6 +174,12 @@ pub fn field_value(vault: &Vault, item_id: &str, field: &str) -> Result<String, 
     let item = vault
         .get(item_id)
         .ok_or_else(|| "élément introuvable".to_owned())?;
+    if item.field(field).is_some_and(|f| item.hides(f)) {
+        return Err(format!(
+            "l'organisation de « {} » masque ce champ",
+            item.title
+        ));
+    }
     let value = if field == "notes" {
         item.notes.as_ref().map(|n| n.expose().to_owned())
     } else {
@@ -293,8 +318,9 @@ pub fn check_save(
     };
     Ok(match found {
         Some(item) if same_password(item) => (SaveAction::Known, Some(suggestion(item))),
-        Some(item) => (SaveAction::Update, Some(suggestion(item))),
-        None => (SaveAction::New, None),
+        // Partagé en lecture seule : on propose plutôt un nouvel élément.
+        Some(item) if item.is_writable() => (SaveAction::Update, Some(suggestion(item))),
+        _ => (SaveAction::New, None),
     })
 }
 
@@ -354,6 +380,19 @@ fn matching_login<'v>(vault: &'v Vault, page_url: &str, item: &str) -> Result<&'
         .into_iter()
         .find(|i| i.id == item)
         .ok_or_else(|| "cet identifiant ne correspond pas à ce site".to_owned())
+        .and_then(writable)
+}
+
+/// Un élément partagé en lecture seule ne s'écrit pas.
+fn writable(item: &Item) -> Result<&Item, String> {
+    if item.is_writable() {
+        Ok(item)
+    } else {
+        Err(format!(
+            "« {} » est partagé en lecture seule avec ce compte",
+            item.title
+        ))
+    }
 }
 
 /// Titre et adresse d'un nouvel élément pour la page : le site, sans chemin.
@@ -590,7 +629,8 @@ pub fn plan_link_site(vault: &Vault, page_url: &str, item_id: &str) -> Result<Wr
     let item = vault
         .get(item_id)
         .filter(|i| i.kind == ItemKind::Login && i.is_active())
-        .ok_or_else(|| "identifiant introuvable".to_owned())?;
+        .ok_or_else(|| "identifiant introuvable".to_owned())
+        .and_then(writable)?;
     if logins_for(vault, page_url).iter().any(|i| i.id == item.id) {
         return Err("cet identifiant correspond déjà à ce site".to_owned());
     }
@@ -641,6 +681,7 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 notes: None,
                 reprompt: false,
                 state: verrou_core::ItemState::Active,
+                shared: None,
             };
             set(
                 &mut item,
@@ -718,6 +759,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: verrou_core::ItemState::Active,
+            shared: None,
         }
     }
 
@@ -936,5 +978,39 @@ mod tests {
         assert!(credentials(&vault(), "github", "https://github.com.evil.fr/", 59).is_err());
         assert!(credentials(&vault(), "github", "http://github.com/", 59).is_err());
         assert!(credentials(&vault(), "inconnu", "https://github.com/", 59).is_err());
+    }
+
+    #[test]
+    fn shared_items_respect_the_organization_rights() {
+        let mut item = item("famille", "https://netflix.com");
+        item.shared = Some(verrou_core::Sharing {
+            organization_id: "org".to_owned(),
+            organization: "Famille".to_owned(),
+            collections: vec![("c".to_owned(), "Streaming".to_owned())],
+            read_only: true,
+            hide_passwords: true,
+        });
+        let vault = Vault::new(vec![item]);
+        let page = "https://www.netflix.com/login";
+        // Le remplissage reste permis (comme Bitwarden), pas l'affichage.
+        assert!(credentials(&vault, "famille", page, 0).is_ok());
+        assert!(field_value(&vault, "famille", "password").is_err());
+        assert_eq!(
+            field_value(&vault, "famille", "username").unwrap(),
+            "camille"
+        );
+        assert_eq!(
+            search(&vault, "", None, false, None).0[0].shared.as_deref(),
+            Some("Famille › Streaming")
+        );
+        // Lecture seule : pas de mise à jour, l'extension propose un nouvel élément.
+        assert!(plan_save(&vault, page, "camille", "autre", Some("famille")).is_err());
+        assert_eq!(
+            check_save(&vault, page, "camille", "autre", None)
+                .unwrap()
+                .0,
+            SaveAction::New
+        );
+        assert!(plan_link_site(&vault, "https://disneyplus.com", "famille").is_err());
     }
 }

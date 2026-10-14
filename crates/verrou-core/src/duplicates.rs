@@ -348,12 +348,19 @@ fn richness(item: &Item) -> usize {
 /// Les groupes de doublons du coffre, triés par site.
 pub fn find_duplicates(items: &[Item]) -> Vec<DuplicateGroup> {
     let mut groups = Groups((0..items.len()).collect());
-    let mut first: HashMap<(u8, String, String), usize> = HashMap::new();
+    let mut first: HashMap<(u8, String, String, &str), usize> = HashMap::new();
     for (index, item) in items.iter().enumerate() {
-        // Archives et corbeille : déjà rangés à l'écart.
-        if !item.is_active() {
+        // Archives et corbeille : déjà rangés à l'écart. Un élément partagé en
+        // lecture seule ne peut pas partir à la corbeille.
+        if !item.is_active() || !item.is_writable() {
             continue;
         }
+        // Une copie personnelle et une copie partagée ne sont pas des
+        // doublons à nettoyer : on ne compare que dans un même coffre.
+        let owner = item
+            .shared
+            .as_ref()
+            .map_or("", |s| s.organization_id.as_str());
         let item_keys: Vec<(u8, String, String)> = match item.kind {
             ItemKind::Login => keys(&item.urls, &item.title, vault_username(item))
                 .into_iter()
@@ -374,7 +381,8 @@ pub fn find_duplicates(items: &[Item]) -> Vec<DuplicateGroup> {
             }
             ItemKind::Identity | ItemKind::SshKey => continue,
         };
-        for key in item_keys {
+        for (kind, a, b) in item_keys {
+            let key = (kind, a, b, owner);
             match first.get(&key) {
                 Some(&other) => groups.join(other, index),
                 None => {
@@ -460,6 +468,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: ItemState::Active,
+            shared: None,
         }
     }
 
@@ -606,5 +615,33 @@ mod tests {
             "le code TOTP d'abord"
         );
         assert!(!groups[1].same_password);
+    }
+
+    #[test]
+    fn shared_copies_are_not_duplicates_of_personal_ones() {
+        let shared = |id: &str, read_only: bool| {
+            let mut item = login(id, "https://banque.fr", "camille", "same", 1);
+            item.shared = Some(crate::Sharing {
+                organization_id: "org".to_owned(),
+                organization: "Famille".to_owned(),
+                collections: Vec::new(),
+                read_only,
+                hide_passwords: false,
+            });
+            item
+        };
+        let personal = login("perso", "https://banque.fr", "camille", "same", 2);
+        assert_eq!(
+            find_duplicates(&[personal.clone(), shared("org-1", false)]).len(),
+            0
+        );
+        assert_eq!(
+            find_duplicates(&[shared("org-1", false), shared("org-2", true)]).len(),
+            0,
+            "lecture seule : impossible à mettre à la corbeille"
+        );
+        let groups = find_duplicates(&[personal, shared("org-1", false), shared("org-2", false)]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].items.len(), 2);
     }
 }

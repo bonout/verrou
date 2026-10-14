@@ -20,7 +20,7 @@ pub mod totp;
 pub mod vault;
 pub mod watchtower;
 
-pub use model::{Field, FieldKind, Item, ItemKind, ItemState};
+pub use model::{Field, FieldKind, Item, ItemKind, ItemState, Sharing};
 pub use passkey::Passkey;
 pub use search::{Filter, Hit, Sort};
 pub use secret::SecretString;

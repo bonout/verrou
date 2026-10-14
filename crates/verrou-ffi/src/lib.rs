@@ -36,8 +36,8 @@ use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, So
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
 use verrou_vaultwarden::{
-    Connection, Decrypted, Draft, LoginDraft, LoginStep, PendingLogin, Store, TwoFactorAnswer,
-    TwoFactorMethod, Unlocked,
+    Connection, Decrypted, Draft, LoginDraft, LoginStep, Organization, PendingLogin, Store,
+    TwoFactorAnswer, TwoFactorMethod, Unlocked,
 };
 
 uniffi::setup_scaffolding!();
@@ -271,11 +271,24 @@ pub enum SidebarFilter {
     All,
     Favorites,
     WithTotp,
-    Category { category: ItemCategory },
-    Folder { name: String },
-    Tag { name: String },
+    Category {
+        category: ItemCategory,
+    },
+    Folder {
+        name: String,
+    },
+    Tag {
+        name: String,
+    },
     Archived,
     Trash,
+    /// Coffre partagé : une organisation, ou une de ses collections.
+    Organization {
+        id: String,
+    },
+    Collection {
+        id: String,
+    },
 }
 
 impl From<SidebarFilter> for Filter {
@@ -289,6 +302,8 @@ impl From<SidebarFilter> for Filter {
             SidebarFilter::Tag { name } => Self::Tag(name),
             SidebarFilter::Archived => Self::Archived,
             SidebarFilter::Trash => Self::Trash,
+            SidebarFilter::Organization { id } => Self::Organization(id),
+            SidebarFilter::Collection { id } => Self::Collection(id),
         }
     }
 }
@@ -365,6 +380,8 @@ pub struct ItemSummary {
     /// « Redemander le mot de passe principal » : confirmer avant tout secret.
     pub reprompt: bool,
     pub state: ItemStatus,
+    /// Coffre partagé (organisation) ; `None` : coffre personnel.
+    pub sharing: Option<ItemSharing>,
 }
 
 /// Où se trouve l'élément (voir `verrou_core::ItemState`).
@@ -405,6 +422,9 @@ pub struct FieldView {
     pub field_type: FieldType,
     pub secret: bool,
     pub value: Option<String>,
+    /// L'organisation de l'élément masque ce champ à ce compte : ni
+    /// affichage ni copie (le remplissage par l'extension reste permis).
+    pub hidden: bool,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -524,6 +544,14 @@ fn summary(item: &Item) -> ItemSummary {
         modified: item.modified,
         reprompt: item.reprompt,
         state: item.state.into(),
+        sharing: item.shared.as_ref().map(|s| ItemSharing {
+            organization_id: s.organization_id.clone(),
+            organization: s.organization.clone(),
+            collection_ids: s.collections.iter().map(|(id, _)| id.clone()).collect(),
+            collections: s.collections.iter().map(|(_, name)| name.clone()).collect(),
+            read_only: s.read_only,
+            hide_passwords: s.hide_passwords,
+        }),
     }
 }
 
@@ -586,6 +614,8 @@ const REPROMPT_WINDOW: Duration = Duration::from_secs(5 * 60);
 pub struct VaultSession {
     vault: RwLock<Option<Vault>>,
     folders: RwLock<Vec<FolderOption>>,
+    /// Organisations (coffres partagés) et collections du coffre ouvert.
+    organizations: RwLock<Vec<Organization>>,
     store: Option<Store>,
     /// Coffre Vaultwarden ouvert. Le verrou extérieur n'est tenu qu'un
     /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
@@ -676,6 +706,10 @@ impl VaultSession {
             .into_iter()
             .map(|(id, name)| FolderOption { id, name })
             .collect();
+        *self
+            .organizations
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = decrypted.organizations;
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
             Some(Vault::new(decrypted.items).with_passkeys(decrypted.passkeys));
         failures
@@ -855,6 +889,7 @@ impl VaultSession {
         Arc::new(Self {
             vault: RwLock::new(None),
             folders: RwLock::new(Vec::new()),
+            organizations: RwLock::new(Vec::new()),
             store: Some(Store::new(data_dir)),
             connection: Mutex::new(None),
             pending: Mutex::new(None),
@@ -1053,7 +1088,16 @@ impl VaultSession {
     /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
     /// seulement quand l'utilisateur ouvre l'écran de modification.
     pub async fn edit_draft(&self, id: String) -> Result<ItemDraft, VerrouError> {
-        self.with_vault(|v| self.require_authorized(Self::item(v, &id)?))?;
+        self.with_vault(|v| {
+            let item = Self::item(v, &id)?;
+            if !item.is_writable() {
+                return Err(VerrouError::ReadOnly);
+            }
+            if item.shared.as_ref().is_some_and(|s| s.hide_passwords) {
+                return Err(hidden_by_organization());
+            }
+            self.require_authorized(item)
+        })?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let draft = connection.lock().await.draft(&id).await?;
         Ok(draft.into())
@@ -1220,6 +1264,7 @@ impl VaultSession {
         Arc::new(Self {
             vault: RwLock::new(None),
             folders: RwLock::new(Vec::new()),
+            organizations: RwLock::new(Vec::new()),
             store: None,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
@@ -1235,6 +1280,10 @@ impl VaultSession {
     /// Ouvre le coffre fictif (`size` = 0 : seulement les éléments soignés).
     pub fn unlock_mock(&self, size: u32, seed: u64) {
         let vault = Vault::new(mock::vault_items(size as usize, seed));
+        *self
+            .organizations
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = vec![mock_organization()];
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) = Some(vault);
     }
 
@@ -1253,6 +1302,10 @@ impl VaultSession {
             .unwrap_or_else(PoisonError::into_inner)
             .take();
         self.folders
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+        self.organizations
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
@@ -1335,6 +1388,7 @@ impl VaultSession {
                         field_type: f.kind.into(),
                         secret,
                         value: (!secret).then(|| f.value.expose().to_owned()),
+                        hidden: item.hides(f),
                     }
                 })
                 .collect();
@@ -1360,9 +1414,11 @@ impl VaultSession {
                     .map(|n| n.expose().to_owned())
                     .ok_or(VerrouError::NotFound);
             }
-            item.field(&field_id)
-                .map(|f| f.value.expose().to_owned())
-                .ok_or(VerrouError::NotFound)
+            let field = item.field(&field_id).ok_or(VerrouError::NotFound)?;
+            if item.hides(field) {
+                return Err(hidden_by_organization());
+            }
+            Ok(field.value.expose().to_owned())
         })
     }
 
@@ -1495,6 +1551,166 @@ impl VaultSession {
             })?;
             Ok(keys.into_iter().map(Into::into).collect())
         })
+    }
+}
+
+// MARK: Coffres partagés (organisations)
+
+/// Où se trouve un élément partagé, et ce que le compte peut en faire.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ItemSharing {
+    pub organization_id: String,
+    pub organization: String,
+    /// Collections visibles par ce compte, dans l'ordre de leurs noms.
+    pub collection_ids: Vec<String>,
+    pub collections: Vec<String>,
+    /// Lecture seule : ni modification, ni corbeille.
+    pub read_only: bool,
+    /// Mots de passe masqués par l'organisation (remplissage permis).
+    pub hide_passwords: bool,
+}
+
+/// Une organisation de la barre latérale, avec ses collections.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct OrganizationView {
+    pub id: String,
+    pub name: String,
+    /// Éléments actifs de l'organisation.
+    pub count: u32,
+    /// Propriétaire ou administrateur.
+    pub admin: bool,
+    /// Le compte peut y ranger un élément (une collection au moins).
+    pub writable: bool,
+    /// Page de l'organisation dans le coffre web (membres, collections).
+    pub manage_url: Option<String>,
+    pub collections: Vec<CollectionView>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct CollectionView {
+    pub id: String,
+    pub name: String,
+    pub count: u32,
+    pub read_only: bool,
+    pub hide_passwords: bool,
+    pub manage: bool,
+}
+
+fn hidden_by_organization() -> VerrouError {
+    VerrouError::Invalid {
+        message: "l'organisation masque ce mot de passe pour votre compte".to_owned(),
+    }
+}
+
+/// L'organisation du coffre fictif (démonstration).
+fn mock_organization() -> Organization {
+    Organization {
+        id: mock::MOCK_ORGANIZATION.0.to_owned(),
+        name: mock::MOCK_ORGANIZATION.1.to_owned(),
+        admin: true,
+        collections: vec![verrou_vaultwarden::Collection {
+            id: mock::MOCK_COLLECTION.0.to_owned(),
+            name: mock::MOCK_COLLECTION.1.to_owned(),
+            read_only: false,
+            hide_passwords: false,
+            manage: true,
+        }],
+    }
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl VaultSession {
+    /// Organisations dont le compte est membre confirmé, avec leurs
+    /// collections et le nombre d'éléments actifs de chacune.
+    pub fn organizations(&self) -> Vec<OrganizationView> {
+        let organizations = self
+            .organizations
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let counts = self.with_vault(|v| Ok(v.counts())).unwrap_or_default();
+        let count = |list: &[(String, usize)], id: &str| {
+            list.iter()
+                .find(|(i, _)| i == id)
+                .map_or(0, |(_, n)| *n as u32)
+        };
+        let server = self.account().map(|a| a.server);
+        organizations
+            .into_iter()
+            .map(|org| OrganizationView {
+                count: count(&counts.organizations, &org.id),
+                writable: org.is_writable(),
+                admin: org.admin,
+                manage_url: server
+                    .as_ref()
+                    .map(|s| format!("{s}/#/organizations/{}/members", org.id)),
+                collections: org
+                    .collections
+                    .iter()
+                    .map(|c| CollectionView {
+                        id: c.id.clone(),
+                        name: c.name.clone(),
+                        count: count(&counts.collections, &c.id),
+                        read_only: c.read_only,
+                        hide_passwords: c.hide_passwords,
+                        manage: c.manage,
+                    })
+                    .collect(),
+                id: org.id,
+                name: org.name,
+            })
+            .collect()
+    }
+
+    /// Crée l'élément directement dans des collections d'une organisation ;
+    /// rend son identifiant.
+    pub async fn create_shared_item(
+        &self,
+        draft: ItemDraft,
+        organization_id: String,
+        collection_ids: Vec<String>,
+    ) -> Result<String, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (id, decrypted) = connection
+            .lock()
+            .await
+            .create_shared(draft.into(), &organization_id, &collection_ids)
+            .await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(id)
+    }
+
+    /// « Partager… » : déplace un élément personnel dans des collections
+    /// d'une organisation (rechiffré sous la clé de l'organisation).
+    pub async fn share_item(
+        &self,
+        id: String,
+        organization_id: String,
+        collection_ids: Vec<String>,
+    ) -> Result<(), VerrouError> {
+        self.with_vault(|v| self.require_authorized(Self::item(v, &id)?))?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection
+            .lock()
+            .await
+            .share(&id, &organization_id, &collection_ids)
+            .await?;
+        self.install_if_current(&connection, decrypted)
+    }
+
+    /// Change les collections d'un élément partagé (même organisation).
+    pub async fn set_item_collections(
+        &self,
+        id: String,
+        collection_ids: Vec<String>,
+    ) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection
+            .lock()
+            .await
+            .set_collections(&id, &collection_ids)
+            .await?;
+        self.install_if_current(&connection, decrypted)
     }
 }
 
@@ -2075,6 +2291,66 @@ mod tests {
         session.authorize_item(protected.clone());
         assert!(confirm(&protected));
         assert!(session.confirmations.pending.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn shared_vaults_in_the_sidebar_and_hidden_passwords() {
+        let session = session();
+        let organizations = session.organizations();
+        assert_eq!(organizations.len(), 1);
+        let famille = &organizations[0];
+        assert_eq!(famille.name, "Famille Martin");
+        assert_eq!(famille.count, 1);
+        assert_eq!(famille.collections[0].count, 1);
+        assert!(famille.writable && famille.manage_url.is_none());
+        let hits = session
+            .search(
+                String::new(),
+                SidebarFilter::Collection {
+                    id: famille.collections[0].id.clone(),
+                },
+                ResultOrder::Title,
+            )
+            .unwrap();
+        assert_eq!(hits.len(), 1);
+        let summary = &session.summaries().unwrap()[hits[0].position as usize];
+        let sharing = summary.sharing.as_ref().unwrap();
+        assert_eq!(sharing.collections, ["Comptes communs"]);
+        assert!(
+            !session
+                .detail(summary.id.clone())
+                .unwrap()
+                .fields
+                .iter()
+                .any(|f| f.hidden)
+        );
+        assert!(
+            session
+                .reveal(summary.id.clone(), "password".to_owned())
+                .is_ok()
+        );
+
+        // Mots de passe masqués par l'organisation : ni reveal ni brouillon.
+        let mut items = mock::vault_items(0, 42);
+        for item in &mut items {
+            if let Some(shared) = item.shared.as_mut() {
+                shared.hide_passwords = true;
+            }
+        }
+        *session.vault.write().unwrap() = Some(Vault::new(items));
+        let detail = session.detail(summary.id.clone()).unwrap();
+        assert!(detail.fields.iter().any(|f| f.id == "password" && f.hidden));
+        assert!(matches!(
+            session.reveal(summary.id.clone(), "password".to_owned()),
+            Err(VerrouError::Invalid { .. })
+        ));
+        assert!(
+            session
+                .reveal(summary.id.clone(), "username".to_owned())
+                .is_ok()
+        );
+        session.lock();
+        assert_eq!(session.organizations().len(), 0);
     }
 }
 

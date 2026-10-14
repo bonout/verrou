@@ -114,6 +114,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: crate::ItemState::Active,
+            shared: None,
         }
     }
 

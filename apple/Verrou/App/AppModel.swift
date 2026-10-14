@@ -45,6 +45,8 @@ final class AppModel {
     /// ligne, elle les construisait toutes à chaque frappe).
     private(set) var rows: [ResultRow] = []
     private(set) var counts: SidebarCounts?
+    /// Coffres partagés (organisations) et leurs collections.
+    private(set) var organizations: [OrganizationView] = []
     private(set) var lastSearchDuration: Duration = .zero
     private(set) var syncState: SyncState = .idle
     private(set) var biometricEnrolled = false
@@ -120,6 +122,8 @@ final class AppModel {
         /// `nil` : création.
         let itemID: String?
         let draft: ItemDraft
+        /// Création directe dans un coffre partagé (proposée d'après la barre latérale).
+        var destination: SharedDestination?
     }
 
     /// Import d'un autre gestionnaire en cours (voir `ImportFlow.swift`).
@@ -130,6 +134,8 @@ final class AppModel {
     var sshKeyGenerator: SshKeyGenerator?
     /// Pièces jointes de l'élément affiché (voir `Attachments.swift`).
     let attachments = AttachmentsModel()
+    /// « Partager… » ou « Collections… » en cours (voir SharedVaults.swift).
+    var sharingFlow: SharingFlow?
 
     /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
     var browserBridge: BrowserBridge?
@@ -485,6 +491,7 @@ final class AppModel {
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
         counts = try? session.counts()
+        organizations = session.organizations()
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
             selection = results.first?.id
@@ -500,6 +507,8 @@ final class AppModel {
         rows = []
         quickRows = []
         counts = nil
+        organizations = []
+        sharingFlow = nil
         revealed.removeAll()
         selection = nil
         query = ""
@@ -762,7 +771,8 @@ final class AppModel {
                           totp: nil, urls: [])
             : nil
         editor = Editor(itemID: nil, draft: ItemDraft(name: "", folderId: folderID, favorite: false,
-                                                     notes: nil, login: fields))
+                                                     notes: nil, login: fields),
+                        destination: destinationFromFilter)
     }
 
     func edit(_ itemID: String) async {
@@ -779,7 +789,7 @@ final class AppModel {
         }
     }
 
-    func saveEditor(_ draft: ItemDraft) async {
+    func saveEditor(_ draft: ItemDraft, destination: SharedDestination? = nil) async {
         guard let editor, !editorBusy else { return }
         editorBusy = true
         editorError = nil
@@ -789,6 +799,9 @@ final class AppModel {
             if let existing = editor.itemID {
                 try await session.updateItem(id: existing, draft: draft)
                 id = existing
+            } else if let destination {
+                id = try await session.createSharedItem(draft: draft, organizationId: destination.organizationID,
+                                                        collectionIds: destination.collectionIDs)
             } else {
                 id = try await session.createItem(draft: draft)
             }
@@ -987,6 +1000,10 @@ final class AppModel {
     }
 
     func copyPassword(of itemID: String) {
+        if summaries.first(where: { $0.id == itemID })?.sharing?.hidePasswords == true {
+            toast = Toast(message: "Mot de passe masqué", detail: "L'organisation le cache à votre compte", failure: true)
+            return
+        }
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyPassword(of: itemID) }) { return }
         guard let value = try? session.reveal(id: itemID, fieldId: "password") else { return }
         copy(value, label: "Mot de passe", secret: true)

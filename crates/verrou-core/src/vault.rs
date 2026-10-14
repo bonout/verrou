@@ -27,6 +27,9 @@ pub struct Counts {
     pub kinds: Vec<(ItemKind, usize)>,
     pub folders: Vec<(String, usize)>,
     pub tags: Vec<(String, usize)>,
+    /// Éléments actifs par organisation et par collection (identifiants).
+    pub organizations: Vec<(String, usize)>,
+    pub collections: Vec<(String, usize)>,
 }
 
 impl Vault {
@@ -103,6 +106,8 @@ impl Vault {
         let mut kinds: BTreeMap<ItemKind, usize> = BTreeMap::new();
         let mut folders: BTreeMap<String, usize> = BTreeMap::new();
         let mut tags: BTreeMap<String, usize> = BTreeMap::new();
+        let mut organizations: BTreeMap<String, usize> = BTreeMap::new();
+        let mut collections: BTreeMap<String, usize> = BTreeMap::new();
         let mut counts = Counts::default();
         for item in &self.items {
             match item.state {
@@ -121,6 +126,14 @@ impl Vault {
             for tag in &item.tags {
                 *tags.entry(tag.clone()).or_default() += 1;
             }
+            if let Some(shared) = &item.shared {
+                *organizations
+                    .entry(shared.organization_id.clone())
+                    .or_default() += 1;
+                for (id, _) in &shared.collections {
+                    *collections.entry(id.clone()).or_default() += 1;
+                }
+            }
             counts.favorites += usize::from(item.favorite);
             counts.with_totp += usize::from(item.has_totp());
         }
@@ -130,6 +143,8 @@ impl Vault {
             .collect();
         counts.folders = folders.into_iter().collect();
         counts.tags = tags.into_iter().collect();
+        counts.organizations = organizations.into_iter().collect();
+        counts.collections = collections.into_iter().collect();
         counts
     }
 }
@@ -166,5 +181,59 @@ impl Vault {
                         .is_some_and(|i| i.kind == ItemKind::Login && i.is_active())
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock::{self, MOCK_COLLECTION, MOCK_ORGANIZATION};
+    use crate::{Field, FieldKind, Sharing};
+
+    #[test]
+    fn shared_items_have_their_own_filters_and_counts() {
+        let vault = Vault::new(mock::vault_items(0, 42));
+        let counts = vault.counts();
+        assert_eq!(
+            counts.organizations,
+            vec![(MOCK_ORGANIZATION.0.to_owned(), 1)]
+        );
+        assert_eq!(counts.collections, vec![(MOCK_COLLECTION.0.to_owned(), 1)]);
+        for filter in [
+            Filter::Organization(MOCK_ORGANIZATION.0.to_owned()),
+            Filter::Collection(MOCK_COLLECTION.0.to_owned()),
+        ] {
+            let hits = vault.search("", &filter, Sort::Title);
+            assert_eq!(hits.len(), 1);
+            assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
+        }
+        // Le nom de l'organisation se cherche comme un dossier.
+        let hits = vault.search("famille martin", &Filter::All, Sort::Relevance);
+        assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
+    }
+
+    #[test]
+    fn hidden_passwords_follow_the_organization_rule() {
+        let mut item = mock::vault_items(0, 42).remove(0);
+        item.fields
+            .push(Field::new("custom-0", "PIN", FieldKind::Concealed, "1234"));
+        item.fields
+            .push(Field::new("history-0", "Ancien", FieldKind::Concealed, "x"));
+        let hidden_count = |item: &Item| item.fields.iter().filter(|f| item.hides(f)).count();
+        assert_eq!(hidden_count(&item), 0, "coffre personnel : rien de caché");
+        item.shared = Some(Sharing {
+            hide_passwords: true,
+            ..Sharing::default()
+        });
+        let hidden: Vec<&str> = item
+            .fields
+            .iter()
+            .filter(|f| item.hides(f))
+            .map(|f| f.id.as_str())
+            .collect();
+        assert!(hidden.contains(&"password") && hidden.contains(&"custom-0"));
+        assert!(hidden.contains(&"history-0"));
+        assert!(!hidden.contains(&"username"));
+        assert!(item.is_writable());
     }
 }
