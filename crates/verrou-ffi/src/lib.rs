@@ -7,11 +7,12 @@
 //! par `reveal`, au moment où l'utilisateur l'affiche ou le copie.
 //!
 //! Exceptions documentées : `user_key`, qui rend la clé de l'utilisateur pour
-//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID), et
+//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID),
 //! `edit_draft`, qui rend les secrets d'un élément quand l'utilisateur ouvre
-//! l'écran de modification, et `autofill_keystrokes`, qui rend l'identifiant
+//! l'écran de modification, `autofill_keystrokes`, qui rend l'identifiant
 //! et le mot de passe à taper quand l'utilisateur choisit de remplir une app
-//! (⌘\).
+//! (⌘\), et `wifi_qr_code`, qui rend le contenu du QR code d'un réseau
+//! Wi-Fi (mot de passe compris) quand l'utilisateur l'affiche.
 //!
 //! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
 //! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
@@ -45,12 +46,16 @@ uniffi::setup_scaffolding!();
 mod attachments;
 mod import;
 mod ssh;
+mod templates;
 mod watchtower;
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
 pub use import::{
     DuplicateGroupView, ImportChoice, ImportDestination, ImportEntry, ImportFormat, ImportOutcome,
     ImportReview, ImportSkipped, ImportStatus,
+};
+pub use templates::{
+    CustomField, CustomFieldType, ItemTemplate, ItemTemplateCount, template_draft,
 };
 pub use watchtower::{
     ExpiringCard, MissingTwoFactor, OldPassword, TwoFactorReport, WatchtowerReport,
@@ -274,6 +279,10 @@ pub enum SidebarFilter {
     Category {
         category: ItemCategory,
     },
+    /// Éléments d'un modèle (Wi-Fi, passeport…).
+    Template {
+        template: ItemTemplate,
+    },
     Folder {
         name: String,
     },
@@ -298,6 +307,7 @@ impl From<SidebarFilter> for Filter {
             SidebarFilter::Favorites => Self::Favorites,
             SidebarFilter::WithTotp => Self::WithTotp,
             SidebarFilter::Category { category } => Self::Kind(category.into()),
+            SidebarFilter::Template { template } => Self::Template(template.into()),
             SidebarFilter::Folder { name } => Self::Folder(name),
             SidebarFilter::Tag { name } => Self::Tag(name),
             SidebarFilter::Archived => Self::Archived,
@@ -382,6 +392,8 @@ pub struct ItemSummary {
     pub state: ItemStatus,
     /// Coffre partagé (organisation) ; `None` : coffre personnel.
     pub sharing: Option<ItemSharing>,
+    /// Modèle de Verrou (Wi-Fi, passeport…), d'après le champ `verrou:type`.
+    pub template: Option<ItemTemplate>,
 }
 
 /// Où se trouve l'élément (voir `verrou_core::ItemState`).
@@ -464,6 +476,8 @@ pub struct SidebarCounts {
     pub favorites: u32,
     pub with_totp: u32,
     pub categories: Vec<ItemCategoryCount>,
+    /// Modèles présents dans le coffre, dans l'ordre de `ItemTemplate`.
+    pub templates: Vec<ItemTemplateCount>,
     pub folders: Vec<NamedCount>,
     pub tags: Vec<NamedCount>,
 }
@@ -476,8 +490,8 @@ pub struct FolderOption {
 }
 
 /// L'écran de modification. Sans `login` : une note sécurisée (seuls le
-/// titre, le dossier, le favori et les notes se modifient pour les autres
-/// types).
+/// titre, le dossier, le favori, les notes et les champs personnalisés se
+/// modifient pour les autres types).
 #[derive(Clone, Debug, Default, uniffi::Record)]
 pub struct ItemDraft {
     pub name: String,
@@ -485,6 +499,10 @@ pub struct ItemDraft {
     pub favorite: bool,
     pub notes: Option<String>,
     pub login: Option<LoginFields>,
+    /// Champs personnalisés, dans l'ordre (sans les champs réservés).
+    pub fields: Vec<CustomField>,
+    /// Modèle : choisi à la création, conservé ensuite.
+    pub template: Option<ItemTemplate>,
 }
 
 #[derive(Clone, Debug, Default, uniffi::Record)]
@@ -509,6 +527,8 @@ impl From<ItemDraft> for Draft {
                 totp: login.totp.map(SecretString::new),
                 uris: login.urls,
             }),
+            fields: Some(draft.fields.into_iter().map(Into::into).collect()),
+            template: draft.template.map(Into::into),
         }
     }
 }
@@ -526,6 +546,13 @@ impl From<Draft> for ItemDraft {
                 totp: login.totp.map(|t| t.expose().to_owned()),
                 urls: login.uris,
             }),
+            fields: draft
+                .fields
+                .unwrap_or_default()
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            template: draft.template.map(Into::into),
         }
     }
 }
@@ -552,6 +579,7 @@ fn summary(item: &Item) -> ItemSummary {
             read_only: s.read_only,
             hide_passwords: s.hide_passwords,
         }),
+        template: item.template().map(Into::into),
     }
 }
 
@@ -1378,8 +1406,9 @@ impl VaultSession {
             let fields = item
                 .fields
                 .iter()
-                // Morceaux d'adresse : pour remplir les formulaires, pas à afficher.
-                .filter(|f| !f.id.starts_with("part:"))
+                // Morceaux d'adresse (pour remplir les formulaires) et champs
+                // réservés à Verrou (`verrou:type`) : pas à afficher.
+                .filter(|f| !templates::is_reserved_field(&f.id))
                 .map(|f| {
                     let secret = f.kind.is_secret();
                     FieldView {
@@ -1463,6 +1492,14 @@ impl VaultSession {
                     .into_iter()
                     .map(|(k, n)| ItemCategoryCount {
                         category: k.into(),
+                        count: n as u32,
+                    })
+                    .collect(),
+                templates: c
+                    .templates
+                    .into_iter()
+                    .map(|(t, n)| ItemTemplateCount {
+                        template: t.into(),
                         count: n as u32,
                     })
                     .collect(),

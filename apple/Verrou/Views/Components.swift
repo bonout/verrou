@@ -71,7 +71,7 @@ struct ItemIcon: View {
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
         ZStack {
-            if summary.category == .login, let host = summary.host,
+            if summary.category == .login, summary.template == nil, let host = summary.host,
                let image = model.siteIcons.image(for: host) {
                 // Fond blanc : beaucoup d'icônes sont transparentes et
                 // disparaîtraient en mode sombre.
@@ -81,7 +81,7 @@ struct ItemIcon: View {
                     .interpolation(.high)
                     .aspectRatio(contentMode: .fit)
                     .padding(size * 0.14)
-            } else if summary.category == .login, let initial = initial {
+            } else if summary.category == .login, summary.template == nil, let initial = initial {
                 let hue = Theme.hue(for: summary.host ?? summary.title)
                 shape.fill(
                     LinearGradient(
@@ -93,8 +93,8 @@ struct ItemIcon: View {
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
             } else {
-                shape.fill(summary.category.tint.gradient)
-                Image(systemName: summary.category.symbol)
+                shape.fill(summary.tint.gradient)
+                Image(systemName: summary.symbol)
                     .font(.system(size: size * 0.44, weight: .semibold))
                     .foregroundStyle(.white)
             }

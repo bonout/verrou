@@ -25,6 +25,7 @@ use std::io::{Cursor, Read};
 
 use crate::matching::host_of;
 use crate::secret::SecretString;
+use crate::template::Template;
 
 /// Taille maximale d'un fichier d'export, et d'un fichier extrait d'une
 /// archive : de quoi contenir des dizaines de milliers d'éléments, pas une
@@ -89,6 +90,7 @@ pub enum ImportKind {
     Login,
     SecureNote,
     Card,
+    Identity,
 }
 
 /// Carte bancaire importée.
@@ -102,6 +104,41 @@ pub struct CardData {
     /// Année sur quatre chiffres.
     pub exp_year: Option<String>,
     pub code: Option<SecretString>,
+}
+
+/// Identité importée (type Identité de Bitwarden).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct IdentityData {
+    pub title: Option<String>,
+    pub first_name: Option<String>,
+    pub middle_name: Option<String>,
+    pub last_name: Option<String>,
+    pub company: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub username: Option<String>,
+    pub address1: Option<String>,
+    pub address2: Option<String>,
+    pub postal_code: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
+    pub ssn: Option<SecretString>,
+    pub passport_number: Option<SecretString>,
+    pub license_number: Option<SecretString>,
+}
+
+impl IdentityData {
+    /// Prénom et nom, pour comparer avec le coffre.
+    pub fn full_name(&self) -> String {
+        [&self.first_name, &self.middle_name, &self.last_name]
+            .into_iter()
+            .flatten()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
 }
 
 /// Champ supplémentaire d'un identifiant ou d'une carte (devient un champ
@@ -166,6 +203,10 @@ pub struct ImportedItem {
     pub folder: Option<String>,
     pub favorite: bool,
     pub card: Option<CardData>,
+    pub identity: Option<IdentityData>,
+    /// Modèle de Verrou (Wi-Fi, passeport…) : les champs prédéfinis sont
+    /// dans `fields`, le champ `verrou:type` est ajouté à l'écriture.
+    pub template: Option<Template>,
     pub fields: Vec<ExtraField>,
     /// Dernière modification dans l'application d'origine (Unix, secondes),
     /// quand l'export la donne.
@@ -187,6 +228,8 @@ impl ImportedItem {
             folder: None,
             favorite: false,
             card: None,
+            identity: None,
+            template: None,
             fields: Vec::new(),
             modified: None,
             attachments: Vec::new(),
@@ -264,6 +307,14 @@ impl Parsed {
                 item.notes.is_none() && item.fields.is_empty() && item.attachments.is_empty()
             }
             ImportKind::Card => item.card.as_ref().is_none_or(|c| *c == CardData::default()),
+            ImportKind::Identity => {
+                item.notes.is_none()
+                    && item.fields.is_empty()
+                    && item
+                        .identity
+                        .as_ref()
+                        .is_none_or(|i| *i == IdentityData::default())
+            }
             ImportKind::Login => false,
         };
         if empty {
@@ -514,6 +565,38 @@ fn secret(value: Option<&str>) -> Option<SecretString> {
     value
         .filter(|v| !v.trim().is_empty())
         .map(SecretString::new)
+}
+
+/// Champs d'un élément importé selon un modèle : les valeurs trouvées, sous
+/// les libellés du modèle et dans son ordre (masquées comme il le dit), puis
+/// les autres champs de l'export.
+fn template_fields(
+    template: Template,
+    found: &[(&'static str, String)],
+    others: Vec<ExtraField>,
+) -> Vec<ExtraField> {
+    let mut fields: Vec<ExtraField> = template
+        .fields()
+        .iter()
+        .filter_map(|def| {
+            let value = found
+                .iter()
+                .find(|(label, value)| *label == def.label && !value.trim().is_empty())?;
+            Some(ExtraField {
+                name: def.label.to_owned(),
+                value: SecretString::new(value.1.clone()),
+                hidden: def.hidden,
+            })
+        })
+        .collect();
+    debug_assert!(
+        found
+            .iter()
+            .all(|(label, _)| template.fields().iter().any(|d| d.label == *label)),
+        "libellé hors du modèle {template:?}"
+    );
+    fields.extend(others);
+    fields
 }
 
 /// Lignes « Libellé : valeur », ajoutées aux notes d'un élément.

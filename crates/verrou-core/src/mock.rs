@@ -663,7 +663,7 @@ impl Builder<'_> {
                 false,
             ),
         ];
-        notes
+        let mut notes = notes
             .iter()
             .map(|(title, body, folder, favorite)| {
                 let (created, modified) = self.dates();
@@ -687,7 +687,24 @@ impl Builder<'_> {
                     shared: None,
                 }
             })
-            .collect()
+            .collect::<Vec<_>>();
+        // Le Wi-Fi suit le modèle de Verrou : champs prédéfinis et QR code.
+        if let Some(wifi) = notes.first_mut() {
+            use crate::template::{MARKER, Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
+            Template::Wifi.singular().clone_into(&mut wifi.subtitle);
+            wifi.fields = vec![
+                Field::new("custom-0", WIFI_SSID, FieldKind::Text, "Martin-5G"),
+                Field::new(
+                    "custom-1",
+                    WIFI_PASSWORD,
+                    FieldKind::Concealed,
+                    "lilas-portail-27",
+                ),
+                Field::new("custom-2", WIFI_SECURITY, FieldKind::Text, "WPA2"),
+                Field::new(MARKER, MARKER, FieldKind::Text, Template::Wifi.key()),
+            ];
+        }
+        notes
     }
 
     fn ssh_key(&mut self) -> Item {

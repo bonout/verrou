@@ -3,19 +3,22 @@
 //! Même répartition que pour la lecture : le SDK chiffre (`CipherView` →
 //! `Cipher` → requête d'API), Verrou envoie la requête. Une modification part
 //! de l'élément tel que le cache le connaît, déchiffré, et ne touche qu'aux
-//! champs que Verrou sait éditer : le reste (champs personnalisés, passkeys,
-//! pièces jointes, historique) repart intact. La date de révision envoyée
-//! permet au serveur de refuser une modification faite sur une copie périmée.
+//! champs que Verrou sait éditer : le reste (passkeys, pièces jointes,
+//! historique, champs réservés `verrou:…`) repart intact. La date de
+//! révision envoyée permet au serveur de refuser une modification faite sur
+//! une copie périmée.
 
 use std::collections::HashMap;
 
 use bitwarden_api_api::models::{CipherRequestModel, SyncResponseModel};
 use bitwarden_vault::{
-    Cipher, CipherRepromptType, CipherType, CipherView, FolderId, LoginUriView, LoginView,
-    PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType, VaultClientExt,
+    Cipher, CipherRepromptType, CipherType, CipherView, FieldType, FieldView, FolderId,
+    LoginUriView, LoginView, PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType,
+    VaultClientExt,
 };
 use chrono::{DateTime, Utc};
 use verrou_core::SecretString;
+use verrou_core::template::{self, Template};
 
 use crate::{Connection, Decrypted, Error};
 
@@ -31,6 +34,35 @@ pub struct Draft {
     pub favorite: bool,
     pub notes: Option<SecretString>,
     pub login: Option<LoginDraft>,
+    /// Champs personnalisés, dans l'ordre, hors champs réservés `verrou:…`
+    /// (jamais montrés, toujours conservés). `None` : ne pas y toucher.
+    pub fields: Option<Vec<CustomFieldDraft>>,
+    /// Modèle (Wi-Fi, passeport…) : posé à la création, ensuite conservé.
+    pub template: Option<Template>,
+}
+
+/// Nature d'un champ personnalisé, celle de Bitwarden.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CustomFieldKind {
+    #[default]
+    Text,
+    /// Masqué à l'écran.
+    Hidden,
+    /// Case à cocher (`"true"` ou `"false"`).
+    Boolean,
+    /// Renvoie à un champ de l'élément (identifiant, mot de passe…) : n'a pas
+    /// de valeur propre, se déplace ou se supprime mais ne se modifie pas.
+    Linked,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CustomFieldDraft {
+    pub name: String,
+    pub value: Option<SecretString>,
+    pub kind: CustomFieldKind,
+    /// Champ désigné par un champ lié (numérotation de Bitwarden : 100
+    /// identifiant, 101 mot de passe…).
+    pub linked_id: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -231,6 +263,90 @@ fn uris(list: Vec<String>, previous: &[LoginUriView]) -> Option<Vec<LoginUriView
     (!uris.is_empty()).then_some(uris)
 }
 
+/// Le champ réservé qui désigne le modèle.
+fn marker(template: Template) -> FieldView {
+    FieldView {
+        name: Some(template::MARKER.to_owned()),
+        value: Some(template.key().to_owned()),
+        r#type: FieldType::Text,
+        linked_id: None,
+    }
+}
+
+fn is_reserved(field: &FieldView) -> bool {
+    field.name.as_deref().is_some_and(template::is_reserved)
+}
+
+fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
+    if template::is_reserved(field.name.trim()) {
+        return Err(Error::Invalid(format!(
+            "« {} » est un nom réservé à Verrou",
+            field.name.trim()
+        )));
+    }
+    let value = secret(field.value);
+    let (r#type, value, linked_id) = match field.kind {
+        CustomFieldKind::Text => (FieldType::Text, value, None),
+        CustomFieldKind::Hidden => (FieldType::Hidden, value, None),
+        CustomFieldKind::Boolean => {
+            let checked = value.as_deref() == Some("true");
+            (FieldType::Boolean, Some(checked.to_string()), None)
+        }
+        CustomFieldKind::Linked => {
+            let id = field
+                .linked_id
+                .ok_or_else(|| Error::Invalid("champ lié sans cible".to_owned()))?;
+            let linked = id
+                .try_into()
+                .map_err(|_| Error::Invalid(format!("champ lié inconnu ({id})")))?;
+            (FieldType::Linked, None, Some(linked))
+        }
+    };
+    Ok(FieldView {
+        name: Some(field.name),
+        value,
+        r#type,
+        linked_id,
+    })
+}
+
+/// Les champs du brouillon, suivis des champs réservés de l'élément (repris
+/// tels quels) et du champ du modèle s'il manque.
+fn merge_fields(
+    drafted: Vec<CustomFieldDraft>,
+    previous: Option<Vec<FieldView>>,
+    template: Option<Template>,
+) -> Result<Option<Vec<FieldView>>, Error> {
+    let mut fields = drafted
+        .into_iter()
+        .map(field_view)
+        .collect::<Result<Vec<_>, _>>()?;
+    fields.extend(previous.into_iter().flatten().filter(is_reserved));
+    if let Some(template) = template
+        && !fields
+            .iter()
+            .any(|f| f.name.as_deref() == Some(template::MARKER))
+    {
+        fields.push(marker(template));
+    }
+    Ok((!fields.is_empty()).then_some(fields))
+}
+
+fn custom_field(field: FieldView) -> CustomFieldDraft {
+    let kind = match field.r#type {
+        FieldType::Text => CustomFieldKind::Text,
+        FieldType::Hidden => CustomFieldKind::Hidden,
+        FieldType::Boolean => CustomFieldKind::Boolean,
+        FieldType::Linked => CustomFieldKind::Linked,
+    };
+    CustomFieldDraft {
+        name: field.name.unwrap_or_default(),
+        value: field.value.map(SecretString::new),
+        kind,
+        linked_id: field.linked_id.map(u32::from),
+    }
+}
+
 pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, Error> {
     let name = draft.name.trim().to_owned();
     if name.is_empty() {
@@ -258,6 +374,7 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
             }),
         ),
     };
+    let fields = merge_fields(draft.fields.unwrap_or_default(), None, draft.template)?;
     Ok(CipherView {
         id: None,
         organization_id: None,
@@ -284,7 +401,7 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
         local_data: None,
         attachments: None,
         attachment_decryption_failures: None,
-        fields: None,
+        fields,
         password_history: None,
         creation_date: now,
         deleted_date: None,
@@ -296,7 +413,22 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
 
 /// Ce que l'écran d'édition montre d'un élément.
 pub(crate) fn draft_of(view: CipherView) -> Draft {
+    let template = view
+        .fields
+        .iter()
+        .flatten()
+        .find(|f| f.name.as_deref() == Some(template::MARKER))
+        .and_then(|f| Template::from_key(f.value.as_deref()?));
+    let fields = view
+        .fields
+        .into_iter()
+        .flatten()
+        .filter(|f| !is_reserved(f))
+        .map(custom_field)
+        .collect();
     Draft {
+        fields: Some(fields),
+        template,
         name: view.name,
         folder_id: view.folder_id.map(|f| f.to_string()),
         favorite: view.favorite,
@@ -326,6 +458,9 @@ pub(crate) fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> 
     view.folder_id = folder_id(draft.folder_id)?;
     view.favorite = draft.favorite;
     view.notes = secret(draft.notes);
+    if let Some(fields) = draft.fields {
+        view.fields = merge_fields(fields, view.fields.take(), draft.template)?;
+    }
     let (Some(d), Some(login)) = (draft.login, view.login.as_mut()) else {
         return Ok(());
     };
@@ -418,6 +553,111 @@ mod tests {
         assert_eq!(note.r#type, CipherType::SecureNote);
         assert!(matches!(
             new_view(Draft::default(), Utc::now()),
+            Err(Error::Invalid(_))
+        ));
+    }
+
+    fn field(name: &str, value: &str, kind: CustomFieldKind) -> CustomFieldDraft {
+        CustomFieldDraft {
+            name: name.to_owned(),
+            value: Some(SecretString::new(value)),
+            kind,
+            linked_id: None,
+        }
+    }
+
+    fn view_field(name: &str, value: Option<&str>, r#type: FieldType) -> FieldView {
+        FieldView {
+            name: Some(name.to_owned()),
+            value: value.map(str::to_owned),
+            r#type,
+            linked_id: None,
+        }
+    }
+
+    #[test]
+    fn template_marker_is_written_and_kept_out_of_the_draft() {
+        let view = new_view(
+            Draft {
+                name: "Maison".to_owned(),
+                template: Some(Template::Wifi),
+                fields: Some(vec![
+                    field("Nom du réseau (SSID)", "Martin-5G", CustomFieldKind::Text),
+                    field("Mot de passe", "lilas", CustomFieldKind::Hidden),
+                    field("Invités", "true", CustomFieldKind::Boolean),
+                ]),
+                ..Draft::default()
+            },
+            Utc::now(),
+        )
+        .unwrap();
+        assert_eq!(view.r#type, CipherType::SecureNote);
+        let fields = view.fields.clone().unwrap();
+        assert_eq!(fields.len(), 4);
+        assert_eq!(fields[1].r#type, FieldType::Hidden);
+        assert_eq!(fields[2].value.as_deref(), Some("true"));
+        assert_eq!(fields[3].name.as_deref(), Some("verrou:type"));
+        assert_eq!(fields[3].value.as_deref(), Some("wifi"));
+        assert_eq!(fields[3].r#type, FieldType::Text);
+
+        let draft = draft_of(view);
+        assert_eq!(draft.template, Some(Template::Wifi));
+        let drafted = draft.fields.unwrap();
+        assert_eq!(drafted.len(), 3, "le champ réservé n'est pas modifiable");
+        assert_eq!(drafted[1].kind, CustomFieldKind::Hidden);
+        assert_eq!(drafted[1].value.as_ref().unwrap().expose(), "lilas");
+    }
+
+    #[test]
+    fn edited_fields_keep_reserved_ones_untouched() {
+        let now = Utc::now();
+        let mut linked = view_field("Mot de passe (lié)", None, FieldType::Linked);
+        linked.linked_id = Some(101u32.try_into().unwrap());
+        let original = vec![
+            view_field("verrou:type", Some("server"), FieldType::Text),
+            view_field("Port", Some("22"), FieldType::Text),
+            linked,
+        ];
+        let mut view = new_view(login_draft("un"), now).unwrap();
+        view.fields = Some(original.clone());
+        let mut draft = draft_of(view.clone());
+        assert_eq!(draft.template, Some(Template::Server));
+        let mut fields = draft.fields.take().unwrap();
+        assert_eq!(fields[1].kind, CustomFieldKind::Linked);
+        assert_eq!(fields[1].linked_id, Some(101));
+        // Renommer, réordonner, ajouter.
+        "Port SSH".clone_into(&mut fields[0].name);
+        fields.swap(0, 1);
+        fields.push(field("Clé", "abc", CustomFieldKind::Hidden));
+        draft.fields = Some(fields);
+        apply(&mut view, draft, now).unwrap();
+        let fields = view.fields.clone().unwrap();
+        let names: Vec<_> = fields.iter().map(|f| f.name.clone().unwrap()).collect();
+        assert_eq!(
+            names,
+            ["Mot de passe (lié)", "Port SSH", "Clé", "verrou:type"]
+        );
+        assert_eq!(fields[0].linked_id.map(u32::from), Some(101));
+        assert_eq!(fields[3].value.as_deref(), Some("server"));
+
+        // Tout supprimer garde le champ réservé ; `None` ne touche à rien.
+        let mut draft = login_draft("un");
+        draft.fields = Some(Vec::new());
+        apply(&mut view, draft, now).unwrap();
+        assert_eq!(view.fields.as_ref().unwrap().len(), 1);
+        apply(&mut view, login_draft("un"), now).unwrap();
+        assert_eq!(view.fields.as_ref().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn reserved_names_are_refused() {
+        let draft = Draft {
+            name: "Note".to_owned(),
+            fields: Some(vec![field("verrou:type", "wifi", CustomFieldKind::Text)]),
+            ..Draft::default()
+        };
+        assert!(matches!(
+            new_view(draft, Utc::now()),
             Err(Error::Invalid(_))
         ));
     }

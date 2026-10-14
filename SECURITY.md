@@ -70,8 +70,15 @@ PR qui touche à l'un de ces points le dit dans sa description.
   (5 entrées, comme Bitwarden). Les éléments qu'un compte ne peut pas
   modifier (partage en lecture) sont refusés avant tout envoi. Pour éditer,
   Swift reçoit les secrets de l'élément (`edit_draft`) : seulement quand
-  l'utilisateur ouvre l'écran de modification. La corbeille est celle du
-  serveur (`PUT /api/ciphers/{id}/delete`), restaurable.
+  l'utilisateur ouvre l'écran de modification (champs personnalisés
+  masqués compris). Les champs réservés à Verrou (`verrou:type`, qui
+  désigne un modèle comme « Réseau Wi-Fi ») ne lui sont jamais proposés et
+  repartent tels quels. La corbeille est celle du serveur
+  (`PUT /api/ciphers/{id}/delete`), restaurable.
+- **QR code d'un Wi-Fi** : le contenu (`WIFI:T:WPA;S:…;P:…;;`, mot de passe
+  compris) ne sort de Rust (`wifi_qr_code`) que quand l'utilisateur demande
+  le QR code, après la confirmation d'un élément protégé ; Swift n'en garde
+  que l'image, le temps du popover.
 - **Import** (Apple, 1Password, Proton Pass) : le fichier d'export est **en
   clair**, il contient tous les mots de passe. Verrou ne le lit que sur
   demande, une fois, par le panneau d'ouverture de macOS (droit

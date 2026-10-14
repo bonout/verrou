@@ -18,11 +18,22 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   TOTP code, YubiKey OTP or e-mail. Syncs when the vault opens, then every
   5 min (⌘R to force it).
 - **Create and edit** (⌘N, ⌘E): logins (with the password generator and its
-  strength meter) and secure notes; title, folder, favorite and notes for the
-  other types. The rest of an item (custom fields, passkeys, attachments) is
-  kept intact, the old password goes to the item's history, and a change made
-  elsewhere in the meantime is never overwritten. Trash can be restored from
-  the web vault.
+  strength meter) and secure notes; title, folder, favorite, notes and
+  **custom fields** (text, hidden, checkbox: add, remove, rename, reorder;
+  linked fields are shown and kept) for every type. The rest of an item
+  (passkeys, attachments) is kept intact, the old password goes to the item's
+  history, and a change made elsewhere in the meantime is never overwritten.
+  Trash can be restored from the web vault.
+- **Templates**: *Nouvel élément* also offers software license, Wi-Fi
+  network, bank account, passport, driver's license, ID card, server,
+  database, API key and membership. Bitwarden has no such types, so each one
+  is a secure note (a login for server, database and API key) with
+  predefined custom fields, plus a text field `verrou:type` (e.g. `wifi`)
+  that lets Verrou recognize it: it syncs, survives the web vault (where it
+  shows as an ordinary field), is never shown in Verrou and is kept as is on
+  every edit. Templates get their own icon and sidebar category, and
+  `type:wifi`, `type:passeport`… in search. A Wi-Fi network shows a **QR
+  code** that phones scan to join it.
 - **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one
@@ -182,8 +193,12 @@ reason. Secrets never appear in the review. Created items can go to a folder
 or to no folder. Everything is sent in one request, followed by one sync.
 
 What is imported: logins (username, password, sites, one-time code, extra
-fields), secure notes and credit cards. Other kinds (identities, servers,
-Wi-Fi…) become secure notes with their fields in the notes. Files carried by
+fields), secure notes, credit cards and identities (real Bitwarden
+identities; fields Bitwarden has no slot for become custom fields). 1Password
+software licenses, wireless routers, bank accounts, passports, driver's
+licenses, servers, databases, API credentials and memberships, and Proton
+Pass Wi-Fi networks, become the matching Verrou templates. Other kinds
+become secure notes with their fields in the notes. Files carried by
 a 1PUX or Proton Pass ZIP export become attachments (100 MB per file at most;
 a 1Password *Document* becomes a secure note with its file); a file missing
 from the archive is mentioned in the item's notes. Items with files are

@@ -1,19 +1,22 @@
 //! Export 1PUX de 1Password : une archive ZIP dont `export.data` décrit
 //! comptes → coffres → éléments.
 //!
-//! Identifiants (et « mots de passe » seuls), notes sécurisées et cartes
-//! bancaires sont repris tels quels ; les autres catégories (identité,
-//! serveur, routeur Wi-Fi…) deviennent des notes sécurisées dont les notes
-//! reprennent les champs. Un document devient une note sécurisée avec son
-//! fichier en pièce jointe ; les fichiers joints aux autres éléments
-//! suivent aussi (`files/<documentId>__<nom>` dans l'archive).
+//! Identifiants (et « mots de passe » seuls), notes sécurisées, cartes
+//! bancaires et identités sont repris tels quels ; licences, routeurs Wi-Fi,
+//! comptes bancaires, passeports, permis, serveurs, bases de données, clés
+//! API et adhésions deviennent les modèles de Verrou correspondants (voir
+//! [`crate::template`]). Les autres catégories deviennent des notes
+//! sécurisées dont les notes reprennent les champs. Un document devient une
+//! note sécurisée avec son fichier en pièce jointe ; les fichiers joints aux
+//! autres éléments suivent aussi (`files/<documentId>__<nom>` dans l'archive).
 
 use serde_json::Value;
 
 use super::{
-    CardData, ExtraField, ImportError, ImportKind, ImportedFile, ImportedItem, Parsed,
-    append_lines, date_of, expiry, secret, text,
+    CardData, ExtraField, IdentityData, ImportError, ImportKind, ImportedFile, ImportedItem,
+    Parsed, append_lines, date_of, expiry, secret, template_fields, text,
 };
+use crate::template::{Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
 
 const LOGIN: &str = "001";
 const CARD: &str = "002";
@@ -50,6 +53,120 @@ pub(super) fn archive_entry(name: &str, document_id: &str) -> bool {
     name.strip_prefix("files/")
         .and_then(|rest| rest.strip_prefix(document_id))
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('_'))
+}
+
+const IDENTITY: &str = "004";
+
+/// Catégories de 1Password qui ont un modèle dans Verrou.
+fn template_of(category: &str) -> Option<Template> {
+    Some(match category {
+        "100" => Template::SoftwareLicense,
+        "101" => Template::BankAccount,
+        "102" => Template::Database,
+        "103" => Template::DriversLicense,
+        "105" => Template::Membership,
+        "106" => Template::Passport,
+        "109" => Template::Wifi,
+        "110" => Template::Server,
+        "112" => Template::ApiKey,
+        _ => return None,
+    })
+}
+
+/// Champs de 1Password (identifiant de champ) → libellés du modèle.
+fn field_map(template: Template) -> &'static [(&'static str, &'static str)] {
+    match template {
+        Template::SoftwareLicense => &[
+            ("product_version", "Version"),
+            ("reg_code", "Clé de licence"),
+            ("reg_name", "Licencié à"),
+            ("reg_email", "E-mail"),
+            ("publisher_name", "Éditeur"),
+            ("order_date", "Date d'achat"),
+            ("order_number", "Numéro de commande"),
+        ],
+        Template::BankAccount => &[
+            ("bankName", "Banque"),
+            ("owner", "Titulaire"),
+            ("accountType", "Type de compte"),
+            ("iban", "IBAN"),
+            ("swift", "BIC"),
+            ("accountNo", "Numéro de compte"),
+            ("telephonePin", "Code PIN"),
+        ],
+        Template::Database => &[
+            ("database_type", "Type"),
+            ("port", "Port"),
+            ("database", "Base"),
+            ("options", "Options de connexion"),
+        ],
+        Template::DriversLicense => &[
+            ("number", "Numéro"),
+            ("fullname", "Nom"),
+            ("birthdate", "Date de naissance"),
+            ("class", "Catégories"),
+            ("expiry_date", "Date d'expiration"),
+            ("country", "Pays ou région"),
+        ],
+        Template::Membership => &[
+            ("org_name", "Organisation"),
+            ("member_name", "Membre"),
+            ("membership_no", "Numéro de membre"),
+            ("member_since", "Membre depuis"),
+            ("expiry_date", "Date d'expiration"),
+            ("pin", "Code PIN"),
+            ("phone", "Téléphone"),
+        ],
+        Template::Passport => &[
+            ("number", "Numéro"),
+            ("fullname", "Nom"),
+            ("nationality", "Nationalité"),
+            ("birthdate", "Date de naissance"),
+            ("birthplace", "Lieu de naissance"),
+            ("sex", "Sexe"),
+            ("issue_date", "Date de délivrance"),
+            ("expiry_date", "Date d'expiration"),
+            ("issuing_authority", "Autorité de délivrance"),
+        ],
+        Template::Wifi => &[
+            ("network_name", WIFI_SSID),
+            ("wireless_password", WIFI_PASSWORD),
+            ("wireless_security", WIFI_SECURITY),
+        ],
+        Template::Server => &[
+            ("name", "Hébergeur"),
+            ("admin_console_url", "Console d'administration"),
+            ("admin_console_username", "Identifiant de la console"),
+            ("admin_console_password", "Mot de passe de la console"),
+        ],
+        Template::ApiKey => &[("type", "Type"), ("expires", "Date d'expiration")],
+        Template::IdCard => &[],
+    }
+}
+
+/// Champs d'un modèle « identifiant » : (identifiant, mot de passe, site).
+fn login_ids(template: Template) -> Option<(&'static str, &'static str, &'static str)> {
+    match template {
+        Template::Server => Some(("username", "password", "url")),
+        Template::Database => Some(("username", "password", "hostname")),
+        Template::ApiKey => Some(("username", "credential", "hostname")),
+        _ => None,
+    }
+}
+
+/// `wpa2p` → `WPA2 Personnel` : la sécurité d'un routeur, lisible.
+fn wireless_security(value: &str) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "none" => "Aucune".to_owned(),
+        "wep" => "WEP".to_owned(),
+        "wpap" => "WPA Personnel".to_owned(),
+        "wpae" => "WPA Entreprise".to_owned(),
+        "wpa2p" => "WPA2 Personnel".to_owned(),
+        "wpa2e" => "WPA2 Entreprise".to_owned(),
+        "wpa3p" => "WPA3 Personnel".to_owned(),
+        "wpa3e" => "WPA3 Entreprise".to_owned(),
+        _ => value.trim().to_owned(),
+    }
 }
 
 pub(super) fn parse(json: &Value, parsed: &mut Parsed) -> Result<(), ImportError> {
@@ -203,8 +320,12 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
                 value: f.value.into(),
             }));
         }
+        IDENTITY => identity(&mut item, details, fields),
+        other if let Some(template) = template_of(other) => {
+            templated(&mut item, template, overview, details, fields);
+        }
         _ => {
-            // Note, identité, serveur… : tout dans les notes.
+            // Note, document, autres catégories : tout dans les notes.
             let mut lines = Vec::new();
             for (designation, label) in [("username", "Identifiant"), ("password", "Mot de passe")]
             {
@@ -222,6 +343,95 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
     }
     item.attachments = files(details);
     parsed.push(item);
+}
+
+/// Retire de la liste le champ qui porte cet identifiant, et rend sa valeur.
+fn take(fields: &mut Vec<SectionField>, id: &str) -> Option<String> {
+    fields
+        .iter()
+        .position(|f| f.id == id)
+        .map(|i| fields.remove(i).value)
+}
+
+fn extras(fields: Vec<SectionField>) -> Vec<ExtraField> {
+    fields
+        .into_iter()
+        .map(|f| ExtraField {
+            name: label(&f),
+            hidden: is_secret(&f),
+            value: f.value.into(),
+        })
+        .collect()
+}
+
+/// Catégorie qui a un modèle : ses champs reconnus sous les libellés du
+/// modèle, les autres à la suite.
+fn templated(
+    item: &mut ImportedItem,
+    template: Template,
+    overview: &Value,
+    details: &Value,
+    mut fields: Vec<SectionField>,
+) {
+    item.template = Some(template);
+    if let Some((user, password, site)) = login_ids(template) {
+        item.kind = ImportKind::Login;
+        item.username = take(&mut fields, user)
+            .or_else(|| login_field(details, "username"))
+            .map(|u| u.trim().to_owned());
+        item.password = take(&mut fields, password)
+            .or_else(|| login_field(details, "password"))
+            .map(Into::into);
+        item.urls = urls(overview);
+        item.urls.extend(take(&mut fields, site));
+    }
+    let found: Vec<_> = field_map(template)
+        .iter()
+        .filter_map(|(id, label)| {
+            let value = take(&mut fields, id)?;
+            let value = if template == Template::Wifi && *id == "wireless_security" {
+                wireless_security(&value)
+            } else {
+                value
+            };
+            Some((*label, value))
+        })
+        .collect();
+    item.fields = template_fields(template, &found, extras(fields));
+}
+
+/// Identité : les champs que Bitwarden connaît, le reste en champs
+/// personnalisés.
+fn identity(item: &mut ImportedItem, details: &Value, mut fields: Vec<SectionField>) {
+    item.kind = ImportKind::Identity;
+    let address = array(details, "sections")
+        .flat_map(|section| array(section, "fields"))
+        .find_map(|f| f.pointer("/value/address"))
+        .cloned();
+    let part = |key: &str| text(address.as_ref().and_then(|a| a.get(key)?.as_str()));
+    let street = part("street");
+    let mut identity = IdentityData {
+        first_name: take(&mut fields, "firstname"),
+        middle_name: take(&mut fields, "initial"),
+        last_name: take(&mut fields, "lastname"),
+        company: take(&mut fields, "company"),
+        email: take(&mut fields, "email"),
+        username: take(&mut fields, "username"),
+        address1: street,
+        postal_code: part("zip"),
+        city: part("city"),
+        state: part("state"),
+        country: part("country"),
+        ..IdentityData::default()
+    };
+    if address.is_some() {
+        take(&mut fields, "address");
+    }
+    identity.phone = ["defphone", "cellphone", "homephone", "busphone"]
+        .iter()
+        .find_map(|id| take(&mut fields, id));
+    item.identity = Some(identity);
+    item.fields = extras(fields);
 }
 
 fn login_field(details: &Value, designation: &str) -> Option<String> {
@@ -300,6 +510,7 @@ mod tests {
     use std::io::Write;
 
     use super::super::{Format, ImportKind, parse};
+    use crate::template::{Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
 
     const EXPORT_DATA: &str = r#"{
       "accounts": [{
@@ -357,9 +568,75 @@ mod tests {
                     { "title": "e-mail", "id": "email", "value": { "email": { "email_address": "camille@exemple.fr", "provider": null } } },
                     { "title": "naissance", "id": "birthdate", "value": { "date": 631152000 } }
                   ]
+                }, {
+                  "title": "Adresse", "fields": [
+                    { "title": "adresse", "id": "address", "value": { "address": { "street": "12 rue des Lilas", "city": "Annecy", "country": "fr", "zip": "74000", "state": "" } } },
+                    { "title": "mobile", "id": "cellphone", "value": { "phone": "+33 6 00 00 00 00" } }
+                  ]
                 }]
               },
               "overview": { "title": "Moi" }
+            },
+            {
+              "uuid": "a6", "state": "active", "categoryUuid": "109",
+              "details": {
+                "sections": [{
+                  "title": "", "fields": [
+                    { "title": "nom de la station", "id": "name", "value": { "string": "Freebox" } },
+                    { "title": "mot de passe de la station", "id": "password", "value": { "concealed": "admin-box" } },
+                    { "title": "nom du réseau", "id": "network_name", "value": { "string": "Martin-5G" } },
+                    { "title": "sécurité", "id": "wireless_security", "value": { "menu": "wpa2p" } },
+                    { "title": "mot de passe du réseau", "id": "wireless_password", "value": { "concealed": "lilas-27" } }
+                  ]
+                }]
+              },
+              "overview": { "title": "Wi-Fi maison" }
+            },
+            {
+              "uuid": "a7", "state": "active", "categoryUuid": "110",
+              "details": {
+                "sections": [{
+                  "title": "", "fields": [
+                    { "title": "URL", "id": "url", "value": { "string": "ssh://web.exemple.fr" } },
+                    { "title": "identifiant", "id": "username", "value": { "string": "root" } },
+                    { "title": "mot de passe", "id": "password", "value": { "concealed": "s3rv3ur" } }
+                  ]
+                }, {
+                  "title": "Hébergeur", "name": "hosting_provider_details", "fields": [
+                    { "title": "nom", "id": "name", "value": { "string": "OVH" } },
+                    { "title": "support", "id": "support_contact_phone", "value": { "phone": "3900" } }
+                  ]
+                }]
+              },
+              "overview": { "title": "Serveur web" }
+            },
+            {
+              "uuid": "a8", "state": "active", "categoryUuid": "112",
+              "details": {
+                "sections": [{
+                  "title": "", "fields": [
+                    { "title": "identifiant", "id": "username", "value": { "string": "ci-bot" } },
+                    { "title": "clé", "id": "credential", "value": { "concealed": "sk_test_123" } },
+                    { "title": "type", "id": "type", "value": { "menu": "bearer" } },
+                    { "title": "hôte", "id": "hostname", "value": { "string": "https://api.exemple.fr" } },
+                    { "title": "expire", "id": "expires", "value": { "date": 1893456000 } }
+                  ]
+                }]
+              },
+              "overview": { "title": "API exemple" }
+            },
+            {
+              "uuid": "a9", "state": "active", "categoryUuid": "101",
+              "details": {
+                "sections": [{
+                  "title": "", "fields": [
+                    { "title": "banque", "id": "bankName", "value": { "string": "Banque fictive" } },
+                    { "title": "IBAN", "id": "iban", "value": { "string": "FR76 0000 0000 0000" } },
+                    { "title": "code guichet", "id": "routingNo", "value": { "string": "00001" } }
+                  ]
+                }]
+              },
+              "overview": { "title": "Compte courant" }
             },
             {
               "uuid": "a4", "state": "archived", "categoryUuid": "001",
@@ -390,7 +667,7 @@ mod tests {
     fn onepux_logins_cards_and_others() {
         let parsed = parse(&onepux(EXPORT_DATA), None).unwrap();
         assert_eq!(parsed.format, Format::OnePassword1pux);
-        assert_eq!(parsed.items.len(), 4);
+        assert_eq!(parsed.items.len(), 8);
         assert_eq!(parsed.skipped.len(), 1);
         assert_eq!(parsed.skipped[0].reason, "archivé dans 1Password");
 
@@ -416,13 +693,66 @@ mod tests {
         assert_eq!(visa.fields[0].name, "PIN");
 
         let identity = &parsed.items[2];
-        assert_eq!(identity.kind, ImportKind::SecureNote);
-        let notes = identity.notes.as_ref().unwrap().expose();
-        assert!(notes.contains("prénom : Camille"));
-        assert!(notes.contains("e-mail : camille@exemple.fr"));
-        assert!(notes.contains("naissance : 1990-01-01"));
+        assert_eq!(identity.kind, ImportKind::Identity);
+        let data = identity.identity.as_ref().unwrap();
+        assert_eq!(data.first_name.as_deref(), Some("Camille"));
+        assert_eq!(data.email.as_deref(), Some("camille@exemple.fr"));
+        assert_eq!(data.address1.as_deref(), Some("12 rue des Lilas"));
+        assert_eq!(data.postal_code.as_deref(), Some("74000"));
+        assert_eq!(data.city.as_deref(), Some("Annecy"));
+        assert_eq!(data.state, None);
+        assert_eq!(data.phone.as_deref(), Some("+33 6 00 00 00 00"));
+        assert_eq!(identity.fields.len(), 1);
+        assert_eq!(identity.fields[0].name, "naissance");
+        assert_eq!(identity.fields[0].value.expose(), "1990-01-01");
+        assert!(identity.notes.is_none());
 
-        let router = &parsed.items[3];
+        let wifi = &parsed.items[3];
+        assert_eq!(wifi.kind, ImportKind::SecureNote);
+        assert_eq!(wifi.template, Some(Template::Wifi));
+        let fields: Vec<(&str, &str, bool)> = wifi
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.value.expose(), f.hidden))
+            .collect();
+        assert_eq!(
+            fields,
+            [
+                (WIFI_SSID, "Martin-5G", false),
+                (WIFI_PASSWORD, "lilas-27", true),
+                (WIFI_SECURITY, "WPA2 Personnel", false),
+                ("nom de la station", "Freebox", false),
+                ("mot de passe de la station", "admin-box", true),
+            ]
+        );
+
+        let server = &parsed.items[4];
+        assert_eq!(server.kind, ImportKind::Login);
+        assert_eq!(server.template, Some(Template::Server));
+        assert_eq!(server.username.as_deref(), Some("root"));
+        assert_eq!(server.password.as_ref().unwrap().expose(), "s3rv3ur");
+        assert_eq!(server.urls, ["ssh://web.exemple.fr"]);
+        assert_eq!(server.fields[0].name, "Hébergeur");
+        assert_eq!(server.fields[0].value.expose(), "OVH");
+        assert_eq!(server.fields[1].name, "support");
+
+        let api = &parsed.items[5];
+        assert_eq!(api.kind, ImportKind::Login);
+        assert_eq!(api.template, Some(Template::ApiKey));
+        assert_eq!(api.username.as_deref(), Some("ci-bot"));
+        assert_eq!(api.password.as_ref().unwrap().expose(), "sk_test_123");
+        assert_eq!(api.urls, ["https://api.exemple.fr"]);
+        let names: Vec<&str> = api.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["Type", "Date d'expiration"]);
+        assert_eq!(api.fields[1].value.expose(), "2030-01-01");
+
+        let bank = &parsed.items[6];
+        assert_eq!(bank.template, Some(Template::BankAccount));
+        let names: Vec<&str> = bank.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names, ["Banque", "IBAN", "code guichet"]);
+        assert!(bank.fields[1].hidden, "l'IBAN est masqué par le modèle");
+
+        let router = &parsed.items[7];
         assert_eq!(router.kind, ImportKind::Login);
         assert_eq!(
             router.password.as_ref().unwrap().expose(),
@@ -506,6 +836,18 @@ mod tests {
     fn bare_export_data_is_accepted() {
         let parsed = parse(EXPORT_DATA.as_bytes(), None).unwrap();
         assert_eq!(parsed.format, Format::OnePassword1pux);
-        assert_eq!(parsed.items.len(), 4);
+        assert_eq!(parsed.items.len(), 8);
+    }
+
+    #[test]
+    fn mapped_labels_belong_to_their_template() {
+        for template in Template::ALL {
+            for (_, label) in super::field_map(template) {
+                assert!(
+                    template.fields().iter().any(|f| f.label == *label),
+                    "{label} absent du modèle {template:?}"
+                );
+            }
+        }
     }
 }
