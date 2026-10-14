@@ -227,6 +227,26 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   la clé du canal (comme les cookies) ; l'extension se charge en mode
   développeur (pas de Chrome Web Store).
 
+## Accès d'urgence
+
+- **Confirmer un contact** revient à lui confier la clé du coffre : elle est
+  chiffrée pour sa clé publique (RSA-OAEP-SHA1, par le SDK, comme le coffre
+  web) et confiée au serveur, qui ne peut pas la lire. La clé publique vient
+  du serveur (`/api/users/{id}/public-key`) : un serveur malveillant pourrait
+  y mettre la sienne. Verrou montre donc d'abord l'empreinte de cette clé (la
+  phrase de 5 mots des apps Bitwarden), à comparer avec celle que le contact
+  lit dans son compte ; à l'envoi, la clé est relue et refusée si son
+  empreinte n'est plus celle qui a été vérifiée.
+- **Ouvrir le coffre d'un concédant** (lecture seule, accès accordé) : la clé
+  du concédant, chiffrée pour moi, s'ouvre avec ma clé privée, dans le SDK ;
+  ses éléments sont déchiffrés dans Rust et gardés dans un objet à part.
+  Swift n'en reçoit que les résumés, et les secrets un par un, à la
+  demande. Fermer la fenêtre ou verrouiller Verrou vide cet objet (secrets
+  mis à zéro) ; il se vide aussi de lui-même si la connexion qui l'a ouvert
+  disparaît.
+- **Prise de contrôle** (nouveau mot de passe principal du concédant) : pas
+  dans Verrou, seulement dans le coffre web.
+
 ## Envois (Bitwarden Send)
 
 - **Cryptographie** : celle du SDK (`bitwarden-send`), comme le coffre web.

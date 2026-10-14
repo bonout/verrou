@@ -11,6 +11,9 @@
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
 //! d'un autre gestionnaire, corbeille de plusieurs éléments.
 //!
+//! Accès d'urgence (`emergency`) : confier son coffre à un proche, ou
+//! ouvrir en lecture seule celui qu'un proche nous a confié.
+//!
 //! Envois (`send`) : Bitwarden Send, partage d'un texte par un lien chiffré.
 //!
 //! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
@@ -21,6 +24,7 @@ mod attachments;
 pub mod breach;
 mod convert;
 mod edit;
+pub mod emergency;
 mod error;
 mod import;
 mod organizations;

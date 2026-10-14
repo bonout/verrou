@@ -29,6 +29,9 @@ jobs:
           DOMAIN: http://localhost:8099
           LOGIN_RATELIMIT_MAX_BURST: "1000"
           LOGIN_RATELIMIT_SECONDS: "1"
+          # Inscription, prélogin et jetons d'envoi partagent une limite
+          # anonyme (50 d'affilée par IP) : la suite crée des dizaines de comptes.
+          UNAUTHENTICATED_RATELIMIT_MAX_BURST: "1000"
     env:
       VERROU_TEST_SERVER: http://localhost:8099
     steps:
