@@ -70,6 +70,8 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   any item.
 - **Act on many items at once**: select them like in Finder, then archive,
   trash, restore, favorite or move them to a folder in one go.
+- **Save without waiting**: edits show at once and are sent to the server
+  in the background, so a slow link never holds up the window.
 - **Work offline**: edit, create, trash or archive items without network;
   changes are synced, in order, as soon as the server answers.
 - **Generate** strong passwords or memorable passphrases (French or English
@@ -162,7 +164,8 @@ Optional:
 The app only receives item summaries (titles, usernames, sites). A password
 crosses into Swift only when you reveal or copy it, and locking zeroes the
 decrypted vault. The server's encrypted response is cached, so the vault also
-opens offline, and edits made offline wait in an encrypted queue until the
+opens offline. Every edit goes through an encrypted queue: it is applied to
+the displayed vault at once, then sent in the background, or when the
 server is back (an item changed elsewhere meanwhile is kept as a copy, never
 overwritten).
 

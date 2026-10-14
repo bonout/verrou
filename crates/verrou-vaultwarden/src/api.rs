@@ -302,14 +302,14 @@ impl Api {
         access_token: &str,
         id: &str,
         action: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .http
             .put(format!("{}/api/ciphers/{id}/{action}", self.base))
             .bearer_auth(access_token)
             .send()
             .await?;
-        write_response(response).await.map(drop)
+        write_response(response).await
     }
 
     /// Importe des éléments déjà chiffrés en une seule requête, comme
@@ -350,7 +350,9 @@ impl Api {
 
     /// Met plusieurs éléments à la corbeille en une requête (restaurables).
     pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
-        self.bulk_cipher_action(access_token, ids, "delete").await
+        self.bulk_cipher_action(access_token, ids, "delete")
+            .await
+            .map(drop)
     }
 
     /// `PUT /api/ciphers/{action}` sur plusieurs éléments en une requête :
@@ -361,7 +363,7 @@ impl Api {
         access_token: &str,
         ids: &[String],
         action: &str,
-    ) -> Result<(), Error> {
+    ) -> Result<Value, Error> {
         let response = self
             .http
             .put(format!("{}/api/ciphers/{action}", self.base))
@@ -369,7 +371,7 @@ impl Api {
             .json(&CipherBulkDeleteRequestModel::new(ids.to_vec()))
             .send()
             .await?;
-        write_response(response).await.map(drop)
+        write_response(response).await
     }
 
     /// Range plusieurs éléments dans un dossier (`None` : aucun) en une

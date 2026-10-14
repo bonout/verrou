@@ -44,8 +44,8 @@ use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, So
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
 use verrou_vaultwarden::{
-    Connection, Decrypted, Draft, LoginDraft, LoginStep, Organization, PendingLogin, Store,
-    TwoFactorAnswer, TwoFactorMethod, Unlocked,
+    Closer, Connection, Decrypted, Draft, LoginDraft, LoginStep, Organization, PendingLogin, Store,
+    Synced, TwoFactorAnswer, TwoFactorMethod, Unlocked,
 };
 
 uniffi::setup_scaffolding!();
@@ -739,6 +739,13 @@ pub struct VaultSession {
     /// Invitation d'une organisation à accepter une fois connecté, après la
     /// création du compte (`members`).
     pending_invite: Mutex<Option<verrou_vaultwarden::register::InviteLink>>,
+    /// Version du coffre affiché (`Decrypted::version`) : un coffre plus
+    /// ancien (synchronisation finie après une écriture locale) ne le
+    /// remplace pas. Tenu pendant toute l'installation.
+    installed: Mutex<u64>,
+    /// Arrête l'envoi en cours de la dernière connexion (verrouillage), et
+    /// ses écritures sur le disque (déconnexion), même s'il la garde en vie.
+    closer: Mutex<Option<Closer>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -804,6 +811,14 @@ impl VaultSession {
 
     fn install_vault(&self, decrypted: Decrypted) -> u32 {
         let failures = decrypted.failures as u32;
+        let mut installed = self
+            .installed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if decrypted.version < *installed {
+            return failures;
+        }
+        *installed = decrypted.version;
         *self.folders.write().unwrap_or_else(PoisonError::into_inner) = decrypted
             .folders
             .into_iter()
@@ -844,6 +859,13 @@ impl VaultSession {
     }
 
     fn install(&self, unlocked: Unlocked) -> u32 {
+        *self.closer.lock().unwrap_or_else(PoisonError::into_inner) =
+            Some(unlocked.connection.closer());
+        // Nouvelle connexion : ses versions repartent de zéro.
+        *self
+            .installed
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = 0;
         *self
             .connection
             .lock()
@@ -870,7 +892,9 @@ impl VaultSession {
     }
 
     /// Écriture venue de l'extension, déjà vérifiée par
-    /// `verrou_bridge::access` : sur le serveur, puis dans le coffre affiché.
+    /// `verrou_bridge::access` : dans le coffre affiché et la file, sans
+    /// attendre le réseau (l'app envoie ensuite, `push_changes`). Seules
+    /// les passkeys vont au serveur avant de répondre (le site en dépend).
     async fn perform_write(
         &self,
         connection: &Arc<tokio::sync::Mutex<Connection>>,
@@ -937,6 +961,24 @@ impl VaultSession {
         drop(open);
         self.install_written(connection, decrypted)?;
         Ok(id)
+    }
+
+    async fn sync_shared(&self, patient: bool) -> Result<SyncOutcome, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let Synced::Changed(decrypted) =
+            verrou_vaultwarden::sync_shared(&connection, patient).await?
+        else {
+            return Ok(SyncOutcome {
+                changed: false,
+                failures: 0,
+            });
+        };
+        let failures = decrypted.failures as u32;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(SyncOutcome {
+            changed: true,
+            failures,
+        })
     }
 
     /// Le résumé, marqué s'il attend le serveur.
@@ -1027,6 +1069,8 @@ impl VaultSession {
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
             pending_invite: Mutex::new(None),
+            installed: Mutex::new(0),
+            closer: Mutex::new(None),
         })
     }
 
@@ -1195,22 +1239,20 @@ impl VaultSession {
         Ok(self.install(unlocked))
     }
 
-    /// Télécharge le coffre et, s'il a changé, remplace le contenu affiché :
-    /// les positions de `summaries()` changent, l'app recharge tout après coup.
+    /// Envoie les écritures en attente, télécharge le coffre et, s'il a
+    /// changé, remplace le contenu affiché : les positions de `summaries()`
+    /// changent, l'app recharge tout après coup. Le réseau et le
+    /// déchiffrement se font sans bloquer les écritures locales ; les
+    /// demandes simultanées sont regroupées (une en cours, une après).
     pub async fn sync(&self) -> Result<SyncOutcome, VerrouError> {
-        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
-        let Some(decrypted) = connection.lock().await.sync().await? else {
-            return Ok(SyncOutcome {
-                changed: false,
-                failures: 0,
-            });
-        };
-        let failures = decrypted.failures as u32;
-        self.install_if_current(&connection, decrypted)?;
-        Ok(SyncOutcome {
-            changed: true,
-            failures,
-        })
+        self.sync_shared(false).await
+    }
+
+    /// Comme `sync`, après une écriture locale : si le serveur était
+    /// injoignable il y a peu, ne retente pas tout de suite (erreur réseau ;
+    /// la synchronisation périodique s'en charge).
+    pub async fn push_changes(&self) -> Result<SyncOutcome, VerrouError> {
+        self.sync_shared(true).await
     }
 
     /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
@@ -1231,8 +1273,9 @@ impl VaultSession {
         Ok(draft.into())
     }
 
-    /// Crée l'élément dans le coffre personnel et resynchronise ; rend son
-    /// identifiant. Les positions de `summaries()` changent.
+    /// Crée l'élément dans le coffre personnel, sans attendre le serveur
+    /// (`push_changes` l'envoie) ; rend son identifiant, provisoire jusqu'à
+    /// l'envoi (`resolve_item_id`). Les positions de `summaries()` changent.
     pub async fn create_item(&self, draft: ItemDraft) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (id, decrypted) = connection.lock().await.create(draft.into()).await?;
@@ -1420,6 +1463,15 @@ impl VaultSession {
     /// Oublie le compte de ce Mac (jetons, cache, modifications hors ligne
     /// pas encore envoyées) et verrouille.
     pub fn logout(&self) -> Result<(), VerrouError> {
+        // Un envoi en cours ne doit pas réécrire la file effacée.
+        if let Some(closer) = self
+            .closer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            closer.close();
+        }
         self.lock();
         verrou_vaultwarden::logout(self.store()?)?;
         Ok(())
@@ -1448,6 +1500,8 @@ impl VaultSession {
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
             pending_invite: Mutex::new(None),
+            installed: Mutex::new(0),
+            closer: Mutex::new(None),
         })
     }
 
@@ -1495,6 +1549,16 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
+        // Un envoi en cours s'arrête après sa requête : la connexion (et la
+        // clé de l'utilisateur) n'ont pas à lui survivre plus longtemps.
+        if let Some(closer) = self
+            .closer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            closer.stop();
+        }
         self.pending
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -2612,5 +2676,117 @@ impl VaultSession {
             .delete_passkey(&id, &credential_id)
             .await?;
         self.install_if_current(&connection, decrypted)
+    }
+}
+
+/// Les outils des tests d'intégration (`tests/common`), pour les tests du
+/// pont ci-dessous, qui ont besoin des internes de la session.
+#[cfg(test)]
+extern crate self as verrou_ffi;
+
+#[cfg(test)]
+#[path = "../tests/common/mod.rs"]
+mod test_server;
+
+#[cfg(test)]
+mod optimistic_tests {
+    use std::time::{Duration, Instant};
+
+    use super::*;
+    use crate::test_server::{register, server, signed_in, slow};
+
+    /// Un coffre de `items` éléments fictifs, à la version `version`.
+    fn decrypted(items: usize, version: u64) -> Decrypted {
+        Decrypted {
+            items: mock::vault_items(0, 42).into_iter().take(items).collect(),
+            failures: 0,
+            folders: Vec::new(),
+            passkeys: Vec::new(),
+            organizations: Vec::new(),
+            pending_items: Vec::new(),
+            pending_changes: 0,
+            remapped: Vec::new(),
+            version,
+        }
+    }
+
+    /// Une synchronisation qui finit après une écriture locale (son coffre
+    /// date d'avant l'écriture) ne remplace pas le coffre affiché.
+    #[test]
+    fn an_older_vault_does_not_replace_the_displayed_one() {
+        let session = VaultSession::new();
+        session.install_vault(decrypted(3, 7));
+        session.install_vault(decrypted(1, 6));
+        assert_eq!(session.summaries().unwrap().len(), 3);
+        session.install_vault(decrypted(2, 8));
+        assert_eq!(session.summaries().unwrap().len(), 2);
+    }
+
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<String>>);
+
+    impl BridgeDelegate for Arc<Recorder> {
+        fn pairing_requested(&self, _: String, _: String, _: String, _: BridgeClientKind) {}
+        fn confirm_requested(&self, _: String, _: String, _: AccessPurpose, _: String, _: String) {}
+        fn unlock_requested(&self) {}
+        fn vault_changed(&self, item: String, _: String) {
+            self.0.lock().unwrap().push(item);
+        }
+        fn reprompt_requested(&self, _: String, _: String) {}
+    }
+
+    /// Un identifiant enregistré depuis Brave ou Firefox : la réponse part
+    /// dès l'écriture locale, bien avant celle du serveur ; l'app l'envoie
+    /// ensuite (`push_changes`, sur `vault_changed`).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_extension_save_answers_before_the_server_does() {
+        let Some(server) = server() else { return };
+        let latency = Duration::from_millis(600);
+        let email = register(&server).await;
+        let session = signed_in(slow(&server, latency).await, &email).await;
+        let recorder = Arc::new(Recorder::default());
+        let backend = SessionBackend {
+            session: Arc::downgrade(&session),
+            delegate: Box::new(Arc::clone(&recorder)),
+            confirmations: Arc::clone(&session.confirmations),
+        };
+
+        let start = Instant::now();
+        let reply = backend
+            .write(Box::new(|_| {
+                Ok(Write::Create {
+                    title: "exemple.fr".to_owned(),
+                    uri: "https://exemple.fr/connexion".to_owned(),
+                    username: Some("camille".to_owned()),
+                    password: Some(SecretString::new("depuis-brave")),
+                    totp: None,
+                })
+            }))
+            .await;
+        let elapsed = start.elapsed();
+        let temporary = reply.expect("coffre ouvert").expect("enregistré");
+        assert!(elapsed < latency / 2, "réponse après {elapsed:?}");
+        assert_eq!(
+            *recorder.0.lock().unwrap(),
+            std::slice::from_ref(&temporary)
+        );
+        let pending = |id: &str| {
+            session
+                .summaries()
+                .unwrap()
+                .iter()
+                .find(|s| s.id == id)
+                .map(|s| s.pending_sync)
+        };
+        assert_eq!(pending(&temporary), Some(true));
+
+        // L'envoi : au moins trois allers-retours (jeton, création, coffre).
+        let start = Instant::now();
+        assert!(session.push_changes().await.unwrap().changed);
+        assert!(start.elapsed() >= latency * 3);
+        let id = session.resolve_item_id(temporary);
+        assert_eq!(pending(&id), Some(false));
+        let seen = signed_in(server, &email).await;
+        assert!(seen.summaries().unwrap().iter().any(|s| s.id == id));
     }
 }

@@ -8,9 +8,9 @@
 //! révision envoyée permet au serveur de refuser une modification faite sur
 //! une copie périmée.
 //!
-//! Serveur injoignable : l'écriture, chiffrée de la même façon, attend dans
-//! la file des modifications hors ligne (`outbox`), déjà appliquée au coffre
-//! affiché.
+//! Rien n'attend le réseau : l'écriture, chiffrée, rejoint la file
+//! (`outbox`), appliquée tout de suite au coffre affiché ; l'envoi suit en
+//! arrière-plan (`sync_shared`), ou au retour du réseau.
 
 use std::collections::HashMap;
 
@@ -83,21 +83,19 @@ impl Connection {
         self.editable_view(&self.resolve(id)).await.map(draft_of)
     }
 
-    /// Crée l'élément dans le coffre personnel ; rend son identifiant et le
-    /// coffre resynchronisé. Hors ligne : un identifiant provisoire, et
-    /// l'élément attend le serveur.
+    /// Crée l'élément dans le coffre personnel, sous un identifiant
+    /// provisoire (celui du serveur le remplace à l'envoi, voir `resolve`) ;
+    /// rend cet identifiant et le coffre affiché.
     pub async fn create(&mut self, draft: Draft) -> Result<(String, Decrypted), Error> {
         let view = new_view(draft, Utc::now())?;
-        let access = self.online().await?;
-        self.save_cipher(None, view, access).await
+        self.queue_save(None, view).await
     }
 
     pub async fn update(&mut self, id: &str, draft: Draft) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let id = self.resolve(id);
         let mut view = self.editable_view(&id).await?;
         apply(&mut view, draft, Utc::now())?;
-        Ok(self.save_cipher(Some(&id), view, access).await?.1)
+        Ok(self.queue_save(Some(&id), view).await?.1)
     }
 
     /// Remplace, dans un identifiant existant, ce qui est fourni : le mot de
@@ -136,17 +134,14 @@ impl Connection {
     /// Corbeille du serveur : l'élément se restaure depuis le coffre web
     /// pendant 30 jours (réglage de Vaultwarden).
     pub async fn trash(&mut self, id: &str) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let id = self.resolve(id);
         let view = self.editable_view(&id).await?;
-        self.cipher_action(&id, view.name, Action::Trash, access)
-            .await
+        self.queue_action(&id, view.name, Action::Trash).await
     }
 
     /// Archive l'élément (ou le sort des archives) : il quitte la liste
     /// principale et le remplissage, sans être supprimé.
     pub async fn set_archived(&mut self, id: &str, archived: bool) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let id = self.resolve(id);
         let view = self.editable_view(&id).await?;
         let action = if archived {
@@ -154,24 +149,21 @@ impl Connection {
         } else {
             Action::Unarchive
         };
-        self.cipher_action(&id, view.name, action, access).await
+        self.queue_action(&id, view.name, action).await
     }
 
     /// Sort l'élément de la corbeille.
     pub async fn restore(&mut self, id: &str) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let id = self.resolve(id);
         let title = self.cached_title(&id).await?;
-        self.cipher_action(&id, title, Action::Restore, access)
-            .await
+        self.queue_action(&id, title, Action::Restore).await
     }
 
     pub async fn set_favorite(&mut self, id: &str, favorite: bool) -> Result<Decrypted, Error> {
-        let access = self.online().await?;
         let id = self.resolve(id);
         let mut view = self.editable_view(&id).await?;
         view.favorite = favorite;
-        Ok(self.save_cipher(Some(&id), view, access).await?.1)
+        Ok(self.queue_save(Some(&id), view).await?.1)
     }
 
     /// L'élément tel que le coffre affiché le connaît (cache et modifications

@@ -98,7 +98,7 @@ struct ItemDetailView: View {
                     }
                     if detail.summary.pendingSync {
                         Chip(text: "En attente de synchronisation", symbol: "arrow.triangle.2.circlepath", tint: .orange)
-                            .help("Modifié hors ligne : envoyé au serveur dès qu'il répondra")
+                            .help("Pas encore confirmé par le serveur : envoyé en arrière-plan, ou dès qu'il répondra")
                     }
                     if detail.summary.reprompt {
                         Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)

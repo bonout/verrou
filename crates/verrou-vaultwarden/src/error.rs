@@ -4,7 +4,7 @@ use std::fmt;
 ///
 /// Les messages sont destinés à l'utilisateur : ils disent quoi faire, pas
 /// comment le code a échoué. Aucun ne contient de secret.
-#[derive(Debug, thiserror::Error)]
+#[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
     #[error("mot de passe principal incorrect")]
     WrongPassword,

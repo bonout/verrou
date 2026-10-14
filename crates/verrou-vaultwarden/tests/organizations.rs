@@ -357,10 +357,13 @@ async fn organizations_share_create_edit_and_permissions() {
 
     // Verrou voit l'organisation et ses deux collections, noms déchiffrés.
     let mut connection = owner.verrou().await.connection;
-    let (personal_id, vault) = connection
+    let (personal_id, _) = connection
         .create(login_draft("Netflix", "mot-de-passe-perso"))
         .await
         .unwrap();
+    // Envoyé en arrière-plan dans l'app : ici, tout de suite.
+    let vault = connection.sync().await.unwrap().unwrap();
+    let personal_id = connection.resolve(&personal_id);
     assert_eq!(vault.failures, 0);
     let [famille] = vault.organizations.as_slice() else {
         panic!("une organisation attendue : {:?}", vault.organizations);

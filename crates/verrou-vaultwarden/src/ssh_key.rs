@@ -84,8 +84,7 @@ impl Connection {
             public_key: key.public_key,
             fingerprint: key.fingerprint,
         });
-        let access = self.online().await?;
-        self.save_cipher(None, view, access).await
+        self.queue_save(None, view).await
     }
 }
 

@@ -24,8 +24,9 @@ PR qui touche à l'un de ces points le dit dans sa description.
    session. Verrouiller libère le coffre.
 6. **Écritures prudentes** : chiffrées par le SDK, envoyées avec la date de
    révision connue (le serveur refuse d'écraser une version plus récente),
-   en ne touchant qu'aux champs que l'écran d'édition montre. Hors ligne,
-   elles attendent chiffrées (voir « Modifications hors ligne »).
+   en ne touchant qu'aux champs que l'écran d'édition montre. Elles passent
+   par une file chiffrée, envoyée en arrière-plan ou au retour du réseau
+   (voir « Modifications hors ligne »).
 7. **App sandboxée**, runtime renforcé ; en entrée, seulement le pont vers l'extension et le terminal, sur `127.0.0.1`.
 
 ## Connexion à Vaultwarden
@@ -174,11 +175,16 @@ PR qui touche à l'un de ces points le dit dans sa description.
   membres se gèrent dans Verrou (voir « Membres des organisations ») ; la
   création des collections et les règles de l'organisation, dans le coffre
   web.
-- **Modifications hors ligne** (`outbox.rs`) : serveur injoignable (erreur
-  réseau seulement : un refus du serveur reste une erreur), une création,
-  une modification, un favori, un changement de dossier, la corbeille, la
-  restauration ou les archives s'appliquent au coffre affiché et attendent
-  dans une file, `outbox.json` (dossier du compte, mode 600). L'élément y
+- **Modifications hors ligne, et écritures sans attente** (`outbox.rs`) :
+  en ligne comme hors ligne, une création, une modification, un favori, un
+  changement de dossier, la corbeille, la restauration, les archives (seules
+  ou groupées) et les identifiants enregistrés depuis le navigateur
+  s'appliquent au coffre affiché et attendent dans une file, `outbox.json`
+  (dossier du compte, mode 600) ; l'envoi suit aussitôt, en arrière-plan, et
+  l'extension reçoit sa réponse dès l'écriture locale. En ligne, une
+  passkey créée depuis le navigateur et son compteur vont au serveur avant
+  la réponse au site ; les pièces jointes, le partage et l'import ne passent
+  pas par la file. L'élément y
   est **déjà chiffré par le SDK**, exactement comme il serait parti (même
   clé, même date de révision connue) ; la file entière est en plus chiffrée
   par la clé de l'utilisateur (comme le jeton de renouvellement). En clair
@@ -187,14 +193,23 @@ PR qui touche à l'un de ces points le dit dans sa description.
   vérifie qu'aucun titre ni secret n'y figure. Verrouiller garde la file ;
   se déconnecter l'efface (la confirmation dit combien de modifications
   seraient perdues) ; une file d'un autre compte est ignorée et supprimée.
-  Au retour du réseau, la file part avant la lecture du coffre : créations
-  et modifications d'abord, dans l'ordre, puis corbeille et archives. Si
+  La file part avant la lecture du coffre : créations et modifications
+  d'abord, dans l'ordre, puis corbeille, archives et dossiers (par lots).
+  L'envoi ne garde pas la connexion verrouillée pendant le réseau : une
+  écriture faite pendant ce temps se place derrière celle en cours d'envoi
+  (jamais fusionnée avec elle) et repart de la date de révision que le
+  serveur rend, sans rien écraser d'autre. Une déconnexion pendant un envoi
+  arrête toute écriture de la file sur le disque ; un verrouillage l'arrête
+  après la requête en cours (la clé de l'utilisateur reste en mémoire le
+  temps de cette requête, 30 s au plus, comme pour toute requête déjà
+  partie), le reste attend le déverrouillage suivant. Si
   l'élément a changé (ou disparu) sur le serveur entre-temps, le serveur
   refuse la modification ; Verrou ne l'écrase pas : la version locale
   devient une copie, « titre (conflit hors ligne) », au même endroit, sans
   ses pièces jointes, et la version du serveur revient. Une modification
   refusée pour une autre raison (et dont la copie est refusée aussi) est
-  retirée de la file et signalée, jamais perdue en silence. Restent
+  retirée de la file, le coffre affiché revient à la version du serveur, et
+  le refus est signalé avec sa raison : jamais perdue en silence. Restent
   impossibles hors ligne, avec un message clair : pièces jointes, partage
   vers une organisation (et création dans une collection), envois, accès
   d'urgence, import. Les éléments en lecture seule le restent. Les
