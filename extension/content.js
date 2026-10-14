@@ -15,6 +15,9 @@
 (() => {
   if (globalThis.__verrouContent) return;
   globalThis.__verrouContent = true;
+  // API d'extension : `browser` (Firefox), sinon `chrome` (Brave). Le test sur
+  // `runtime.id` écarte un élément de la page nommé « browser » (voir browser.js).
+  const ext = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
   const USERNAME_HINT = /user|login|e-?mail|identifiant|courriel|account|compte|pseudo|nom d.utilisateur/i;
   const OTP_HINT = /otp|totp|2fa|mfa|one.?time|verification|vérification|authenticat|security.?code|code/i;
@@ -287,7 +290,7 @@
 
   async function send(message) {
     try {
-      return await chrome.runtime.sendMessage(message);
+      return await ext.runtime.sendMessage(message);
     } catch {
       return { state: "offline" };
     }
@@ -826,7 +829,7 @@
   addEventListener("scroll", () => menu.place(), true);
   addEventListener("resize", () => menu.place());
 
-  chrome.runtime.onMessage.addListener((message) => {
+  ext.runtime.onMessage.addListener((message) => {
     if (window !== top) return;
     // Remplissage demandé depuis la fenêtre de l'extension (cadre principal).
     if (message?.kind === "apply") {

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Réglages (⌘,), en onglets : Général, Sécurité (verrouillage, Touch ID,
 /// clés de sécurité), Compte (synchronisation, import, déconnexion),
-/// Navigateur et terminal.
+/// Navigateurs et terminal.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("settingsTab") private var tab = SettingsTab.general
@@ -30,7 +30,7 @@ struct SettingsView: View {
                     }
                 }
             }
-            .tabItem { Label("Navigateur et terminal", systemImage: "terminal") }
+            .tabItem { Label("Navigateurs et terminal", systemImage: "terminal") }
             .tag(SettingsTab.integrations)
         }
         .frame(width: 500)
@@ -308,22 +308,21 @@ private struct AddSecurityKeySheet: View {
     }
 }
 
-/// Brave et le terminal : activation, extension à charger, clients reliés.
+/// Brave, Firefox et le terminal : activation, extensions à charger, clients reliés.
 struct BrowserSection: View {
     @Bindable var bridge: BrowserBridge
 
     var body: some View {
         Section {
-            Toggle("Brave et le terminal", isOn: $bridge.enabled)
-            if bridge.enabled, let folder = bridge.extensionFolder {
-                LabeledContent("Extension") {
-                    HStack {
-                        Button("Copier le chemin") {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(folder.path, forType: .string)
-                        }
-                        Button("Afficher") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
-                    }
+            Toggle("Brave, Firefox et le terminal", isOn: $bridge.enabled)
+            if bridge.enabled {
+                if let folder = bridge.extensionFolder {
+                    extensionRow("Extension Brave", folder: folder)
+                }
+                // Firefox charge un fichier, pas un dossier : le chemin copié
+                // est celui du manifeste (about:debugging).
+                if let folder = bridge.firefoxExtensionFolder {
+                    extensionRow("Extension Firefox", folder: folder, copying: folder.appending(path: "manifest.json"))
                 }
             }
             ForEach(bridge.clients, id: \.id) { client in
@@ -335,7 +334,7 @@ struct BrowserSection: View {
                 }
             }
         } header: {
-            Text("Navigateur et terminal")
+            Text("Navigateurs et terminal")
         } footer: {
             Text(footer)
                 .foregroundStyle(bridge.error == nil ? Color.secondary : Color.red)
@@ -343,17 +342,31 @@ struct BrowserSection: View {
         .onAppear { bridge.refreshClients() }
     }
 
+    /// Une extension livrée : copier son chemin (`copying`, par défaut le
+    /// dossier) ou l'afficher dans le Finder.
+    private func extensionRow(_ title: String, folder: URL, copying: URL? = nil) -> some View {
+        LabeledContent(title) {
+            HStack {
+                Button("Copier le chemin") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString((copying ?? folder).path, forType: .string)
+                }
+                Button("Afficher") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+            }
+        }
+    }
+
     private var footer: String {
         if let error = bridge.error { return error }
         if !bridge.enabled {
-            return "L'extension Verrou remplit vos identifiants dans Brave, site par site ; la commande « verrou » et son agent SSH lisent le coffre depuis le terminal, avec votre accord. Rien ne sort du Mac."
+            return "L'extension Verrou remplit vos identifiants dans Brave ou Firefox, site par site ; la commande « verrou » et son agent SSH lisent le coffre depuis le terminal, avec votre accord. Rien ne sort du Mac."
         }
         let terminal = "Terminal : « verrou link », puis chaque secret ou signature SSH demande Touch ID."
         if let note = bridge.browserNote, bridge.clients.isEmpty {
             return "\(note). \(terminal)"
         }
         if bridge.clients.isEmpty {
-            return "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Cliquez ensuite sur l'icône Verrou de Brave pour relier l'extension. \(terminal)"
+            return "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Dans Firefox : about:debugging, « Ce Firefox », « Charger un module complémentaire temporaire… », puis ⌘⇧G et collez le chemin du manifeste (à refaire à chaque démarrage de Firefox, voir le guide). Cliquez ensuite sur l'icône Verrou du navigateur pour relier l'extension. \(terminal)"
         }
         return "L'extension ne reçoit que les identifiants du site ouvert, en HTTPS, coffre déverrouillé. Le terminal cherche sans voir les secrets ; chacun demande Touch ID."
     }

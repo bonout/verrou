@@ -4,6 +4,9 @@
 //! Verrou (`127.0.0.1`), sans les lire : elles sont chiffrées de bout en bout
 //! entre l'extension et l'app. Si Verrou ne tourne pas, il l'ouvre en
 //! arrière-plan et attend qu'il écoute.
+//!
+//! Brave et Firefox le lancent avec des arguments différents
+//! ([`verrou_bridge::Launcher`]) ; seule l'extension de Verrou est servie.
 
 use std::io::{self, Read as _, Write as _};
 use std::net::Shutdown;
@@ -19,6 +22,11 @@ fn tell_browser(json: &str) {
 }
 
 fn main() {
+    let launcher = verrou_bridge::Launcher::from_args(std::env::args().skip(1));
+    if launcher.is_foreign() {
+        tell_browser(r#"{"type":"error","code":"unknown_extension"}"#);
+        return;
+    }
     // Verrou n'est pas ouvert : on le lance sans le mettre au premier plan.
     let Some(stream) = verrou_bridge::connect_to_app(verrou_bridge::port_from_env(), true) else {
         tell_browser(r#"{"type":"error","code":"app_unavailable"}"#);

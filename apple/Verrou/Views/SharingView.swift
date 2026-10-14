@@ -180,7 +180,7 @@ struct HiddenFieldRow: View {
             }
             Spacer()
             Image(systemName: "eye.slash").foregroundStyle(.tertiary)
-                .help("L'organisation masque ce champ pour votre compte. Le remplissage dans Brave reste possible.")
+                .help("L'organisation masque ce champ pour votre compte. Le remplissage dans le navigateur reste possible.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

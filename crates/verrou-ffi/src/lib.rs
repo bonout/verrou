@@ -1866,7 +1866,7 @@ impl VaultSession {
 /// Nature d'un client du pont.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum BridgeClientKind {
-    /// L'extension de Brave.
+    /// L'extension de navigateur (Brave, Firefox).
     Browser,
     /// Le terminal (`verrou`, et son agent SSH).
     Cli,
@@ -1888,7 +1888,7 @@ pub enum AccessPurpose {
     Reveal,
     /// Signer avec la clé SSH de l'élément.
     Ssh,
-    /// Brave : utiliser ou créer une passkey (le site demande la
+    /// Le navigateur : utiliser ou créer une passkey (le site demande la
     /// vérification de l'utilisateur). `item` est l'élément, ou
     /// `passkey:<site>` pour un nouvel identifiant.
     Passkey,

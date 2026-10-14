@@ -155,7 +155,7 @@ final class AppModel {
     /// « Partager… » ou « Collections… » en cours (voir SharedVaults.swift).
     var sharingFlow: SharingFlow?
 
-    /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
+    /// Remplissage dans Brave et Firefox (absent en démonstration et pendant les parcours scriptés).
     var browserBridge: BrowserBridge?
 
     let clipboard = Clipboard()
@@ -924,7 +924,7 @@ final class AppModel {
     func didSaveFromBrowser(title: String) {
         guard lockState == .unlocked else { return }
         afterWrite(select: selection)
-        toast = writeToast("Enregistré depuis Brave", detail: title.isEmpty ? nil : title)
+        toast = writeToast("Enregistré depuis le navigateur", detail: title.isEmpty ? nil : title)
     }
 
     // MARK: Rangement

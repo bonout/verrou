@@ -62,7 +62,7 @@ impl fmt::Display for Error {
             Self::NotLinked => write!(f, "ce terminal n'est pas relié à Verrou : « verrou link »"),
             Self::AppUnavailable => write!(
                 f,
-                "Verrou ne répond pas : ouvrez l'app et activez « Brave et le terminal » dans ses réglages"
+                "Verrou ne répond pas : ouvrez l'app et activez « Brave, Firefox et le terminal » dans ses réglages"
             ),
             Self::UnknownClient => write!(
                 f,

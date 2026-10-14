@@ -9,7 +9,7 @@
 <p align="center">
   A fast macOS password manager for a self-hosted
   <a href="https://github.com/dani-garcia/vaultwarden">Vaultwarden</a> server,
-  with a Brave extension, a command line and an SSH agent, all built around a
+  with a Brave and Firefox extension, a command line and an SSH agent, all built around a
   Rust core and Bitwarden's official crypto.
 </p>
 
@@ -28,7 +28,7 @@
 Verrou works with the vault you already have on your Vaultwarden server, so
 the official Bitwarden apps and web vault keep working next to it. It opens
 in a fraction of a second, searches thousands of items as you type, and fills
-your logins in Brave and in any other Mac app. The interface is in French.
+your logins in Brave, Firefox and any other Mac app. The interface is in French.
 
 ## What you can do
 
@@ -40,13 +40,13 @@ your logins in Brave and in any other Mac app. The interface is in French.
   one-time code without opening the main window.
 - **Fill in any app** (⌘\\): Verrou types the username and password into the
   app in front of you, like 1Password's Universal Autofill.
-- **Fill in Brave**: logins, one-time codes, cards and addresses. It suggests
+- **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses. It suggests
   strong passwords, offers to save new accounts, and reads two-factor QR codes
-  shown on a page.
-- **Passkeys in Brave**: create and use passkeys stored in your vault, in the
+  shown on a page (Brave).
+- **Passkeys in Brave and Firefox**: create and use passkeys stored in your vault, in the
   Bitwarden format, so they work with the official apps too. Sites with
   passkey autofill get them right in the field menu, next to passwords.
-  The extension reloads itself when Verrou is updated.
+  In Brave, the extension reloads itself when Verrou is updated.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
   two-factor authentication you haven't turned on.
@@ -80,7 +80,7 @@ Verrou talks to your own server, with two exceptions:
   list, at most once a week, as a whole file: it never asks about your sites
   one by one.
 
-The Brave extension only receives the logins of the site in front of it, over
+The browser extension only receives the logins of the site in front of it, over
 an end-to-end encrypted channel. Copied secrets are hidden from clipboard
 managers and cleared after 90 seconds. Details and known limits are in
 [SECURITY.md](SECURITY.md).
@@ -99,8 +99,12 @@ with no Apple developer account.
 
 Optional:
 
-- **Brave extension**: Settings → *Navigateur et terminal*, then follow the
+- **Brave extension**: Settings → *Navigateurs et terminal*, then follow the
   steps shown there ([guide](docs/GUIDE.md#brave-extension)).
+- **Firefox extension** (Firefox 128+): same settings, *Extension Firefox*.
+  Unsigned, it loads as a temporary add-on (gone when Firefox quits); for a
+  permanent install, use Developer Edition/Nightly or have it signed by
+  Mozilla ([guide](docs/GUIDE.md#firefox-extension)).
 - **Command line and SSH agent**: `cargo install --path crates/verrou-cli`,
   then `verrou link` ([guide](docs/GUIDE.md#command-line-and-ssh-agent)).
 - **Fill in any app**: allow Verrou in System Settings → Privacy & Security →
@@ -124,7 +128,7 @@ Optional:
 ## How it works
 
 ```
- Verrou.app (SwiftUI)       Brave extension       verrou CLI, SSH agent
+ Verrou.app (SwiftUI)       Brave / Firefox       verrou CLI, SSH agent
         │                          │                        │
         │ UniFFI                   └── encrypted local bridge ┘
         ▼                                       │

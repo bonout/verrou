@@ -20,6 +20,9 @@
 
 (() => {
   if (window !== top || globalThis.__verrouPasskeyMenu) return;
+  // API d'extension : `browser` (Firefox), sinon `chrome` (Brave). Le test sur
+  // `runtime.id` écarte un élément de la page nommé « browser » (voir browser.js).
+  const ext = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
   const origin = location.origin;
   const RETRY_MS = 1000;
@@ -29,11 +32,11 @@
 
   async function send(message) {
     try {
-      return await chrome.runtime.sendMessage(message);
+      return await ext.runtime.sendMessage(message);
     } catch {
       // Extension rechargée (mise à jour) : ce script est orphelin, la page
       // doit être rechargée pour retrouver Verrou.
-      return { state: chrome.runtime?.id ? "offline" : "outdated" };
+      return { state: ext?.runtime?.id ? "offline" : "outdated" };
     }
   }
 
@@ -69,7 +72,16 @@
     const data = event.data;
     if (data?.verrouPasskey === "request" && typeof data.id === "string"
       && ["create", "get", "conditional"].includes(data.kind) && data.request && typeof data.request === "object") {
-      const request = { id: data.id, kind: data.kind, request: data.request, done: false };
+      // Une copie à nous : dans Firefox, les objets de la page ne se voient
+      // qu'à travers des « Xray » ; la requête (chaînes, nombres, listes) se
+      // copie sans perte.
+      let copy;
+      try {
+        copy = JSON.parse(JSON.stringify(data.request));
+      } catch {
+        return;
+      }
+      const request = { id: data.id, kind: data.kind, request: copy, done: false };
       // Une nouvelle demande remplace le remplissage automatique en attente,
       // comme dans le navigateur.
       if (conditional) answer(conditional, "cancelled");
@@ -241,7 +253,7 @@
 
   const NOTICES = {
     offline: ["Verrou n'est pas joignable : la passkey est laissée au navigateur",
-      "Ouvrez Verrou, et activez « Brave et le terminal » dans ses réglages."],
+      "Ouvrez Verrou, et activez « Brave, Firefox et le terminal » dans ses réglages."],
     unpaired: ["L'extension n'est pas reliée à Verrou : la passkey est laissée au navigateur",
       "Reliez l'extension depuis son icône dans la barre d'outils."],
     outdated: ["Verrou vient d'être mis à jour : la passkey est laissée au navigateur",

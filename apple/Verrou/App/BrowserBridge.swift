@@ -1,7 +1,7 @@
 import AppKit
 import Observation
 
-/// Brave et le terminal : l'extension parle à Verrou par l'hôte Native
+/// Brave, Firefox et le terminal : l'extension parle à Verrou par l'hôte Native
 /// Messaging embarqué dans l'app (`Contents/MacOS/verrou-native-host`), qui
 /// relaie vers le pont du cœur Rust (`127.0.0.1`, canal chiffré) ; la CLI
 /// `verrou` (et son agent SSH) parle directement au pont. Voir SECURITY.md.
@@ -11,12 +11,15 @@ final class BrowserBridge {
     /// Identifiant de l'extension, fixé par la clé de extension/manifest.json
     /// (un test vérifie qu'ils concordent).
     static let extensionID = "pmdlgnpbjfdnmpeadbecmgfoojmocibg"
+    /// Identifiant de l'extension dans Firefox (`browser_specific_settings.gecko.id`,
+    /// écrit par scripts/firefox-extension.sh ; un test vérifie qu'ils concordent).
+    static let firefoxExtensionID = "verrou@verrou.app"
     static let hostName = "app.verrou.bridge"
 
     private let model: AppModel
     private(set) var running = false
     private(set) var error: String?
-    /// Brave absent : le terminal peut se relier quand même.
+    /// Ni Brave ni Firefox : le terminal peut se relier quand même.
     private(set) var browserNote: String?
     private(set) var clients: [BridgeClient] = []
     /// Confirmations en cours : l'extension réessaie chaque seconde.
@@ -32,6 +35,11 @@ final class BrowserBridge {
     /// Dossier de l'extension, livré avec l'app : à charger dans Brave.
     var extensionFolder: URL? {
         Bundle.main.url(forResource: "extension", withExtension: nil)
+    }
+
+    /// La même pour Firefox (scripts/firefox-extension.sh, à la compilation).
+    var firefoxExtensionFolder: URL? {
+        Bundle.main.url(forResource: "extension-firefox", withExtension: nil)
     }
 
     init(model: AppModel) {
@@ -51,7 +59,7 @@ final class BrowserBridge {
             do {
                 try installHostManifest()
             } catch {
-                // Sans Brave, le terminal reste utilisable.
+                // Sans navigateur, le terminal reste utilisable.
                 browserNote = error.localizedDescription
             }
             _ = try model.session.startBridge(delegate: Callbacks(bridge: self))
@@ -126,7 +134,7 @@ final class BrowserBridge {
         model.didSaveFromBrowser(title: title)
     }
 
-    /// Brave veut remplir un élément protégé : la confirmation se fait ici ;
+    /// Le navigateur veut remplir un élément protégé : la confirmation se fait ici ;
     /// l'extension réessaie d'elle-même.
     fileprivate func repromptRequested(item: String, title: String) {
         guard !confirming.contains(item) else { return }
@@ -137,17 +145,18 @@ final class BrowserBridge {
         }
     }
 
-    /// Le terminal veut un secret ou une signature SSH, ou Brave une passkey
+    /// Le terminal veut un secret ou une signature SSH, ou le navigateur une passkey
     /// pour un site qui demande la vérification de l'utilisateur : Touch ID,
     /// ou le mot de passe de la session si Touch ID n'est pas disponible. L'accord est
     /// gardé quelques minutes par le pont, pour ce terminal et cet élément.
     /// Élément protégé (« redemander le mot de passe principal ») : la même
     /// confirmation que dans l'app (Touch ID ou mot de passe principal).
-    fileprivate func confirmRequested(id: String, purpose: AccessPurpose, item: String, title: String) {
+    fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String) {
         let reason = switch purpose {
         case .reveal: "autoriser le terminal à lire « \(title) »"
         case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
-        case .passkey: "autoriser Brave à utiliser une passkey pour « \(title) »"
+        // Le nom annoncé à l'appairage (« Brave », « Firefox »).
+        case .passkey: "autoriser \(clientName.isEmpty ? "le navigateur" : clientName) à utiliser une passkey pour « \(title) »"
         // `ssh-keygen -Y sign -n git` : git signe un commit (ou une étiquette).
         case .gitSign: "signer un commit git avec la clé « \(title) »"
         }
@@ -166,30 +175,57 @@ final class BrowserBridge {
     /// `NativeMessagingHosts/app.verrou.bridge.json` : le navigateur n'accepte
     /// de lancer l'hôte que pour l'extension de Verrou. Brave lit le dossier
     /// de Google Chrome (constaté sur un profil séparé) et le sien : on écrit
-    /// les deux, ce qui sert aussi à Chrome.
+    /// les deux, ce qui sert aussi à Chrome. Firefox lit
+    /// `Mozilla/NativeMessagingHosts`, avec `allowed_extensions` (son
+    /// identifiant d'extension) au lieu de `allowed_origins`.
     private func installHostManifest() throws {
         guard let host = Bundle.main.url(forAuxiliaryExecutable: "verrou-native-host") else {
             throw Failure("l'hôte Native Messaging manque dans l'app : réinstallez Verrou")
         }
         let support = Self.realHome.appending(path: "Library/Application Support")
-        let browsers = ["BraveSoftware/Brave-Browser", "Google/Chrome"]
-            .map { support.appending(path: $0, directoryHint: .isDirectory) }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-        guard !browsers.isEmpty else {
-            throw Failure("Brave n'est pas installé (ou jamais lancé) sur ce Mac")
+        let exists = { (path: String) in
+            FileManager.default.fileExists(atPath: support.appending(path: path, directoryHint: .isDirectory).path)
         }
-        let manifest: [String: Any] = [
-            "name": Self.hostName,
-            "description": "Verrou",
-            "path": host.path,
-            "type": "stdio",
-            "allowed_origins": ["chrome-extension://\(Self.extensionID)/"],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        for browser in browsers {
-            let directory = browser.appending(path: "NativeMessagingHosts", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: directory.appending(path: "\(Self.hostName).json"), options: .atomic)
+        var targets: [(directory: URL, allowed: [String: Any])] = []
+        let chromium = ["allowed_origins": ["chrome-extension://\(Self.extensionID)/"]]
+        for browser in ["BraveSoftware/Brave-Browser", "Google/Chrome"] where exists(browser) {
+            targets.append((support.appending(path: "\(browser)/NativeMessagingHosts", directoryHint: .isDirectory), chromium))
+        }
+        // Firefox (et ses éditions Developer, Nightly) range ses profils dans
+        // `Firefox` ; `Mozilla` existe déjà si une autre app s'y est déclarée.
+        if exists("Firefox") || exists("Mozilla") {
+            targets.append((support.appending(path: "Mozilla/NativeMessagingHosts", directoryHint: .isDirectory),
+                            ["allowed_extensions": [Self.firefoxExtensionID]]))
+        }
+        guard !targets.isEmpty else {
+            throw Failure("ni Brave ni Firefox ne sont installés (ou jamais lancés) sur ce Mac")
+        }
+        var failures: [String] = []
+        for target in targets {
+            var manifest: [String: Any] = [
+                "name": Self.hostName,
+                "description": "Verrou",
+                "path": host.path,
+                "type": "stdio",
+            ]
+            manifest.merge(target.allowed) { _, new in new }
+            do {
+                let data = try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+                try FileManager.default.createDirectory(at: target.directory, withIntermediateDirectories: true)
+                try data.write(to: target.directory.appending(path: "\(Self.hostName).json"), options: .atomic)
+            } catch where target.allowed["allowed_extensions"] != nil && !exists("Mozilla") {
+                // Le sandbox n'ouvre que les dossiers NativeMessagingHosts :
+                // `Mozilla` lui-même ne peut pas être créé d'ici.
+                failures.append("pour Firefox, créez le dossier (Terminal : mkdir -p ~/Library/Application\\ Support/Mozilla/NativeMessagingHosts) puis réactivez ce réglage")
+            } catch {
+                failures.append("\(target.directory.path) : \(error.localizedDescription)")
+            }
+        }
+        if failures.count == targets.count {
+            throw Failure("déclaration au navigateur impossible (\(failures.joined(separator: " ; ")))")
+        }
+        if !failures.isEmpty {
+            throw Failure("déclaration partielle au navigateur (\(failures.joined(separator: " ; ")))")
         }
     }
 
@@ -227,7 +263,7 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
                 // Pont arrêté entre-temps : la demande expire d'elle-même.
-                bridge?.confirmRequested(id: id, purpose: purpose, item: item, title: title)
+                bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title)
             }
         }
     }
