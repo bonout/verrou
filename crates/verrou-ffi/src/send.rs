@@ -1,8 +1,11 @@
-//! Envois (Bitwarden Send) : partager un texte par un lien chiffré.
+//! Envois (Bitwarden Send) : partager un texte ou un fichier par un lien
+//! chiffré.
 //!
 //! La liste ne porte ni le texte ni le lien (qui contient la clé) : Swift
 //! les demande à part, quand l'utilisateur copie le lien ou ouvre l'écran de
-//! modification.
+//! modification. Le contenu d'un fichier traverse la frontière une seule
+//! fois, de Swift vers Rust, à la création ; celui d'une pièce jointe ne la
+//! traverse pas du tout (déchiffré puis chiffré de nouveau dans Rust).
 
 use verrou_core::SecretString;
 use verrou_vaultwarden::send::{SendDraft, SendInfo, SendKind};
@@ -24,6 +27,8 @@ pub struct SendSummary {
     pub name: String,
     pub content: SendContent,
     pub file_name: Option<String>,
+    /// Taille du fichier chiffré, en octets (envoi de fichier).
+    pub file_size: Option<u64>,
     pub has_password: bool,
     pub access_count: u32,
     pub max_access_count: Option<u32>,
@@ -48,6 +53,7 @@ impl From<SendInfo> for SendSummary {
                 SendKind::File => SendContent::File,
             },
             file_name: info.file_name,
+            file_size: info.file_size,
             has_password: info.has_password,
             access_count: info.access_count,
             max_access_count: info.max_access_count,
@@ -83,6 +89,15 @@ pub struct SendFields {
 pub struct CreatedSend {
     pub id: String,
     pub link: String,
+}
+
+/// Un envoi de fichier prérempli pour une pièce jointe.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct AttachmentSendFields {
+    pub fields: SendFields,
+    pub file_name: String,
+    /// Taille de la pièce jointe chiffrée, en octets.
+    pub size: u64,
 }
 
 fn now() -> i64 {
@@ -170,6 +185,85 @@ impl VaultSession {
         })
     }
 
+    /// Crée un envoi de fichier (nom et contenu chiffrés dans Rust par la
+    /// clé de l'envoi) et resynchronise ; rend son identifiant et son lien.
+    pub async fn create_file_send(
+        &self,
+        fields: SendFields,
+        file_name: String,
+        data: Vec<u8>,
+    ) -> Result<CreatedSend, VerrouError> {
+        let data = zeroize::Zeroizing::new(data);
+        let draft = SendDraft::try_from(fields)?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (id, link, decrypted) = connection
+            .lock()
+            .await
+            .create_file_send(draft, &file_name, &data)
+            .await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(CreatedSend {
+            id,
+            link: link.expose().to_owned(),
+        })
+    }
+
+    /// Un nouvel envoi de fichier prérempli pour une pièce jointe d'un
+    /// élément : nommé d'après l'élément et le fichier, réglages par
+    /// défaut. Rend aussi le nom du fichier. L'élément protégé demande
+    /// d'abord sa confirmation.
+    pub async fn send_fields_for_attachment(
+        &self,
+        item_id: String,
+        attachment_id: String,
+    ) -> Result<AttachmentSendFields, VerrouError> {
+        let title = self.with_vault(|v| {
+            let item = Self::item(v, &item_id)?;
+            self.require_authorized(item)?;
+            Ok(item.title.clone())
+        })?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let attachment = connection
+            .lock()
+            .await
+            .attachments(&item_id)
+            .await?
+            .into_iter()
+            .find(|a| a.id == attachment_id)
+            .ok_or(VerrouError::NotFound)?;
+        let file_name = attachment.file_name.ok_or(VerrouError::NotFound)?;
+        let draft = SendDraft::file(format!("{title} — {file_name}"), chrono::Utc::now());
+        Ok(AttachmentSendFields {
+            fields: draft.into(),
+            file_name,
+            size: attachment.size,
+        })
+    }
+
+    /// ⚠️ Crée un envoi de fichier avec une pièce jointe : téléchargée,
+    /// déchiffrée puis chiffrée de nouveau par la clé de l'envoi, sans
+    /// passer par Swift. L'élément protégé demande d'abord sa confirmation.
+    pub async fn create_send_from_attachment(
+        &self,
+        fields: SendFields,
+        item_id: String,
+        attachment_id: String,
+    ) -> Result<CreatedSend, VerrouError> {
+        self.with_vault(|v| self.require_authorized(Self::item(v, &item_id)?))?;
+        let draft = SendDraft::try_from(fields)?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (id, link, decrypted) = connection
+            .lock()
+            .await
+            .create_send_from_attachment(draft, &item_id, &attachment_id)
+            .await?;
+        self.install_if_current(&connection, decrypted)?;
+        Ok(CreatedSend {
+            id,
+            link: link.expose().to_owned(),
+        })
+    }
+
     pub async fn update_send(&self, id: String, fields: SendFields) -> Result<(), VerrouError> {
         let draft = SendDraft::try_from(fields)?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
@@ -233,6 +327,11 @@ impl VaultSession {
     pub fn new_send_fields(&self) -> SendFields {
         SendDraft::text(String::new(), SecretString::default(), chrono::Utc::now()).into()
     }
+
+    /// Taille maximale d'un fichier envoyé, avant chiffrement.
+    pub fn max_send_file_size(&self) -> u64 {
+        verrou_vaultwarden::send::MAX_SEND_FILE_SIZE
+    }
 }
 
 #[cfg(test)]
@@ -271,6 +370,41 @@ mod tests {
         assert!(matches!(
             session.send_fields_for_field(shared.id.clone(), "password".to_owned()),
             Err(VerrouError::Invalid { .. })
+        ));
+    }
+
+    /// Une pièce jointe d'un élément protégé ne part pas sans confirmation,
+    /// ni pour préremplir l'envoi, ni pour le créer.
+    #[tokio::test]
+    async fn attachment_sends_need_the_item_confirmation() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42);
+        let protected = session
+            .summaries()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.reprompt)
+            .expect("élément protégé du coffre fictif");
+        assert!(matches!(
+            session
+                .send_fields_for_attachment(protected.id.clone(), "a1".to_owned())
+                .await,
+            Err(VerrouError::RepromptRequired)
+        ));
+        let fields = session.new_send_fields();
+        assert!(matches!(
+            session
+                .create_send_from_attachment(fields.clone(), protected.id.clone(), "a1".to_owned())
+                .await,
+            Err(VerrouError::RepromptRequired)
+        ));
+        // Confirmé : la suite demande un compte Vaultwarden (pas de coffre fictif).
+        session.authorize_item(protected.id.clone());
+        assert!(matches!(
+            session
+                .create_send_from_attachment(fields, protected.id, "a1".to_owned())
+                .await,
+            Err(VerrouError::Locked)
         ));
     }
 }

@@ -104,6 +104,9 @@ private struct AttachmentRow: View {
             if entry.readable {
                 Button("Ouvrir") { model.openAttachment(entry, of: itemID) }
                 Button("Enregistrer sous…") { model.saveAttachment(entry, of: itemID) }
+                if model.sendsAvailable {
+                    Button("Envoyer de façon sécurisée…") { model.composeSend(fromAttachment: entry, of: itemID) }
+                }
             }
             if editable {
                 Divider()

@@ -252,9 +252,25 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
 - **Cryptographie** : celle du SDK (`bitwarden-send`), comme le coffre web.
   Chaque envoi a sa clé, 16 octets tirés au hasard ; HKDF-SHA256 (sel
   `bitwarden-send`, info `send`) en dérive la clé de 64 octets qui chiffre
-  le nom, les notes et le texte. La clé de l'envoi est gardée sur le serveur
-  chiffrée par la clé de l'utilisateur. Des tests recalculent la dérivation
-  et le hachage du mot de passe sans le SDK.
+  le nom, les notes, le texte, le nom du fichier et son contenu. La clé de
+  l'envoi est gardée sur le serveur chiffrée par la clé de l'utilisateur.
+  Des tests recalculent la dérivation et le hachage du mot de passe sans le
+  SDK.
+- **Fichiers** : le contenu forme un seul `EncArrayBuffer` (type 2, IV,
+  MAC, texte chiffré), chiffré directement par la clé de l'envoi, comme les
+  apps Bitwarden ; le serveur ne voit ni le nom (le fichier envoyé porte le
+  nom chiffré) ni le contenu, seulement la taille chiffrée. Envoi en deux
+  temps (`POST /api/sends/file/v2`, puis le contenu à l'adresse rendue, qui
+  doit être sur le serveur du compte) ; si le second temps échoue, l'envoi
+  est supprimé. Repli sur l'ancien `POST /api/sends/file` pour un serveur
+  sans v2. 100 Mo au plus, vérifiés avant tout chiffrement ; le quota du
+  serveur (`USER_SEND_LIMIT`) s'applique en plus. Un fichier n'est lu par
+  Swift qu'à la création, puis passé à Rust (copie `Data` non mise à zéro,
+  comme pour les pièces jointes). Le fichier d'un envoi ne change jamais :
+  une modification ne touche qu'aux réglages. Des tests vérifient
+  l'aller-retour avec la seule clé du lien et qu'un octet altéré fait tout
+  refuser ; un test d'intégration télécharge le fichier comme un
+  destinataire anonyme (avec et sans mot de passe) et compare les octets.
 - **Lien** : `<serveur>/#/send/<accès>/<clé>`. La clé suit le `#` : le
   navigateur du destinataire ne l'envoie jamais au serveur. Le lien donne
   donc le contenu : Verrou le copie comme un secret (presse-papiers masqué,
@@ -269,8 +285,17 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   du cœur Rust qu'après la confirmation d'un élément protégé, et l'envoi
   prérempli (masqué chez le destinataire, un seul accès, 7 jours) attend
   la validation de l'utilisateur.
+- **Depuis une pièce jointe** (même action, section « Pièces jointes ») :
+  la pièce jointe est téléchargée, déchiffrée (clé de la pièce jointe, MAC
+  vérifié) puis chiffrée de nouveau par la clé de l'envoi, entièrement dans
+  Rust : son contenu en clair ne traverse pas la frontière vers Swift, et
+  la mémoire est effacée à la libération. Un élément protégé demande sa
+  confirmation pour préremplir l'envoi ; Rust la vérifie de nouveau à la
+  création (refusée si elle a expiré entre-temps).
 - **Limites** : le texte d'un envoi vit dans une `String` Swift tant que
-  l'écran est ouvert ; les envois de fichier ne se créent pas dans Verrou.
+  l'écran est ouvert ; le contenu d'un fichier choisi dans le Finder passe
+  par une `Data` Swift non mise à zéro. Verrou ne télécharge pas d'envoi
+  reçu (la réception, dans le cœur Rust, ne sert qu'aux tests).
 
 ## Passkeys dans Brave
 

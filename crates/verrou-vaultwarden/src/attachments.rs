@@ -42,10 +42,10 @@ use crate::edit::new_view;
 use crate::{Connection, Decrypted, Draft, Error};
 
 /// Envoi ou téléchargement d'un gros fichier : bien plus long qu'une écriture.
-const TRANSFER_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+pub(crate) const TRANSFER_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
 /// Surcoût du chiffrement : type, IV, MAC et bourrage (au plus un bloc).
-const ENCRYPTION_OVERHEAD: u64 = 1 + 16 + 32 + 16;
+pub(crate) const ENCRYPTION_OVERHEAD: u64 = 1 + 16 + 32 + 16;
 
 /// Une pièce jointe d'un élément, telle que l'interface la montre. Aucun
 /// secret : le nom, déchiffré, et la taille annoncée par le serveur.
@@ -333,7 +333,7 @@ fn attachment_error(error: &DecryptError) -> Error {
 }
 
 /// Adresse donnée par le serveur : absolue, ou relative à `base`.
-fn resolve(url: &str, base: &str) -> Result<String, Error> {
+pub(crate) fn resolve(url: &str, base: &str) -> Result<String, Error> {
     let absolute = if url.starts_with("http://") || url.starts_with("https://") {
         url.to_owned()
     } else if url.starts_with('/') {
@@ -466,7 +466,7 @@ impl Api {
         sent
     }
 
-    async fn upload_reserved(
+    pub(crate) async fn upload_reserved(
         &self,
         access_token: &str,
         reservation: &Value,
@@ -557,7 +557,7 @@ impl Api {
 
 /// Le contenu chiffré, nommé par le nom de fichier chiffré (comme les apps
 /// Bitwarden) : le serveur ne voit jamais le vrai nom.
-fn file_part(encrypted_name: &str, contents: Vec<u8>) -> Result<Part, Error> {
+pub(crate) fn file_part(encrypted_name: &str, contents: Vec<u8>) -> Result<Part, Error> {
     Part::bytes(contents)
         .file_name(encrypted_name.to_owned())
         .mime_str("application/octet-stream")

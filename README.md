@@ -49,8 +49,8 @@ your logins in Brave and in any other Mac app. The interface is in French.
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
   two-factor authentication you haven't turned on.
 - **Share**: shared vaults with family or a team (Vaultwarden organizations),
-  encrypted links that expire (Send), and emergency access for trusted
-  contacts.
+  encrypted links that expire for a text or a file (Send), and emergency
+  access for trusted contacts.
 - **Store more than passwords**: cards, identities, secure notes, SSH keys,
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on

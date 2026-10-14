@@ -57,6 +57,11 @@ struct VerrouApp: App {
                         delegate.model.newSend()
                     }
                     .disabled(!delegate.model.sendsAvailable)
+                    Button("Nouvel envoi de fichier…") {
+                        delegate.model.showMainWindow()
+                        delegate.model.newFileSend()
+                    }
+                    .disabled(!delegate.model.sendsAvailable)
                     Button("Accès d'urgence") { delegate.model.openEmergency() }
                         .disabled(!delegate.model.emergencyAvailable)
                 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Entrée de la barre latérale : le volet des envois remplace la liste.
 struct SendsSidebarButton: View {
@@ -7,34 +8,34 @@ struct SendsSidebarButton: View {
     var body: some View {
         SidebarPaneButton(title: "Envois", symbol: "paperplane", active: model.pane == .sends,
                           badge: model.sends.loaded && !model.sends.items.isEmpty ? model.sends.items.count : nil,
-                          help: "Partager un texte par un lien chiffré (Bitwarden Send)") {
+                          help: "Partager un texte ou un fichier par un lien chiffré (Bitwarden Send)") {
             model.openSends()
         }
     }
 }
 
 /// Volet « Envois », dans la colonne centrale : les envois du compte, avec
-/// leurs accès et leur échéance. L'envoi sélectionné s'affiche à droite.
+/// leurs accès et leur échéance. L'envoi sélectionné s'affiche à droite. Un
+/// fichier déposé sur la liste ouvre l'écran d'un nouvel envoi de fichier.
 struct SendsListView: View {
     @Environment(AppModel.self) private var model
+    @State private var targeted = false
 
     var body: some View {
         @Bindable var sends = model.sends
         VStack(spacing: 0) {
             PaneHeader(title: "Envois",
-                       caption: "Un texte partagé par un lien, chiffré de bout en bout : la clé est dans le lien, jamais sur le serveur.",
-                       busy: sends.busy, notice: sends.notice, error: sends.error) {
-                Button("Nouvel envoi", systemImage: "plus") { model.newSend() }
-                    .buttonStyle(.borderless)
+                       caption: "Un texte ou un fichier partagé par un lien, chiffré de bout en bout : la clé est dans le lien, jamais sur le serveur.",
+                       busy: sends.busy, notice: sends.activity ?? sends.notice, error: sends.error) {
+                NewSendMenu()
                     .font(.caption)
-                    .help("Créer un envoi de texte")
             }
             Divider()
             if sends.items.isEmpty {
                 ContentUnavailableView {
                     Label(sends.loaded ? "Aucun envoi" : "Chargement…", systemImage: "paperplane")
                 } description: {
-                    Text("Créez un envoi ici, ou depuis un élément : clic droit → « Envoyer de façon sécurisée… ».")
+                    Text("Créez un envoi ici, déposez un fichier sur cette liste, ou partez d'un élément ou d'une pièce jointe : clic droit → « Envoyer de façon sécurisée… ».")
                 }
                 .frame(maxHeight: .infinity)
             } else {
@@ -48,15 +49,49 @@ struct SendsListView: View {
                         SendMenu(send: send)
                     }
                 } primaryAction: { ids in
-                    // Double clic : modifier l'envoi.
-                    if let send = sends.items.first(where: { ids.contains($0.id) }), send.content == .text {
+                    // Double clic : modifier l'envoi (les réglages, pour un fichier).
+                    if let send = sends.items.first(where: { ids.contains($0.id) }) {
                         Task { await model.editSend(send) }
                     }
                 }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .dropDestination(for: URL.self) { urls, _ in
+            guard let url = urls.first(where: \.isFileURL), !sends.busy else { return false }
+            model.composeFileSend(url)
+            return true
+        } isTargeted: { targeted = $0 && !sends.busy }
+        .overlay {
+            if targeted {
+                RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
+                    .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .background(Theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
+                    .overlay(Label("Déposer pour créer un envoi de fichier", systemImage: "doc.badge.arrow.up")
+                        .font(.headline).foregroundStyle(Theme.accent))
+                    .padding(8)
+                    .allowsHitTesting(false)
+            }
+        }
         .task { await model.reloadSends() }
+    }
+}
+
+/// « Nouvel envoi » : un texte, ou un fichier choisi dans le Finder.
+struct NewSendMenu: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Button("Texte", systemImage: "text.alignleft") { model.newSend() }
+            Button("Fichier…", systemImage: "doc") { model.newFileSend() }
+        } label: {
+            Label("Nouvel envoi", systemImage: "plus")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(model.sends.busy)
+        .help("Créer un envoi de texte ou de fichier")
     }
 }
 
@@ -67,9 +102,7 @@ private struct SendMenu: View {
 
     var body: some View {
         Button("Copier le lien") { Task { await model.copySendLink(send) } }
-        if send.content == .text {
-            Button("Modifier…") { Task { await model.editSend(send) } }
-        }
+        Button("Modifier…") { Task { await model.editSend(send) } }
         if send.hasPassword {
             Button("Retirer le mot de passe") { Task { await model.removeSendPassword(send) } }
         }
@@ -90,9 +123,7 @@ struct SendDetailView: View {
                 HStack(spacing: 10) {
                     Button("Copier le lien", systemImage: "link") { Task { await model.copySendLink(send) } }
                         .buttonStyle(.borderedProminent)
-                    if send.content == .text {
-                        Button("Modifier…", systemImage: "pencil") { Task { await model.editSend(send) } }
-                    }
+                    Button("Modifier…", systemImage: "pencil") { Task { await model.editSend(send) } }
                     if send.hasPassword {
                         Button("Retirer le mot de passe", systemImage: "lock.open") {
                             Task { await model.removeSendPassword(send) }
@@ -117,7 +148,7 @@ struct SendDetailView: View {
                     line("Suppression", formatted(send.deletionDate))
                     if let file = send.fileName {
                         Divider().padding(.leading, 14)
-                        line("Fichier", file)
+                        line("Fichier", send.fileSize.map { "\(file) · \(SendFileSize.text($0))" } ?? file)
                     }
                 }
                 Text("Modifié \(date(send.revisionDate).formatted(.relative(presentation: .named))).")
@@ -204,6 +235,13 @@ struct SendsPresentations: ViewModifier {
     }
 }
 
+/// Taille lisible d'un fichier (« 1,4 Mo »).
+enum SendFileSize {
+    static func text(_ bytes: UInt64) -> String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+}
+
 struct SendRow: View {
     let send: SendSummary
 
@@ -241,6 +279,9 @@ struct SendRow: View {
         if send.disabled {
             parts.append("Désactivé")
         }
+        if let file = send.fileName {
+            parts.append(send.fileSize.map { "\(file) (\(SendFileSize.text($0)))" } ?? file)
+        }
         let accesses = send.maxAccessCount.map { "\(send.accessCount)/\($0) accès" }
             ?? "\(send.accessCount) accès"
         parts.append(accesses)
@@ -257,7 +298,9 @@ struct SendRow: View {
     }
 }
 
-/// Création ou modification d'un envoi de texte.
+/// Création ou modification d'un envoi de texte ou de fichier. Le fichier
+/// d'un envoi existant ne se remplace pas (comme dans Bitwarden) : seuls les
+/// réglages changent.
 struct SendEditorView: View {
     @Environment(AppModel.self) private var model
     let composer: SendsModel.Composer
@@ -278,6 +321,7 @@ struct SendEditorView: View {
     }
 
     private var isNew: Bool { composer.sendID == nil }
+    private var isFile: Bool { composer.file != nil }
     private static let maxDays = 31
 
     var body: some View {
@@ -292,8 +336,11 @@ struct SendEditorView: View {
                     }
                 }
                 Section {
-                    TextField("Nom", text: $fields.name, prompt: Text("Wi-Fi du chalet, code de la porte…"))
-                    if showText {
+                    TextField("Nom", text: $fields.name,
+                              prompt: Text(isFile ? "Nom vu par le destinataire" : "Wi-Fi du chalet, code de la porte…"))
+                    if let file = composer.file {
+                        fileRow(file)
+                    } else if showText {
                         TextEditor(text: $fields.text)
                             .font(.body.monospaced())
                             .frame(minHeight: 90)
@@ -307,7 +354,9 @@ struct SendEditorView: View {
                                 .buttonStyle(.borderless)
                         }
                     }
-                    Toggle("Masquer le texte chez le destinataire", isOn: $fields.hidden)
+                    if !isFile {
+                        Toggle("Masquer le texte chez le destinataire", isOn: $fields.hidden)
+                    }
                 }
 
                 Section("Durée de vie") {
@@ -355,8 +404,13 @@ struct SendEditorView: View {
 
             Divider()
             HStack(spacing: 10) {
+                if model.sends.busy {
+                    ProgressView().controlSize(.small)
+                    if let activity = model.sends.activity {
+                        Text(activity).font(.callout).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
                 Spacer()
-                if model.sends.busy { ProgressView().controlSize(.small) }
                 Button("Annuler") { model.sends.composer = nil }
                     .keyboardShortcut(.cancelAction)
                 Button(isNew ? "Créer et copier le lien" : "Enregistrer") { save() }
@@ -368,14 +422,38 @@ struct SendEditorView: View {
         }
         .frame(width: 520)
         .frame(minHeight: 560)
-        .navigationTitle(isNew ? "Nouvel envoi" : "Modifier l'envoi")
+        .navigationTitle(isNew ? (isFile ? "Nouvel envoi de fichier" : "Nouvel envoi") : "Modifier l'envoi")
         .onAppear { model.sends.error = nil }
     }
 
     private var canSave: Bool {
         !fields.name.trimmingCharacters(in: .whitespaces).isEmpty
-            && !fields.text.isEmpty
+            && (isFile || !fields.text.isEmpty)
             && !model.sends.busy
+    }
+
+    private func fileRow(_ file: SendsModel.SendFile) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSWorkspace.shared.icon(
+                    for: .init(filenameExtension: (file.name as NSString).pathExtension) ?? .data))
+                    .resizable()
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(file.name).lineLimit(1).truncationMode(.middle)
+                    if let size = file.size {
+                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+            }
+            Text(isNew
+                 ? "Le fichier et son nom sont chiffrés avant l'envoi ; seul le lien permet de les ouvrir."
+                 : "Le fichier d'un envoi ne peut pas être remplacé : créez un nouvel envoi pour un autre fichier.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var dateRange: ClosedRange<Date> {
@@ -410,7 +488,7 @@ struct SendEditorView: View {
         final.maxAccessCount = limited ? (fields.maxAccessCount ?? 1) : nil
         final.password = password.isEmpty ? nil : password
         Task {
-            await model.saveSend(final, id: composer.sendID)
+            await model.saveSend(final, id: composer.sendID, file: composer.file)
             if model.sends.composer == nil { password = "" }
         }
     }

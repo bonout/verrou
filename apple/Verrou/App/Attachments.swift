@@ -175,7 +175,7 @@ extension AppModel {
         for url in urls {
             attachments.activity = "Envoi de « \(url.lastPathComponent) »…"
             do {
-                let data = try Self.readFile(url)
+                let data = try Self.readFile(url, limit: AttachmentsModel.maxSize)
                 try await session.addAttachment(itemId: itemID, fileName: url.lastPathComponent, data: data)
                 added += 1
             } catch {
@@ -211,7 +211,7 @@ extension AppModel {
             attachments.activity = "Envoi de « \(url.lastPathComponent) »…"
             defer { attachments.activity = nil }
             do {
-                let data = try Self.readFile(url)
+                let data = try Self.readFile(url, limit: AttachmentsModel.maxSize)
                 let id = try await session.createDocument(fileName: url.lastPathComponent, data: data, folderId: folderID)
                 afterWrite(select: id)
                 toast = Toast(message: "Document créé", detail: url.lastPathComponent)
@@ -223,16 +223,16 @@ extension AppModel {
 
     /// Lit un fichier choisi par l'utilisateur (droit du sandbox accordé par
     /// le panneau ou le glisser-déposer), dans la limite de taille.
-    private static func readFile(_ url: URL) throws -> Data {
+    static func readFile(_ url: URL, limit: Int64) throws -> Data {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values.isRegularFile == true else { throw AttachmentFileError.notAFile }
-        if let size = values.fileSize, Int64(size) > AttachmentsModel.maxSize { throw AttachmentFileError.tooLarge }
+        if let size = values.fileSize, Int64(size) > limit { throw AttachmentFileError.tooLarge }
         return try Data(contentsOf: url, options: .mappedIfSafe)
     }
 
-    private static func describeFile(_ error: Error) -> String {
+    static func describeFile(_ error: Error) -> String {
         if let error = error as? AttachmentFileError { return error.message }
         if error is VerrouError { return describe(error) }
         return error.localizedDescription
@@ -245,8 +245,8 @@ enum AttachmentFileError: Error {
 
     var message: String {
         switch self {
-        case .notAFile: "Seuls les fichiers peuvent être joints (pas les dossiers)."
-        case .tooLarge: "Le fichier dépasse 100 Mo, la taille maximale d'une pièce jointe."
+        case .notAFile: "Seuls les fichiers peuvent être joints ou envoyés (pas les dossiers)."
+        case .tooLarge: "Le fichier dépasse 100 Mo, la taille maximale d'une pièce jointe ou d'un envoi."
         }
     }
 }
