@@ -612,6 +612,52 @@ of Vaultwarden), `VERROU_MOCK_SIZE=10000` (large mock vault), `VERROU_DEMO=1`
 benchmark on the mock vault: unlock, typing, clearing; Debug builds, or
 Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).
 
+### Visual review, offscreen
+
+`scripts/review-capture.sh` (Debug build, `VERROU_REVIEW=1`) renders every
+screen of the app on the mock vault, in light and dark mode, and writes the
+PNGs to `target/review/`: lock screen, sign-in and second factor, vault list
+with a login, card, identity, Wi-Fi, SSH key and shared item, the audit, Sends
+and emergency access panes (with mock Sends and contacts), the item editor
+(with custom fields), the generator, each Settings tab, duplicates, an import
+review (from a mock Apple export) and Quick Access. Nothing appears on screen:
+the app runs with the `.prohibited` activation policy, never orders a window
+in, never activates and never uses ScreenCaptureKit; the windows are drawn by
+AppKit (`cacheDisplay`), so it works while you use the Mac, on any Space. It
+uses the in-memory mock vault only (no account data is read or written) and a
+separate defaults domain that is removed afterwards.
+
+Known rendering limits: AppKit does not draw Liquid Glass and other materials
+offscreen. The sidebar gets a flat background with its contents drawn on top,
+toolbar buttons show as empty capsules, and the Settings tab bar is blank.
+
+Each screen also goes through the layout audit (`LayoutAudit.swift`), which
+prints `REVIEW_OK` or `REVIEW_FAIL <screen>: <problem>`. The script fails if
+any screen fails.
+
+### Layout checks
+
+`scripts/e2e.sh` (the end-to-end walkthrough against a throwaway Vaultwarden)
+and the review mode run the same layout audit on every screen they visit,
+with no screenshots involved:
+
+- split views and top-level SwiftUI hosting views fit the window's content
+  view, and the window keeps the size it was given;
+- no split view column is empty or squashed;
+- key elements are present and fully visible below the toolbar. They are
+  marked in the views with `.layoutMark("…")` (`pane-title`, `sidebar-footer`,
+  `detail-title`, `search`, `lock-title`, `login-title`, `edit-title`,
+  `sheet-title`, `sheet-primary`), which sets the accessibility identifier and,
+  in Debug builds, adds an invisible AppKit view that the audit finds in the
+  view hierarchy (SwiftUI only builds its accessibility tree for an
+  assistive client, so the identifiers alone cannot be found);
+- sheets fit their window and are no taller than the window they sit on.
+
+The walkthrough reports `E2E_OK mise en page : <screen>`, or `E2E_FAIL` with
+either "fenêtre principale introuvable" / "feuille introuvable" (the window is
+missing) or "mise en page cassée" (the layout is broken), and keeps going so
+that every broken screen is listed.
+
 ## Performance
 
 - Rust core: `cargo run --release -p verrou-vaultwarden --example profile_unlock -- <server> <e-mail> <password>`

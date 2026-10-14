@@ -69,6 +69,7 @@ struct AuditView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text("Audit de sécurité").font(.title3.weight(.semibold))
+                .layoutMark("pane-title")
             if let audit = model.audit {
                 Text("\(audit.checked) mots de passe examinés, sur ce Mac")
                     .font(.caption).foregroundStyle(.secondary)

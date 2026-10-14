@@ -88,6 +88,7 @@ struct ItemDetailView: View {
                 Text(detail.summary.title)
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
+                    .layoutMark("detail-title")
                 HStack(spacing: 8) {
                     Chip(text: detail.summary.kindLabel, symbol: detail.summary.symbol, tint: detail.summary.tint)
                     if let folder = detail.summary.folder {

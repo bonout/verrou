@@ -234,7 +234,7 @@ final class AppModel {
     init() {
         let environment = ProcessInfo.processInfo.environment
         mockSize = UInt32(environment["VERROU_MOCK_SIZE"] ?? "") ?? 0
-        autoTouchID = environment["VERROU_DEMO"] == nil && environment["VERROU_E2E_SERVER"] == nil
+        autoTouchID = environment["VERROU_DEMO"] == nil && environment["VERROU_E2E_SERVER"] == nil && !Self.isReview
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         var directory = support.appending(path: "Verrou", directoryHint: .isDirectory)
         #if DEBUG
@@ -245,7 +245,7 @@ final class AppModel {
         }
         #endif
         dataDirectory = directory
-        if environment["VERROU_DEMO"] == "1" || environment["VERROU_MOCK"] == "1" {
+        if environment["VERROU_DEMO"] == "1" || environment["VERROU_MOCK"] == "1" || Self.isReview {
             mode = .demo
             session = VaultSession()
         } else {
@@ -261,8 +261,9 @@ final class AppModel {
                 loginEmail = account.email
             }
         }
-        // Pièces jointes déchiffrées restées d'une session interrompue.
-        AttachmentsModel.purge()
+        // Pièces jointes déchiffrées restées d'une session interrompue (pas
+        // pendant la revue : le dossier temporaire est celui du vrai Verrou).
+        if !Self.isReview { AttachmentsModel.purge() }
         // Préchauffe la réponse de LocalAuthentication avant le premier rendu.
         Biometrics.refresh()
         Perf.log.notice("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
@@ -273,9 +274,36 @@ final class AppModel {
     @ObservationIgnored var unlockStartedAt: ContinuousClock.Instant?
     @ObservationIgnored var activatedAt: ContinuousClock.Instant?
 
+    /// Revue visuelle hors écran (`VERROU_REVIEW=1`, builds Debug) : coffre
+    /// fictif, aucune fenêtre à l'écran (voir `ReviewDriver`).
+    nonisolated static var isReview: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["VERROU_REVIEW"] == "1"
+        #else
+        false
+        #endif
+    }
+
+    /// Envois et accès d'urgence dans la barre latérale : un compte
+    /// Vaultwarden, ou la revue (envois et contacts fictifs).
+    var showsAccountPanes: Bool { mode == .vaultwarden || Self.isReview }
+
+    #if DEBUG
+    /// Revue : l'écran de connexion (`login`), à l'étape du second facteur
+    /// si `options`, sans serveur.
+    func reviewLogin(_ login: Bool, twoFactor options: [TwoFactorOption]? = nil) {
+        reviewNeedsLogin = login
+        twoFactorOptions = options
+    }
+
+    private var reviewNeedsLogin = false
+    #else
+    private let reviewNeedsLogin = false
+    #endif
+
     /// Pas de compte sur ce Mac, ou session expirée : écran de connexion.
     var needsLogin: Bool {
-        mode == .vaultwarden && (account == nil || reloginRequired)
+        (mode == .vaultwarden && (account == nil || reloginRequired)) || reviewNeedsLogin
     }
 
     var canUseTouchID: Bool {
@@ -1169,6 +1197,8 @@ final class AppModel {
     /// Fenêtre principale au premier plan. Fermée (lancement à l'ouverture
     /// de session), un « rouvrir » la recrée, comme un clic sur le Dock.
     func showMainWindow() {
+        // Revue hors écran : rien ne doit apparaître, ni l'app passer devant.
+        guard !Self.isReview else { return }
         NSApp.activate()
         if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) {
             window.makeKeyAndOrderFront(nil)

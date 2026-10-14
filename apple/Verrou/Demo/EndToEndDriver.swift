@@ -60,31 +60,85 @@ final class EndToEndDriver {
         }
     }
 
-    /// Les colonnes tiennent dans la fenêtre : un texte à hauteur imposée
-    /// (`fixedSize`) hors d'une vue défilante agrandit toute la vue partagée,
-    /// centrée puis coupée en haut et en bas. `nil` : plus de fenêtre
-    /// principale (fermée pendant le parcours), rien à mesurer.
-    private func columnsFitWindow() -> Bool? {
-        func splitViews(_ view: NSView) -> [NSSplitView] {
-            (view as? NSSplitView).map { [$0] } ?? view.subviews.flatMap(splitViews)
+    private static let windowSize = NSSize(width: 1280, height: 800)
+    /// La fenêtre principale, retenue au début du parcours.
+    private weak var mainWindow: NSWindow?
+    /// Écrans dont la mise en page a échoué : le parcours continue (pour
+    /// les signaler tous), mais ne se termine pas par `E2E_DONE`.
+    private var layoutFailures = 0
+
+    private func layoutResult(_ screen: String, _ problems: [String]) {
+        if problems.isEmpty {
+            log("E2E_OK mise en page : \(screen)")
+        } else {
+            layoutFailures += 1
+            log("E2E_FAIL mise en page cassée : \(screen) — " + problems.joined(separator: " ; "))
         }
-        // Les fenêtres qui portent une vue partagée (la principale) : les
-        // autres (barre des menus, bulle) n'en ont pas.
-        let checked = NSApp.windows.compactMap { window -> Bool? in
-            guard let content = window.contentView else { return nil }
-            let splits = splitViews(content)
-            guard !splits.isEmpty else { return nil }
-            return splits.allSatisfy { $0.frame.height <= content.frame.height + 0.5 }
-        }
-        return checked.isEmpty ? nil : checked.allSatisfy { $0 }
     }
 
-    private func checkLayout(_ what: String) {
-        guard let fits = columnsFitWindow() else {
-            check(false, "\(what) : fenêtre principale introuvable (fermée pendant le parcours ?)")
+    /// Audit de mise en page (`LayoutAudit`, sans capture d'écran) de la
+    /// fenêtre principale : vues dans la fenêtre, `columns` colonnes non
+    /// vides, repères `identifiers` visibles en entier ; et, si `sheet`, de la
+    /// feuille posée dessus (repères `sheet`, pas plus haute que la fenêtre).
+    private func checkLayout(_ screen: String, _ identifiers: [String], columns: Int = 3,
+                             sheet: [String]? = nil) async {
+        try? await Task.sleep(for: .seconds(0.8))
+        guard let window = mainWindow, window.isVisible else {
+            layoutFailures += 1
+            log("E2E_FAIL \(screen) : fenêtre principale introuvable (fermée pendant le parcours ?), mise en page non vérifiée")
             return
         }
-        check(fits, "\(what) à la hauteur de la fenêtre")
+        var problems = LayoutAudit.problems(in: window, .init(identifiers: identifiers, columns: columns,
+                                                              size: Self.windowSize))
+        if let sheet {
+            guard let attached = window.attachedSheet else {
+                layoutFailures += 1
+                log("E2E_FAIL \(screen) : feuille introuvable (pas ouverte, ou déjà fermée), mise en page non vérifiée")
+                return
+            }
+            problems += LayoutAudit.problems(in: attached, .init(identifiers: sheet,
+                                                                 maxHeight: window.contentLayoutRect.height))
+                .map { "feuille : \($0)" }
+        }
+        layoutResult(screen, problems)
+    }
+
+    /// Réglages (scène `Settings`) : ouverts par leur entrée du menu de
+    /// l'app, chaque onglet audité, puis refermés. L'onglet affiché est une
+    /// préférence (`settingsTab`) : remise comme avant.
+    private func checkSettings() async {
+        guard let menu = NSApp.mainMenu?.items.first?.submenu,
+              let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Réglages") }) else {
+            log("E2E_SKIP réglages : entrée « Réglages… » introuvable dans le menu de l'app")
+            return
+        }
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        menu.performActionForItem(at: index)
+        var settings: NSWindow?
+        for _ in 0..<30 where settings == nil {
+            try? await Task.sleep(for: .milliseconds(100))
+            settings = NSApp.windows.first {
+                $0.isVisible && !before.contains(ObjectIdentifier($0)) && !($0 is NSPanel) && $0 !== mainWindow
+            }
+        }
+        guard let settings else {
+            log("E2E_SKIP réglages : la fenêtre ne s'est pas ouverte (scène Settings non pilotable)")
+            return
+        }
+        let saved = UserDefaults.standard.string(forKey: "settingsTab")
+        let limit = (settings.screen ?? NSScreen.main)?.visibleFrame.height
+        for tab in [SettingsTab.general, .security, .account, .integrations] {
+            UserDefaults.standard.set(tab.rawValue, forKey: "settingsTab")
+            try? await Task.sleep(for: .seconds(0.8))
+            layoutResult("réglages, onglet \(tab.rawValue)",
+                         LayoutAudit.problems(in: settings, .init(maxHeight: limit)))
+        }
+        if let saved {
+            UserDefaults.standard.set(saved, forKey: "settingsTab")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "settingsTab")
+        }
+        settings.close()
     }
 
     private func snap(_ name: String) async {
@@ -97,7 +151,8 @@ final class EndToEndDriver {
     private func run() async {
         try? await Task.sleep(for: .seconds(1))
         let window = NSApp.windows.first { !($0 is NSPanel) && $0.canBecomeMain }
-        window?.setFrame(NSRect(x: 120, y: 120, width: 1280, height: 800), display: true, animate: false)
+        mainWindow = window
+        window?.setFrame(NSRect(origin: NSPoint(x: 120, y: 120), size: Self.windowSize), display: true, animate: false)
         try? FileManager.default.removeItem(at: output)
         try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         log("E2E_OUT \(output.path)")
@@ -115,6 +170,7 @@ final class EndToEndDriver {
         check(model.needsLogin, "écran de connexion sans compte")
         model.loginServer = config.server
         model.loginEmail = config.email
+        await checkLayout("écran de connexion", ["login-title"], columns: 0)
         await snap("20-connexion")
 
         await model.signIn(password: "pas le bon mot de passe")
@@ -122,6 +178,7 @@ final class EndToEndDriver {
 
         await model.signIn(password: config.password)
         check(model.twoFactorOptions == [.authenticator], "second facteur demandé")
+        await checkLayout("second facteur", ["login-title"], columns: 0)
         await snap("21-second-facteur")
 
         await model.answerTwoFactor(.authenticator, token: "000000")
@@ -150,6 +207,7 @@ final class EndToEndDriver {
             }
             check(model.siteIcons.images[SiteIcons.site(of: host)] != nil, "icône du site servie par Vaultwarden")
         }
+        await checkLayout("liste et fiche sélectionnée", ["search", "detail-title", "sidebar-footer"])
         await snap("22-coffre-vaultwarden")
 
         await model.syncNow()
@@ -158,6 +216,7 @@ final class EndToEndDriver {
         // Audit : calculé sur le coffre, sans réseau.
         model.openAudit()
         check(model.showAudit && (model.audit?.checked ?? 0) >= 5, "audit du coffre (\(model.audit?.checked ?? 0) mots de passe)")
+        await checkLayout("volet de l'audit", ["pane-title", "sidebar-footer", "detail-title"])
         await snap("23-audit")
         model.filter = .all
         check(!model.showAudit, "retour à la liste")
@@ -166,14 +225,12 @@ final class EndToEndDriver {
         model.openSends()
         await model.reloadSends()
         check(model.pane == .sends && model.sends.loaded, "volet des envois")
-        try? await Task.sleep(for: .seconds(1))
-        checkLayout("volet des envois")
+        await checkLayout("volet des envois", ["pane-title", "sidebar-footer"])
         await snap("25-envois")
         model.openEmergency()
         await model.reloadEmergency()
         check(model.pane == .emergency && model.emergency.loaded, "volet des accès d'urgence")
-        try? await Task.sleep(for: .seconds(1))
-        checkLayout("volet des accès d'urgence")
+        await checkLayout("volet des accès d'urgence", ["pane-title", "sidebar-footer"])
         await snap("26-urgence")
         model.filter = .all
         check(model.pane == nil, "retour à la liste")
@@ -193,6 +250,7 @@ final class EndToEndDriver {
         if let created {
             await model.edit(created.id)
             check(model.editor?.draft.login?.password == generated, "brouillon prérempli, secrets compris")
+            await checkLayout("feuille de modification", [], sheet: ["edit-title", "sheet-primary"])
             await snap("24-modification")
             if var draft = model.editor?.draft {
                 draft.name = "Modifié par Verrou"
@@ -223,6 +281,24 @@ final class EndToEndDriver {
             await model.trash(created.id)
         }
 
+        // Feuilles des doublons et de l'import, puis les réglages.
+        model.openDuplicates()
+        await checkLayout("feuille des doublons", [], sheet: ["sheet-title", "sheet-primary"])
+        model.duplicatesFlow = nil
+        let export = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-export.csv")
+        try? "Title,URL,Username,Password,Notes,OTPAuth\nMastodon,https://mastodon.social,camille,correct-cheval-pile,,\n"
+            .write(to: export, atomically: true, encoding: .utf8)
+        let flow = ImportFlow(url: export)
+        model.importFlow = flow
+        await model.readImport(flow)
+        check(flow.review != nil, "revue d'un import (rien n'est importé)")
+        await checkLayout("feuille de l'import", [], sheet: ["sheet-title", "sheet-primary"])
+        model.closeImport()
+        try? FileManager.default.removeItem(at: export)
+        try? await Task.sleep(for: .seconds(0.6))
+        await checkSettings()
+        mainWindow?.makeKeyAndOrderFront(nil)
+
         // Pont vers Brave, sur un port de test : écoute TCP et écriture des
         // déclarations Native Messaging, sous le sandbox de l'app.
         if ProcessInfo.processInfo.environment["VERROU_BRIDGE_PORT"] != nil {
@@ -238,6 +314,7 @@ final class EndToEndDriver {
         check(model.lockState == .locked && !model.needsLogin, "verrouillé, compte conservé")
         check(model.pane == nil && !model.sends.loaded && model.emergency.selection == nil,
               "volets et envois oubliés au verrouillage")
+        await checkLayout("écran verrouillé", ["lock-title"], columns: 0)
         await snap("23-verrouille")
 
         await model.unlock(masterPassword: "faux")
@@ -248,6 +325,10 @@ final class EndToEndDriver {
         model.logout()
         check(model.needsLogin && !model.biometricEnrolled && model.account == nil, "déconnexion")
         await recorder?.finish()
+        if layoutFailures > 0 {
+            log("E2E_FAIL mise en page cassée sur \(layoutFailures) écran(s), voir plus haut")
+            exit(1)
+        }
         log("E2E_DONE")
     }
 

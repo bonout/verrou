@@ -49,6 +49,7 @@ private struct CredentialsStep: View {
             VStack(spacing: 6) {
                 Text(model.reloginRequired ? "Session expirée" : "Connexion à Vaultwarden")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .layoutMark("login-title")
                 Text(model.reloginRequired
                      ? "Reconnectez-vous pour reprendre la synchronisation."
                      : "Verrou lit votre coffre ; il n'y modifie rien.")
@@ -128,6 +129,7 @@ private struct TwoFactorStep: View {
             VStack(spacing: 6) {
                 Text("Second facteur")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .layoutMark("login-title")
                 Text(model.loginEmail)
                     .font(.callout)
                     .foregroundStyle(.secondary)
