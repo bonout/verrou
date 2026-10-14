@@ -27,7 +27,7 @@
 
 use std::time::Duration;
 
-use bitwarden_api_api::models::{CipherRequestModel, SyncResponseModel};
+use bitwarden_api_api::models::CipherRequestModel;
 use bitwarden_vault::{
     AttachmentEncryptResult, AttachmentView, Cipher, CipherView, DecryptError, VaultClientExt,
 };
@@ -134,11 +134,12 @@ impl Connection {
         contents: &[u8],
     ) -> Result<Decrypted, Error> {
         let file_name = checked_name(file_name, contents)?;
+        let access = self.require_online("L'ajout d'une pièce jointe").await?;
+        let item_id = &self.resolve(item_id);
         // Refuse un élément en lecture seule ou à la corbeille.
         self.editable_view(item_id).await?;
         let cipher = self.cached_cipher(item_id)?;
         let encrypted = self.encrypt_file(cipher, file_name, contents)?;
-        let access = self.access_token().await?;
         self.api
             .upload_attachment(&access, item_id, encrypted)
             .await?;
@@ -151,6 +152,10 @@ impl Connection {
         item_id: &str,
         attachment_id: &str,
     ) -> Result<Decrypted, Error> {
+        let access = self
+            .require_online("La suppression d'une pièce jointe")
+            .await?;
+        let item_id = &self.resolve(item_id);
         let view = self.editable_view(item_id).await?;
         if !view
             .attachments
@@ -161,7 +166,6 @@ impl Connection {
         {
             return Err(Error::NotFound);
         }
-        let access = self.access_token().await?;
         self.api
             .delete_attachment(&access, item_id, attachment_id)
             .await?;
@@ -178,6 +182,7 @@ impl Connection {
         folder_id: Option<String>,
     ) -> Result<(String, Decrypted), Error> {
         let file_name = checked_name(file_name, contents)?;
+        self.require_online("L'ajout d'un document").await?;
         let draft = Draft {
             name: document_title(file_name),
             folder_id,
@@ -247,26 +252,12 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
-    /// L'élément chiffré, tel que le cache le connaît.
-    fn cached_cipher(&self, id: &str) -> Result<Cipher, Error> {
-        let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
-        let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
-        let model = sync
-            .ciphers
-            .unwrap_or_default()
-            .into_iter()
-            .find(|c| c.id.is_some_and(|c| c.to_string() == id))
-            .ok_or(Error::NotFound)?;
-        Cipher::try_from(model).map_err(Error::crypto)
-    }
-
     async fn cached_view(&self, id: &str) -> Result<CipherView, Error> {
         let cipher = self.cached_cipher(id)?;
         self.decrypt_view(cipher).await
     }
 
-    async fn decrypt_view(&self, cipher: Cipher) -> Result<CipherView, Error> {
+    pub(crate) async fn decrypt_view(&self, cipher: Cipher) -> Result<CipherView, Error> {
         // Sur le tas : la tâche du SDK est volumineuse (plus de 20 Ko).
         Box::pin(self.sdk.vault().ciphers().decrypt(cipher))
             .await

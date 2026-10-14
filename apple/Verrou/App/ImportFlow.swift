@@ -180,8 +180,8 @@ extension AppModel {
             try await session.trashItems(ids: Array(flow.selected))
             afterWrite(select: nil)
             duplicatesFlow = nil
-            toast = Toast(message: "\(count) élément\(count > 1 ? "s" : "") mis à la corbeille",
-                          detail: "Restaurables depuis le coffre web")
+            toast = writeToast("\(count) élément\(count > 1 ? "s" : "") mis à la corbeille",
+                               detail: "Restaurables depuis le coffre web")
         } catch {
             flow.error = Self.describe(error)
         }

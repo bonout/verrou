@@ -57,6 +57,9 @@ final class AppModel {
     private(set) var organizations: [OrganizationView] = []
     private(set) var lastSearchDuration: Duration = .zero
     private(set) var syncState: SyncState = .idle
+    /// Modifications faites hors ligne qui attendent le serveur (gardées,
+    /// chiffrées, même coffre verrouillé ; perdues à la déconnexion).
+    private(set) var pendingChanges = 0
     private(set) var biometricEnrolled = false
     var unlockError: String?
 
@@ -213,6 +216,7 @@ final class AppModel {
             account = session.account()
             biometricEnrolled = BiometricVault.isEnrolled(in: dataDirectory)
             unlockKeys = session.securityKeys()
+            pendingChanges = Int(session.pendingChanges())
             if let account {
                 loginServer = account.server
                 loginEmail = account.email
@@ -367,6 +371,7 @@ final class AppModel {
         reloginRequired = false
         twoFactorOptions = nil
         syncState = .idle
+        pendingChanges = 0
     }
 
     // MARK: Verrouillage
@@ -463,7 +468,9 @@ final class AppModel {
         syncLoop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.syncNow()
-                try? await Task.sleep(for: .seconds(5 * 60))
+                // Des modifications attendent le serveur : on réessaie plus souvent.
+                let waiting = (self?.pendingChanges ?? 0) > 0
+                try? await Task.sleep(for: .seconds(waiting ? 30 : 5 * 60))
             }
         }
     }
@@ -507,6 +514,12 @@ final class AppModel {
         summaries = (try? session.summaries()) ?? []
         counts = try? session.counts()
         organizations = session.organizations()
+        refreshPending()
+        // Un élément créé hors ligne a reçu son identifiant du serveur.
+        if let current = selection {
+            let resolved = session.resolveItemId(id: current)
+            if resolved != current { selection = resolved }
+        }
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
             selection = results.first?.id
@@ -555,6 +568,12 @@ final class AppModel {
     func syncNow() async {
         guard mode == .vaultwarden, lockState == .unlocked, syncState != .syncing else { return }
         syncState = .syncing
+        // Les modifications hors ligne partent avant la lecture du coffre :
+        // leur bilan (conflits, refus) s'affiche après coup, réussite ou non.
+        defer {
+            refreshPending()
+            Task { await self.showSyncReport() }
+        }
         do {
             let outcome = try await Perf.measure("synchronisation (réseau + déchiffrement)") {
                 try await session.sync()
@@ -576,6 +595,44 @@ final class AppModel {
             syncState = .offline
         } catch {
             syncState = .failed(Self.describe(error))
+        }
+    }
+
+    // MARK: Modifications hors ligne
+
+    func refreshPending() {
+        pendingChanges = mode == .vaultwarden ? Int(session.pendingChanges()) : 0
+    }
+
+    /// Libellé du nombre de modifications en attente (« 3 modifications en attente »).
+    var pendingLabel: String? {
+        guard pendingChanges > 0 else { return nil }
+        return pendingChanges == 1 ? "1 modification en attente" : "\(pendingChanges) modifications en attente"
+    }
+
+    /// Toast d'une écriture d'élément : hors ligne, elle attend le serveur.
+    func writeToast(_ message: String, detail: String? = nil) -> Toast {
+        guard pendingChanges > 0 else { return Toast(message: message, detail: detail) }
+        return Toast(message: message, detail: "Hors ligne : synchronisé dès que le serveur répondra")
+    }
+
+    /// Bilan de l'envoi des modifications hors ligne : conflits et refus
+    /// d'abord (rien ne doit disparaître sans le dire), puis les réussites.
+    func showSyncReport() async {
+        guard mode == .vaultwarden, lockState == .unlocked else { return }
+        let report = await session.takeSyncReport()
+        if !report.conflicts.isEmpty {
+            let count = report.conflicts.count
+            toast = Toast(message: count == 1 ? "Conflit : version locale gardée en copie"
+                                              : "\(count) conflits : versions locales gardées en copie",
+                          detail: report.conflicts.map { "« \($0) »" }.joined(separator: ", "), failure: true)
+        } else if !report.rejected.isEmpty {
+            toast = Toast(message: "Modification hors ligne refusée par le serveur",
+                          detail: report.rejected.joined(separator: "\n"), failure: true)
+        } else if report.sent > 0 {
+            toast = Toast(message: report.sent == 1 ? "Modification hors ligne synchronisée"
+                                                    : "\(report.sent) modifications hors ligne synchronisées",
+                          detail: nil)
         }
     }
 
@@ -695,7 +752,7 @@ final class AppModel {
         case .NoAccount: return "Aucun compte n'est configuré sur ce Mac."
         case .SessionExpired: return "La session a expiré : reconnectez-vous."
         case .InvalidServer(let message): return "Adresse du serveur invalide : \(message)"
-        case .Network(let message): return "Serveur injoignable. \(message)"
+        case .Network(let message): return "Serveur injoignable : cette action a besoin du réseau. \(message)"
         case .Server(let message): return "Le serveur a répondu : \(message)"
         case .Crypto(let message): return "Déchiffrement impossible : \(message)"
         case .Storage(let message): return "Stockage local : \(message)"
@@ -767,7 +824,8 @@ final class AppModel {
 
     // MARK: Édition
 
-    /// Le coffre fictif reste en lecture seule ; Vaultwarden demande le réseau.
+    /// Le coffre fictif reste en lecture seule. Hors ligne, les écritures
+    /// d'éléments attendent le serveur (voir `outbox.rs`).
     var canEdit: Bool { mode == .vaultwarden && lockState == .unlocked }
 
     var folders: [FolderOption] {
@@ -836,7 +894,7 @@ final class AppModel {
             }
             afterWrite(select: id)
             self.editor = nil
-            toast = Toast(message: editor.itemID == nil ? "Élément créé" : "Modifications enregistrées", detail: nil)
+            toast = writeToast(editor.itemID == nil ? "Élément créé" : "Modifications enregistrées")
         } catch VerrouError.Conflict {
             editorError = "L'élément a changé ailleurs entre-temps. Verrou vient de le recharger : rouvrez-le pour refaire la modification."
             await syncNow()
@@ -854,7 +912,7 @@ final class AppModel {
             try await session.trashItem(id: itemID)
             editor = nil
             afterWrite(select: nil)
-            toast = Toast(message: "Mis à la corbeille", detail: "Restaurable depuis le coffre web")
+            toast = writeToast("Mis à la corbeille", detail: "Restaurable depuis le coffre web")
         } catch {
             editorError = Self.describe(error)
             toast = Toast(message: "Corbeille impossible", detail: Self.describe(error), failure: true)
@@ -866,7 +924,7 @@ final class AppModel {
     func didSaveFromBrowser(title: String) {
         guard lockState == .unlocked else { return }
         afterWrite(select: selection)
-        toast = Toast(message: "Enregistré depuis Brave", detail: title.isEmpty ? nil : title)
+        toast = writeToast("Enregistré depuis Brave", detail: title.isEmpty ? nil : title)
     }
 
     // MARK: Rangement
@@ -901,21 +959,24 @@ final class AppModel {
         do {
             try await action()
             afterWrite(select: select)
-            toast = Toast(message: done, detail: detail)
+            toast = writeToast(done, detail: detail)
         } catch {
             toast = Toast(message: "Action impossible", detail: Self.describe(error), failure: true)
         }
     }
 
-    /// Le serveur a répondu et le coffre a été resynchronisé : on recharge.
+    /// Le coffre a été resynchronisé (ou, hors ligne, la modification
+    /// attend le serveur) : on recharge.
     func afterWrite(select id: String?) {
         guard lockState == .unlocked else { return }
         account = session.account()
         revealed.removeAll()
         reloadVault()
-        if let id { selection = id }
-        syncState = .idle
+        if let id { selection = session.resolveItemId(id: id) }
+        if pendingChanges == 0 { syncState = .idle }
         checkNewPasswords()
+        // Une écriture envoie d'abord ce qui attendait : son bilan suit.
+        Task { await showSyncReport() }
     }
 
     // MARK: Éléments protégés

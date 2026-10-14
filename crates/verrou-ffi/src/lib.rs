@@ -29,7 +29,7 @@
 // pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
 #![allow(clippy::needless_pass_by_value)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -389,6 +389,8 @@ impl From<FieldKind> for FieldType {
 }
 
 /// Ce que la liste affiche d'un élément. Aucun secret.
+// Un enregistrement UniFFI : des champs plats, lus tels quels par Swift.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ItemSummary {
     pub id: String,
@@ -408,6 +410,8 @@ pub struct ItemSummary {
     pub sharing: Option<ItemSharing>,
     /// Modèle de Verrou (Wi-Fi, passeport…), d'après le champ `verrou:type`.
     pub template: Option<ItemTemplate>,
+    /// Modifié hors ligne : la modification attend le serveur.
+    pub pending_sync: bool,
 }
 
 /// Où se trouve l'élément (voir `verrou_core::ItemState`).
@@ -594,6 +598,7 @@ fn summary(item: &Item) -> ItemSummary {
             hide_passwords: s.hide_passwords,
         }),
         template: item.template().map(Into::into),
+        pending_sync: false,
     }
 }
 
@@ -707,6 +712,10 @@ pub struct VaultSession {
     /// Identifiants dont le mot de passe vient d'être enregistré depuis
     /// Verrou, en attente de `check_new_passwords`.
     new_passwords: Mutex<Vec<String>>,
+    /// Éléments dont une modification faite hors ligne attend le serveur.
+    pending_items: RwLock<HashSet<String>>,
+    /// Éléments créés hors ligne : identifiant provisoire → serveur.
+    remapped: RwLock<HashMap<String, String>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -781,6 +790,15 @@ impl VaultSession {
             .organizations
             .write()
             .unwrap_or_else(PoisonError::into_inner) = decrypted.organizations;
+        *self
+            .pending_items
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) =
+            decrypted.pending_items.into_iter().collect();
+        self.remapped
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .extend(decrypted.remapped);
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
             Some(Vault::new(decrypted.items).with_passkeys(decrypted.passkeys));
         failures
@@ -898,6 +916,18 @@ impl VaultSession {
         Ok(id)
     }
 
+    /// Le résumé, marqué s'il attend le serveur.
+    fn summary_of(&self, item: &Item) -> ItemSummary {
+        ItemSummary {
+            pending_sync: self
+                .pending_items
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains(&item.id),
+            ..summary(item)
+        }
+    }
+
     fn is_authorized(&self, item: &Item) -> bool {
         !item.reprompt
             || self
@@ -970,6 +1000,8 @@ impl VaultSession {
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
             new_passwords: Mutex::new(Vec::new()),
+            pending_items: RwLock::new(HashSet::new()),
+            remapped: RwLock::new(HashMap::new()),
         })
     }
 
@@ -1319,7 +1351,48 @@ impl VaultSession {
         Ok(self.store()?.delete_security_keys()?)
     }
 
-    /// Oublie le compte de ce Mac (jetons, cache) et verrouille.
+    /// Modifications faites hors ligne qui attendent le serveur. Lisible
+    /// coffre verrouillé (pour prévenir avant une déconnexion, qui les perd).
+    pub fn pending_changes(&self) -> u32 {
+        self.store.as_ref().map_or(0, Store::pending_changes)
+    }
+
+    /// Identifiant actuel d'un élément : celui que le serveur a donné à un
+    /// élément créé hors ligne, une fois envoyé (pour garder la sélection).
+    pub fn resolve_item_id(&self, id: String) -> String {
+        self.remapped
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&id)
+            .cloned()
+            .unwrap_or(id)
+    }
+
+    /// Bilan de l'envoi des modifications hors ligne depuis le dernier appel
+    /// (après une synchronisation ou une écriture).
+    pub async fn take_sync_report(&self) -> SyncReport {
+        let Some(connection) = self.current_connection() else {
+            return SyncReport::default();
+        };
+        let report = connection.lock().await.take_report();
+        SyncReport {
+            sent: u32::try_from(report.sent).unwrap_or(u32::MAX),
+            conflicts: report.conflicts,
+            rejected: report
+                .rejected
+                .into_iter()
+                .map(|(title, reason)| format!("« {title} » : {reason}"))
+                .collect(),
+            remapped: report
+                .remapped
+                .into_iter()
+                .map(|(temporary, server)| IdMapping { temporary, server })
+                .collect(),
+        }
+    }
+
+    /// Oublie le compte de ce Mac (jetons, cache, modifications hors ligne
+    /// pas encore envoyées) et verrouille.
     pub fn logout(&self) -> Result<(), VerrouError> {
         self.lock();
         verrou_vaultwarden::logout(self.store()?)?;
@@ -1345,6 +1418,8 @@ impl VaultSession {
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
             new_passwords: Mutex::new(Vec::new()),
+            pending_items: RwLock::new(HashSet::new()),
+            remapped: RwLock::new(HashMap::new()),
         })
     }
 
@@ -1377,6 +1452,14 @@ impl VaultSession {
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
         self.organizations
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+        self.pending_items
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+        self.remapped
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
@@ -1422,7 +1505,7 @@ impl VaultSession {
     /// Tous les résumés, dans l'ordre du coffre. Appelé une fois après le
     /// déverrouillage ; la recherche renvoie ensuite des positions.
     pub fn summaries(&self) -> Result<Vec<ItemSummary>, VerrouError> {
-        self.with_vault(|v| Ok(v.items().iter().map(summary).collect()))
+        self.with_vault(|v| Ok(v.items().iter().map(|i| self.summary_of(i)).collect()))
     }
 
     pub fn search(
@@ -1444,7 +1527,13 @@ impl VaultSession {
     }
 
     pub fn detail(&self, id: String) -> Result<ItemDetail, VerrouError> {
-        self.with_vault(|v| Ok(detail(Self::item(v, &id)?)))
+        self.with_vault(|v| {
+            let item = Self::item(v, &id)?;
+            Ok(ItemDetail {
+                summary: self.summary_of(item),
+                ..detail(item)
+            })
+        })
     }
 
     /// Valeur d'un champ secret (ou `notes`), à la demande de l'utilisateur.
@@ -1841,6 +1930,26 @@ pub trait BridgeDelegate: Send + Sync {
     /// L'extension veut remplir un élément protégé : demander la
     /// confirmation (Touch ID ou mot de passe principal), puis `authorize_item`.
     fn reprompt_requested(&self, item: String, title: String);
+}
+
+/// Bilan de l'envoi des modifications faites hors ligne.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct SyncReport {
+    /// Modifications acceptées par le serveur.
+    pub sent: u32,
+    /// Éléments modifiés ailleurs entre-temps : titre de la copie qui garde
+    /// la version locale (« … (conflit hors ligne) »).
+    pub conflicts: Vec<String>,
+    /// Modifications refusées par le serveur, retirées : « titre » : raison.
+    pub rejected: Vec<String>,
+    /// Éléments créés hors ligne, et leur identifiant sur le serveur.
+    pub remapped: Vec<IdMapping>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct IdMapping {
+    pub temporary: String,
+    pub server: String,
 }
 
 /// Résultat d'une synchronisation.

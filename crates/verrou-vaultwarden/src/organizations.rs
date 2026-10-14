@@ -194,6 +194,9 @@ impl Connection {
         organization_id: &str,
         collection_ids: &[String],
     ) -> Result<(String, Decrypted), Error> {
+        let access = self
+            .require_online("La création dans un coffre partagé")
+            .await?;
         let (organization, collections) = self.destination(organization_id, collection_ids)?;
         let mut view = new_view(draft, Utc::now())?;
         // Le dossier reste personnel : seul ce compte le voit.
@@ -202,7 +205,6 @@ impl Connection {
         let cipher = self.encrypt(view).await?;
         let mut request = CipherCreateRequestModel::new(cipher);
         request.collection_ids = Some(collections.into_iter().map(Into::into).collect());
-        let access = self.access_token().await?;
         let body = self
             .api
             .send_json(
@@ -230,6 +232,8 @@ impl Connection {
         organization_id: &str,
         collection_ids: &[String],
     ) -> Result<Decrypted, Error> {
+        let access = self.require_online("Le partage").await?;
+        let id = &self.resolve(id);
         let (organization, collections) = self.destination(organization_id, collection_ids)?;
         let mut view = self.editable_view(id).await?;
         if view.organization_id.is_some() {
@@ -252,7 +256,6 @@ impl Connection {
             collections.iter().map(ToString::to_string).collect(),
             cipher,
         );
-        let access = self.access_token().await?;
         self.api
             .send_json(
                 reqwest::Method::PUT,
@@ -271,6 +274,8 @@ impl Connection {
         id: &str,
         collection_ids: &[String],
     ) -> Result<Decrypted, Error> {
+        let access = self.require_online("Le changement de collections").await?;
+        let id = &self.resolve(id);
         let view = self.editable_view(id).await?;
         let organization = view
             .organization_id
@@ -279,7 +284,6 @@ impl Connection {
         let request = CipherCollectionsRequestModel::new(
             collections.iter().map(ToString::to_string).collect(),
         );
-        let access = self.access_token().await?;
         self.api
             .send_json(
                 reqwest::Method::PUT,

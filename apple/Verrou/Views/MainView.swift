@@ -380,7 +380,9 @@ struct VaultFooter: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { Task { await model.syncNow() } }
-        .help(model.mode == .vaultwarden ? "Synchroniser (⌘R)" : "")
+        .help(model.mode == .vaultwarden
+              ? (model.pendingLabel.map { "\($0) : envoyées au retour du serveur. Synchroniser (⌘R)" } ?? "Synchroniser (⌘R)")
+              : "")
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
@@ -390,7 +392,9 @@ struct VaultFooter: View {
     }
 
     private var dotColor: Color {
-        switch model.syncState {
+        // Des modifications attendent le serveur.
+        if model.pendingChanges > 0, model.syncState != .syncing, model.syncState != .offline { return .orange }
+        return switch model.syncState {
         case .idle: .green
         case .syncing: .secondary
         case .offline: .orange
@@ -402,6 +406,10 @@ struct VaultFooter: View {
         if model.mode == .demo { return "Hors ligne · données locales" }
         let last = model.account?.syncedAt.map { synced in
             Date(timeIntervalSince1970: TimeInterval(synced)).formatted(date: .omitted, time: .shortened)
+        }
+        if let pending = model.pendingLabel, model.syncState != .syncing {
+            // « Hors ligne · 3 modifications en attente »
+            return model.syncState == .offline ? "Hors ligne · \(pending)" : pending
         }
         switch model.syncState {
         case .syncing: return "Synchronisation…"
@@ -577,6 +585,13 @@ struct ItemRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
+            if summary.pendingSync {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(selected ? .white : .orange)
+                    .help("En attente de synchronisation")
+                    .accessibilityLabel("En attente de synchronisation")
+            }
             if summary.hasTotp {
                 Image(systemName: "clock.badge.checkmark")
                     .font(.caption)

@@ -95,7 +95,19 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   a secure note named after it. Attachments are downloaded on demand, never
   cached: opening one needs the network.
 - **Offline**: the vault stays available without network, decrypted from the
-  cache (the server's response, still encrypted).
+  cache (the server's response, still encrypted). Edits keep working too:
+  creating, editing, favorites, moving to a folder, trash and restore,
+  archives, and logins or passkeys saved from Brave are applied right away
+  and wait in an encrypted queue in the account folder (they survive locking
+  and quitting). Waiting items show *En attente de synchronisation*, the
+  sidebar footer counts *N modifications en attente*, and Verrou retries
+  every 30 seconds. On reconnection (next sync, ⌘R or the next edit) the
+  queue is sent in order before the vault is downloaded; an item created
+  offline gets its server id. If an item changed elsewhere in the meantime,
+  both versions are kept: yours becomes a copy named *« … (conflit hors
+  ligne) »*. Attachments, sharing to a shared vault, Sends, emergency access
+  and import need the server and say so. Signing out discards the queue
+  (the confirmation says how many changes would be lost).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
   [SECURITY.md](../SECURITY.md)).
 - **YubiKey unlock**: the vault key is sealed by a secret that never leaves
@@ -164,7 +176,7 @@ crates/
   verrou-core         model, search, site matching (PSL), TOTP, generator, mock vault,
                       import parsers (Apple, 1Password, Proton Pass), duplicates, passkeys
                       (WebAuthn creation and ES256 signing)
-  verrou-vaultwarden  sign-in, second factor, cache, decryption, writes and bulk import
+  verrou-vaultwarden  sign-in, second factor, cache, decryption, writes (offline queue), bulk import
                       (Bitwarden Rust SDK), YubiKey unlock
   verrou-ffi          UniFFI interface to Swift (no secret without an explicit request)
   verrou-bridge       bridge to the extension and the CLI: pairing, encrypted channel,
@@ -411,7 +423,7 @@ cargo test --workspace                     # core, sign-in, bindings, bridge, CL
 cargo run -p verrou-cli -- --mock search github   # CLI on the mock vault
 
 # Tests against a real (throwaway) Vaultwarden: see the header of
-# crates/verrou-vaultwarden/tests/server.rs (organizations: tests/organizations.rs)
+# crates/verrou-vaultwarden/tests/server.rs (organizations: tests/organizations.rs, offline edits: tests/offline.rs)
 VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden
 
 scripts/build-apple.sh                     # universal library + Swift bindings

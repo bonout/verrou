@@ -87,6 +87,10 @@ struct ItemDetailView: View {
                     if let folder = detail.summary.folder {
                         Chip(text: folder, symbol: "folder", tint: .secondary)
                     }
+                    if detail.summary.pendingSync {
+                        Chip(text: "En attente de synchronisation", symbol: "arrow.triangle.2.circlepath", tint: .orange)
+                            .help("Modifié hors ligne : envoyé au serveur dès qu'il répondra")
+                    }
                     if detail.summary.reprompt {
                         Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)
                             .help("Ses secrets demandent une confirmation (Touch ID ou mot de passe principal)")

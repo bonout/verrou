@@ -9,7 +9,9 @@
 //!
 //! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
 //! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
-//! d'un autre gestionnaire, corbeille de plusieurs éléments.
+//! d'un autre gestionnaire, corbeille de plusieurs éléments. Hors ligne
+//! (`outbox`), les écritures d'éléments attendent le serveur dans une file
+//! chiffrée, déjà appliquée au coffre affiché.
 //!
 //! Accès d'urgence (`emergency`) : confier son coffre à un proche, ou
 //! ouvrir en lecture seule celui qu'un proche nous a confié.
@@ -28,6 +30,7 @@ pub mod emergency;
 mod error;
 mod import;
 mod organizations;
+mod outbox;
 mod passkeys;
 pub mod security_key;
 pub mod send;
@@ -38,9 +41,9 @@ pub mod unlock_keys;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use bitwarden_api_api::models::SyncResponseModel;
+use bitwarden_api_api::models::{CipherDetailsResponseModel, SyncResponseModel};
 use bitwarden_core::key_management::account_cryptographic_state::WrappedAccountCryptographicState;
 use bitwarden_core::key_management::crypto::{
     InitOrgCryptoRequest, InitUserCryptoMethod, InitUserCryptoRequest,
@@ -57,6 +60,7 @@ pub use edit::{CustomFieldDraft, CustomFieldKind, Draft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
 pub use organizations::{Collection, Organization};
+pub use outbox::{CONFLICT_SUFFIX, SyncReport};
 pub use store::{Account, KdfSettings, Store};
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
@@ -74,6 +78,13 @@ pub struct Decrypted {
     pub passkeys: Vec<verrou_core::Passkey>,
     /// Organisations (coffres partagés) et leurs collections, triées par nom.
     pub organizations: Vec<Organization>,
+    /// Éléments dont une modification faite hors ligne attend le serveur.
+    pub pending_items: Vec<String>,
+    /// Modifications faites hors ligne, pas encore envoyées.
+    pub pending_changes: usize,
+    /// Éléments créés hors ligne puis envoyés : (identifiant provisoire,
+    /// identifiant du serveur), depuis l'ouverture du coffre.
+    pub remapped: Vec<(String, String)>,
 }
 
 /// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
@@ -83,6 +94,15 @@ pub struct Connection {
     sdk: Client,
     store: Store,
     account: Account,
+    /// Modifications faites hors ligne (voir `outbox`).
+    outbox: outbox::Outbox,
+    /// Dernière erreur réseau : les écritures qui suivent de près vont
+    /// directement dans la file.
+    offline_at: Option<Instant>,
+    /// Bilan des envois de la file, en attente d'être lu.
+    report: SyncReport,
+    /// Identifiants provisoires des éléments créés hors ligne → serveur.
+    remapped: outbox::Remapped,
 }
 
 pub struct Unlocked {
@@ -239,11 +259,18 @@ impl PendingLogin {
             .encrypt_with_local_user_data_key(tokens.refresh)
             .map_err(Error::crypto)?;
         self.store.save_account(&account)?;
+        // Une reconnexion (session expirée) garde les modifications faites
+        // hors ligne : elles partent à la synchronisation suivante.
+        let outbox = outbox::load(&self.store, &account.user_id, &sdk);
         let connection = Connection {
             api: self.api.clone(),
             sdk,
             store: self.store.clone(),
             account,
+            outbox,
+            offline_at: None,
+            report: SyncReport::default(),
+            remapped: outbox::Remapped::new(),
         };
         let vault = connection.decrypt_cache().await?;
         Ok(Unlocked { connection, vault })
@@ -321,19 +348,25 @@ async fn init_with_user_key(
         .map_err(Error::crypto)
 }
 
-/// Oublie le compte : jetons, cache, clés chiffrées et clés de sécurité
-/// enrôlées.
+/// Oublie le compte : jetons, cache, clés chiffrées, clés de sécurité
+/// enrôlées et modifications hors ligne pas encore envoyées.
 pub fn logout(store: &Store) -> Result<(), Error> {
     store.delete_security_keys()?;
+    store.delete_outbox()?;
     store.delete_account()
 }
 
 async fn open(store: &Store, account: Account, sdk: Client) -> Result<Unlocked, Error> {
+    let outbox = outbox::load(store, &account.user_id, &sdk);
     let connection = Connection {
         api: Api::new(&account.server)?,
         sdk,
         store: store.clone(),
         account,
+        outbox,
+        offline_at: None,
+        report: SyncReport::default(),
+        remapped: outbox::Remapped::new(),
     };
     let vault = connection.decrypt_cache().await?;
     Ok(Unlocked { connection, vault })
@@ -344,21 +377,50 @@ impl Connection {
         &self.account
     }
 
-    /// Renouvelle le jeton d'accès, télécharge le coffre, l'enregistre comme
-    /// cache et le déchiffre. `None` : rien n'a changé sur le serveur depuis
-    /// le cache, le coffre déjà déchiffré reste valable (le cas courant : pas
-    /// de déchiffrement ni de rechargement de l'affichage pour rien).
+    /// Renouvelle le jeton d'accès, envoie les modifications faites hors
+    /// ligne (bilan : `take_report`), télécharge le coffre, l'enregistre
+    /// comme cache et le déchiffre. `None` : rien n'a changé depuis le cache,
+    /// le coffre déjà déchiffré reste valable (le cas courant : pas de
+    /// déchiffrement ni de rechargement de l'affichage pour rien).
     pub async fn sync(&mut self) -> Result<Option<Decrypted>, Error> {
-        let access = self.access_token().await?;
-        let sync_json = self.api.sync(&access).await?;
-        let unchanged = self.account.sync.as_deref() == Some(sync_json.as_str());
-        self.account.sync = Some(sync_json);
-        self.account.synced_at = Some(now());
-        self.store.save_account(&self.account)?;
+        let access = match self.access_token().await {
+            Err(Error::Network(message)) => {
+                self.mark_offline();
+                return Err(Error::Network(message));
+            }
+            other => other?,
+        };
+        self.offline_at = None;
+        let before = self.report.clone();
+        let had_outbox = !self.outbox.is_empty();
+        if self.outbox.has_unsent() {
+            self.replay(&access).await?;
+        }
+        let sync_json = match self.api.sync(&access).await {
+            Err(Error::Network(message)) => {
+                self.mark_offline();
+                return Err(Error::Network(message));
+            }
+            other => other?,
+        };
+        let unchanged = self.store_sync(sync_json)? && self.report == before && !had_outbox;
         if unchanged {
             return Ok(None);
         }
         self.decrypt_cache().await.map(Some)
+    }
+
+    /// Enregistre une synchronisation comme cache ; ce que la file avait
+    /// envoyé y figure désormais. Rend `true` si rien n'a changé.
+    fn store_sync(&mut self, sync_json: String) -> Result<bool, Error> {
+        let unchanged = self.account.sync.as_deref() == Some(sync_json.as_str());
+        self.account.sync = Some(sync_json);
+        self.account.synced_at = Some(now());
+        self.store.save_account(&self.account)?;
+        if self.outbox.purge_sent() {
+            self.persist_outbox()?;
+        }
+        Ok(unchanged)
     }
 
     /// Jeton d'accès neuf, obtenu par le jeton de renouvellement (enregistré
@@ -383,9 +445,7 @@ impl Connection {
 
     async fn sync_with(&mut self, access: &str) -> Result<Decrypted, Error> {
         let sync_json = self.api.sync(access).await?;
-        self.account.sync = Some(sync_json);
-        self.account.synced_at = Some(now());
-        self.store.save_account(&self.account)?;
+        self.store_sync(sync_json)?;
         self.decrypt_cache().await
     }
 
@@ -419,29 +479,19 @@ impl Connection {
     }
 
     async fn decrypt_cache(&self) -> Result<Decrypted, Error> {
-        let Some(json) = &self.account.sync else {
-            return Ok(Decrypted {
-                items: Vec::new(),
-                failures: 0,
-                folders: Vec::new(),
-                passkeys: Vec::new(),
-                organizations: Vec::new(),
-            });
+        let mut sync: SyncResponseModel = match &self.account.sync {
+            Some(json) => serde_json::from_str(json)
+                .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?,
+            None => SyncResponseModel::default(),
         };
-        let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
         self.init_organizations(&sync).await?;
         let directory = self.decrypt_directory(&sync);
+        let (ciphers, mut failures) = self.overlay(sync.ciphers.take());
         let folder_names = self.decrypt_folders(sync.folders)?;
 
         let mut items = Vec::new();
         let mut passkeys = Vec::new();
-        let mut failures = 0;
-        for model in sync.ciphers.unwrap_or_default() {
-            let Ok(cipher) = Cipher::try_from(model) else {
-                failures += 1;
-                continue;
-            };
+        for cipher in ciphers {
             match self.sdk.vault().ciphers().decrypt(cipher).await {
                 Ok(view) => {
                     passkeys.extend(convert::passkeys(&view));
@@ -461,7 +511,48 @@ impl Connection {
             folders,
             passkeys,
             organizations: directory.organizations,
+            pending_items: self.outbox.pending_items(),
+            pending_changes: self.outbox.pending_changes(),
+            remapped: self
+                .remapped
+                .iter()
+                .map(|(from, to)| (from.clone(), to.clone()))
+                .collect(),
         })
+    }
+
+    /// Les éléments chiffrés du cache, modifications hors ligne comprises
+    /// (voir `outbox`), et le nombre de ceux que le SDK ne sait pas lire.
+    fn overlay(&self, models: Option<Vec<CipherDetailsResponseModel>>) -> (Vec<Cipher>, usize) {
+        let mut failures = 0;
+        let mut ciphers: Vec<Cipher> = models
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|model| Cipher::try_from(model).inspect_err(|_| failures += 1).ok())
+            .collect();
+        self.outbox.apply(&mut ciphers);
+        (ciphers, failures)
+    }
+
+    /// Les éléments chiffrés du coffre affiché : cache et file superposés.
+    pub(crate) fn cached_ciphers(&self) -> Result<Vec<Cipher>, Error> {
+        let models = match &self.account.sync {
+            Some(json) => {
+                serde_json::from_str::<SyncResponseModel>(json)
+                    .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?
+                    .ciphers
+            }
+            None => None,
+        };
+        Ok(self.overlay(models).0)
+    }
+
+    /// L'élément chiffré, tel que le coffre affiché le connaît.
+    pub(crate) fn cached_cipher(&self, id: &str) -> Result<Cipher, Error> {
+        self.cached_ciphers()?
+            .into_iter()
+            .find(|c| c.id.is_some_and(|c| c.to_string() == id))
+            .ok_or(Error::NotFound)
     }
 
     /// Dossiers de la synchronisation : identifiant → nom.

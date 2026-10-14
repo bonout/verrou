@@ -74,6 +74,8 @@ impl Connection {
     /// Rend une erreur seulement si rien n'a été écrit ; ensuite, chaque
     /// échec est noté dans le bilan et l'import continue.
     pub async fn import(&mut self, plan: ImportPlan) -> Result<ImportReport, Error> {
+        // Les éléments à compléter partent de leur version du serveur.
+        self.require_online("L'import").await?;
         let now = Utc::now();
         let mut failures = Vec::new();
 
@@ -163,17 +165,36 @@ impl Connection {
 
     /// Met plusieurs éléments à la corbeille du serveur (restaurables depuis
     /// le coffre web), puis synchronise une fois. Les éléments que le compte
-    /// ne peut pas modifier sont refusés avant tout envoi.
+    /// ne peut pas modifier sont refusés avant tout envoi. Hors ligne, chacun
+    /// attend le serveur dans la file.
     pub async fn trash_many(&mut self, ids: &[String]) -> Result<Decrypted, Error> {
-        let mut ids = ids.to_vec();
+        let access = self.online().await?;
+        let mut ids: Vec<String> = ids.iter().map(|id| self.resolve(id)).collect();
         ids.sort();
         ids.dedup();
-        self.editable_views(&ids).await?;
-        let access = self.access_token().await?;
-        for batch in ids.chunks(BATCH) {
-            self.api.trash_ciphers(&access, batch).await?;
+        let views = self.editable_views(&ids).await?;
+        if let Some(access) = access {
+            let mut sent = Ok(());
+            for batch in ids.chunks(BATCH) {
+                sent = self.api.trash_ciphers(&access, batch).await;
+                if sent.is_err() {
+                    break;
+                }
+            }
+            match sent {
+                Ok(()) => return self.sync_with(&access).await,
+                // Rien n'est parti (premier lot) : tout attend dans la file.
+                Err(Error::Network(_)) if ids.len() <= BATCH => self.mark_offline(),
+                Err(error) => return Err(error),
+            }
         }
-        self.sync_with(&access).await
+        let now = Utc::now();
+        for (id, view) in ids.into_iter().zip(views) {
+            self.outbox
+                .push_action(id, view.name, crate::outbox::Action::Trash, now);
+        }
+        self.persist_outbox()?;
+        self.decrypt_cache().await
     }
 
     /// Les éléments à compléter, rechiffrés. Un élément devenu introuvable
