@@ -7,7 +7,9 @@
 //! puis tout part en une requête (par lot de 500), suivie d'une seule
 //! synchronisation. Les éléments déjà présents qu'on complète (nouveau mot de
 //! passe, code à usage unique) passent par la modification habituelle, sans
-//! synchronisation entre deux. La corbeille en masse utilise
+//! synchronisation entre deux. Les éléments qui portent des fichiers
+//! (1Password, Proton Pass) sont créés un par un, chacun suivi de ses
+//! pièces jointes (`attachments`). La corbeille en masse utilise
 //! `PUT /api/ciphers/delete`, restaurable comme la corbeille d'un élément.
 
 use std::collections::{BTreeSet, HashMap};
@@ -76,6 +78,7 @@ impl Connection {
 
         // Tout chiffrer avant d'écrire quoi que ce soit.
         let mut ciphers: Vec<(Option<String>, CipherRequestModel)> = Vec::new();
+        let mut with_files: Vec<(Option<String>, &ImportedItem)> = Vec::new();
         for item in &plan.create {
             let folder = match &plan.destination {
                 Destination::None => None,
@@ -83,6 +86,11 @@ impl Connection {
                 Destination::Original => item.folder.as_ref().map(|f| f.trim().to_owned()),
             }
             .filter(|f| !f.is_empty());
+            if !item.attachments.is_empty() {
+                // Avec des fichiers : créé à part, pour connaître son identifiant.
+                with_files.push((folder, item));
+                continue;
+            }
             let request = self.encrypt(import_view(item, now)?).await?;
             if request
                 .notes
@@ -100,7 +108,12 @@ impl Connection {
         let updates = self.merged(&plan.update, now, &mut failures).await?;
 
         let access = self.access_token().await?;
-        let wanted: BTreeSet<String> = ciphers.iter().filter_map(|(f, _)| f.clone()).collect();
+        let wanted: BTreeSet<String> = ciphers
+            .iter()
+            .map(|(f, _)| f)
+            .chain(with_files.iter().map(|(f, _)| f))
+            .filter_map(Clone::clone)
+            .collect();
         let folders = self.ensure_folders(&access, wanted).await?;
 
         let mut created = 0;
@@ -114,6 +127,19 @@ impl Connection {
                 Err(error) => {
                     failures.push((format!("{} élément(s)", batch.len()), error.to_string()));
                 }
+            }
+        }
+
+        // Éléments avec pièces jointes : un par un, l'élément puis ses
+        // fichiers ; si un fichier ne part pas, l'élément est retiré.
+        for (folder, item) in with_files {
+            let mut view = import_view(item, now)?;
+            view.folder_id = folder
+                .and_then(|f| folders.get(&f))
+                .and_then(|(id, _)| id.parse().ok());
+            match self.create_with_files(view, &item.attachments).await {
+                Ok(_) => created += 1,
+                Err(error) => failures.push((item.title.clone(), error.to_string())),
             }
         }
 
@@ -372,6 +398,7 @@ mod tests {
                 hidden: true,
             }],
             modified: None,
+            attachments: Vec::new(),
         }
     }
 

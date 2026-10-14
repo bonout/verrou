@@ -1475,3 +1475,214 @@ async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
 
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
+
+/// Contenu de test : assez gros pour plusieurs blocs, avec un repère qu'on
+/// ne doit jamais retrouver en clair sur le disque ni sur le serveur.
+fn sample_file(size: usize) -> Vec<u8> {
+    let marker = b"REPERE-EN-CLAIR-";
+    let mut bytes: Vec<u8> = marker.iter().copied().cycle().take(size).collect();
+    // De la variété après le repère, pour que les blocs diffèrent.
+    for (i, byte) in bytes.iter_mut().enumerate().skip(marker.len()) {
+        *byte = byte.wrapping_add((i / 7) as u8);
+    }
+    bytes
+}
+
+/// Pièces jointes : ajout (v2), synchronisation, lecture par Verrou et par le
+/// SDK officiel, conservation après modification de l'élément, suppression ;
+/// puis un document (note + fichier) et un import avec fichier.
+#[tokio::test]
+async fn attachments_upload_download_and_delete() {
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    seeder.fill().await;
+    let store = temp_store();
+    let first = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    );
+    let mut connection = first.connection;
+    let github = first
+        .vault
+        .items
+        .iter()
+        .find(|i| i.title == "GitHub")
+        .unwrap()
+        .id
+        .clone();
+    assert_eq!(connection.attachments(&github).await.unwrap(), Vec::new());
+
+    // Ajout : le serveur ne reçoit que du chiffré.
+    let contents = sample_file(300_000);
+    connection
+        .add_attachment(&github, " relevé de compte.pdf ", &contents)
+        .await
+        .unwrap();
+    let list = connection.attachments(&github).await.unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].file_name.as_deref(), Some("relevé de compte.pdf"));
+    assert!(list[0].size > contents.len() as u64, "taille du chiffré");
+    let attachment = list[0].id.clone();
+
+    // Lecture : mêmes octets.
+    let (name, downloaded) = connection
+        .download_attachment(&github, &attachment)
+        .await
+        .unwrap();
+    assert_eq!(name, "relevé de compte.pdf");
+    assert_eq!(downloaded.as_slice(), contents.as_slice());
+
+    // Rien en clair dans le cache (ni le nom, ni le contenu).
+    let mut on_disk = Vec::new();
+    for entry in std::fs::read_dir(store.dir()).unwrap() {
+        on_disk.extend(std::fs::read(entry.unwrap().path()).unwrap());
+    }
+    let haystack = String::from_utf8_lossy(&on_disk);
+    assert!(!haystack.contains("relevé de compte"));
+    assert!(!haystack.contains("REPERE-EN-CLAIR"));
+
+    official_sdk_reads(&seeder, &github, &contents).await;
+
+    // Modifier l'élément garde sa pièce jointe, lisible.
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let mut draft = connection.draft(&github).await.unwrap();
+    draft.name = "GitHub (pièces)".to_owned();
+    connection.update(&github, draft).await.unwrap();
+    let (_, again) = connection
+        .download_attachment(&github, &attachment)
+        .await
+        .unwrap();
+    assert_eq!(again.as_slice(), contents.as_slice());
+
+    // Une autre session la voit après synchronisation.
+    let mut other = unlock_with_password(&store, &SecretString::new(PASSWORD))
+        .await
+        .unwrap()
+        .connection;
+    other.sync().await.unwrap();
+    assert_eq!(other.attachments(&github).await.unwrap().len(), 1);
+
+    // Suppression.
+    connection
+        .delete_attachment(&github, &attachment)
+        .await
+        .unwrap();
+    assert_eq!(connection.attachments(&github).await.unwrap(), Vec::new());
+    assert!(matches!(
+        Box::pin(connection.download_attachment(&github, &attachment)).await,
+        Err(Error::NotFound)
+    ));
+    assert_eq!(
+        seeder.fetch(&github).await.attachments.unwrap_or_default(),
+        Vec::new()
+    );
+
+    document_and_import(&mut connection).await;
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}
+
+/// Le SDK officiel, comme une app Bitwarden, relit le fichier envoyé par
+/// Verrou.
+async fn official_sdk_reads(seeder: &Seeder, id: &str, contents: &[u8]) {
+    let model: bitwarden_api_api::models::CipherDetailsResponseModel = seeder
+        .http
+        .get(format!("{}/api/ciphers/{id}", seeder.server))
+        .bearer_auth(&seeder.access)
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let cipher = bitwarden_vault::Cipher::try_from(model).unwrap();
+    let view = Box::pin(seeder.sdk.vault().ciphers().decrypt(cipher.clone()))
+        .await
+        .unwrap();
+    let official = view.attachments.unwrap().remove(0);
+    assert_eq!(official.file_name.as_deref(), Some("relevé de compte.pdf"));
+    let url = official.url.clone().unwrap();
+    let encrypted = seeder
+        .http
+        .get(&url)
+        .send()
+        .await
+        .unwrap()
+        .bytes()
+        .await
+        .unwrap();
+    assert_eq!(encrypted[0], 2, "EncArrayBuffer de type 2");
+    assert!(!String::from_utf8_lossy(&encrypted).contains("REPERE-EN-CLAIR"));
+    let plain = seeder
+        .sdk
+        .vault()
+        .attachments()
+        .decrypt_buffer(cipher, official, &encrypted)
+        .unwrap();
+    assert_eq!(plain, contents);
+}
+
+/// Un document (note + fichier), puis un import avec fichier.
+async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
+    use verrou_core::import::{ImportKind, ImportedFile, ImportedItem};
+    use verrou_vaultwarden::{Destination, ImportPlan};
+
+    // Un document : une note au nom du fichier, le fichier joint.
+    let scan = sample_file(4_096);
+    let (document, vault) = connection
+        .create_document("Passeport.pdf", &scan, None)
+        .await
+        .unwrap();
+    let note = vault.items.iter().find(|i| i.id == document).unwrap();
+    assert_eq!(note.title, "Passeport");
+    assert_eq!(note.kind, ItemKind::SecureNote);
+    let files = connection.attachments(&document).await.unwrap();
+    assert_eq!(files[0].file_name.as_deref(), Some("Passeport.pdf"));
+    let (_, read) = connection
+        .download_attachment(&document, &files[0].id)
+        .await
+        .unwrap();
+    assert_eq!(read.as_slice(), scan.as_slice());
+
+    // Import d'un élément avec fichier (comme un document de 1Password).
+    let imported = ImportedItem {
+        kind: ImportKind::SecureNote,
+        title: "Bail".to_owned(),
+        username: None,
+        password: None,
+        urls: Vec::new(),
+        totp: None,
+        notes: None,
+        folder: Some("Papiers".to_owned()),
+        favorite: false,
+        card: None,
+        fields: Vec::new(),
+        modified: None,
+        attachments: vec![ImportedFile::new("bail.txt", b"loyer : 800".to_vec())],
+    };
+    let report = connection
+        .import(ImportPlan {
+            create: vec![imported],
+            update: Vec::new(),
+            destination: Destination::Original,
+        })
+        .await
+        .unwrap();
+    assert_eq!(report.created, 1);
+    assert_eq!(report.failures, Vec::new());
+    let lease = report
+        .vault
+        .items
+        .iter()
+        .find(|i| i.title == "Bail")
+        .unwrap();
+    assert_eq!(lease.folder.as_deref(), Some("Papiers"));
+    let files = connection.attachments(&lease.id).await.unwrap();
+    let (name, read) = connection
+        .download_attachment(&lease.id, &files[0].id)
+        .await
+        .unwrap();
+    assert_eq!(name, "bail.txt");
+    assert_eq!(read.as_slice(), b"loyer : 800");
+}

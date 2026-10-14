@@ -33,6 +33,7 @@ struct MainView: View {
                     Button("Nouvel identifiant") { model.newItem(login: true) }
                     Button("Nouvelle note sécurisée") { model.newItem(login: false) }
                     Button("Nouvelle clé SSH…") { model.newSshKey() }
+                    Button("Nouveau document…") { model.newDocument() }
                 } label: {
                     Label("Nouvel élément", systemImage: "plus")
                 } primaryAction: {

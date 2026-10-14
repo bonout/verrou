@@ -184,10 +184,10 @@ fn read_export(path: &str) -> Result<Zeroizing<Vec<u8>>, VerrouError> {
     let file =
         std::fs::File::open(path).map_err(|e| invalid(format!("fichier illisible ({e})")))?;
     let mut bytes = Zeroizing::new(Vec::new());
-    file.take(import::MAX_SIZE + 1)
+    file.take(import::MAX_ARCHIVE_SIZE + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| invalid(format!("fichier illisible ({e})")))?;
-    if bytes.len() as u64 > import::MAX_SIZE {
+    if bytes.len() as u64 > import::MAX_ARCHIVE_SIZE {
         return Err(invalid(import::ImportError::TooLarge.to_string()));
     }
     Ok(bytes)

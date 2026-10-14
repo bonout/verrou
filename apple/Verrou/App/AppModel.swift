@@ -128,6 +128,8 @@ final class AppModel {
     var duplicatesFlow: DuplicatesFlow?
     /// Génération d'une clé SSH ouverte (voir `SshKeys.swift`).
     var sshKeyGenerator: SshKeyGenerator?
+    /// Pièces jointes de l'élément affiché (voir `Attachments.swift`).
+    let attachments = AttachmentsModel()
 
     /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
     var browserBridge: BrowserBridge?
@@ -195,6 +197,8 @@ final class AppModel {
                 loginEmail = account.email
             }
         }
+        // Pièces jointes déchiffrées restées d'une session interrompue.
+        AttachmentsModel.purge()
         // Préchauffe la réponse de LocalAuthentication avant le premier rendu.
         Biometrics.refresh()
         Perf.log.notice("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
@@ -513,6 +517,7 @@ final class AppModel {
         if keyExchange == .enroll { session.cancelSecurityKey() }
         importFlow = nil
         duplicatesFlow = nil
+        attachments.clear()
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked

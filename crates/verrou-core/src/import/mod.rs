@@ -11,6 +11,11 @@
 //!
 //! La comparaison avec le coffre (doublons, mots de passe différents) est
 //! dans [`crate::duplicates`].
+//!
+//! Pièces jointes : les archives de 1Password (`files/`) et de Proton Pass
+//! (`Proton Pass/files/`) portent les fichiers des éléments. Ils sont lus
+//! ici, dans des tampons effacés à la libération ([`ImportedFile`]), pour
+//! devenir des pièces jointes Bitwarden.
 
 mod csv_formats;
 mod onepassword;
@@ -25,6 +30,14 @@ use crate::secret::SecretString;
 /// archive : de quoi contenir des dizaines de milliers d'éléments, pas une
 /// bombe de décompression.
 pub const MAX_SIZE: u64 = 64 * 1024 * 1024;
+
+/// Taille maximale d'une archive d'export (ZIP de 1Password ou de Proton
+/// Pass), pièces jointes comprises.
+pub const MAX_ARCHIVE_SIZE: u64 = 512 * 1024 * 1024;
+
+/// Taille maximale d'une pièce jointe, avant chiffrement : celle que Verrou
+/// applique aussi à l'ajout d'un fichier.
+pub const MAX_ATTACHMENT_SIZE: u64 = 100 * 1024 * 1024;
 
 /// Format d'un fichier d'export.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -100,6 +113,44 @@ pub struct ExtraField {
     pub hidden: bool,
 }
 
+/// Fichier joint à un élément importé. Son contenu est effacé de la
+/// mémoire à la libération ; `Debug` ne le montre pas.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ImportedFile {
+    pub name: String,
+    pub data: zeroize::Zeroizing<Vec<u8>>,
+    /// Où le trouver dans l'archive, le temps de la lecture.
+    reference: Option<String>,
+}
+
+impl ImportedFile {
+    pub fn new(name: impl Into<String>, data: Vec<u8>) -> Self {
+        Self {
+            name: name.into(),
+            data: zeroize::Zeroizing::new(data),
+            reference: None,
+        }
+    }
+
+    /// Fichier annoncé par l'export, à chercher dans l'archive.
+    fn pending(name: &str, reference: String) -> Self {
+        Self {
+            name: name.trim().to_owned(),
+            data: zeroize::Zeroizing::new(Vec::new()),
+            reference: Some(reference),
+        }
+    }
+}
+
+impl std::fmt::Debug for ImportedFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportedFile")
+            .field("name", &self.name)
+            .field("size", &self.data.len())
+            .finish_non_exhaustive()
+    }
+}
+
 /// Un élément lu dans un export, au format commun.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportedItem {
@@ -119,6 +170,8 @@ pub struct ImportedItem {
     /// Dernière modification dans l'application d'origine (Unix, secondes),
     /// quand l'export la donne.
     pub modified: Option<i64>,
+    /// Pièces jointes (archives de 1Password et de Proton Pass).
+    pub attachments: Vec<ImportedFile>,
 }
 
 impl ImportedItem {
@@ -136,6 +189,7 @@ impl ImportedItem {
             card: None,
             fields: Vec::new(),
             modified: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -205,7 +259,10 @@ impl Parsed {
             item.kind = ImportKind::SecureNote;
         }
         let empty = match item.kind {
-            ImportKind::SecureNote => item.notes.is_none() && item.fields.is_empty(),
+            // Un document (un fichier seul) reste une note sécurisée.
+            ImportKind::SecureNote => {
+                item.notes.is_none() && item.fields.is_empty() && item.attachments.is_empty()
+            }
             ImportKind::Card => item.card.as_ref().is_none_or(|c| *c == CardData::default()),
             ImportKind::Login => false,
         };
@@ -228,7 +285,7 @@ pub enum ImportError {
     UnknownFormat,
     #[error("export chiffré : exportez de nouveau, sans chiffrement")]
     Encrypted,
-    #[error("fichier trop volumineux (64 Mo au plus)")]
+    #[error("fichier trop volumineux (64 Mo au plus, 512 Mo pour une archive)")]
     TooLarge,
     #[error("fichier illisible : {0}")]
     Unreadable(String),
@@ -264,7 +321,12 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
 
 /// Lit un export ; sans `format`, le reconnaît d'abord.
 pub fn parse(bytes: &[u8], format: Option<Format>) -> Result<Parsed, ImportError> {
-    if bytes.len() as u64 > MAX_SIZE {
+    let limit = if bytes.starts_with(b"PK") {
+        MAX_ARCHIVE_SIZE
+    } else {
+        MAX_SIZE
+    };
+    if bytes.len() as u64 > limit {
         return Err(ImportError::TooLarge);
     }
     if looks_encrypted(bytes) {
@@ -282,13 +344,95 @@ pub fn parse(bytes: &[u8], format: Option<Format>) -> Result<Parsed, ImportError
         Format::OnePassword1pux => {
             let json = json_document(bytes, |name| name == "export.data", format)?;
             onepassword::parse(&json, &mut parsed)?;
+            attach_files(bytes, &mut parsed, onepassword::archive_entry)?;
         }
         Format::ProtonPassZip => {
             let json = json_document(bytes, |name| name.ends_with("data.json"), format)?;
             proton::parse(&json, &mut parsed)?;
+            attach_files(bytes, &mut parsed, proton::archive_entry)?;
         }
     }
     Ok(parsed)
+}
+
+/// Lit dans l'archive les fichiers annoncés par l'export ; `entry` dit si un
+/// nom de l'archive est celui d'une référence. Un fichier absent ou trop
+/// volumineux n'est pas importé, et les notes de l'élément le disent.
+fn attach_files(
+    bytes: &[u8],
+    parsed: &mut Parsed,
+    entry: fn(&str, &str) -> bool,
+) -> Result<(), ImportError> {
+    let wanted = parsed
+        .items
+        .iter()
+        .any(|i| i.attachments.iter().any(|a| a.reference.is_some()));
+    if !wanted {
+        return Ok(());
+    }
+    // `export.data` seul, sans son archive : les fichiers manquent.
+    let mut archive = if bytes.starts_with(b"PK") {
+        Some(
+            zip::ZipArchive::new(Cursor::new(bytes))
+                .map_err(|e| ImportError::Unreadable(format!("archive ZIP ({e})")))?,
+        )
+    } else {
+        None
+    };
+    let names = if archive.is_some() {
+        zip_names(bytes)?
+    } else {
+        Vec::new()
+    };
+    for item in &mut parsed.items {
+        let mut missing = Vec::new();
+        let mut kept = Vec::new();
+        for mut file in std::mem::take(&mut item.attachments) {
+            let Some(reference) = file.reference.take() else {
+                kept.push(file);
+                continue;
+            };
+            let name = names.iter().find(|n| entry(n, &reference));
+            let read = match (name, archive.as_mut()) {
+                (Some(name), Some(archive)) => read_entry(archive, name),
+                _ => Err("absente de l'export"),
+            };
+            match read {
+                Ok(data) => {
+                    file.data = data;
+                    kept.push(file);
+                }
+                Err(reason) => missing.push((
+                    format!("Pièce jointe « {} »", file.name),
+                    format!("non importée ({reason})"),
+                )),
+            }
+        }
+        item.attachments = kept;
+        append_lines(&mut item.notes, &missing);
+    }
+    Ok(())
+}
+
+fn read_entry(
+    archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
+    name: &str,
+) -> Result<zeroize::Zeroizing<Vec<u8>>, &'static str> {
+    let file = archive.by_name(name).map_err(|_| "illisible")?;
+    if file.encrypted() {
+        return Err("chiffrée");
+    }
+    if file.size() > MAX_ATTACHMENT_SIZE {
+        return Err("plus de 100 Mo");
+    }
+    let mut data = zeroize::Zeroizing::new(Vec::new());
+    file.take(MAX_ATTACHMENT_SIZE + 1)
+        .read_to_end(&mut data)
+        .map_err(|_| "illisible")?;
+    if data.len() as u64 > MAX_ATTACHMENT_SIZE {
+        return Err("plus de 100 Mo");
+    }
+    Ok(data)
 }
 
 /// Export chiffré (PGP de Proton Pass, archive protégée) : rien à lire.

@@ -4,20 +4,53 @@
 //! Identifiants (et « mots de passe » seuls), notes sécurisées et cartes
 //! bancaires sont repris tels quels ; les autres catégories (identité,
 //! serveur, routeur Wi-Fi…) deviennent des notes sécurisées dont les notes
-//! reprennent les champs. Les pièces jointes ne sont pas importées.
+//! reprennent les champs. Un document devient une note sécurisée avec son
+//! fichier en pièce jointe ; les fichiers joints aux autres éléments
+//! suivent aussi (`files/<documentId>__<nom>` dans l'archive).
 
 use serde_json::Value;
 
 use super::{
-    CardData, ExtraField, ImportError, ImportKind, ImportedItem, Parsed, append_lines, date_of,
-    expiry, secret, text,
+    CardData, ExtraField, ImportError, ImportKind, ImportedFile, ImportedItem, Parsed,
+    append_lines, date_of, expiry, secret, text,
 };
 
 const LOGIN: &str = "001";
 const CARD: &str = "002";
 const NOTE: &str = "003";
 const PASSWORD: &str = "005";
-const DOCUMENT: &str = "006";
+
+/// Fichiers d'un élément : celui d'un document (`documentAttributes`) et
+/// ceux des champs de type fichier. Leur contenu est lu ensuite dans
+/// l'archive.
+fn files(details: &Value) -> Vec<ImportedFile> {
+    let document = details.get("documentAttributes").into_iter();
+    let fields = array(details, "sections")
+        .flat_map(|section| array(section, "fields"))
+        .filter_map(|field| field.pointer("/value/file"));
+    let mut files: Vec<ImportedFile> = Vec::new();
+    for attributes in document.chain(fields) {
+        let Some(id) = text(attributes.get("documentId").and_then(Value::as_str)) else {
+            continue;
+        };
+        let name = text(attributes.get("fileName").and_then(Value::as_str))
+            .unwrap_or_else(|| "fichier".to_owned());
+        if files
+            .iter()
+            .all(|f| f.reference.as_deref() != Some(id.as_str()))
+        {
+            files.push(ImportedFile::pending(&name, id));
+        }
+    }
+    files
+}
+
+/// `files/<documentId>__<nom>` (deux ou trois tirets bas, selon les versions).
+pub(super) fn archive_entry(name: &str, document_id: &str) -> bool {
+    name.strip_prefix("files/")
+        .and_then(|rest| rest.strip_prefix(document_id))
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('_'))
+}
 
 pub(super) fn parse(json: &Value, parsed: &mut Parsed) -> Result<(), ImportError> {
     let accounts = json
@@ -185,17 +218,9 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
             lines.extend(fields.iter().map(|f| (label(f), f.value.clone())));
             item.urls = urls(overview);
             append_lines(&mut item.notes, &lines);
-            if category == DOCUMENT {
-                append_lines(
-                    &mut item.notes,
-                    &[(
-                        "Pièce jointe".to_owned(),
-                        "non importée (à récupérer dans 1Password)".to_owned(),
-                    )],
-                );
-            }
         }
     }
+    item.attachments = files(details);
     parsed.push(item);
 }
 
@@ -403,6 +428,78 @@ mod tests {
             router.password.as_ref().unwrap().expose(),
             "seul-mot-de-passe"
         );
+    }
+
+    const DOCUMENTS: &str = r#"{
+      "accounts": [{ "vaults": [{
+        "attrs": { "name": "Papiers" },
+        "items": [
+          {
+            "uuid": "d1", "state": "active", "categoryUuid": "006",
+            "details": {
+              "notesPlain": "",
+              "documentAttributes": { "fileName": "Passeport.pdf", "documentId": "docpasseport", "decryptedSize": 9 }
+            },
+            "overview": { "title": "Passeport" }
+          },
+          {
+            "uuid": "d2", "state": "active", "categoryUuid": "001",
+            "details": {
+              "loginFields": [{ "value": "camille", "designation": "username" }],
+              "sections": [{ "fields": [
+                { "title": "facture", "id": "f1", "value": { "file": { "fileName": "facture.txt", "documentId": "docfacture", "decryptedSize": 5 } } },
+                { "title": "perdu", "id": "f2", "value": { "file": { "fileName": "perdu.txt", "documentId": "docperdu", "decryptedSize": 5 } } }
+              ] }]
+            },
+            "overview": { "title": "Boutique", "url": "https://boutique.fr" }
+          }
+        ]
+      }] }]
+    }"#;
+
+    #[test]
+    fn onepux_documents_and_files_become_attachments() {
+        let mut bytes = Vec::new();
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(&mut bytes));
+        let options = zip::write::SimpleFileOptions::default();
+        zip.start_file("export.data", options).unwrap();
+        zip.write_all(DOCUMENTS.as_bytes()).unwrap();
+        zip.start_file("files/docpasseport___Passeport.pdf", options)
+            .unwrap();
+        zip.write_all(b"%PDF-1.7\n").unwrap();
+        zip.start_file("files/docfacture__facture.txt", options)
+            .unwrap();
+        zip.write_all(b"12 EUR").unwrap();
+        zip.finish().unwrap();
+
+        let parsed = parse(&bytes, None).unwrap();
+        assert_eq!(parsed.items.len(), 2);
+        let passport = &parsed.items[0];
+        assert_eq!(
+            passport.kind,
+            ImportKind::SecureNote,
+            "un document est une note"
+        );
+        assert_eq!(passport.attachments.len(), 1);
+        assert_eq!(passport.attachments[0].name, "Passeport.pdf");
+        assert_eq!(passport.attachments[0].data.as_slice(), b"%PDF-1.7\n");
+        assert!(passport.notes.is_none());
+        assert!(
+            !format!("{passport:?}").contains("PDF"),
+            "Debug ne montre pas le contenu"
+        );
+
+        let shop = &parsed.items[1];
+        assert_eq!(shop.kind, ImportKind::Login);
+        assert_eq!(shop.attachments.len(), 1);
+        assert_eq!(shop.attachments[0].data.as_slice(), b"12 EUR");
+        let notes = shop.notes.as_ref().unwrap().expose();
+        assert!(notes.contains("Pièce jointe « perdu.txt » : non importée (absente de l'export)"));
+
+        // `export.data` seul : les fichiers manquent, les notes le disent.
+        let bare = parse(DOCUMENTS.as_bytes(), Some(Format::OnePassword1pux)).unwrap();
+        assert_eq!(bare.items[0].attachments.len(), 0);
+        assert!(bare.items[0].notes.is_some());
     }
 
     #[test]

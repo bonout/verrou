@@ -477,6 +477,7 @@ mod tests {
             card: None,
             fields: Vec::new(),
             modified: None,
+            attachments: Vec::new(),
         }
     }
 

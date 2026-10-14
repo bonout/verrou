@@ -26,6 +26,8 @@ struct VerrouApp: App {
                 Button("Nouvelle note sécurisée") { delegate.model.newItem(login: false) }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
+                Button("Nouveau document…") { delegate.model.newDocument() }
+                    .disabled(!delegate.model.canEdit)
                 Divider()
                 Button("Importer…") { delegate.model.startImport() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
