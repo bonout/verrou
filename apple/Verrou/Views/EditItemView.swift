@@ -14,6 +14,9 @@ struct EditItemView: View {
     @State private var destination: SharedDestination?
     @State private var showPassword = false
     @State private var showGenerator = false
+    /// Entropie exacte de la dernière phrase de passe générée : les
+    /// caractères la surestimeraient de beaucoup.
+    @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
     @FocusState private var titleFocused: Bool
 
@@ -38,7 +41,7 @@ struct EditItemView: View {
                             .textContentType(.username)
                         passwordRow
                         if let password = draft.login?.password, !password.isEmpty {
-                            StrengthMeter(password: password)
+                            StrengthMeter(password: password, bits: generated?.value == password ? generated?.bits : nil)
                         }
                         TextField("Code à usage unique", text: loginText(\.totp), prompt: Text("graine ou lien otpauth://"))
                     }
@@ -191,10 +194,11 @@ struct EditItemView: View {
                 Image(systemName: "wand.and.stars")
             }
             .buttonStyle(.borderless)
-            .help("Générer un mot de passe")
+            .help("Générer un mot de passe ou une phrase de passe")
             .popover(isPresented: $showGenerator, arrowEdge: .trailing) {
-                GeneratorView { password in
+                GeneratorView { password, bits in
                     draft.login?.password = password
+                    generated = bits.map { (password, $0) }
                     showPassword = true
                     showGenerator = false
                 }
@@ -230,30 +234,101 @@ struct EditItemView: View {
     }
 }
 
-/// Générateur de mots de passe : longueur, chiffres, symboles ; aperçu coloré.
+/// Ce que le générateur produit ; le dernier choix est retenu.
+enum GeneratorMode: String, CaseIterable {
+    case password
+    case passphrase
+
+    var label: String {
+        switch self {
+        case .password: "Mot de passe"
+        case .passphrase: "Phrase de passe"
+        }
+    }
+}
+
+/// Séparateur des mots d'une phrase de passe (gardé dans les réglages).
+enum PassphraseSeparatorChoice: String, CaseIterable {
+    case hyphen, space, period, underscore, comma, digit
+
+    var label: String {
+        switch self {
+        case .hyphen: "Tiret ( - )"
+        case .space: "Espace"
+        case .period: "Point ( . )"
+        case .underscore: "Tiret bas ( _ )"
+        case .comma: "Virgule ( , )"
+        case .digit: "Chiffre au hasard"
+        }
+    }
+
+    var ffi: PassphraseSeparator {
+        switch self {
+        case .hyphen: .hyphen
+        case .space: .space
+        case .period: .period
+        case .underscore: .underscore
+        case .comma: .comma
+        case .digit: .digit
+        }
+    }
+}
+
+/// Langue des mots d'une phrase de passe.
+enum PassphraseLanguageChoice: String, CaseIterable {
+    case french, english
+
+    var label: String {
+        switch self {
+        case .french: "Français"
+        case .english: "English"
+        }
+    }
+
+    var ffi: PassphraseLanguage {
+        switch self {
+        case .french: .french
+        case .english: .english
+        }
+    }
+}
+
+/// Générateur : mot de passe (longueur, chiffres, symboles) ou phrase de
+/// passe (mots tirés dans une liste de 7 776, séparateur, majuscules,
+/// chiffre) ; aperçu coloré et robustesse. `use` reçoit la valeur et, pour
+/// une phrase de passe, son entropie exacte.
 struct GeneratorView: View {
-    let use: (String) -> Void
+    let use: (String, Double?) -> Void
+    @AppStorage("generatorMode") private var mode = GeneratorMode.password
     @AppStorage("generatorLength") private var length = 20.0
     @AppStorage("generatorDigits") private var digits = true
     @AppStorage("generatorSymbols") private var symbols = true
+    @AppStorage("generatorWords") private var words = 5.0
+    @AppStorage("generatorSeparator") private var separator = PassphraseSeparatorChoice.hyphen
+    @AppStorage("generatorCapitalize") private var capitalize = false
+    @AppStorage("generatorNumber") private var number = false
+    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
     @State private var password = ""
+    @State private var bits: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Générateur").font(.headline)
+            Picker("Type", selection: $mode) {
+                ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
             PasswordText(value: password, size: 14)
-                .lineLimit(3)
+                .lineLimit(6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(10)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            StrengthMeter(password: password)
-            HStack {
-                Text("Longueur")
-                Slider(value: $length, in: 8...64, step: 1)
-                Text("\(Int(length))").monospacedDigit().frame(width: 24, alignment: .trailing)
+            StrengthMeter(password: password, bits: bits)
+            switch mode {
+            case .password: passwordOptions
+            case .passphrase: passphraseOptions
             }
-            Toggle("Chiffres", isOn: $digits)
-            Toggle("Symboles", isOn: $symbols)
             HStack {
                 Button {
                     regenerate()
@@ -261,30 +336,75 @@ struct GeneratorView: View {
                     Label("Autre", systemImage: "arrow.clockwise")
                 }
                 Spacer()
-                Button("Utiliser") { use(password) }
+                Button("Utiliser") { use(password, bits) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
         }
         .padding(16)
-        .frame(width: 340)
+        .frame(width: 360)
         .onAppear(perform: regenerate)
+        .onChange(of: mode) { regenerate() }
         .onChange(of: length) { regenerate() }
         .onChange(of: digits) { regenerate() }
         .onChange(of: symbols) { regenerate() }
+        .onChange(of: words) { regenerate() }
+        .onChange(of: separator) { regenerate() }
+        .onChange(of: capitalize) { regenerate() }
+        .onChange(of: number) { regenerate() }
+        .onChange(of: language) { regenerate() }
+    }
+
+    @ViewBuilder private var passwordOptions: some View {
+        HStack {
+            Text("Longueur")
+            Slider(value: $length, in: 8...64, step: 1)
+            Text("\(Int(length))").monospacedDigit().frame(width: 24, alignment: .trailing)
+        }
+        Toggle("Chiffres", isOn: $digits)
+        Toggle("Symboles", isOn: $symbols)
+    }
+
+    @ViewBuilder private var passphraseOptions: some View {
+        HStack {
+            Text("Mots")
+            Slider(value: $words, in: 3...20, step: 1)
+            Text("\(Int(words))").monospacedDigit().frame(width: 24, alignment: .trailing)
+        }
+        Picker("Séparateur", selection: $separator) {
+            ForEach(PassphraseSeparatorChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Picker("Langue", selection: $language) {
+            ForEach(PassphraseLanguageChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+        }
+        Toggle("Majuscules", isOn: $capitalize)
+        Toggle("Ajouter un chiffre", isOn: $number)
     }
 
     private func regenerate() {
-        password = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
+        switch mode {
+        case .password:
+            password = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
+            bits = nil
+        case .passphrase:
+            let phrase = generatePassphrase(settings: PassphraseSettings(
+                words: UInt32(words), separator: separator.ffi, capitalize: capitalize,
+                includeNumber: number, language: language.ffi))
+            password = phrase.value
+            bits = phrase.entropyBits
+        }
     }
 }
 
 /// Robustesse estimée (entropie) : barre et mot.
 struct StrengthMeter: View {
     let password: String
+    /// Entropie connue (phrase de passe générée) ; sinon estimée d'après les
+    /// caractères.
+    var bits: Double?
 
     var body: some View {
-        let bits = passwordStrength(password: password)
+        let bits = bits ?? passwordStrength(password: password)
         let (label, color, fraction) = Self.grade(bits)
         HStack(spacing: 10) {
             GeometryReader { proxy in

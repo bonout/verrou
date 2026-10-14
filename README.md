@@ -59,6 +59,9 @@ your logins in Brave and in any other Mac app. The interface is in French.
   any item.
 - **Work offline**: edit, create, trash or archive items without network;
   changes are synced, in order, as soon as the server answers.
+- **Generate** strong passwords or memorable passphrases (French or English
+  words, like `fixe-pivoine-monceaux-couteau-ponctue`), with their real
+  strength, in the app and with `verrou generate`.
 - **Move in**: import from Apple Passwords, 1Password and Proton Pass, then
   clean up duplicates.
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
@@ -181,3 +184,10 @@ GPL-3.0-or-later. Verrou builds on the GPL crates of the Bitwarden SDK
 (`bitwarden/sdk-internal`), never on the commercially licensed code of that
 repository (`bitwarden_license/`). "Bitwarden" is a trademark of Bitwarden,
 Inc.; Verrou is neither affiliated with nor endorsed by it.
+
+The passphrase generator embeds two word lists: [EFF's Long
+Wordlist](https://www.eff.org/dice) by the Electronic Frontier Foundation
+(CC BY 3.0 US), and the French diceware list by Tango for Tails and the Tor
+Project, from [ulif/diceware](https://github.com/ulif/diceware) (CC0 1.0).
+Details and license texts are in
+[`crates/verrou-core/wordlists`](crates/verrou-core/wordlists/NOTICE).

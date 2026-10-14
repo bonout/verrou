@@ -1,0 +1,42 @@
+Word lists used by Verrou's passphrase generator
+================================================
+
+Both files are embedded in the Verrou binaries at compile time
+(crates/verrou-core/src/passphrase.rs) and are kept here exactly as their
+authors published them. At load time Verrou keeps only the word of each line
+(dropping the dice numbers), lowercases it and removes duplicates; the files
+themselves are not modified.
+
+
+eff_large_wordlist.txt (English, 7,776 words)
+---------------------------------------------
+
+"EFF's Long Wordlist" by the Electronic Frontier Foundation (2016),
+https://www.eff.org/dice
+Source: https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+SHA-256: addd35536511597a02fa0a9ff1e5284677b8883b83e986e43f15a3db996b903e
+
+Licensed under the Creative Commons Attribution 3.0 United States license
+(CC BY 3.0 US), https://creativecommons.org/licenses/by/3.0/us/ ; full text
+in LICENSE-CC-BY-3.0-US.txt. (EFF's site now offers its original material
+under CC BY 4.0.) Verrou uses the list unmodified.
+
+
+wordlist_fr.txt (French, 7,776 lines, 7,775 distinct words)
+-----------------------------------------------------------
+
+French diceware word list by Tango <tango.tails@proton.me> (2024), crafted
+for diceware, Tails and the Tor Project, distributed with the `diceware`
+program by Uli Fouquet.
+Source: https://github.com/ulif/diceware/blob/master/diceware/wordlists/wordlist_fr.txt
+SHA-256: 48014d49bbe0691fc82f0b6121f5e50db74b49501403571f80bd7b6e9fbbe022
+
+Dedicated to the public domain under Creative Commons CC0 1.0 Universal
+(see the upstream COPYRIGHT file: "Files: diceware/wordlists/wordlist_fr.txt,
+Copyright: 2024 Tango, License: CC0-1.0"); full text in
+LICENSE-CC0-1.0.txt.
+
+Words are plain ASCII, without accents. The list contains both "Internet"
+and "internet", hence 7,775 distinct words once lowercased. Unlike the EFF
+list, it is not prefix-free; this does not matter here since Verrou always
+puts a separator between words.

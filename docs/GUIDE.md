@@ -20,7 +20,7 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   TOTP code, YubiKey OTP or e-mail. Syncs when the vault opens, then every
   5 min (⌘R to force it).
 - **Create and edit** (⌘N, ⌘E): logins (with the password generator and its
-  strength meter) and secure notes; title, folder, favorite, notes and
+  strength meter, see [Passwords and passphrases](#passwords-and-passphrases)) and secure notes; title, folder, favorite, notes and
   **custom fields** (text, hidden, checkbox: add, remove, rename, reorder;
   linked fields are shown and kept) for every type. The rest of an item
   (passkeys, attachments) is kept intact, the old password goes to the item's
@@ -219,6 +219,33 @@ address, e-mail and master password, then the second factor. Reinstalling keeps
 the account; to forget it: Settings (⌘,) → *Se déconnecter de ce Mac* (sign
 out of this Mac).
 
+## Passwords and passphrases
+
+The wand next to a login's password opens the generator. *Mot de passe* gives
+a random password (8 to 64 characters, digits and symbols optional);
+*Phrase de passe* gives words drawn at random, like 1Password's memorable
+passwords or Bitwarden's passphrases: 3 to 20 words (5 by default), French
+(default) or English, separated by `-`, a space, `.`, `_`, `,` or a random
+digit, optionally capitalized and with a digit added to one word. The meter
+shows the passphrase's exact entropy: about 12.9 bits per word, so 5 words
+are about 65 bits and 6 words about 78. The last mode and options are
+remembered.
+
+```sh
+verrou generate --words 5                                  # fixe-pivoine-monceaux-couteau-ponctue
+verrou generate --words 6 --lang en --capitalize --number --separator ' '
+verrou generate --words 4 --separator digit                # nymphe9ronfler4compatir8hocher
+verrou --json generate --words 5                           # {"value": …, "entropy_bits": 64.6}
+```
+
+Words come from two lists embedded in Verrou: the French diceware list by
+Tango for Tails and the Tor Project (CC0, 7,775 distinct words, no accents)
+and EFF's Long Wordlist (CC BY 3.0 US, 7,776 words); see
+[`crates/verrou-core/wordlists/NOTICE`](../crates/verrou-core/wordlists/NOTICE).
+Each word is drawn uniformly from the system's random generator. The Brave
+extension's strong password suggestion stays a random password, since many
+sites refuse spaces.
+
 ## Import from another password manager
 
 Export your passwords from the other app, then in Verrou: File →
@@ -339,6 +366,7 @@ verrou search github            # titles, usernames, sites: never secrets
 verrou get github --field password | pbcopy
 verrou totp github
 verrou generate -l 24           # local, no app needed
+verrou generate --words 5       # passphrase (see below)
 verrou unlink
 ```
 

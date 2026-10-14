@@ -14,6 +14,7 @@ pub mod matching;
 pub mod mock;
 pub mod model;
 pub mod passkey;
+pub mod passphrase;
 pub mod search;
 pub mod secret;
 pub mod template;
