@@ -1,14 +1,18 @@
-// Service worker de l'extension : la seule partie qui parle à Verrou.
+// Service worker de l'extension (page d'arrière-plan dans Firefox) : la
+// seule partie qui parle à Verrou.
 //
 // Les pages (content.js) ne demandent que pour elles-mêmes : l'adresse
 // envoyée à Verrou est celle que le navigateur attribue à l'expéditeur
 // (`sender.url`), jamais une adresse fournie par la page.
 
 import { Channel } from "./bridge.js";
+import { browserName, ext, firefox } from "./browser.js";
 import { passkeyCommand, passkeyResult } from "./passkey-bridge.js";
 import { ATTEMPT_KEY, createUpdater } from "./update.js";
 
 const HOST = "app.verrou.bridge";
+// Le réglage de Verrou qui active le pont (SettingsView.swift).
+const SETTING = "Brave, Firefox et le terminal";
 const IDLE_MS = 60_000;
 
 // MARK: Appairage enregistré (IndexedDB : la clé AES y reste non exportable)
@@ -39,12 +43,13 @@ const forgetClient = () => stored("readwrite", (store) => store.delete("client")
 // MARK: Canal
 
 function nativeTransport() {
-  const port = chrome.runtime.connectNative(HOST);
+  const port = ext.runtime.connectNative(HOST);
   return {
     post: (message) => port.postMessage(message),
     onMessage: (callback) => port.onMessage.addListener(callback),
+    // Firefox donne l'erreur sur le port, Brave dans `runtime.lastError`.
     onDisconnect: (callback) => port.onDisconnect.addListener(
-      () => callback(chrome.runtime.lastError?.message ?? "déconnecté")),
+      (closed) => callback(closed?.error?.message ?? ext.runtime.lastError?.message ?? "déconnecté")),
     close: () => port.disconnect(),
   };
 }
@@ -103,17 +108,22 @@ async function status() {
 // tourne, elle se recharge (voir update.js).
 
 async function diskVersion() {
-  const response = await fetch(chrome.runtime.getURL("manifest.json"), { cache: "no-store" });
+  const response = await fetch(ext.runtime.getURL("manifest.json"), { cache: "no-store" });
   return (await response.json()).version;
 }
 
+// Firefox : une extension temporaire se recharge depuis son dossier, mais un
+// module signé (.xpi) ne change pas en se rechargeant. On ne recharge donc
+// que si le manifeste sur le disque a changé ; une version différente chez
+// Verrou ne donne que l'avertissement de la fenêtre de l'extension.
 const updater = createUpdater({
-  running: chrome.runtime.getManifest().version,
+  running: ext.runtime.getManifest().version,
+  reloadForBundled: !firefox,
   readDisk: diskVersion,
-  reload: () => chrome.runtime.reload(),
+  reload: () => ext.runtime.reload(),
   store: {
-    get: async () => (await chrome.storage.local.get(ATTEMPT_KEY))[ATTEMPT_KEY],
-    set: (attempt) => chrome.storage.local.set({ [ATTEMPT_KEY]: attempt }),
+    get: async () => (await ext.storage.local.get(ATTEMPT_KEY))[ATTEMPT_KEY],
+    set: (attempt) => ext.storage.local.set({ [ATTEMPT_KEY]: attempt }),
   },
   busy: () => Boolean(channel.pairing),
 });
@@ -131,10 +141,10 @@ async function checkWithBridge() {
 
 const UPDATE_ALARM = "verrou-update";
 // Recréer l'alarme à chaque réveil du service worker la repousserait sans fin.
-chrome.alarms.get(UPDATE_ALARM)
-  .then((alarm) => alarm ?? chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 10 }))
+ext.alarms.get(UPDATE_ALARM)
+  .then((alarm) => alarm ?? ext.alarms.create(UPDATE_ALARM, { periodInMinutes: 10 }))
   .catch(() => {});
-chrome.alarms.onAlarm.addListener((alarm) => {
+ext.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== UPDATE_ALARM) return;
   // Connexion déjà ouverte : demander aussi à Verrou ; sinon le disque seul
   // (ouvrir la connexion lancerait l'app).
@@ -171,13 +181,13 @@ let pairing = { state: "idle" };
 
 function publish(next) {
   pairing = next;
-  chrome.storage.session.set({ pairing }).catch(() => {});
+  ext.storage.session.set({ pairing }).catch(() => {});
 }
 
 function startPairing() {
   if (["connecting", "waiting"].includes(pairing.state)) return pairing;
   publish({ state: "connecting" });
-  channel.pair("Brave", (code) => publish({ state: "waiting", code }))
+  channel.pair(browserName, (code) => publish({ state: "waiting", code }))
     .then(async (client) => {
       await saveClient(client);
       channel.setClient(client);
@@ -187,7 +197,7 @@ function startPairing() {
       state: "failed",
       error: error.code === "refused" ? "Appairage refusé dans Verrou."
         : error.code === "busy" ? "Un appairage est déjà en cours : réessayez dans un instant."
-        : `Verrou ne répond pas. Est-il installé, et le remplissage dans Brave activé ? (${error.message})`,
+        : `Verrou ne répond pas. Est-il installé, et « ${SETTING} » activé dans ses réglages ? (${error.message})`,
     }));
   return pairing;
 }
@@ -195,7 +205,7 @@ function startPairing() {
 // MARK: Enregistrement après l'envoi d'un formulaire
 //
 // Le mot de passe capté attend la réponse de l'utilisateur dans
-// `chrome.storage.session` (en mémoire, hors de portée des pages), deux
+// `storage.session` (en mémoire, hors de portée des pages), deux
 // minutes au plus, pour l'onglet où le formulaire est parti.
 
 const PENDING_MS = 2 * 60_000;
@@ -205,11 +215,11 @@ const pendingKey = (tabId) => `save:${tabId}`;
 const usernameKey = (tabId) => `user:${tabId}`;
 
 async function sessionGet(key) {
-  return (await chrome.storage.session.get(key))[key];
+  return (await ext.storage.session.get(key))[key];
 }
 
 async function neverList() {
-  return (await chrome.storage.local.get("never")).never ?? [];
+  return (await ext.storage.local.get("never")).never ?? [];
 }
 
 const siteOf = (url) => {
@@ -221,7 +231,7 @@ const siteOf = (url) => {
 };
 
 async function rememberUsername(tabId, username) {
-  await chrome.storage.session.set({ [usernameKey(tabId)]: { username, at: Date.now() } });
+  await ext.storage.session.set({ [usernameKey(tabId)]: { username, at: Date.now() } });
 }
 
 async function capture(sender, message) {
@@ -251,13 +261,13 @@ async function capture(sender, message) {
     pending.item = reply.item?.id ?? null;
     pending.title = reply.item?.title ?? "";
   } else {
-    await chrome.storage.session.remove(pendingKey(tabId));
+    await ext.storage.session.remove(pendingKey(tabId));
     return;
   }
-  await chrome.storage.session.set({ [pendingKey(tabId)]: pending });
+  await ext.storage.session.set({ [pendingKey(tabId)]: pending });
   // Application monopage : la page reste, on lui dit de proposer. Sinon, la
   // page suivante le demandera elle-même.
-  setTimeout(() => chrome.tabs.sendMessage(tabId, { kind: "offerSave" }, { frameId: 0 }).catch(() => {}), 600);
+  setTimeout(() => ext.tabs.sendMessage(tabId, { kind: "offerSave" }, { frameId: 0 }).catch(() => {}), 600);
 }
 
 async function pendingFor(sender) {
@@ -272,11 +282,11 @@ async function pendingFor(sender) {
         password: pending.password, current: pending.current });
       if (reply.result === "check") {
         if (reply.action === "known") {
-          await chrome.storage.session.remove(pendingKey(tabId));
+          await ext.storage.session.remove(pendingKey(tabId));
           return null;
         }
         Object.assign(pending, { action: reply.action, item: reply.item?.id ?? null, title: reply.item?.title ?? "" });
-        await chrome.storage.session.set({ [pendingKey(tabId)]: pending });
+        await ext.storage.session.set({ [pendingKey(tabId)]: pending });
       }
     } catch {
       // Hors ligne : on garde la proposition telle quelle.
@@ -294,7 +304,7 @@ async function confirmSave(sender) {
     if (reply.result !== "saved") {
       return { ok: false, reason: reply.result === "locked" ? "Verrou est verrouillé" : reply.reason };
     }
-    await chrome.storage.session.remove(pendingKey(sender.tab.id));
+    await ext.storage.session.remove(pendingKey(sender.tab.id));
     return { ok: true };
   } catch (error) {
     return { ok: false, reason: `Verrou ne répond pas (${error.message})` };
@@ -305,13 +315,13 @@ async function neverSave(sender) {
   const pending = await pendingFor(sender);
   if (pending?.site) {
     const never = await neverList();
-    if (!never.includes(pending.site)) await chrome.storage.local.set({ never: [...never, pending.site] });
+    if (!never.includes(pending.site)) await ext.storage.local.set({ never: [...never, pending.site] });
   }
-  await chrome.storage.session.remove(pendingKey(sender.tab.id));
+  await ext.storage.session.remove(pendingKey(sender.tab.id));
 }
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove([pendingKey(tabId), usernameKey(tabId)]).catch(() => {});
+ext.tabs.onRemoved.addListener((tabId) => {
+  ext.storage.session.remove([pendingKey(tabId), usernameKey(tabId)]).catch(() => {});
 });
 
 // MARK: Code de vérification (QR code)
@@ -376,15 +386,15 @@ const fromPage = new Set([
 ]);
 
 async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
   return tab;
 }
 
 async function handle(message, sender) {
-  if (sender.id !== chrome.runtime.id) return { error: "expéditeur inconnu" };
+  if (sender.id !== ext.runtime.id) return { error: "expéditeur inconnu" };
   // Une page de l'extension (fenêtre ou onglet) ; un script de page a
   // l'adresse de la page.
-  const fromExtensionPage = sender.url?.startsWith(chrome.runtime.getURL("")) ?? false;
+  const fromExtensionPage = sender.url?.startsWith(ext.runtime.getURL("")) ?? false;
   if (!fromExtensionPage && !fromPage.has(message.kind)) return { error: "commande refusée" };
 
   switch (message.kind) {
@@ -416,7 +426,7 @@ async function handle(message, sender) {
     case "confirmSave":
       return confirmSave(sender);
     case "dismissSave":
-      if (sender.tab?.id !== undefined) await chrome.storage.session.remove(pendingKey(sender.tab.id));
+      if (sender.tab?.id !== undefined) await ext.storage.session.remove(pendingKey(sender.tab.id));
       return { ok: true };
     case "neverSave":
       await neverSave(sender);
@@ -447,7 +457,7 @@ async function handle(message, sender) {
       if (!tab?.url) return { ok: false };
       const credentials = await fill(tab.url, message.item);
       if (!credentials.ok) return credentials;
-      await chrome.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
+      await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
       return { ok: true };
     }
     case "setTotpTab": {
@@ -461,7 +471,7 @@ async function handle(message, sender) {
       const tab = await activeTab();
       if (!tab) return { ok: false };
       try {
-        return { ok: true, image: await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" }) };
+        return { ok: true, image: await ext.tabs.captureVisibleTab(tab.windowId, { format: "png" }) };
       } catch (error) {
         return { ok: false, reason: error.message };
       }
@@ -486,20 +496,20 @@ async function handle(message, sender) {
         return { ok: false, reason: error.message };
       }
       const credentials = await fill(tab.url, message.item);
-      if (credentials.ok) await chrome.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
+      if (credentials.ok) await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials }, { frameId: 0 });
       return { ok: true };
     }
     case "neverList":
       return { sites: await neverList() };
     case "forgetNever":
-      await chrome.storage.local.set({ never: (await neverList()).filter((s) => s !== message.site) });
+      await ext.storage.local.set({ never: (await neverList()).filter((s) => s !== message.site) });
       return { ok: true };
     default:
       return { error: "commande inconnue" };
   }
 }
 
-chrome.runtime.onMessage.addListener((message, sender, respond) => {
+ext.runtime.onMessage.addListener((message, sender, respond) => {
   handle(message, sender).then(respond, (error) => respond({ error: String(error?.message ?? error) }));
   return true;
 });

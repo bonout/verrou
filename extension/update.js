@@ -1,14 +1,20 @@
 // Mise à jour de l'extension livrée avec Verrou.
 //
 // L'extension est chargée « non empaquetée » depuis Verrou.app : quand l'app
-// est mise à jour, les fichiers changent sur le disque, mais Brave garde
+// est mise à jour, les fichiers changent sur le disque, mais le navigateur garde
 // l'ancien code en mémoire jusqu'à ce qu'on la recharge. On compare donc la
 // version qui tourne à celle du manifest.json sur le disque, et à celle
 // qu'annonce Verrou ; si elles diffèrent,
-// `chrome.runtime.reload()` relit l'extension depuis le disque.
+// `runtime.reload()` relit l'extension depuis le disque.
+//
+// Firefox : une extension temporaire (about:debugging) se recharge depuis
+// son dossier comme dans Brave ; un module signé (.xpi) ne change pas en se
+// rechargeant. L'appelant y passe `reloadForBundled: false` : seul un
+// changement du manifeste sur le disque recharge, une version différente
+// chez Verrou ne fait qu'avertir (`state().mismatch`).
 //
 // Pas de boucle : une seule tentative par version visée, et au plus une par
-// minute, retenues dans `chrome.storage.local` (`storage.session` est vidé
+// minute, retenues dans `storage.local` (`storage.session` est vidé
 // par le rechargement lui-même).
 //
 // Sans navigateur : les dépendances sont fournies par l'appelant (testé
@@ -22,8 +28,11 @@ const differs = (a, b) => Boolean(a && b && a !== b);
 // running : version qui tourne. readDisk() : version du manifeste sur le
 // disque (null si illisible). reload() : recharger. store : { get(), set(v) }
 // pour la dernière tentative. busy() : ne pas recharger maintenant
-// (appairage en cours…).
-export function createUpdater({ running, readDisk, reload, store, busy = () => false, now = Date.now }) {
+// (appairage en cours…). reloadForBundled : recharger aussi quand seule la
+// version annoncée par Verrou diffère (vrai dans Brave).
+export function createUpdater({
+  running, readDisk, reload, store, busy = () => false, now = Date.now, reloadForBundled = true,
+}) {
   let bundled = null;
 
   async function check({ bridgeVersion } = {}) {
@@ -37,7 +46,8 @@ export function createUpdater({ running, readDisk, reload, store, busy = () => f
     // Le disque d'abord ; sinon la version de l'app livrée (disque illisible,
     // ou lu depuis un cache). Une extension chargée d'ailleurs se recharge
     // ainsi une fois pour rien, puis la fenêtre de l'extension avertit.
-    const target = differs(disk, running) ? disk : (differs(bundled, running) ? bundled : null);
+    const target = differs(disk, running) ? disk
+      : (reloadForBundled && differs(bundled, running) ? bundled : null);
     if (!target) return { reloading: false, disk, bundled };
     if (busy()) return { reloading: false, deferred: true, target };
     let last = null;

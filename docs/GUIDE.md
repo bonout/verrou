@@ -3,12 +3,13 @@
 Everything Verrou does, in detail. For a short tour, see the [README](../README.md).
 
 Native password manager for a **Vaultwarden** server: a macOS app (iPadOS and
-iOS to follow), a Brave extension and a CLI, built around a Rust core.
+iOS to follow), a browser extension for Brave and Firefox, and a CLI, built
+around a Rust core.
 
 > **Status: first usable version.** The Mac app signs in to Vaultwarden
 > (second factor included), decrypts the vault with Bitwarden's official Rust
 > SDK, keeps it encrypted for offline use, unlocks with Touch ID or a YubiKey,
-> creates and edits logins and notes, fills Brave forms through its extension,
+> creates and edits logins and notes, fills Brave and Firefox forms through its extension,
 > and serves the `verrou` CLI and an SSH agent from the real vault.
 >
 > The app's interface is in French.
@@ -41,7 +42,7 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   anything is written (new, already there, different password), sent in one
   request; Vault → *Nettoyer les doublons…* moves duplicates to the trash.
   See [Import from another password manager](#import-from-another-password-manager).
-- **Brave extension**: under a login field, a menu offers Verrou's logins for
+- **Browser extension (Brave, Firefox)**: under a login field, a menu offers Verrou's logins for
   that site; Enter or a click fills the username and password (or the
   one-time code). Vault locked: the menu offers to unlock it (Touch ID). The
   extension is linked to the app once, by comparing a 6-digit code; the
@@ -54,16 +55,16 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   too: pick a card or an identity and every field is filled, drop-down lists
   included. A site Verrou doesn't know yet can be linked to an existing login
   from the popup (*Remplir avec un autre identifiant…*).
-- **Passkeys in Brave**: when a site asks for a passkey, Verrou offers its
+- **Passkeys in Brave and Firefox**: when a site asks for a passkey, Verrou offers its
   own for that site, or to save a new one in the site's login (or a new
-  one); "use the browser" hands over to Brave. Sites that offer passkey
+  one); "use the browser" hands over to the browser. Sites that offer passkey
   autofill (`mediation: "conditional"`, e.g. a username field with
   `autocomplete="username webauthn"`) get them in the field menu, like
   1Password: *Passkey · user* sits above the passwords, and Enter or a click
   signs in. No passkey in Verrou for that site, or Verrou not reachable:
-  Brave's own autofill takes over. When Verrou cannot take a passkey request
+  the browser's own autofill takes over. When Verrou cannot take a passkey request
   (app not running, extension not linked, key type it cannot create), a short
-  notice says so instead of silently handing over to Brave. Passkeys are stored the
+  notice says so instead of silently handing over to the browser. Passkeys are stored the
   Bitwarden way (`fido2Credentials`), so they work both ways with the
   official apps and web vault. The private key stays in the Rust core:
   Verrou signs (ES256) and only the public key and signatures reach the
@@ -189,7 +190,8 @@ crates/
   verrou-bridge       bridge to the extension and the CLI: pairing, encrypted channel,
                       per-client permissions, SSH signing, Native Messaging host
   verrou-cli          `verrou` binary and its SSH agent
-extension/      Brave extension (Manifest V3), shipped inside the app
+extension/      browser extension (Manifest V3), shipped inside the app; the Firefox
+                variant (extension-firefox/) is generated from it at build time
 apple/
   Verrou/       SwiftUI macOS app (xcodegen: apple/project.yml)
   Shared/       generated Swift bindings (not versioned)
@@ -198,6 +200,9 @@ scripts/
   install-macos.sh   Release build, signed locally, copied to /Applications
   demo-capture.sh    scripted demo → docs/media/
   e2e.sh             app walkthrough against a throwaway Vaultwarden
+  firefox-extension.sh  extension/ → Firefox variant (manifest only differs)
+  stamp-extension.sh    content-derived version for the bundled extensions
+  sign-firefox.sh       Mozilla-signed (unlisted) or unsigned .xpi, run by hand
 ```
 
 The Rust/Swift boundary works like this: Swift receives item **summaries**
@@ -322,9 +327,10 @@ Verrou from the Accessibility list and allow it again.
 
 ## Brave extension
 
-1. In Verrou: Settings (⌘,) → *Brave et le terminal* (Brave and the terminal). Verrou
-   registers its Native Messaging host with Brave and copies the extension's
-   path.
+1. In Verrou: Settings (⌘,) → *Brave, Firefox et le terminal* (Brave, Firefox
+   and the terminal). Verrou registers its Native Messaging host with Brave
+   (and Chrome, and Firefox if installed). *Extension Brave* → *Copier le
+   chemin* copies the extension's path.
 2. In Brave: `brave://extensions`, *Developer mode*, *Load unpacked*, ⌘⇧G and
    paste the path (the extension ships inside `Verrou.app` and updates with
    the app).
@@ -340,15 +346,97 @@ reload to get the new scripts; a passkey request there says so. If the
 popup warns that the extension isn't Verrou's, it was loaded from another
 folder: load the one inside `Verrou.app` instead.
 
+## Firefox extension
+
+The same extension, for Firefox 128 or later (the passkey script runs in the
+page's world, `world: "MAIN"`, which Firefox supports since 128). There is no
+fork: at build time `scripts/firefox-extension.sh` copies `extension/` into
+`Verrou.app/Contents/Resources/extension-firefox/` and only rewrites the
+manifest:
+
+- `background.scripts` (an event page) instead of `background.service_worker`;
+- `browser_specific_settings.gecko`: id `verrou@verrou.app` (the id Verrou
+  allows in Firefox's Native Messaging manifest), `strict_min_version` 128.0,
+  `data_collection_permissions: none` (nothing leaves the Mac);
+- `host_permissions` listing the content scripts' sites. Firefox lets you grant
+  or withdraw site access for a Manifest V3 extension; without it there is no
+  field menu and no passkeys. When access is missing, the popup shows
+  *Autoriser Verrou sur les sites* (allow Verrou on sites); reload the pages
+  that were already open afterwards;
+- no `key` or `minimum_chrome_version` (Chrome-only).
+
+The scripts pick `browser` (Firefox) or `chrome` (Brave) themselves
+(`extension/browser.js`); the extension announces itself as « Firefox » when
+pairing, so Verrou's settings list it as *Firefox*. Both folders get the same
+content-derived version.
+
+Native Messaging: Verrou writes
+`~/Library/Application Support/Mozilla/NativeMessagingHosts/app.verrou.bridge.json`
+with `allowed_extensions: ["verrou@verrou.app"]` (Firefox's equivalent of
+`allowed_origins`), when Firefox is installed. The app's sandbox may only write
+inside that `NativeMessagingHosts` folder: if
+`~/Library/Application Support/Mozilla` does not exist yet, the settings say
+so; create it once with
+`mkdir -p ~/Library/Application\ Support/Mozilla/NativeMessagingHosts` and
+toggle the setting off and on. Firefox launches `verrou-native-host` with the
+manifest path and the extension id as arguments (Brave passes the extension's
+origin); the host serves only Verrou's extension in either case.
+
+### Installing it in Firefox
+
+Release Firefox only installs extensions signed by Mozilla for good. Three
+ways, from quickest to most durable:
+
+1. **Temporary add-on (any Firefox, nothing to sign).** Verrou → Settings →
+   *Extension Firefox* → *Copier le chemin* (copies the path of its
+   `manifest.json`). In Firefox: `about:debugging` → *This Firefox* → *Load
+   Temporary Add-on…*, ⌘⇧G, paste, *Open*. Then click Verrou's icon,
+   *Autoriser Verrou sur les sites* if shown, and *Relier à Verrou*.
+   Firefox removes temporary add-ons when it quits: load it again after each
+   restart. Its storage goes with it, so it has to be linked again too; unlink
+   the old *Firefox* entries in Verrou's settings from time to time. While it
+   is loaded, it reloads itself when Verrou is updated, like in Brave.
+2. **Firefox Developer Edition or Nightly, unsigned .xpi (permanent).** In
+   `about:config`, set `xpinstall.signatures.required` to `false` (release
+   and beta Firefox ignore it). Build the package with
+   `scripts/sign-firefox.sh --unsigned` (→ `target/firefox-xpi/verrou-<version>-unsigned.xpi`)
+   and install it from `about:addons` → ⚙ → *Install Add-on From File…*.
+3. **Signed by Mozilla, unlisted (permanent, any Firefox).** Self-distribution
+   outside the add-on catalogue; needs your Mozilla account and API keys from
+   <https://addons.mozilla.org/developers/addon/api/key/>:
+
+   ```sh
+   AMO_JWT_ISSUER=user:12345:678 AMO_JWT_SECRET=… scripts/sign-firefox.sh
+   ```
+
+   Signing is automatic and takes a few minutes; the signed file lands in
+   `target/firefox-xpi/`. Install it from `about:addons` as above. Mozilla
+   signs each version once: any change to the extension gives a new version
+   (it is the same content-derived version as the one bundled with Verrou).
+
+An installed .xpi (2 and 3) does not change when Verrou is updated, and
+reloading it would not help: on Firefox the extension only reloads itself
+when its own files changed on disk (temporary add-on). When Verrou ships a
+different version, the popup says so; install the new package.
+
+Not available in Firefox: reading a two-factor QR code from the tab (Firefox
+has no `BarcodeDetector`); the popup offers to type the secret key instead.
+
+## Tests of the extension
+
 ```sh
 node --test extension/test/bridge.test.mjs   # extension protocol against the real bridge
 node --test extension/test/passkeys.test.mjs # passkeys: page options, creation and sign-in
-node --test extension/test/seamless.test.mjs # self-reload, passkey autofill, fallback notices
+node --test extension/test/seamless.test.mjs # self-reload, passkey autofill (Brave and Firefox APIs), fallback notices
+node --test extension/test/firefox.test.mjs  # Firefox manifest, shared files and version, ids, Firefox reload rule
+VERROU_LINT_FIREFOX=1 node --test extension/test/firefox.test.mjs  # also Mozilla's `web-ext lint` (via npx)
 node extension/e2e/brave.mjs                  # walkthrough in a real Brave (throwaway profile)
 node extension/e2e/seamless.mjs               # passkey autofill in a real Brave (SEAMLESS_UPDATE=1: self-reload)
 ```
 
-(Both need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)
+(They need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)
+There is no automated walkthrough in a real Firefox yet; the steps above are
+checked by hand.
 
 ## Command line and SSH agent
 
@@ -371,7 +459,7 @@ verrou unlink
 ```
 
 The link (client id and channel key) is stored in `~/.config/verrou/cli.json`
-(mode 600; `VERROU_CLI_CONFIG` overrides it). Settings → *Brave et le terminal*
+(mode 600; `VERROU_CLI_CONFIG` overrides it). Settings → *Brave, Firefox et le terminal*
 must be on. Reading a secret (`get --field password`, `--reveal`, `totp`)
 asks for Touch ID (or the session password) in Verrou: *autoriser le terminal
 à lire « GitHub »*. An approval lasts 5 minutes for that item and that
@@ -493,7 +581,7 @@ Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).
 
 1. ✅ Core, search, macOS app and CLI on a mock vault
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
-3. ✅ Brave extension: in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
+3. ✅ Browser extension (Brave, Firefox): in-field menu, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
 4. iPhone and iPad: Face ID, system AutoFill extension
 5. YubiKey: ✅ FIDO2 sign-in over USB, ✅ `hmac-secret` unlock
 

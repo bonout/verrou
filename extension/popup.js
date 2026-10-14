@@ -1,11 +1,12 @@
 // Fenêtre de l'extension : état de la liaison avec Verrou, appairage,
 // identifiants de l'onglet en cours, et ajout d'un code de vérification.
 
+import { ext, firefox } from "./browser.js";
 import { canReadQrCodes, otpauthFrom } from "./qr.js";
 
 const main = document.getElementById("main");
 const stateLabel = document.getElementById("state");
-const send = (message) => chrome.runtime.sendMessage(message);
+const send = (message) => ext.runtime.sendMessage(message);
 
 function element(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -93,7 +94,7 @@ async function renderUnlocked() {
 // connexion unique…) : on en choisit un, Verrou lui ajoute ce site, puis
 // remplit comme d'habitude. Le site reste ensuite associé.
 async function renderOtherLogin() {
-  const tab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+  const tab = (await ext.tabs.query({ active: true, currentWindow: true }))[0];
   let host = "";
   try {
     host = new URL(tab?.url ?? "").hostname;
@@ -265,19 +266,70 @@ function warning(title, text) {
 
 // L'extension qui tourne n'est pas celle que livre Verrou : elle s'est
 // rechargée sans changer (chargée depuis un autre dossier), ou va le faire.
+// Firefox ne la recharge pas pour une version annoncée par Verrou (voir
+// update.js) : on dit comment charger la bonne.
 function versionWarning(extension) {
   if (!extension?.mismatch) return null;
+  const how = firefox
+    ? "Dans about:debugging › Ce Firefox, rechargez-la, ou chargez le manifest.json du dossier "
+      + "« extension-firefox » de Verrou.app (Réglages de Verrou › Navigateurs et terminal › "
+      + "Extension Firefox › Copier le chemin). Module installé (.xpi) : installez celui de la nouvelle version."
+    : "Dans brave://extensions, chargez le dossier « extension » de Verrou.app "
+      + "(Réglages de Verrou › Navigateurs et terminal › Copier le chemin), ou rechargez-la.";
   return warning("L'extension n'est pas celle de Verrou",
-    `Elle est en version ${extension.running}, Verrou livre la ${extension.bundled}. `
-    + "Dans brave://extensions, chargez le dossier « extension » de Verrou.app "
-    + "(Réglages de Verrou › Navigateur et terminal › Copier le chemin), ou rechargez-la.");
+    `Elle est en version ${extension.running}, Verrou livre la ${extension.bundled}. ${how}`);
+}
+
+// MARK: Accès aux sites (Firefox)
+//
+// Firefox laisse l'utilisateur accorder ou retirer l'accès aux sites d'une
+// extension Manifest V3 (`host_permissions`) : sans lui, ni menu sous les
+// champs, ni passkeys. Brave l'accorde à l'installation : rien à demander.
+
+function siteOrigins() {
+  return ext.runtime.getManifest().host_permissions ?? [];
+}
+
+async function missingSiteAccess() {
+  if (!firefox) return false;
+  const origins = siteOrigins();
+  if (!origins.length) return false;
+  try {
+    return !(await ext.permissions.contains({ origins }));
+  } catch {
+    return false;
+  }
+}
+
+function siteAccessRequest() {
+  const button = element("button", { textContent: "Autoriser Verrou sur les sites" });
+  const note = element("p", { className: "hint" });
+  button.addEventListener("click", () => {
+    // Appel direct dans le clic : Firefox n'accepte la demande que pendant
+    // le geste de l'utilisateur.
+    ext.permissions.request({ origins: siteOrigins() })
+      .then((granted) => {
+        if (granted) {
+          note.textContent = "Accès accordé : rechargez les pages déjà ouvertes.";
+          scheduleRender();
+        } else {
+          note.textContent = "Accès refusé : Verrou ne pourra rien remplir.";
+        }
+      })
+      .catch((error) => { note.textContent = `Demande impossible : ${error.message}`; });
+  });
+  return element("div", { className: "warning", role: "alert" },
+    element("strong", { textContent: "Verrou n'a pas accès aux sites" }),
+    element("span", { textContent: "Firefox demande votre accord pour que l'extension remplisse vos identifiants et propose vos passkeys sur les pages." }),
+    button, note);
 }
 
 async function render() {
-  const { pairing } = await chrome.storage.session.get("pairing");
+  const { pairing } = await ext.storage.session.get("pairing");
   if (renderPairing(pairing)) return;
   const status = await send({ kind: "status" });
   const versionNote = versionWarning(status.extension);
+  const accessNote = (await missingSiteAccess()) ? siteAccessRequest() : null;
   switch (status.state) {
     case "unpaired":
       await renderUnpaired(pairing?.state === "failed" ? pairing.error : null);
@@ -286,7 +338,7 @@ async function render() {
       stateLabel.textContent = "Hors ligne";
       show(
         warning("Verrou n'est pas joignable",
-          "Ouvrez l'app et activez « Brave et le terminal » dans ses réglages. "
+          "Ouvrez l'app et activez « Brave, Firefox et le terminal » dans ses réglages. "
           + "D'ici là, ni remplissage ni passkeys : le navigateur reprend la main."),
         unpairLink(),
       );
@@ -302,6 +354,7 @@ async function render() {
       await renderUnlocked();
   }
   if (versionNote) main.prepend(versionNote);
+  if (accessNote) main.prepend(accessNote);
 }
 
 // Un rendu à la fois : les étapes d'appairage arrivent en rafale.
@@ -310,8 +363,8 @@ function scheduleRender() {
   rendering = rendering.then(render, render);
 }
 
-chrome.storage.session.onChanged.addListener((changes) => {
-  if (changes.pairing) scheduleRender();
+ext.storage.onChanged.addListener((changes, area) => {
+  if (area === "session" && changes.pairing) scheduleRender();
 });
 
 scheduleRender();

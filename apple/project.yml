@@ -28,20 +28,24 @@ targets:
           copyFiles:
             destination: executables
         attributes: [CodeSignOnCopy]
-      # L'extension de navigateur, livrée avec l'app (à charger dans Brave).
+      # L'extension de navigateur, livrée avec l'app (à charger dans Brave) ;
+      # celle de Firefox (extension-firefox) en est tirée après la copie.
       - path: ../extension
         type: folder
         buildPhase: resources
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
-    # L'extension copiée reçoit une version propre à son contenu : Brave la
+    # L'extension copiée donne celle de Firefox (même code, autre manifeste),
+    # puis les deux reçoivent une version propre à leur contenu : Brave la
     # recharge d'elle-même quand l'app est mise à jour (extension/update.js).
     postBuildScripts:
       - name: Version de l'extension
         basedOnDependencyAnalysis: false
         script: |
-          "$SRCROOT/../scripts/stamp-extension.sh" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/extension"
+          EXTENSION="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/extension"
+          "$SRCROOT/../scripts/firefox-extension.sh" "$EXTENSION" "$EXTENSION-firefox"
+          "$SRCROOT/../scripts/stamp-extension.sh" "$EXTENSION" "$EXTENSION-firefox"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac
@@ -54,5 +58,6 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: Verrou/Verrou.entitlements
         OTHER_LDFLAGS: ["-lc++"]
-        # La phase « Version de l'extension » réécrit le manifeste copié dans le paquet.
+        # La phase « Version de l'extension » réécrit le manifeste copié dans le
+        # paquet et y ajoute l'extension de Firefox.
         ENABLE_USER_SCRIPT_SANDBOXING: NO

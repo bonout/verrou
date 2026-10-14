@@ -177,7 +177,7 @@ PR qui touche à l'un de ces points le dit dans sa description.
   impossibles hors ligne, avec un message clair : pièces jointes, partage
   vers une organisation (et création dans une collection), envois, accès
   d'urgence, import. Les éléments en lecture seule le restent. Les
-  identifiants enregistrés depuis Brave suivent le même chemin. Limite
+  identifiants enregistrés depuis le navigateur suivent le même chemin. Limite
   connue : une écriture dont la réponse se perd (coupure pendant l'envoi)
   peut repartir au retour du réseau ; une création peut alors être en
   double, une modification devient une copie de conflit (rien n'est perdu).
@@ -228,7 +228,8 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   l'extension, une image de l'onglet visible (droit `activeTab`, valable
   seulement après ce clic) est lue par le lecteur de codes-barres de Brave,
   dans l'extension ; l'image n'est ni gardée ni envoyée. Seule l'URI
-  `otpauth://` part vers Verrou, pour l'identifiant choisi.
+  `otpauth://` part vers Verrou, pour l'identifiant choisi. Firefox n'a pas
+  de lecteur de codes-barres : la clé s'y saisit à la main.
 - **Cartes et identités** : le menu d'un formulaire de paiement ou
   d'adresse ne reçoit que des titres et des sous-titres masqués (« Visa ••••
   4242 ») ; les champs ne sortent qu'au choix d'un élément, vers une page en
@@ -245,24 +246,47 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   lire ni les déclencher. Les secrets n'arrivent qu'au remplissage, pour
   l'élément choisi ; le bandeau d'enregistrement ne reçoit pas le mot de passe.
 - **Ce qui est sur le disque** : côté Verrou, `bridge-clients.json` (conteneur
-  de l'app, mode 600) garde la clé de chaque extension appairée ; côté Brave,
+  de l'app, mode 600) garde la clé de chaque extension appairée ; côté Brave
+  ou Firefox,
   la clé AES non exportable dans IndexedDB. Ces clés ne donnent que ce que
   donne l'extension. Réglages → *Délier* révoque un client.
 - **Déclaration au navigateur** : `NativeMessagingHosts/app.verrou.bridge.json`
-  n'autorise que l'identifiant de l'extension de Verrou (fixé par la clé de
-  son manifeste ; un test vérifie la concordance). Droits du sandbox limités
-  aux dossiers `NativeMessagingHosts` de Brave et de Chrome.
+  n'autorise que l'identifiant de l'extension de Verrou : `allowed_origins`
+  pour Brave et Chrome (identifiant fixé par la clé de son manifeste),
+  `allowed_extensions` pour Firefox (`verrou@verrou.app`, fixé par
+  `browser_specific_settings.gecko.id`) ; un test vérifie la concordance entre
+  app, hôte et manifestes. L'hôte refuse en plus d'être lancé pour une autre
+  extension (`unknown_extension`), d'après ses arguments : l'origine de
+  l'extension (Brave), ou le chemin du manifeste puis l'identifiant
+  (Firefox). Droits du sandbox limités aux dossiers `NativeMessagingHosts`
+  de Brave, de Chrome et de Firefox (`Mozilla`).
+- **Firefox** : la même extension (`scripts/firefox-extension.sh` ne change
+  que le manifeste) ; Firefox 128 au moins, pour le script de passkeys dans
+  le monde de la page. L'accès aux sites (`host_permissions`) est accordé ou
+  retiré par l'utilisateur ; sans lui, aucun script de Verrou ne tourne dans
+  les pages, et la fenêtre de l'extension propose de le demander. Dans le
+  monde isolé, les objets venus de la page se voient à travers des « Xray » :
+  `passkeys.js` copie la requête (JSON) avant de s'en servir. Non signée,
+  l'extension ne se charge que temporairement (about:debugging) : Firefox
+  l'efface à la fermeture, avec sa clé de canal (il faut la relier de
+  nouveau ; délier l'ancienne dans Verrou). Signée par Mozilla
+  (`scripts/sign-firefox.sh`, distribution « unlisted »), Mozilla voit son
+  code, pas les données : rien ne part du Mac
+  (`data_collection_permissions: none`).
 - **Mise à jour de l'extension** : la copie livrée dans `Verrou.app` reçoit à
   la compilation une version tirée de l'empreinte de ses fichiers
   (`scripts/stamp-extension.sh`). Le pont annonce cette version (réponse à
   `status`, lue dans le manifeste du paquet de l'app) ; l'extension la compare
   à la sienne et à celle du manifeste sur le disque, au démarrage, à chaque
   connexion à Verrou et toutes les dix minutes, et se recharge
-  (`chrome.runtime.reload()`) si elles diffèrent : une fois par version au
-  plus, une fois par minute au plus (`chrome.storage.local`). Elle ne relit
+  (`runtime.reload()`) si elles diffèrent : une fois par version au
+  plus, une fois par minute au plus (`storage.local`). Firefox ne recharge
+  que pour un manifeste changé sur le disque (extension temporaire) : un
+  module installé (.xpi) ne changerait pas en se rechargeant, la fenêtre de
+  l'extension avertit seulement. Elle ne relit
   que ses propres fichiers ; une version annoncée ne fait rien charger
   d'autre que le dossier déjà choisi par l'utilisateur.
-- **Limites connues** : un programme qui lit le profil de Brave peut en tirer
+- **Limites connues** : un programme qui lit le profil du navigateur peut en tirer
   la clé du canal (comme les cookies) ; l'extension se charge en mode
   développeur (pas de Chrome Web Store). Les onglets ouverts avant un
   rechargement gardent l'ancien script, détaché : il faut recharger la page.
@@ -337,10 +361,10 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   par une `Data` Swift non mise à zéro. Verrou ne télécharge pas d'envoi
   reçu (la réception, dans le cœur Rust, ne sert qu'aux tests).
 
-## Passkeys dans Brave
+## Passkeys dans Brave et Firefox
 
 ```
-page ──postMessage──▶ passkeys.js ──▶ service worker ──pont chiffré──▶ Verrou (signe)
+page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont chiffré──▶ Verrou (signe)
 ```
 
 - **Interception** : `passkey-page.js`, injecté dans la page (monde MAIN)
@@ -408,10 +432,10 @@ page ──postMessage──▶ passkeys.js ──▶ service worker ──pont 
 
 - **« Redemander le mot de passe principal »** (réglage Bitwarden d'un
   élément) : le cœur Rust refuse ses secrets (`reveal`, codes, brouillon de
-  modification, remplissage dans Brave) tant que l'utilisateur n'a pas
+  modification, remplissage dans le navigateur) tant que l'utilisateur n'a pas
   confirmé, par Touch ID ou par le mot de passe principal (vérifié hors ligne
   sur le cache). Une confirmation vaut 5 minutes pour cet élément et
-  s'efface au verrouillage. Depuis Brave, Verrou demande la confirmation et
+  s'efface au verrouillage. Depuis le navigateur, Verrou demande la confirmation et
   l'extension réessaie : elle ne reçoit rien avant.
 - **Audit** : mots de passe réutilisés, faibles (entropie estimée sous
   60 bits), sites en HTTP, calculés localement ; seuls des résumés sortent du

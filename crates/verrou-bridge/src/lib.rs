@@ -42,6 +42,82 @@ pub const DEFAULT_PORT: u16 = 41_738;
 /// Nom de l'hôte Native Messaging, déclaré au navigateur.
 pub const HOST_NAME: &str = "app.verrou.bridge";
 
+/// Identifiant de l'extension dans Brave et Chrome, fixé par la clé de
+/// `extension/manifest.json` (un test de l'extension vérifie la concordance).
+pub const CHROMIUM_EXTENSION_ID: &str = "pmdlgnpbjfdnmpeadbecmgfoojmocibg";
+
+/// Identifiant de l'extension dans Firefox (`browser_specific_settings.gecko.id`,
+/// écrit par `scripts/firefox-extension.sh`).
+pub const FIREFOX_EXTENSION_ID: &str = "verrou@verrou.app";
+
+/// Qui a lancé l'hôte Native Messaging, d'après ses arguments.
+///
+/// - Brave, Chrome : un argument, l'origine de l'extension
+///   (`chrome-extension://<id>/`) ; sous Windows, s'y ajoute
+///   `--parent-window=…`.
+/// - Firefox : deux arguments, le chemin du manifeste de l'hôte
+///   (`…/NativeMessagingHosts/app.verrou.bridge.json`) puis l'identifiant de
+///   l'extension.
+/// - Sans argument reconnu (lancé à la main, tests) : inconnu.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Launcher {
+    Chromium {
+        extension: String,
+    },
+    Firefox {
+        manifest: PathBuf,
+        extension: String,
+    },
+    Unknown,
+}
+
+impl Launcher {
+    /// Les arguments du processus, sans le nom du programme.
+    pub fn from_args<I, S>(args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        let args: Vec<String> = args
+            .into_iter()
+            .map(Into::into)
+            .filter(|arg| !arg.starts_with("--parent-window="))
+            .collect();
+        match args.as_slice() {
+            [origin, ..] if origin.starts_with("chrome-extension://") => {
+                let id = origin["chrome-extension://".len()..].trim_end_matches('/');
+                Self::Chromium {
+                    extension: id.to_owned(),
+                }
+            }
+            [manifest, extension]
+                if Path::new(manifest)
+                    .extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+                    && !extension.is_empty() =>
+            {
+                Self::Firefox {
+                    manifest: PathBuf::from(manifest),
+                    extension: extension.clone(),
+                }
+            }
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Le navigateur a lancé l'hôte pour une autre extension que celle de
+    /// Verrou. Il ne devrait pas (la déclaration de l'hôte n'autorise
+    /// qu'elle) : on refuse plutôt que relayer. Inconnu : accepté (le pont
+    /// exige de toute façon l'appairage).
+    pub fn is_foreign(&self) -> bool {
+        match self {
+            Self::Chromium { extension } => extension != CHROMIUM_EXTENSION_ID,
+            Self::Firefox { extension, .. } => extension != FIREFOX_EXTENSION_ID,
+            Self::Unknown => false,
+        }
+    }
+}
+
 /// Le port à utiliser, compte tenu de `VERROU_BRIDGE_PORT`.
 pub fn port_from_env() -> u16 {
     std::env::var("VERROU_BRIDGE_PORT")
@@ -108,7 +184,54 @@ pub fn bundled_extension_manifest() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::manifest_version;
+    use super::{Launcher, manifest_version};
+    use std::path::PathBuf;
+
+    #[test]
+    fn launched_by_brave_or_firefox() {
+        let brave = Launcher::from_args(["chrome-extension://pmdlgnpbjfdnmpeadbecmgfoojmocibg/"]);
+        assert_eq!(
+            brave,
+            Launcher::Chromium {
+                extension: "pmdlgnpbjfdnmpeadbecmgfoojmocibg".to_owned()
+            }
+        );
+        assert!(!brave.is_foreign());
+        // Windows : la fenêtre parente en plus.
+        assert_eq!(
+            Launcher::from_args([
+                "chrome-extension://pmdlgnpbjfdnmpeadbecmgfoojmocibg/",
+                "--parent-window=0"
+            ]),
+            brave
+        );
+
+        let manifest = "/Users/u/Library/Application Support/Mozilla/NativeMessagingHosts/app.verrou.bridge.json";
+        let firefox = Launcher::from_args([manifest, "verrou@verrou.app"]);
+        assert_eq!(
+            firefox,
+            Launcher::Firefox {
+                manifest: PathBuf::from(manifest),
+                extension: "verrou@verrou.app".to_owned()
+            }
+        );
+        assert!(!firefox.is_foreign());
+
+        // Une autre extension : refusée.
+        assert!(
+            Launcher::from_args(["chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"])
+                .is_foreign()
+        );
+        assert!(Launcher::from_args([manifest, "autre@exemple.org"]).is_foreign());
+
+        // À la main, ou autre chose : inconnu, accepté.
+        for args in [vec![], vec!["--aide"], vec!["a", "b", "c"], vec![manifest]] {
+            let launcher = Launcher::from_args(args.clone());
+            assert_eq!(launcher, Launcher::Unknown, "{args:?}");
+            assert!(!launcher.is_foreign());
+        }
+        assert_eq!(Launcher::from_args([manifest, ""]), Launcher::Unknown);
+    }
 
     #[test]
     fn manifest_versions_follow_chrome_rules() {

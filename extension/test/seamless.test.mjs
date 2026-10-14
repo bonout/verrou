@@ -304,8 +304,10 @@ function fakeDocument() {
 }
 
 // Une page à `origin`, avec ses deux mondes. `background(message)` répond
-// aux demandes de passkeys.js, comme le service worker.
-function openPage(origin, background) {
+// aux demandes de passkeys.js, comme le service worker. `firefox` : le monde
+// isolé a `browser` (promesses) ; `chrome` y est piégé pour prouver qu'il
+// ne sert pas.
+function openPage(origin, background, { firefox = false } = {}) {
   const url = new URL(origin);
   const listeners = [];
   const contexts = [];
@@ -364,7 +366,10 @@ function openPage(origin, background) {
     id: "extension",
     sendMessage: async (message) => background(message, `${url.origin}/connexion`),
   };
-  const isolated = makeContext({ chrome: { runtime }, document });
+  const unused = { id: "extension", sendMessage: async () => { throw new Error("chrome.runtime utilisé dans Firefox"); } };
+  const isolated = makeContext(firefox
+    ? { browser: { runtime }, chrome: { runtime: unused }, document }
+    : { chrome: { runtime }, document });
   vm.runInContext(source("passkeys.js"), isolated);
 
   const panelText = () => {
@@ -498,6 +503,30 @@ test("remplissage automatique : la passkey de Verrou au menu, une signature vali
   page.press("Annuler");
   await assert.rejects(modal, { name: "NotAllowedError" });
   assert.deepEqual(page.native, []);
+});
+
+test("Firefox : les mêmes passkeys au menu, par l'API `browser`", async () => {
+  const channel = await pairedChannel();
+  const origin = "http://localhost:8000";
+  const created = await channel.request({
+    cmd: "passkey_create", url: `${origin}/inscription`, rp_id: "localhost", user_id: b64url(Buffer.from("id-renard")),
+    user_name: "renard@exemple.fr", challenge: b64url(crypto.getRandomValues(new Uint8Array(32))),
+    algorithms: [-7], exclude: [], uv: false, attestation: "none", item: "local",
+  });
+  assert.equal(created.result, "registration", JSON.stringify(created));
+
+  const page = openPage(origin, backgroundFor(channel), { firefox: true });
+  const challenge = crypto.getRandomValues(new Uint8Array(32));
+  const pending = page.credentials.get({ mediation: "conditional", publicKey: { challenge, rpId: "localhost", userVerification: "discouraged" } });
+  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey proposée");
+  const entries = await page.menu().entries();
+  assert.ok(entries.items.some((i) => i.credential === created.credential), JSON.stringify(entries));
+  assert.equal(page.menu().choose(created.credential), true);
+  const credential = await pending;
+  assert.equal(credential.id, created.credential);
+  const clientData = JSON.parse(Buffer.from(credential.response.clientDataJSON).toString());
+  assert.deepEqual(clientData, { type: "webauthn.get", challenge: b64url(challenge), origin, crossOrigin: false });
+  assert.deepEqual(page.native, [], "rien pour le navigateur");
 });
 
 test("remplissage automatique sans passkey de Verrou, ou sans Verrou : le navigateur", async () => {
