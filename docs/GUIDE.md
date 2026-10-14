@@ -130,15 +130,22 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   need the contact to have an account on the server; without e-mail
   configured, Vaultwarden accepts them at once.
 - **Send** (sidebar → *Envois*, in the main window: the list in the middle
-  column, the selected Send on the right): share a text through an end-to-end encrypted
-  link (Bitwarden Send), readable by anyone with the link, with or without an
-  account. Deletion date (7 days by default, 31 at most), optional expiration,
-  maximum number of accesses, password, hidden e-mail address; the list shows
+  column, the selected Send on the right): share a text or a file through an
+  end-to-end encrypted link (Bitwarden Send), readable by anyone with the
+  link, with or without an account. *Nouvel envoi* offers *Texte* or
+  *Fichier…*; you can also drop a file onto the Sends list. The file and its
+  name are encrypted with the Send's key before upload (100 MB at most, or
+  less if the server's Send quota is lower); the recipient downloads it from
+  the web vault like any Bitwarden file Send. Deletion date (7 days by
+  default, 31 at most), optional expiration, maximum number of accesses,
+  password, hidden e-mail address; the list shows the file name and size,
   access counts and dates, and copies the link, edits, deletes or removes the
-  password. From a login or a note, right-click → *Envoyer de façon
+  password. Editing a file Send changes its options, never its file (like
+  Bitwarden). From a login or a note, right-click → *Envoyer de façon
   sécurisée…* prefills a Send with its password (or the note), hidden from the
-  recipient and limited to one access, to confirm before creating it. Text
-  Sends only: file Sends made in the web vault are listed, not created.
+  recipient and limited to one access, to confirm before creating it; the same
+  action on an attachment (*Pièces jointes* section) prefills a file Send with
+  it, decrypted and re-encrypted with the Send's key inside the Rust core.
 - **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `--json` output, on
   the real vault served by the running app (`--mock` for the mock vault and
   `bench`). Secrets ask for Touch ID in the app.

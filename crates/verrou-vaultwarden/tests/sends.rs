@@ -208,3 +208,156 @@ async fn open_send_forged_key_and_invalid_drafts(connection: &mut Connection) {
     ));
     connection.delete_send(&id).await.unwrap();
 }
+
+/// Un contenu binaire reconnaissable (tous les octets, pas que du texte).
+fn file_contents(len: usize) -> Vec<u8> {
+    (0..len)
+        .map(|i| (i.wrapping_mul(31) ^ (i >> 8)) as u8)
+        .collect()
+}
+
+#[tokio::test]
+async fn file_sends_round_trip() {
+    let Some(server) = server() else { return };
+    let mut connection = account(&server).await;
+
+    // Création, avec un mot de passe et trois accès au plus.
+    let contents = file_contents(300 * 1024 + 7);
+    let mut draft = SendDraft::file("Bail signé", Utc::now());
+    draft.max_access_count = Some(3);
+    draft.password = Some(SecretString::new("ouvre-toi"));
+    draft.notes = Some("pour Antonin".to_owned());
+    let (id, link, _) = connection
+        .create_file_send(draft, "bail signé.pdf", &contents)
+        .await
+        .unwrap();
+    let link = link.expose().to_owned();
+    assert!(link.starts_with(&format!("{server}/#/send/")), "{link}");
+
+    let info = &connection.sends().unwrap()[0];
+    assert_eq!(info.id, id);
+    assert_eq!(info.kind, SendKind::File);
+    assert_eq!(info.file_name.as_deref(), Some("bail signé.pdf"));
+    let encrypted_size = info.file_size.expect("taille du fichier");
+    assert!(encrypted_size > contents.len() as u64);
+    assert!(encrypted_size <= contents.len() as u64 + 65);
+    assert!(info.has_password);
+    assert_eq!(info.access_count, 0);
+
+    // Le destinataire : sans mot de passe, refusé ; avec, le fichier
+    // identique, déchiffré avec la clé du lien. Un accès compté.
+    assert!(matches!(
+        send::receive_file(&link, None).await,
+        Err(Error::Invalid(_))
+    ));
+    let (received, bytes) = send::receive_file(&link, Some(&SecretString::new("ouvre-toi")))
+        .await
+        .unwrap();
+    assert_eq!(received.name.as_deref(), Some("Bail signé"));
+    assert_eq!(received.file_name.as_deref(), Some("bail signé.pdf"));
+    assert_eq!(received.file_size, Some(encrypted_size));
+    assert!(received.text.is_none());
+    assert_eq!(bytes.as_slice(), contents.as_slice());
+    connection.sync().await.unwrap();
+    assert_eq!(connection.sends().unwrap()[0].access_count, 1);
+
+    // Modification des réglages : le fichier ne change pas, le lien non plus.
+    let mut edited = connection.send_draft(&id).unwrap();
+    assert_eq!(edited.notes.as_deref(), Some("pour Antonin"));
+    edited.name = "Bail (copie)".to_owned();
+    edited.hide_email = true;
+    edited.max_access_count = Some(2);
+    connection.update_send(&id, edited).await.unwrap();
+    assert_eq!(connection.send_link(&id).unwrap().expose(), link);
+    let info = &connection.sends().unwrap()[0];
+    assert_eq!(info.name, "Bail (copie)");
+    assert_eq!(info.file_name.as_deref(), Some("bail signé.pdf"));
+    assert_eq!(info.file_size, Some(encrypted_size));
+    assert!(info.has_password && info.hide_email);
+
+    // Second téléchargement : identique, adresse masquée ; puis le lien est
+    // épuisé (deux accès au plus).
+    let (received, bytes) = send::receive_file(&link, Some(&SecretString::new("ouvre-toi")))
+        .await
+        .unwrap();
+    assert_eq!(bytes.as_slice(), contents.as_slice());
+    assert!(received.creator.is_none());
+    assert!(
+        send::receive_file(&link, Some(&SecretString::new("ouvre-toi")))
+            .await
+            .is_err()
+    );
+    connection.sync().await.unwrap();
+    let info = &connection.sends().unwrap()[0];
+    assert_eq!(info.access_count, 2);
+    assert!(!info.is_available(Utc::now().timestamp()));
+
+    connection.delete_send(&id).await.unwrap();
+    assert!(connection.sends().unwrap().is_empty());
+    assert!(send::receive(&link, None).await.is_err(), "supprimé");
+
+    open_file_send_and_send_an_attachment(&mut connection).await;
+}
+
+/// Un envoi de fichier sans mot de passe ; un texte n'a pas de fichier ;
+/// une pièce jointe envoyée telle quelle ; un fichier vide refusé.
+async fn open_file_send_and_send_an_attachment(connection: &mut Connection) {
+    let contents = file_contents(4096);
+    let (id, link, _) = connection
+        .create_file_send(SendDraft::file("Plan", Utc::now()), "plan.png", &contents)
+        .await
+        .unwrap();
+    let (_, bytes) = send::receive_file(link.expose(), None).await.unwrap();
+    assert_eq!(bytes.as_slice(), contents.as_slice());
+    // `receive` ne télécharge pas : pas d'accès compté.
+    let received = send::receive(link.expose(), None).await.unwrap();
+    assert_eq!(received.file_name.as_deref(), Some("plan.png"));
+    connection.sync().await.unwrap();
+    assert_eq!(connection.sends().unwrap()[0].access_count, 1);
+    connection.delete_send(&id).await.unwrap();
+
+    let (text_id, text_link, _) = connection
+        .create_send(SendDraft::text(
+            "Digicode",
+            SecretString::new("4521B"),
+            Utc::now(),
+        ))
+        .await
+        .unwrap();
+    assert!(matches!(
+        send::receive_file(text_link.expose(), None).await,
+        Err(Error::Invalid(_))
+    ));
+    connection.delete_send(&text_id).await.unwrap();
+
+    // Pièce jointe d'un élément : déchiffrée puis chiffrée par la clé de
+    // l'envoi, le destinataire reçoit les mêmes octets.
+    let attachment = file_contents(70_000);
+    let (item_id, _) = connection
+        .create_document("passeport.pdf", &attachment, None)
+        .await
+        .unwrap();
+    let attachment_id = connection.attachments(&item_id).await.unwrap()[0]
+        .id
+        .clone();
+    let (id, link, _) = connection
+        .create_send_from_attachment(
+            SendDraft::file("Passeport", Utc::now()),
+            &item_id,
+            &attachment_id,
+        )
+        .await
+        .unwrap();
+    let (received, bytes) = send::receive_file(link.expose(), None).await.unwrap();
+    assert_eq!(received.file_name.as_deref(), Some("passeport.pdf"));
+    assert_eq!(bytes.as_slice(), attachment.as_slice());
+    connection.delete_send(&id).await.unwrap();
+
+    assert!(matches!(
+        connection
+            .create_file_send(SendDraft::file("Vide", Utc::now()), "vide.txt", b"")
+            .await,
+        Err(Error::Invalid(_))
+    ));
+    assert!(connection.sends().unwrap().is_empty());
+}

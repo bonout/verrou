@@ -49,12 +49,7 @@ struct MainView: View {
             ToolbarItem(placement: .primaryAction) {
                 switch model.pane {
                 case .sends:
-                    Button {
-                        model.newSend()
-                    } label: {
-                        Label("Nouvel envoi", systemImage: "plus")
-                    }
-                    .help("Nouvel envoi")
+                    NewSendMenu()
                 case .emergency:
                     Button {
                         model.emergency.inviteNew()
