@@ -128,6 +128,26 @@ pub struct Item {
     /// secrets ne sortent qu'après une nouvelle confirmation.
     pub reprompt: bool,
     pub state: ItemState,
+    /// Élément d'une organisation (coffre partagé) ; `None` : coffre personnel.
+    pub shared: Option<Sharing>,
+}
+
+/// Où un élément partagé est rangé, et ce que le compte a le droit d'en
+/// faire. Les organisations de Vaultwarden jouent le rôle des coffres
+/// partagés de 1Password ; leurs collections, celui des sous-coffres.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Sharing {
+    pub organization_id: String,
+    pub organization: String,
+    /// Collections de l'élément visibles par ce compte : (identifiant, nom),
+    /// triées par nom.
+    pub collections: Vec<(String, String)>,
+    /// Le compte ne peut pas le modifier (collections en lecture seule).
+    pub read_only: bool,
+    /// L'organisation cache ses mots de passe à ce compte (« masquer les
+    /// mots de passe ») : le remplissage reste permis, l'affichage, la
+    /// copie et l'export non.
+    pub hide_passwords: bool,
 }
 
 impl Item {
@@ -150,5 +170,21 @@ impl Item {
 
     pub fn has_totp(&self) -> bool {
         self.field_of_kind(FieldKind::Totp).is_some()
+    }
+
+    /// L'organisation de l'élément interdit-elle de montrer ce champ ? Comme
+    /// les apps Bitwarden : mot de passe, graine TOTP (le code du moment
+    /// reste visible), champs personnalisés masqués et anciens mots de passe.
+    pub fn hides(&self, field: &Field) -> bool {
+        self.shared.as_ref().is_some_and(|s| s.hide_passwords)
+            && (matches!(field.kind, FieldKind::Password | FieldKind::Totp)
+                || field.id.starts_with("history-")
+                || (field.id.starts_with("custom-") && field.kind == FieldKind::Concealed))
+    }
+
+    /// Le compte peut-il modifier l'élément (coffre personnel, ou collection
+    /// où il a le droit d'écrire) ?
+    pub fn is_writable(&self) -> bool {
+        self.shared.as_ref().is_none_or(|s| !s.read_only)
     }
 }

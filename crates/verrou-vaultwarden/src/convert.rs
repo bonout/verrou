@@ -46,6 +46,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
             .map(SecretString::new),
         reprompt: view.reprompt == CipherRepromptType::Password,
         state,
+        shared: None,
     };
     match view.r#type {
         CipherType::Login => login(view, &mut item),

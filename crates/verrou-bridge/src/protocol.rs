@@ -282,6 +282,10 @@ pub struct ItemSummary {
     pub tags: Vec<String>,
     pub favorite: bool,
     pub has_totp: bool,
+    /// Coffre partagé : « Organisation › Collection, … ». Absent pour un
+    /// élément personnel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<String>,
 }
 
 /// Un élément pour `verrou get` : la valeur des champs secrets est absente.

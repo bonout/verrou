@@ -180,6 +180,7 @@ fn login(id: &str, title: &str, url: &str, username: &str, password: &str) -> It
         notes: None,
         reprompt: false,
         state: verrou_core::ItemState::Active,
+        shared: None,
     }
 }
 
@@ -218,6 +219,7 @@ fn ssh_key() -> Item {
         notes: None,
         reprompt: false,
         state: verrou_core::ItemState::Active,
+        shared: None,
     }
 }
 

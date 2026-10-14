@@ -338,6 +338,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: verrou_core::ItemState::Active,
+            shared: None,
         }
     }
 

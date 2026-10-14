@@ -21,6 +21,7 @@ mod convert;
 mod edit;
 mod error;
 mod import;
+mod organizations;
 mod passkeys;
 pub mod security_key;
 pub mod ssh_key;
@@ -48,6 +49,7 @@ pub use attachments::AttachmentInfo;
 pub use edit::{Draft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
+pub use organizations::{Collection, Organization};
 pub use store::{Account, KdfSettings, Store};
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
@@ -63,6 +65,8 @@ pub struct Decrypted {
     /// Passkeys des identifiants (clé privée comprise) : pour
     /// `Vault::with_passkeys`.
     pub passkeys: Vec<verrou_core::Passkey>,
+    /// Organisations (coffres partagés) et leurs collections, triées par nom.
+    pub organizations: Vec<Organization>,
 }
 
 /// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
@@ -414,11 +418,13 @@ impl Connection {
                 failures: 0,
                 folders: Vec::new(),
                 passkeys: Vec::new(),
+                organizations: Vec::new(),
             });
         };
         let sync: SyncResponseModel = serde_json::from_str(json)
             .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
         self.init_organizations(&sync).await?;
+        let directory = self.decrypt_directory(&sync);
         let folder_names = self.decrypt_folders(sync.folders)?;
 
         let mut items = Vec::new();
@@ -432,7 +438,10 @@ impl Connection {
             match self.sdk.vault().ciphers().decrypt(cipher).await {
                 Ok(view) => {
                     passkeys.extend(convert::passkeys(&view));
-                    items.extend(convert::item(&view, &folder_names));
+                    items.extend(convert::item(&view, &folder_names).map(|mut item| {
+                        item.shared = directory.sharing(&view);
+                        item
+                    }));
                 }
                 Err(_) => failures += 1,
             }
@@ -444,6 +453,7 @@ impl Connection {
             failures,
             folders,
             passkeys,
+            organizations: directory.organizations,
         })
     }
 

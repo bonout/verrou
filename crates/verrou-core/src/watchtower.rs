@@ -312,6 +312,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: ItemState::Active,
+            shared: None,
         }
     }
 

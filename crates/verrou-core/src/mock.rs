@@ -321,6 +321,12 @@ const MAC_APPS: [(&str, &str); 3] = [
     ("Notion", "notion.id"),
 ];
 
+/// Organisation et collection du coffre fictif (identifiant, nom).
+pub const MOCK_ORGANIZATION: (&str, &str) =
+    ("0f1e2d3c-4b5a-4968-8776-655443322110", "Famille Martin");
+pub const MOCK_COLLECTION: (&str, &str) =
+    ("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "Comptes communs");
+
 pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
     let mut rng = ChaCha20Rng::seed_from_u64(seed);
     let mut builder = Builder {
@@ -354,7 +360,8 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
         false,
         true,
     ));
-    items.push(builder.login(
+    // Un compte commun, rangé dans le coffre partagé de la famille.
+    let mut family = builder.login(
         "Google — famille",
         "accounts.google.com",
         "famille.martin@exemple.fr",
@@ -362,7 +369,15 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
         &["famille"],
         false,
         false,
-    ));
+    );
+    family.shared = Some(crate::Sharing {
+        organization_id: MOCK_ORGANIZATION.0.to_owned(),
+        organization: MOCK_ORGANIZATION.1.to_owned(),
+        collections: vec![(MOCK_COLLECTION.0.to_owned(), MOCK_COLLECTION.1.to_owned())],
+        read_only: false,
+        hide_passwords: false,
+    });
+    items.push(family);
 
     items.extend(builder.cards());
     items.extend(builder.identities());
@@ -473,6 +488,7 @@ impl Builder<'_> {
             notes: None,
             reprompt: false,
             state: crate::ItemState::Active,
+            shared: None,
         }
     }
 
@@ -542,6 +558,7 @@ impl Builder<'_> {
                     // Comme souvent dans Bitwarden : les cartes redemandent confirmation.
                     reprompt: true,
                     state: crate::ItemState::Active,
+                    shared: None,
                 }
             })
             .collect()
@@ -586,6 +603,7 @@ impl Builder<'_> {
             notes: None,
             reprompt: false,
             state: crate::ItemState::Active,
+            shared: None,
         };
         let (created, modified) = self.dates();
         let passport = Item {
@@ -613,6 +631,7 @@ impl Builder<'_> {
             notes: None,
             reprompt: false,
             state: crate::ItemState::Active,
+            shared: None,
         };
         vec![me, passport]
     }
@@ -665,6 +684,7 @@ impl Builder<'_> {
                     notes: Some(SecretString::new(*body)),
                     reprompt: false,
                     state: crate::ItemState::Active,
+                    shared: None,
                 }
             })
             .collect()
@@ -701,6 +721,7 @@ impl Builder<'_> {
             notes: None,
             reprompt: false,
             state: crate::ItemState::Active,
+            shared: None,
         }
     }
 

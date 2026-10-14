@@ -157,6 +157,8 @@ struct ItemJson<'a> {
     folder: Option<&'a str>,
     tags: &'a [String],
     favorite: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shared: Option<&'a str>,
 }
 
 impl<'a> From<&'a ItemSummary> for ItemJson<'a> {
@@ -170,6 +172,7 @@ impl<'a> From<&'a ItemSummary> for ItemJson<'a> {
             folder: item.folder.as_deref(),
             tags: &item.tags,
             favorite: item.favorite,
+            shared: item.shared.as_deref(),
         }
     }
 }
@@ -684,6 +687,9 @@ fn print_item(
     }
     if let Some(folder) = &summary.folder {
         writeln!(out, "  {:<22} \x1b[2m{folder}\x1b[0m", "Dossier").ok();
+    }
+    if let Some(shared) = &summary.shared {
+        writeln!(out, "  {:<22} \x1b[2m{shared}\x1b[0m", "Coffre partagé").ok();
     }
     Ok(())
 }

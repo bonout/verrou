@@ -253,6 +253,7 @@ mod tests {
             notes: None,
             reprompt: false,
             state: ItemState::Active,
+            shared: None,
         };
         assert_eq!(
             item_keystrokes(&item, false),

@@ -59,6 +59,15 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   3 years. A password created or changed in Verrou (editor, Brave, import) is
   checked against known breaches in the background, with an alert if it
   appears there (Settings → *Sécurité*, on by default).
+- **Shared vaults** (Vaultwarden organizations, like 1Password's shared
+  vaults): the sidebar lists each organization and its collections with
+  their counts; items show where they are shared. Shared items are edited
+  in place (re-encrypted with the organization key), created directly in a
+  collection, or moved there from the personal vault (*Partager…*, which
+  re-encrypts the item and its attachment keys). Read-only collections and
+  "hide passwords" are enforced in the Rust core (filling in Brave still
+  works, like Bitwarden). Members, collections and permissions are managed
+  in the web vault (*Gérer dans le coffre web*).
 - **Protected items**: Bitwarden's "master password re-prompt" is enforced in
   the Rust core: secrets (reveal, copy, codes, edit, Brave fill) need Touch ID
   or the master password, valid 5 minutes per item.
@@ -358,7 +367,7 @@ cargo test --workspace                     # core, sign-in, bindings, bridge, CL
 cargo run -p verrou-cli -- --mock search github   # CLI on the mock vault
 
 # Tests against a real (throwaway) Vaultwarden: see the header of
-# crates/verrou-vaultwarden/tests/server.rs
+# crates/verrou-vaultwarden/tests/server.rs (organizations: tests/organizations.rs)
 VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden
 
 scripts/build-apple.sh                     # universal library + Swift bindings

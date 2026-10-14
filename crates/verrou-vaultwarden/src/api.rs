@@ -344,6 +344,25 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
+    /// Écriture JSON authentifiée (`path` commence par `/api/`) ; rend le
+    /// JSON de la réponse.
+    pub async fn send_json(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        access_token: &str,
+        body: &impl serde::Serialize,
+    ) -> Result<Value, Error> {
+        let response = self
+            .http
+            .request(method, format!("{}{path}", self.base))
+            .bearer_auth(access_token)
+            .json(body)
+            .send()
+            .await?;
+        write_response(response).await
+    }
+
     /// Demande l'envoi du code de second facteur par e-mail.
     pub async fn send_email_code(
         &self,

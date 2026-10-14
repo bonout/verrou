@@ -22,7 +22,11 @@ struct ItemDetailView: View {
                     FieldCard {
                         ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
                             if index > 0 { Divider().padding(.leading, 14) }
-                            FieldRow(itemID: detail.summary.id, field: field)
+                            if field.hidden && field.fieldType != .totp {
+                                HiddenFieldRow(field: field)
+                            } else {
+                                FieldRow(itemID: detail.summary.id, field: field)
+                            }
                         }
                     }
                 }
@@ -45,7 +49,11 @@ struct ItemDetailView: View {
                     FieldCard {
                         ForEach(Array(history.enumerated()), id: \.element.id) { index, field in
                             if index > 0 { Divider().padding(.leading, 14) }
-                            FieldRow(itemID: detail.summary.id, field: field)
+                            if field.hidden {
+                                HiddenFieldRow(field: field)
+                            } else {
+                                FieldRow(itemID: detail.summary.id, field: field)
+                            }
                         }
                     }
                 }
@@ -80,6 +88,22 @@ struct ItemDetailView: View {
                         Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)
                             .help("Ses secrets demandent une confirmation (Touch ID ou mot de passe principal)")
                     }
+                    if let sharing = detail.summary.sharing {
+                        Chip(text: sharing.label, symbol: "person.2.fill", tint: .indigo)
+                            .help("Coffre partagé : les membres de ces collections le voient")
+                            .contextMenu {
+                                Button("Gérer dans le coffre web") {
+                                    model.openWebVault(organizationID: sharing.organizationId)
+                                }
+                            }
+                        if sharing.readOnly {
+                            Chip(text: "Lecture seule", symbol: "eye", tint: .secondary)
+                        }
+                        if sharing.hidePasswords {
+                            Chip(text: "Mot de passe masqué", symbol: "eye.slash", tint: .secondary)
+                                .help("L'organisation cache le mot de passe à votre compte ; le remplissage reste possible")
+                        }
+                    }
                 }
             }
             Spacer()
@@ -91,7 +115,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(detail.summary.favorite ? Color.yellow : Color.secondary)
             }
             .buttonStyle(.plain)
-            .disabled(!model.canEdit || detail.summary.state != .active || model.editorBusy)
+            .disabled(!model.canModify(detail.summary) || detail.summary.state != .active || model.editorBusy)
             .help(detail.summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris")
         }
         .padding(.bottom, 4)
@@ -120,7 +144,7 @@ struct ItemDetailView: View {
             Image(systemName: symbol).foregroundStyle(.secondary)
             Text(text).font(.callout).foregroundStyle(.secondary)
             Spacer()
-            if model.canEdit {
+            if model.canModify(detail.summary) {
                 Button(action) { Task { await perform() } }
                     .disabled(model.editorBusy)
             }

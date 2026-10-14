@@ -110,6 +110,7 @@ fn named_ssh_item(id: &str, title: &str, key: &PrivateKey) -> Item {
         notes: None,
         reprompt: false,
         state: verrou_core::ItemState::Active,
+        shared: None,
     }
 }
 
@@ -132,6 +133,7 @@ fn login() -> Item {
         notes: None,
         reprompt: false,
         state: verrou_core::ItemState::Active,
+        shared: None,
     }
 }
 

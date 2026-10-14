@@ -123,6 +123,28 @@ PR qui touche à l'un de ces points le dit dans sa description.
   protégé ne livre ses fichiers qu'après confirmation. Limites : la copie
   passée à Swift (`Data`) n'est pas mise à zéro, et Quick Look peut garder
   sa propre vignette en cache.
+- **Coffres partagés (organisations)** : la clé de chaque organisation
+  arrive dans le profil, chiffrée avec la clé publique du compte (RSA-OAEP) ;
+  le SDK la déchiffre avec la clé privée et l'utilise pour les noms des
+  collections et les éléments de l'organisation. Elle reste dans le SDK,
+  jamais dans Swift ni sur le disque en clair (le cache garde la version
+  chiffrée du serveur). Créer dans une collection
+  (`POST /api/ciphers/create`), partager un élément personnel
+  (`PUT /api/ciphers/{id}/share`) ou changer ses collections
+  (`PUT /api/ciphers/{id}/collections_v2`) : le SDK chiffre avec la clé de
+  l'organisation, clés de l'élément et de ses pièces jointes comprises (le
+  contenu des pièces jointes n'est pas retéléchargé) ; des pièces jointes
+  d'un ancien format, sans clé propre, font refuser le partage. Les droits
+  annoncés par le serveur sont appliqués avant tout envoi : une collection en
+  lecture seule n'est ni modifiée ni proposée comme destination (le serveur
+  le vérifie de toute façon) ; « masquer les mots de passe » est appliqué
+  dans le cœur Rust : mot de passe, graine TOTP, champs masqués et anciens
+  mots de passe ne sortent ni vers Swift (`reveal`), ni vers le terminal, ni
+  dans un brouillon de modification ; seul le remplissage par l'extension
+  reste permis, comme dans les apps Bitwarden. Les doublons ne comparent que
+  des éléments d'un même coffre, et jamais un élément en lecture seule. La
+  gestion de l'organisation (membres, droits, collections) se fait dans le
+  coffre web.
 - **Limites connues** : la demande de mot de passe principal par élément
   (« reprompt ») n'est pas appliquée.
 
