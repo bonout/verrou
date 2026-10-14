@@ -16,6 +16,7 @@ pub mod search;
 pub mod secret;
 pub mod totp;
 pub mod vault;
+pub mod watchtower;
 
 pub use model::{Field, FieldKind, Item, ItemKind, ItemState};
 pub use search::{Filter, Hit, Sort};

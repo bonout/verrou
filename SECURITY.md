@@ -187,6 +187,24 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   Pwned par k-anonymat. Seuls les 5 premiers caractères hexadécimaux du SHA-1
   de chaque mot de passe partent, avec du remplissage dans les réponses ; la
   comparaison se fait sur le Mac.
+- **Nouveaux mots de passe** (réglage *Vérifier les nouveaux mots de passe
+  dans les fuites connues*, actif par défaut) : après une écriture faite
+  depuis Verrou (éditeur, extension, import), le cœur Rust compare le coffre
+  avant et après, et seuls les identifiants dont le mot de passe est nouveau
+  sont vérifiés, par la même API et le même k-anonymat. Les mots de passe
+  arrivés par synchronisation ne partent pas. Réglage désactivé : rien n'est
+  envoyé, la file d'attente (des identifiants d'éléments, jamais des secrets)
+  est vidée ; elle l'est aussi au verrouillage.
+- **Double authentification disponible** : la liste complète de
+  [2fa.directory](https://2fa.directory) (`api.2fa.directory/v3/tfa.json`,
+  environ 400 Ko) est téléchargée à l'ouverture de l'audit, au plus une fois
+  par semaine, et gardée dans le dossier du compte (`2fa-directory.json`) ;
+  aucune requête ne dépend du coffre, la comparaison avec les sites des
+  identifiants se fait sur le Mac. Hors ligne, la dernière copie sert. Seuls
+  les liens d'aide en HTTPS sont proposés.
+- **Cartes et mots de passe anciens** : calculés localement (échéance des
+  cartes, date de modification des éléments).
+
 ## Terminal et agent SSH
 
 ```

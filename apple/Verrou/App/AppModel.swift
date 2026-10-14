@@ -88,6 +88,8 @@ final class AppModel {
     private(set) var breaches: [BreachedPassword]?
     private(set) var checkingBreaches = false
     var breachError: String?
+    /// Cartes, mots de passe anciens, double authentification (`Watchtower.swift`).
+    let watchtower = Watchtower()
     var query: String = "" { didSet { refresh() } }
     var sort: ResultOrder = .relevance { didSet { refresh() } }
     var selection: String? { didSet { if oldValue != selection { revealed.removeAll() } } }
@@ -443,7 +445,16 @@ final class AppModel {
     /// en gardant la sélection si l'élément existe encore.
     func openAudit() {
         audit = try? session.audit()
+        watchtower.refresh(session, network: mode == .vaultwarden)
         showAudit = true
+    }
+
+    /// Ajoute aux fuites déjà affichées celles des mots de passe tout juste
+    /// vérifiés (`checkNewPasswords`).
+    func mergeBreaches(_ found: [BreachedPassword]) {
+        guard var known = breaches else { return }
+        known.removeAll { old in found.contains { $0.item.id == old.item.id } }
+        breaches = (known + found).sorted { $0.count > $1.count }
     }
 
     /// Have I Been Pwned, par k-anonymat (5 caractères d'empreinte par mot de passe).
@@ -460,7 +471,10 @@ final class AppModel {
     }
 
     private func reloadVault() {
-        if showAudit { audit = try? session.audit() }
+        if showAudit {
+            audit = try? session.audit()
+            watchtower.refresh(session, network: mode == .vaultwarden)
+        }
         let start = ContinuousClock.now
         defer { Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms") }
         summaries = (try? session.summaries()) ?? []
@@ -488,6 +502,7 @@ final class AppModel {
         audit = nil
         breaches = nil
         breachError = nil
+        watchtower.reset()
         // La fenêtre du coffre reste montée derrière l'écran verrouillé :
         // rien d'ouvert ne doit y survivre.
         editor = nil
@@ -851,6 +866,7 @@ final class AppModel {
         reloadVault()
         if let id { selection = id }
         syncState = .idle
+        checkNewPasswords()
     }
 
     // MARK: Éléments protégés

@@ -43,7 +43,14 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   from the popup (*Remplir avec un autre identifiant…*).
 - **Security audit**: reused, weak and plain-HTTP passwords, computed
   locally; known breaches on request through Have I Been Pwned (k-anonymity:
-  only 5 characters of each password's SHA-1 leave the Mac).
+  only 5 characters of each password's SHA-1 leave the Mac). Also: sites that
+  offer two-factor authentication while the login has no one-time code
+  (from the full [2fa.directory](https://2fa.directory) list, downloaded at
+  most weekly and cached, with a link to the site's 2FA help page), cards
+  expired or expiring within 60 days, and logins untouched for more than
+  3 years. A password created or changed in Verrou (editor, Brave, import) is
+  checked against known breaches in the background, with an alert if it
+  appears there (Settings → *Sécurité*, on by default).
 - **Protected items**: Bitwarden's "master password re-prompt" is enforced in
   the Rust core: secrets (reveal, copy, codes, edit, Brave fill) need Touch ID
   or the master password, valid 5 minutes per item.
