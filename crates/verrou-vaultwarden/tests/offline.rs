@@ -336,3 +336,53 @@ async fn the_next_write_sends_the_outbox_first() {
 
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
+
+/// Fusion hors ligne : l'élément gardé et la corbeille attendent dans la
+/// file, puis partent au retour du réseau.
+#[tokio::test]
+async fn merging_duplicates_offline_waits_then_reaches_the_server() {
+    let Some(server) = server() else { return };
+    let email = register(&server).await;
+    let store = temp_store();
+    let (mut online, _) = sign_in(&store, &server, &email).await;
+    let (kept, _) = online
+        .create(login_draft("Exemple", "commun"))
+        .await
+        .unwrap();
+    let mut copy = login_draft("exemple.fr", "commun");
+    copy.notes = Some(SecretString::new("question secrète : Lilas"));
+    copy.login.as_mut().unwrap().uris = vec!["https://login.exemple.fr/".to_owned()];
+    let (other, _) = online.create(copy).await.unwrap();
+    drop(online);
+
+    let (mut offline, _) = reopen(&store, &dead_server()).await;
+    let outcome = offline
+        .merge_duplicates(&kept, std::slice::from_ref(&other))
+        .await
+        .unwrap();
+    assert_eq!(outcome.summary.notes, 1);
+    let state =
+        |vault: &Decrypted, id: &str| vault.items.iter().find(|i| i.id == id).map(|i| i.state);
+    assert_eq!(state(&outcome.vault, &other), Some(ItemState::Trashed));
+    let merged = outcome.vault.items.iter().find(|i| i.id == kept).unwrap();
+    assert_eq!(
+        merged.notes.as_ref().map(SecretString::expose),
+        Some("question secrète : Lilas")
+    );
+    assert_eq!(offline.pending_changes(), 2);
+    drop(offline);
+
+    let (mut reconnected, _) = reopen(&store, &server).await;
+    let vault = reconnected
+        .sync()
+        .await
+        .unwrap()
+        .expect("le coffre a changé");
+    let report = reconnected.take_report();
+    assert_eq!(report.sent, 2);
+    assert!(report.conflicts.is_empty() && report.rejected.is_empty());
+    assert_eq!(state(&vault, &other), Some(ItemState::Trashed));
+    let merged = vault.items.iter().find(|i| i.id == kept).unwrap();
+    assert!(merged.notes.is_some());
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}

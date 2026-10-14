@@ -50,7 +50,8 @@ around a Rust core.
 - **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one
-  request; Vault → *Nettoyer les doublons…* moves duplicates to the trash.
+  request; Vault → *Nettoyer les doublons…* groups duplicates by confidence,
+  merges them into the item you keep and moves the copies to the trash.
   See [Import from another password manager](#import-from-another-password-manager).
 - **Browser extension (Brave, Firefox)**: like 1Password, a dark pill at the
   top left of the page instead of a menu under the field. On a page with a
@@ -358,12 +359,58 @@ an item already in the vault.
 holds all your passwords in plain text. Verrou only reads it when you import
 and never copies it.
 
-Vault → *Nettoyer les doublons…* lists the logins that share a site and a
-username (`login.example.com` and `example.com` count as one site, but
-`cloud.example.com` and `vault.example.com` do not), suggests which one to
-keep (the one with a one-time code, then the most recently modified, then
-the most complete) and moves the others to the trash in one request,
-restorable from the web vault.
+### Duplicates
+
+The same account often arrives several times, from Apple, 1Password and
+Proton Pass, with different URLs (`connect.maif.fr`, `www.maif.fr/espace-perso`),
+titles (« Maif », « maif.fr », « MAIF - Espace sociétaire ») and sometimes no
+username or no URL. Vault → *Nettoyer les doublons…* compares, in the Rust core:
+
+- the **sites** of every URL: scheme, port, path and `www.` ignored, login
+  prefixes stripped (`accounts.google.com`, `m.facebook.com`,
+  `connect.maif.fr` are `google.com`, `facebook.com`, `maif.fr`), and their
+  registrable domain; app URIs (`macapp://`, `iosapp://`, `androidapp://`)
+  only against each other; passkey sites too;
+- the **title**, normalized (accents, case, punctuation, `www`, `.fr`,
+  « connexion », « espace client/perso/sociétaire », parentheses) and its
+  brand, compared with the first label of a domain (« Maif » ↔ `maif.fr`);
+  a title that is a domain (`maif.fr`) counts as a URL;
+- the **username** (trimmed, lowercase, `+tag` of an email ignored);
+- the **password** and the **one-time code** secret, compared in constant
+  time; Swift only gets the verdict.
+
+Groups come in three levels, most certain first, with the reason in plain
+words (« même site (maif.fr), même identifiant, même mot de passe »):
+
+| Level | When | Copies |
+|---|---|---|
+| **Certain** | same site (or title brand ↔ domain), same username, same password | checked for the trash |
+| **Probable** | same site and username, another password; or same password, one username missing; or same title and username without URL | suggested, not checked |
+| **À vérifier** | same site, different usernames but the same password; title only without usernames; two subdomains of one domain (`cloud.example.com` and `vault.example.com` are usually two services) | never checked |
+
+Different item types never mix (cards compare their number, notes their
+title and content), personal and shared items are only compared within the
+same vault, and read-only items are left out. An item without a username
+only joins a group when a single account on the site matches.
+
+In each group Verrou keeps the item with passkeys or attachments (they do
+not move), then a one-time code, then the most recently modified, with a
+URL, the most complete, the longest history; *Garder* picks another one.
+**Fusionner et mettre les autres à la corbeille** copies into the kept item
+the URLs of hosts it lacks, the username and one-time code if missing, the
+notes (appended under the source title), the custom fields it does not have
+and the other passwords into its password history; the most recently
+changed password stays the current one. It is written like an edit
+(revision date checked, offline outbox), then the others go to the trash,
+restorable from the web vault for 30 days. **Ignorer ce groupe** remembers
+the group on this Mac (by a hash of its item ids, so it comes back if it
+changes); the footer shows them again. Grouping 10,000 items takes about
+40 ms.
+
+The import review uses the same signals but stays conservative: only a
+**Certain** match is skipped automatically; a **Probable** one updates the
+vault item (new password in, the old one to its history; or it completes
+it), and anything weaker is created.
 
 ## Fill in any app
 
@@ -651,7 +698,8 @@ with a login, card, identity, Wi-Fi, SSH key and shared item, account
 creation from an invitation link, the audit, Sends, emergency access and
 organization members panes (with mock Sends, contacts and members), the
 member invitation and edit sheets, the item editor
-(with custom fields), the generator, each Settings tab, duplicates, an import
+(with custom fields), the generator, each Settings tab, duplicates (mock
+groups of every level, then one ignored and another kept item), an import
 review (from a mock Apple export) and Quick Access. Nothing appears on screen:
 the app runs with the `.prohibited` activation policy, never orders a window
 in, never activates and never uses ScreenCaptureKit; the windows are drawn by

@@ -9,12 +9,17 @@
 use std::io::Read;
 use std::sync::PoisonError;
 
-use verrou_core::duplicates::{self, Classification, Decision, Existing, Status};
+use std::collections::HashMap;
+
+use verrou_core::duplicates::{
+    self, Classification, Confidence, Decision, DuplicateGroup, Existing, ItemExtras, Status,
+};
 use verrou_core::import::{self, Format, ImportKind, Parsed};
 use verrou_vaultwarden::{Destination, ImportPlan};
 use zeroize::Zeroizing;
 
 use crate::{ItemCategory, ItemSummary, VaultSession, VerrouError, summary};
+use verrou_core::Item;
 
 /// Un export lu, en attente de confirmation.
 pub(crate) struct PendingImport {
@@ -76,6 +81,9 @@ pub enum ImportStatus {
     /// Même site et identifiant qu'un élément plus haut dans le fichier,
     /// autre mot de passe.
     ConflictInFile,
+    /// Ressemble à un élément du coffre, même mot de passe (un identifiant
+    /// manquant, un titre sans site) : à compléter plutôt qu'à créer.
+    Similar,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -113,6 +121,9 @@ pub struct ImportEntry {
     /// Titre de l'élément déjà connu (dans le coffre, ou plus haut dans le
     /// fichier).
     pub existing_title: Option<String>,
+    /// Pourquoi il lui ressemble (« même site (maif.fr), même identifiant,
+    /// autre mot de passe ») ; vide pour un nouvel élément.
+    pub reason: String,
     /// Choix proposé.
     pub choice: ImportChoice,
 }
@@ -154,15 +165,114 @@ pub struct ImportOutcome {
     pub failures: Vec<ImportSkipped>,
 }
 
+/// Degré de certitude d'un doublon.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
+pub enum DuplicateConfidence {
+    /// Même site, même identifiant, même mot de passe : coché d'office.
+    Certain,
+    /// Suggéré, pas coché.
+    Probable,
+    /// À vérifier : jamais coché.
+    Review,
+}
+
+impl From<Confidence> for DuplicateConfidence {
+    fn from(confidence: Confidence) -> Self {
+        match confidence {
+            Confidence::Certain => Self::Certain,
+            Confidence::Probable => Self::Probable,
+            Confidence::Review => Self::Review,
+        }
+    }
+}
+
+/// Un élément d'un groupe de doublons. Aucun secret.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct DuplicateMemberView {
+    pub item: ItemSummary,
+    /// Ressemblance avec l'élément gardé ; `None` pour l'élément gardé.
+    pub confidence: Option<DuplicateConfidence>,
+    /// Pourquoi, en clair ; vide pour l'élément gardé.
+    pub reason: String,
+    /// Coché d'office pour la corbeille (doublon certain).
+    pub preselected: bool,
+}
+
 /// Des éléments du coffre qui désignent le même compte. Le premier est celui
 /// qu'il est suggéré de garder.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct DuplicateGroupView {
+    /// Empreinte de l'ensemble des éléments : pour ignorer le groupe.
+    pub key: String,
     pub label: String,
     pub username: String,
+    pub confidence: DuplicateConfidence,
+    /// La raison de ce degré (« même site (maif.fr), même identifiant, même
+    /// mot de passe »).
+    pub reason: String,
     /// Tous ont le même mot de passe : supprimer les autres ne perd rien.
     pub same_password: bool,
-    pub items: Vec<ItemSummary>,
+    /// Des identifiants : « Fusionner » est possible.
+    pub mergeable: bool,
+    pub members: Vec<DuplicateMemberView>,
+}
+
+/// Bilan d'une fusion.
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct MergeReport {
+    /// Sites ajoutés à l'élément gardé.
+    pub sites: u32,
+    pub username: bool,
+    pub totp: bool,
+    pub notes: u32,
+    pub fields: u32,
+    /// Mots de passe ajoutés à son historique.
+    pub history: u32,
+    /// Le mot de passe actuel vient d'un autre élément, plus récent.
+    pub newer_password: bool,
+    /// Éléments mis à la corbeille.
+    pub trashed: u32,
+}
+
+/// La vue d'un groupe, avec le résumé de chaque élément.
+fn group_view(
+    group: DuplicateGroup,
+    describe: impl Fn(&str) -> Option<ItemSummary>,
+) -> Option<DuplicateGroupView> {
+    let members = group
+        .members
+        .into_iter()
+        .map(|m| {
+            Some(DuplicateMemberView {
+                item: describe(&m.id)?,
+                confidence: m.confidence.map(Into::into),
+                reason: m.reason,
+                preselected: m.preselected,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some(DuplicateGroupView {
+        key: group.key,
+        label: group.label,
+        username: group.username,
+        confidence: group.confidence.into(),
+        reason: group.reason,
+        same_password: group.same_password,
+        mergeable: group.mergeable,
+        members,
+    })
+}
+
+/// Doublons fictifs (imports d'Apple, de 1Password et de Proton Pass), pour
+/// la revue visuelle de la feuille des doublons. Hors de tout coffre.
+#[uniffi::export]
+pub fn demo_duplicates() -> Vec<DuplicateGroupView> {
+    let items = verrou_core::mock::duplicate_items();
+    let by_id: HashMap<&str, &Item> = items.iter().map(|i| (i.id.as_str(), i)).collect();
+    duplicates::find_duplicates(&items)
+        .into_iter()
+        .filter_map(|g| group_view(g, |id| by_id.get(id).map(|i| summary(i))))
+        .collect()
 }
 
 fn category(kind: ImportKind) -> ItemCategory {
@@ -221,8 +331,12 @@ impl VaultSession {
                         Status::NewPassword(e @ Existing::Vault(_)) => {
                             (ImportStatus::NewPassword, title_of(e))
                         }
-                        Status::NewPassword(e @ Existing::Import(_)) => {
+                        Status::NewPassword(e @ Existing::Import(_))
+                        | Status::Similar(e @ Existing::Import(_)) => {
                             (ImportStatus::ConflictInFile, title_of(e))
+                        }
+                        Status::Similar(e @ Existing::Vault(_)) => {
+                            (ImportStatus::Similar, title_of(e))
                         }
                     };
                     ImportEntry {
@@ -234,6 +348,7 @@ impl VaultSession {
                         has_totp: item.totp.is_some(),
                         status,
                         existing_title,
+                        reason: class.reason.clone().unwrap_or_default(),
                         choice: class.decision.into(),
                     }
                 })
@@ -294,7 +409,9 @@ impl VaultSession {
                 (ImportChoice::Create, _) => plan.create.push(item.clone()),
                 (
                     ImportChoice::Update,
-                    Status::AddsTotp(id) | Status::NewPassword(Existing::Vault(id)),
+                    Status::AddsTotp(id)
+                    | Status::NewPassword(Existing::Vault(id))
+                    | Status::Similar(Existing::Vault(id)),
                 ) => plan.update.push((id.clone(), item.clone())),
                 // Rien à compléter dans le coffre : ignoré.
                 (ImportChoice::Update | ImportChoice::Skip, _) => {}
@@ -357,6 +474,67 @@ impl VaultSession {
         Ok(outcome)
     }
 
+    /// Les groupes de doublons du coffre, les plus certains d'abord. Les
+    /// passkeys et les pièces jointes (comptées dans le cache, sans réseau)
+    /// décident de l'élément à garder.
+    pub async fn duplicates(&self) -> Result<Vec<DuplicateGroupView>, VerrouError> {
+        let attachments = match self.current_connection() {
+            Some(connection) => connection.lock().await.attachment_counts()?,
+            None => HashMap::new(),
+        };
+        self.with_vault(|vault| {
+            let mut extras: HashMap<String, ItemExtras> = HashMap::new();
+            for passkey in vault.passkeys() {
+                extras
+                    .entry(passkey.item.clone())
+                    .or_default()
+                    .passkey_sites
+                    .push(passkey.rp_id.clone());
+            }
+            for (id, count) in attachments {
+                extras.entry(id).or_default().attachments = count;
+            }
+            Ok(duplicates::find_duplicates_with(vault.items(), &extras)
+                .into_iter()
+                .filter_map(|group| {
+                    group_view(group, |id| vault.get(id).map(|i| self.summary_of(i)))
+                })
+                .collect())
+        })
+    }
+
+    /// Fusionne `others` dans `keep` (sites, code, notes, champs, anciens
+    /// mots de passe), puis les met à la corbeille ; resynchronise. Hors
+    /// ligne, tout attend dans la file.
+    pub async fn merge_duplicates(
+        &self,
+        keep: String,
+        others: Vec<String>,
+    ) -> Result<MergeReport, VerrouError> {
+        let Some(connection) = self.current_connection() else {
+            return Err(invalid("coffre fictif : lecture seule"));
+        };
+        let outcome = connection
+            .lock()
+            .await
+            .merge_duplicates(&keep, &others)
+            .await?;
+        let summary = outcome.summary;
+        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let report = MergeReport {
+            sites: count(summary.uris),
+            username: summary.username,
+            totp: summary.totp,
+            notes: count(summary.notes),
+            fields: count(summary.fields),
+            history: count(summary.history),
+            newer_password: summary.newer_password,
+            trashed: count(outcome.trashed),
+        };
+        self.install_written(&connection, outcome.vault)?;
+        Ok(report)
+    }
+
     /// Met ces éléments à la corbeille du serveur en une requête
     /// (restaurables depuis le coffre web), puis resynchronise.
     pub async fn trash_items(&self, ids: Vec<String>) -> Result<(), VerrouError> {
@@ -375,28 +553,7 @@ impl VaultSession {
             .unwrap_or_else(PoisonError::into_inner)
             .take();
     }
-
-    /// Les groupes de doublons du coffre, triés par site.
-    pub fn duplicates(&self) -> Result<Vec<DuplicateGroupView>, VerrouError> {
-        self.with_vault(|vault| {
-            Ok(duplicates::find_duplicates(vault.items())
-                .into_iter()
-                .map(|group| DuplicateGroupView {
-                    label: group.label,
-                    username: group.username,
-                    same_password: group.same_password,
-                    items: group
-                        .items
-                        .iter()
-                        .filter_map(|id| vault.get(id))
-                        .map(summary)
-                        .collect(),
-                })
-                .collect())
-        })
-    }
 }
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -455,6 +612,36 @@ mod tests {
     fn self_hosted_services_are_not_duplicates() {
         // Nextcloud, Vaultwarden et Jellyfin du coffre fictif : même domaine,
         // même identifiant, mais trois services.
-        assert_eq!(session().duplicates().unwrap().len(), 0);
+        let groups = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(session().duplicates())
+            .unwrap();
+        assert_eq!(groups.len(), 0);
+    }
+
+    #[test]
+    fn demo_duplicates_carry_no_secret() {
+        let groups = demo_duplicates();
+        assert_eq!(groups.len(), 8);
+        assert_eq!(groups[0].confidence, DuplicateConfidence::Certain);
+        assert_eq!(
+            groups.last().unwrap().confidence,
+            DuplicateConfidence::Review
+        );
+        let maif = groups.iter().find(|g| g.label == "maif.fr").unwrap();
+        assert_eq!(maif.members.len(), 4);
+        assert!(maif.members[1].preselected && !maif.members[3].preselected);
+        let debug = format!("{groups:?}");
+        for secret in ["maif-Lilas-42", "JBSWY3DPEHPK3PXP", "4242 4242"] {
+            assert!(!debug.contains(secret), "{secret}");
+        }
+    }
+
+    #[test]
+    fn merging_needs_a_server() {
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(session().merge_duplicates("a".into(), vec!["b".into()]));
+        assert!(matches!(result, Err(VerrouError::Invalid { .. })));
     }
 }
