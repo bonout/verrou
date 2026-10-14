@@ -558,6 +558,26 @@ async fn organizations_share_create_edit_and_permissions() {
         )
         .await;
     assert!(matches!(created, Err(Error::ReadOnly)));
+    // Action groupée : l'élément en lecture seule est écarté, l'autre archivé.
+    let ids = [personal_id.clone(), wifi_id.clone()];
+    let outcome = member_connection
+        .bulk(&ids, &verrou_vaultwarden::BulkAction::Archive, &|_, _| {})
+        .await
+        .unwrap();
+    assert_eq!(outcome.done, 1);
+    assert_eq!(
+        outcome.skipped,
+        [(wifi_id.clone(), verrou_vaultwarden::Skipped::ReadOnly)]
+    );
+    assert_eq!(
+        find(&outcome.vault, "Netflix").state,
+        verrou_core::ItemState::Archived
+    );
+    let outcome = member_connection
+        .bulk(&ids, &verrou_vaultwarden::BulkAction::Unarchive, &|_, _| {})
+        .await
+        .unwrap();
+    assert_eq!(outcome.done, 1);
     // Écriture permise dans « Comptes communs ».
     let mut draft = member_connection.draft(&personal_id).await.unwrap();
     draft.notes = Some(SecretString::new("modifié par le membre"));

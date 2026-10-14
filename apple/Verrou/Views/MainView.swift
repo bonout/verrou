@@ -37,7 +37,9 @@ struct MainView: View {
                     EmptyPaneDetailView(title: "Aucun accès sélectionné", symbol: "person.2.badge.key")
                 }
             case .audit, nil:
-                if let detail = model.selectedDetail {
+                if model.isMultiSelection {
+                    MultiSelectionView()
+                } else if let detail = model.displayedDetail {
                     ItemDetailView(detail: detail)
                         .id(detail.summary.id)
                 } else {
@@ -126,6 +128,10 @@ struct MainView: View {
             NewSshKeyView(generator: generator)
                 .environment(model)
         }
+        .sheet(item: $model.moveRequest) { request in
+            MoveToFolderView(request: request)
+                .environment(model)
+        }
         .sheet(item: $model.sharingFlow) { flow in
             SharingView(flow: flow)
                 .environment(model)
@@ -154,14 +160,24 @@ private struct ItemToolbarActions: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let item = model.selectedSummary
+        // Plusieurs éléments sélectionnés : l'archivage vaut pour tous, le
+        // reste (une seule fiche) est grisé.
+        let multi = model.isMultiSelection
+        let item = multi ? nil : model.selectedSummary
         Button {
-            if let item { Task { await model.setArchived(item.id, true) } }
+            if multi {
+                let ids = model.selectedIDs
+                Task { await model.performBulk(.archive, on: ids) }
+            } else if let item {
+                Task { await model.setArchived(item.id, true) }
+            }
         } label: {
             Label("Archiver", systemImage: "archivebox")
         }
-        .help("Archiver : garder l'élément hors du chemin")
-        .disabled(!model.canModify(item) || item?.state != .active)
+        .help(multi ? "Archiver les \(model.selectedIDs.count) éléments sélectionnés"
+                    : "Archiver : garder l'élément hors du chemin")
+        .disabled(multi ? !model.canEdit || model.availability(of: model.selectedIDs).active == 0
+                        : !model.canModify(item) || item?.state != .active)
         Button {
             if let item { Task { await model.edit(item.id) } }
         } label: {
@@ -477,18 +493,11 @@ struct ItemListView: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(model.rows) { row in
-                                let selected = row.id == model.selection
-                                ItemRow(summary: row.summary, highlights: row.highlights, selected: selected)
-                                    .padding(.horizontal, 8)
-                                    .background(selected ? Theme.accent : .clear,
-                                                in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        model.selection = row.id
-                                        listFocused = true
-                                    }
-                                    .contextMenu { RowMenu(summary: row.summary) }
-                                    .id(row.id)
+                                ListRow(row: row, selected: model.selectedSet.contains(row.id)) {
+                                    listFocused = true
+                                }
+                                .equatable()
+                                .id(row.id)
                             }
                         }
                         .padding(.horizontal, 8)
@@ -497,17 +506,42 @@ struct ItemListView: View {
                     .focusable()
                     .focusEffectDisabled()
                     .focused($listFocused)
-                    .onKeyPress(.downArrow) { model.moveSelection(by: 1); return .handled }
-                    .onKeyPress(.upArrow) { model.moveSelection(by: -1); return .handled }
+                    .onKeyPress(keys: [.downArrow, .upArrow]) { press in arrow(press) }
+                    // Échap : retour à l'élément actif seul (sinon, comme
+                    // avant, Échap efface la recherche).
+                    .onKeyPress(.escape) {
+                        guard model.isMultiSelection else { return .ignored }
+                        model.applySelection(.collapse)
+                        return .handled
+                    }
                     .onChange(of: model.selection) { _, id in
                         if let id { proxy.scrollTo(id) }
                     }
+                    // ⌘A : tous les résultats, quand la liste a le focus
+                    // (dans le champ de recherche, ⌘A sélectionne le texte).
+                    .background(
+                        Button("") { model.applySelection(.selectAll) }
+                            .keyboardShortcut("a", modifiers: .command)
+                            .disabled(!listFocused)
+                            .opacity(0)
+                            .accessibilityHidden(true)
+                    )
                 }
             }
         }
         .background(Color(nsColor: .controlBackgroundColor))
-        .onKeyPress(.downArrow) { model.moveSelection(by: 1); return .handled }
-        .onKeyPress(.upArrow) { model.moveSelection(by: -1); return .handled }
+        .onKeyPress(keys: [.downArrow, .upArrow]) { press in arrow(press) }
+    }
+
+    /// ↑/↓ : élément voisin ; avec ⇧, étend la sélection depuis l'ancre.
+    private func arrow(_ press: KeyPress) -> KeyPress.Result {
+        let offset: Int32 = press.key == .downArrow ? 1 : -1
+        if press.modifiers.contains(.shift) {
+            model.applySelection(.step(offset: offset, extend: true))
+        } else {
+            model.moveSelection(by: Int(offset))
+        }
+        return .handled
     }
 
     private var resultCaption: String {
@@ -516,6 +550,51 @@ struct ItemListView: View {
             + Double(model.lastSearchDuration.components.seconds) * 1e6
         let time = micro < 1000 ? String(format: "%.0f µs", micro) : String(format: "%.1f ms", micro / 1000)
         return "\(n) élément\(n > 1 ? "s" : "") · \(time)"
+    }
+}
+
+/// Une ligne de la liste : surbrillance au survol (sans animation, état
+/// propre à la ligne : seules les deux lignes concernées se redessinent),
+/// sélection dès l'appui du bouton, comme le Finder.
+///
+/// Comparée par son contenu (`equatable`) : un changement de sélection ne
+/// redessine que les lignes dont l'état change, pas toutes les visibles.
+private struct ListRow: View, Equatable {
+    @Environment(AppModel.self) private var model
+    let row: ResultRow
+    let selected: Bool
+    /// Donne le focus à la liste (les flèches font alors défiler les éléments).
+    let focusList: () -> Void
+    @State private var hovered = false
+    @State private var pressed = false
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.selected == rhs.selected && lhs.row.summary == rhs.row.summary
+            && lhs.row.highlights == rhs.row.highlights
+    }
+
+    var body: some View {
+        ItemRow(summary: row.summary, highlights: row.highlights, selected: selected)
+            .padding(.horizontal, 8)
+            .background(selected ? Theme.accent : hovered ? Color.primary.opacity(0.07) : .clear,
+                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .contentShape(Rectangle())
+            .onHover { hovered = $0 }
+            // À l'appui, pas au relâchement : la surbrillance suit le clic
+            // sans attendre. ⌃-clic : seulement le menu contextuel.
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        guard !pressed else { return }
+                        pressed = true
+                        let modifiers = NSEvent.modifierFlags
+                        guard !modifiers.contains(.control) else { return }
+                        model.click(row.id, modifiers: modifiers)
+                        focusList()
+                    }
+                    .onEnded { _ in pressed = false }
+            )
+            .contextMenu { RowMenu(summary: row.summary) }
     }
 }
 
@@ -610,6 +689,16 @@ struct RowMenu: View {
     let summary: ItemSummary
 
     var body: some View {
+        // Clic droit sur une ligne de la sélection : l'action vaut pour toute
+        // la sélection ; sur une autre ligne, pour cette ligne seule.
+        if model.isMultiSelection && model.selectedSet.contains(summary.id) {
+            BulkActions(ids: model.selectedIDs, style: .menu)
+        } else {
+            single
+        }
+    }
+
+    @ViewBuilder private var single: some View {
         if summary.category == .login {
             Button("Copier l'identifiant") { model.copy(summary.subtitle, label: "Identifiant", secret: false) }
             Button("Copier le mot de passe") { model.copyPassword(of: summary.id) }

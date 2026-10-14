@@ -107,6 +107,18 @@ PR qui touche à l'un de ces points le dit dans sa description.
   éléments protégés (« redemander le mot de passe principal ») sont comparés
   comme les autres, à l'import comme ici : seul le verdict en sort, aucun
   secret.
+- **Actions groupées** (plusieurs éléments sélectionnés, `bulk.rs`) : même
+  chemin d'écriture qu'un seul élément. Corbeille, restauration, archives et
+  dossiers par les routes groupées de Vaultwarden (`PUT /api/ciphers/delete`,
+  `…/restore`, `…/archive`, `…/unarchive`, `…/move`), par lots de 500 ; un
+  lot refusé est repris élément par élément pour savoir lequel. Les favoris,
+  sans route groupée, partent un par un comme une modification (chiffrés
+  par le SDK, date de révision connue : un élément changé ailleurs est
+  refusé, jamais écrasé). Les éléments en lecture seule (et ceux de la
+  corbeille, sauf pour restaurer) sont écartés avant tout envoi, et comptés.
+  Hors ligne, chaque élément rejoint la file comme une action seule. Mettre
+  plusieurs éléments à la corbeille demande confirmation. La sélection
+  elle-même ne contient que des identifiants : aucun secret.
 - **Pièces jointes** (format Bitwarden) : chaque fichier a sa propre clé
   (64 octets, tirée par le SDK), chiffrée par la clé de l'élément (ou de
   l'utilisateur, ou de l'organisation) ; le nom du fichier est chiffré comme

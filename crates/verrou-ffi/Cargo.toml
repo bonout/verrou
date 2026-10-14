@@ -25,5 +25,14 @@ zeroize.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 
+[dev-dependencies]
+# Tests contre un vrai Vaultwarden (`VERROU_TEST_SERVER`) : inscription d'un
+# compte jetable, comme les tests de `verrou-vaultwarden`.
+bitwarden-core.workspace = true
+bitwarden-crypto.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+
 [lints]
 workspace = true

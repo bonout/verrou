@@ -64,6 +64,8 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on
   any item.
+- **Act on many items at once**: select them like in Finder, then archive,
+  trash, restore, favorite or move them to a folder in one go.
 - **Work offline**: edit, create, trash or archive items without network;
   changes are synced, in order, as soon as the server answers.
 - **Generate** strong passwords or memorable passphrases (French or English
@@ -128,6 +130,8 @@ Optional:
 | ⌘\\ | Fill the app in front of you |
 | ⌘F | Search |
 | ↑ ↓ | Move through the results |
+| ⌘-click / ⇧-click | Add an item to the selection / select a range |
+| ⇧↑ ⇧↓ / ⌘A | Extend the selection / select all results |
 | ⇧⌘C | Copy the selected password |
 | ⌘N / ⌘E | New item / edit the selected one |
 | ⌘R | Sync now |

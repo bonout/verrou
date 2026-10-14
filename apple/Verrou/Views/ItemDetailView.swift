@@ -234,7 +234,9 @@ struct FieldRow: View {
                 Text(field.label)
                     .font(.caption)
                     .foregroundStyle(field.fieldType == .password || field.fieldType == .totp ? Theme.accent : Color.secondary)
-                value
+                // Vue à part : le survol de la ligne ne la redessine pas
+                // (ni ne recalcule le code à usage unique).
+                FieldValue(itemID: itemID, field: field)
             }
             Spacer(minLength: 8)
             if field.secret && field.fieldType != .totp {
@@ -258,8 +260,15 @@ struct FieldRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityAction(named: "Copier") { model.copyField(field, of: itemID) }
     }
+}
 
-    @ViewBuilder private var value: some View {
+/// La valeur d'un champ (masquée, révélée, code à usage unique…).
+private struct FieldValue: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+    let field: FieldView
+
+    var body: some View {
         switch field.fieldType {
         case .totp:
             TimelineView(.periodic(from: .now, by: 1)) { context in

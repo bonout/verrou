@@ -213,7 +213,7 @@ impl Connection {
     }
 }
 
-fn folder_id(id: Option<String>) -> Result<Option<FolderId>, Error> {
+pub(crate) fn folder_id(id: Option<String>) -> Result<Option<FolderId>, Error> {
     id.filter(|f| !f.is_empty())
         .map(|f| {
             f.parse()

@@ -29,7 +29,7 @@ use crate::{Connection, CustomFieldDraft, CustomFieldKind, Decrypted, Draft, Err
 
 /// Éléments par requête : bien en deçà de la limite de taille des requêtes
 /// de Vaultwarden (20 Mo).
-const BATCH: usize = 500;
+pub(crate) const BATCH: usize = 500;
 
 /// Longueur maximale des notes chiffrées, imposée par Vaultwarden.
 const MAX_ENCRYPTED_NOTES: usize = 10_000;
@@ -231,7 +231,7 @@ impl Connection {
 
     /// Identifiant et nom chiffré de chaque dossier voulu (par nom) : celui
     /// qui existe déjà, sinon un dossier créé.
-    async fn ensure_folders(
+    pub(crate) async fn ensure_folders(
         &self,
         access: &str,
         wanted: BTreeSet<String>,

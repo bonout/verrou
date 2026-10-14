@@ -350,11 +350,42 @@ impl Api {
 
     /// Met plusieurs éléments à la corbeille en une requête (restaurables).
     pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
+        self.bulk_cipher_action(access_token, ids, "delete").await
+    }
+
+    /// `PUT /api/ciphers/{action}` sur plusieurs éléments en une requête :
+    /// `delete` (corbeille), `restore`, `archive`, `unarchive`. Vaultwarden
+    /// s'arrête au premier élément refusé (ceux d'avant restent faits).
+    pub async fn bulk_cipher_action(
+        &self,
+        access_token: &str,
+        ids: &[String],
+        action: &str,
+    ) -> Result<(), Error> {
         let response = self
             .http
-            .put(format!("{}/api/ciphers/delete", self.base))
+            .put(format!("{}/api/ciphers/{action}", self.base))
             .bearer_auth(access_token)
             .json(&CipherBulkDeleteRequestModel::new(ids.to_vec()))
+            .send()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Range plusieurs éléments dans un dossier (`None` : aucun) en une
+    /// requête, `PUT /api/ciphers/move`. Le dossier est propre au compte :
+    /// l'élément lui-même n'est pas réécrit.
+    pub async fn move_ciphers(
+        &self,
+        access_token: &str,
+        ids: &[String],
+        folder_id: Option<&str>,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/ciphers/move", self.base))
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({ "folderId": folder_id, "ids": ids }))
             .send()
             .await?;
         write_response(response).await.map(drop)
