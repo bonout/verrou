@@ -30,6 +30,10 @@ if codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q get-task-allo
   exit 1
 fi
 osascript -e 'tell application id "app.verrou.mac" to quit' >/dev/null 2>&1 || true
+# L'app refuse parfois de quitter (« User canceled ») : l'ancienne version
+# resterait ouverte par-dessus le nouveau paquet.
+sleep 1
+pkill -x Verrou 2>/dev/null || true
 rm -rf "$DEST/Verrou.app"
 ditto "$APP" "$DEST/Verrou.app"
 echo "Installé : $DEST/Verrou.app"
