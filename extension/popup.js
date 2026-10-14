@@ -99,8 +99,33 @@ async function renderUnlocked() {
       element("div", { className: "section-title", textContent: "Double authentification" }),
       element("p", { textContent: "Le site affiche un QR code pour une app d'authentification : Verrou peut le garder et générer les codes." }),
       scan, manual),
+    await autoSubmitSetting(),
     unpairLink(),
   );
+}
+
+// MARK: Réglages
+
+// « Envoyer le formulaire après le remplissage » (actif par défaut) : lu par
+// content.js après un remplissage choisi par l'utilisateur. Jamais pour une
+// carte, une adresse ou un mot de passe généré.
+async function autoSubmitSetting() {
+  let enabled = true;
+  try {
+    enabled = (await ext.storage.local.get("autoSubmit")).autoSubmit !== false;
+  } catch {
+    // Réglage illisible : la valeur par défaut.
+  }
+  const box = element("input", { type: "checkbox", id: "auto-submit", checked: enabled });
+  box.setAttribute("aria-describedby", "auto-submit-hint");
+  box.addEventListener("change", () => {
+    ext.storage.local.set({ autoSubmit: box.checked }).catch(() => {});
+  });
+  return element("div", { className: "section" },
+    element("label", { className: "toggle", htmlFor: "auto-submit" }, box,
+      element("span", { textContent: "Envoyer le formulaire après le remplissage" })),
+    element("p", { className: "sub", id: "auto-submit-hint",
+      textContent: "Seulement pour une connexion, quand plus rien n'est à saisir et sans captcha visible." }));
 }
 
 // MARK: Autre identifiant

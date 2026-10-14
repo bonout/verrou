@@ -259,9 +259,20 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   toujours les retirer ou dessiner une imitation, mais une imitation ne
   remplit rien. La pastille ne prend pas le focus ; elle ne montre que le
   site, les titres et les identifiants. Les secrets n'arrivent qu'au
-  remplissage, pour l'élément choisi, et rien n'est envoyé : le curseur va sur
-  le bouton d'envoi. Le bandeau d'enregistrement ne reçoit pas le mot de
-  passe.
+  remplissage, pour l'élément choisi. Le bandeau d'enregistrement ne reçoit
+  pas le mot de passe.
+- **Envoi après le remplissage** : seulement pour une connexion
+  (identifiant, mot de passe, code), après un vrai clic dans la pastille
+  (`isTrusted`) ou un choix dans la fenêtre de l'extension ; jamais pour une
+  carte, une adresse ou un mot de passe généré, donc jamais pour un
+  formulaire de paiement. Le formulaire ne part (`requestSubmit`, avec son
+  bouton) que si les valeurs remplies sont toujours là, qu'aucun autre champ
+  visible ne reste vide et qu'aucun captcha n'est visible ; une étape
+  suivante (mot de passe après l'identifiant) attend un nouveau clic.
+  Réglage « Envoyer le formulaire après le remplissage » de la fenêtre de
+  l'extension (`storage.local`, actif par défaut) ; désactivé, le curseur va
+  sur le bouton d'envoi et rien ne part. Identifiants envoyés tels que Verrou
+  les a remplis : pas de proposition d'enregistrement.
 - **Quand l'extension interroge Verrou** : au chargement d'une page qui
   montre un formulaire de connexion (champ mot de passe, identifiant qui se
   présente comme tel, ou code de vérification), une fois par étape du

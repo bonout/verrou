@@ -46,9 +46,14 @@ around a Rust core.
   top left of the page instead of a menu under the field. On a page with a
   login form and a login (or passkey) for that site, it appears once per page
   load: the site, the suggested username, *Se connecter* (sign in) and ✕.
-  *Se connecter* fills the username and password (or the one-time code) and
-  puts the cursor on the form's submit button: nothing is sent until you
-  press Enter. The *Autres identifiants ⌄* tab under the pill lists the
+  *Se connecter* fills the username and password (or the one-time code) and,
+  like 1Password, submits the form when nothing is left to type: no other
+  empty field and no visible captcha (an invisible reCAPTCHA v3 badge does
+  not count). A username-only first step is submitted too; the pill comes
+  back on the password step and waits for your click again. Cards, addresses
+  and generated passwords are never submitted. The popup's *Envoyer le
+  formulaire après le remplissage* checkbox (on by default) turns this off:
+  the cursor then lands on the submit button and Enter sends it. The *Autres identifiants ⌄* tab under the pill lists the
   site's other logins and passkeys, *Remplir avec un autre identifiant…*
   (link the site to an existing login, in the extension's popup) and, on a
   sign-up form, *Générer un mot de passe*. In the focused field there is only

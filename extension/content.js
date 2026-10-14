@@ -1,7 +1,9 @@
 // Dans chaque page (et chaque cadre) : repère les formulaires de connexion
 // et, quand Verrou a un identifiant (ou une passkey) pour ce site, affiche
 // une pastille en haut à gauche de la page, comme 1Password : le site,
-// l'identifiant proposé, « Se connecter » et « ✕ ». Sous la pastille,
+// l'identifiant proposé, « Se connecter » et « ✕ ». « Se connecter » remplit
+// puis envoie le formulaire quand plus rien n'est à taper (réglage de la
+// fenêtre de l'extension, actif par défaut). Sous la pastille,
 // l'onglet « Autres identifiants » déroule les autres identifiants du site,
 // « Remplir avec un autre identifiant… » et, sur une inscription,
 // « Générer un mot de passe ». Sur un champ « nouveau mot de passe », la
@@ -275,31 +277,124 @@
     return buttons.find((b) => after.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ?? null;
   }
 
+  // MARK: Envoi après le remplissage
+
+  // Réglage « Envoyer le formulaire après le remplissage » de la fenêtre de
+  // l'extension, actif par défaut.
+  async function autoSubmitEnabled() {
+    try {
+      const { autoSubmit } = await ext.storage.local.get("autoSubmit");
+      return autoSubmit !== false;
+    } catch {
+      return true;
+    }
+  }
+
+  // Types de champ qui ne demandent rien à taper.
+  const NOT_TYPED = new Set(["checkbox", "radio", "hidden", "submit", "button", "file", "image", "reset", "search"]);
+
+  // Le plus petit élément qui contient tous `nodes`.
+  function commonAncestor(nodes) {
+    let node = nodes[0];
+    while (node && !nodes.every((other) => node.contains(other))) node = node.parentNode;
+    return node ?? document.documentElement;
+  }
+
+  // Un champ visible, modifiable et vide reste à remplir (code client,
+  // chiffres d'un code découpé…) : c'est à l'utilisateur de finir.
+  function emptyFieldLeft(area) {
+    return [...area.querySelectorAll("input")].some((input) =>
+      usable(input) && !NOT_TYPED.has(typeOf(input)) && !input.value);
+  }
+
+  const CAPTCHA_SRC = /captcha|recaptcha|hcaptcha|challenges\.cloudflare|turnstile/i;
+
+  // Un captcha visible sur la page. Le badge de reCAPTCHA v3 et les widgets
+  // invisibles ne comptent pas : ils ne demandent rien à l'utilisateur.
+  function visibleCaptcha() {
+    const invisible = (node) => node.closest(".grecaptcha-badge")
+      || (node.getAttribute("data-size") ?? "").toLowerCase() === "invisible";
+    const frames = [...document.querySelectorAll("iframe")].filter((frame) => {
+      const src = frame.getAttribute("src") ?? "";
+      return CAPTCHA_SRC.test(src) && !/[?&]size=invisible/i.test(src);
+    });
+    const widgets = [...document.querySelectorAll(".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")]
+      // Le bouton d'envoi qui porte lui-même le captcha invisible.
+      .filter((node) => !(node instanceof HTMLInputElement) && node.tagName !== "BUTTON");
+    return [...frames, ...widgets].some((node) => !invisible(node) && visible(node));
+  }
+
+  // Le formulaire peut partir : tout ce que Verrou a rempli l'est encore, plus
+  // rien à taper autour, pas de captcha.
+  function readyToSubmit(scope, filled, button) {
+    if (!filled.length || !filled.every(([input, value]) => input.isConnected && input.value === value)) return false;
+    const area = scope === document ? commonAncestor([...filled.map(([input]) => input), button].filter(Boolean)) : scope;
+    return !emptyFieldLeft(area) && !visibleCaptcha();
+  }
+
+  // Envoie comme un clic sur le bouton : `requestSubmit` déclenche la
+  // validation et l'événement « submit » que les sites écoutent.
+  function submit(scope, button) {
+    if (scope !== document && typeof scope.requestSubmit === "function") {
+      try {
+        if (button && button.form === scope) scope.requestSubmit(button);
+        else scope.requestSubmit();
+        return;
+      } catch {
+        // Bouton refusé par le navigateur : le clic, ci-dessous.
+      }
+    }
+    button?.click();
+  }
+
+  // Ce que Verrou vient de remplir : envoyé tel quel, le formulaire n'a rien
+  // de nouveau à proposer d'enregistrer.
+  let lastFill = { username: null, password: null, at: 0 };
+
   // Remplit le formulaire de `anchor` (ou la page) avec `credentials`, puis
-  // place le curseur sur le bouton d'envoi : Entrée suffit, rien ne part tout
-  // seul.
-  function apply(credentials, anchor) {
+  // place le curseur sur le bouton d'envoi. Avec `autoSubmit` (choix explicite
+  // de l'utilisateur : pastille ou fenêtre de l'extension) et le réglage
+  // actif, le formulaire part si plus rien n'est à taper.
+  function apply(credentials, anchor, { autoSubmit = false } = {}) {
+    let scope;
+    let button;
+    const filled = [];
+    const fill = (input, value) => {
+      setValue(input, value);
+      filled.push([input, input.value]);
+    };
     withFilling(() => {
-      const scope = anchor ? scopeOf(anchor) : document;
+      scope = anchor ? scopeOf(anchor) : document;
       const inputs = inputsOf(scope);
       let last = null;
       if (anchor && classify(anchor) === "otp") {
-        if (credentials.totp) setValue(anchor, credentials.totp);
+        if (credentials.totp) fill(anchor, credentials.totp);
         last = anchor;
       } else {
         const username = inputs.find((i) => classify(i) === "username");
         const password = inputs.find(isLoginPassword);
-        if (credentials.username && username) setValue(username, credentials.username);
-        if (credentials.password && password) setValue(password, credentials.password);
+        if (credentials.username && username) fill(username, credentials.username);
+        if (credentials.password && password) fill(password, credentials.password);
         last = password ?? username;
         if (!username && !password) {
           const otp = inputs.find((i) => classify(i) === "otp");
-          if (otp && credentials.totp) setValue(otp, credentials.totp);
+          if (otp && credentials.totp) fill(otp, credentials.totp);
           last = otp ?? null;
         }
+        // Formulaire sans <form> : celui du champ rempli.
+        if (scope === document && last) scope = scopeOf(last);
       }
-      (submitButtonOf(scope, last) ?? last)?.focus({ preventScroll: true });
+      lastFill = { username: credentials.username ?? null, password: credentials.password ?? null, at: Date.now() };
+      button = submitButtonOf(scope, last);
+      (button ?? last)?.focus({ preventScroll: true });
     });
+    if (!autoSubmit || !filled.length || (scope === document && !button)) return;
+    // Laisser les frameworks traiter la saisie, puis vérifier à nouveau.
+    (async () => {
+      const enabled = await autoSubmitEnabled();
+      await sleep(150);
+      if (enabled && readyToSubmit(scope, filled, button)) submit(scope, button);
+    })();
   }
 
   // Le mot de passe généré dans tous les champs « nouveau » du formulaire
@@ -707,7 +802,8 @@
     if (pill.token !== token) return;
     const target = fillTarget(kind, anchor);
     pill.hide();
-    if (credentials?.ok) apply(credentials, target);
+    // Choix explicite dans la pastille (vrai clic) : le formulaire peut partir.
+    if (credentials?.ok) apply(credentials, target, { autoSubmit: true });
   }
 
   async function fillCardOrIdentity(item, kind, anchor) {
@@ -1070,6 +1166,7 @@
   // MARK: Enregistrement après l'envoi d'un formulaire
 
   let lastCapture = { key: "", at: 0 };
+  const FILL_MEMORY_MS = 5 * 60_000;
 
   // Identifiant et mot de passe du formulaire, au moment où il part.
   function capture(scope) {
@@ -1092,6 +1189,10 @@
     const texts = inputs.filter(isText);
     const before = texts.filter((i) => i.compareDocumentPosition(firstPassword) & Node.DOCUMENT_POSITION_FOLLOWING);
     const username = (texts.find((i) => classify(i) === "username") ?? before.at(-1))?.value.trim() ?? "";
+    // Identifiant et mot de passe tels que Verrou vient de les remplir (envoi
+    // automatique ou Entrée) : rien de nouveau à enregistrer.
+    if (!fresh.length && password === lastFill.password && (!username || username === lastFill.username)
+      && Date.now() - lastFill.at < FILL_MEMORY_MS) return;
     const key = `${username}\n${password}`;
     if (key === lastCapture.key && Date.now() - lastCapture.at < 3000) return;
     lastCapture = { key, at: Date.now() };
@@ -1301,7 +1402,9 @@
     // le cadre visé, et s'il est toujours à l'adresse remplie.
     if (message?.kind === "apply" && forThisPage(message)) {
       const active = document.activeElement;
-      apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null);
+      // Choix fait dans la fenêtre de l'extension : le formulaire peut partir.
+      apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null,
+        { autoSubmit: true });
       pill.hide();
     }
     // Formulaire envoyé sans changer de page (application monopage).
