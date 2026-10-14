@@ -44,7 +44,11 @@ pub fn allowed(kind: ClientKind, command: &Command) -> bool {
         | Command::Forms { .. }
         | Command::FillForm { .. }
         | Command::LinkSite { .. }
-        | Command::SearchLogins { .. } => kind == ClientKind::Browser,
+        | Command::SearchLogins { .. }
+        | Command::PasskeyList(_)
+        | Command::PasskeyGet(_)
+        | Command::PasskeyTargets(_)
+        | Command::PasskeyCreate(_) => kind == ClientKind::Browser,
         Command::VaultSearch { .. }
         | Command::VaultItem { .. }
         | Command::Reveal { .. }
@@ -234,7 +238,7 @@ fn password_of(item: &Item) -> Option<&str> {
 }
 
 /// Identifiants de la page, seulement les connexions.
-fn logins_for<'v>(vault: &'v Vault, page_url: &str) -> Vec<&'v Item> {
+pub(crate) fn logins_for<'v>(vault: &'v Vault, page_url: &str) -> Vec<&'v Item> {
     vault
         .suggestions_for(page_url)
         .into_iter()
@@ -327,6 +331,21 @@ pub enum Write {
         /// Site ajouté à l'élément (`LinkSite`).
         uri: Option<String>,
     },
+    /// Passkey créée pour la page ([`crate::passkeys::plan_creation`]) :
+    /// dans l'identifiant `item`, ou un nouvel identifiant (`title`, `uri`).
+    Passkey {
+        item: Option<String>,
+        title: String,
+        uri: String,
+        username: Option<String>,
+        passkey: Box<verrou_core::Passkey>,
+    },
+    /// Nouveau compteur d'une passkey, après une authentification.
+    PasskeyCounter {
+        item: String,
+        credential_id: String,
+        counter: u32,
+    },
 }
 
 /// L'élément `item` s'il correspond à la page.
@@ -338,7 +357,7 @@ fn matching_login<'v>(vault: &'v Vault, page_url: &str, item: &str) -> Result<&'
 }
 
 /// Titre et adresse d'un nouvel élément pour la page : le site, sans chemin.
-fn new_site(page_url: &str) -> Result<(String, String), String> {
+pub(crate) fn new_site(page_url: &str) -> Result<(String, String), String> {
     let url = Url::parse(page_url).map_err(|_| "adresse de page invalide".to_owned())?;
     let title = host_of(page_url).ok_or_else(|| "adresse de page invalide".to_owned())?;
     Ok((title, url.origin().ascii_serialization()))
@@ -590,6 +609,7 @@ pub fn plan_link_site(vault: &Vault, page_url: &str, item_id: &str) -> Result<Wr
 pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, String) {
     use verrou_core::Field;
     let mut items = vault.items().to_vec();
+    let passkeys = vault.passkeys().to_vec();
     let set = |item: &mut Item, kind: FieldKind, id: &str, label: &str, value: Option<String>| {
         let Some(value) = value else { return };
         match item.fields.iter_mut().find(|f| f.kind == kind) {
@@ -638,7 +658,7 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
             );
             set(&mut item, FieldKind::Totp, "totp", "Code", expose(totp));
             items.push(item);
-            (Vault::new(items), new_id.to_owned())
+            (Vault::new(items).with_passkeys(passkeys), new_id.to_owned())
         }
         Write::Update {
             item: id,
@@ -665,7 +685,10 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 );
                 set(item, FieldKind::Totp, "totp", "Code", expose(totp));
             }
-            (Vault::new(items), id)
+            (Vault::new(items).with_passkeys(passkeys), id)
+        }
+        write @ (Write::Passkey { .. } | Write::PasskeyCounter { .. }) => {
+            crate::passkeys::apply_in_memory(vault, write, new_id)
         }
     }
 }

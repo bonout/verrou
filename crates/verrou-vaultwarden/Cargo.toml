@@ -38,7 +38,7 @@ authenticator = { version = "0.5.0", default-features = false, features = ["cryp
 [dev-dependencies]
 tokio.workspace = true
 # Clé de sécurité logicielle des tests : signe comme une YubiKey.
-p256 = { version = "0.13", features = ["ecdsa"] }
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 ciborium = "0.2"
 
 [lints]

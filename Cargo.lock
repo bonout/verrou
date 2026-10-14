@@ -4950,6 +4950,7 @@ dependencies = [
  "data-encoding",
  "hmac 0.12.1",
  "nucleo-matcher",
+ "p256 0.13.2",
  "psl",
  "rand 0.8.8",
  "rand_chacha",

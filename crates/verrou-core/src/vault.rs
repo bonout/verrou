@@ -4,12 +4,15 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::matching::{SiteMatch, site_match};
 use crate::model::{Item, ItemKind, ItemState};
+use crate::passkey::Passkey;
 use crate::search::{Filter, Hit, SearchIndex, Sort, fold};
 
 pub struct Vault {
     items: Vec<Item>,
     index: SearchIndex,
     by_id: HashMap<String, usize>,
+    /// Passkeys des identifiants ([`Vault::with_passkeys`]).
+    passkeys: Vec<Passkey>,
 }
 
 /// Effectifs affichés dans la barre latérale.
@@ -38,6 +41,7 @@ impl Vault {
             items,
             index,
             by_id,
+            passkeys: Vec::new(),
         }
     }
 
@@ -127,5 +131,40 @@ impl Vault {
         counts.folders = folders.into_iter().collect();
         counts.tags = tags.into_iter().collect();
         counts
+    }
+}
+
+// MARK: Passkeys
+
+impl Vault {
+    /// Les passkeys des éléments du coffre (leur clé privée comprise, effacée
+    /// à la libération).
+    #[must_use]
+    pub fn with_passkeys(mut self, passkeys: Vec<Passkey>) -> Self {
+        self.passkeys = passkeys;
+        self
+    }
+
+    pub fn passkeys(&self) -> &[Passkey] {
+        &self.passkeys
+    }
+
+    /// Les passkeys d'un élément.
+    pub fn passkeys_of(&self, item: &str) -> Vec<&Passkey> {
+        self.passkeys.iter().filter(|p| p.item == item).collect()
+    }
+
+    /// Les passkeys utilisables pour le site `rp_id` : celles des
+    /// identifiants actifs.
+    pub fn passkeys_for(&self, rp_id: &str) -> Vec<&Passkey> {
+        self.passkeys
+            .iter()
+            .filter(|p| {
+                p.rp_id.eq_ignore_ascii_case(rp_id)
+                    && self
+                        .get(&p.item)
+                        .is_some_and(|i| i.kind == ItemKind::Login && i.is_active())
+            })
+            .collect()
     }
 }

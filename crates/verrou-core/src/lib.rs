@@ -13,6 +13,7 @@ pub mod import;
 pub mod matching;
 pub mod mock;
 pub mod model;
+pub mod passkey;
 pub mod search;
 pub mod secret;
 pub mod totp;
@@ -20,6 +21,7 @@ pub mod vault;
 pub mod watchtower;
 
 pub use model::{Field, FieldKind, Item, ItemKind, ItemState};
+pub use passkey::Passkey;
 pub use search::{Filter, Hit, Sort};
 pub use secret::SecretString;
 pub use vault::{Counts, Vault};

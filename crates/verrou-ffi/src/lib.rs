@@ -674,7 +674,7 @@ impl VaultSession {
             .map(|(id, name)| FolderOption { id, name })
             .collect();
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
-            Some(Vault::new(decrypted.items));
+            Some(Vault::new(decrypted.items).with_passkeys(decrypted.passkeys));
         failures
     }
 
@@ -760,6 +760,30 @@ impl VaultSession {
                     .await?;
                 (item, decrypted)
             }
+            Write::Passkey {
+                item,
+                title,
+                uri,
+                username,
+                passkey,
+            } => {
+                open.save_passkey(item.as_deref(), title, uri, username, &passkey)
+                    .await?
+            }
+            Write::PasskeyCounter {
+                item,
+                credential_id,
+                counter,
+            } => match open
+                .set_passkey_counter(&item, &credential_id, counter)
+                .await
+            {
+                Ok(decrypted) => (item, decrypted),
+                // Partagé en lecture seule : la passkey sert, mais son
+                // compteur ne peut pas avancer sur le serveur.
+                Err(verrou_vaultwarden::Error::ReadOnly) => return Ok(item),
+                Err(error) => return Err(error.into()),
+            },
         };
         drop(open);
         self.install_written(connection, decrypted)?;
@@ -1498,6 +1522,10 @@ pub enum AccessPurpose {
     Reveal,
     /// Signer avec la clé SSH de l'élément.
     Ssh,
+    /// Brave : utiliser ou créer une passkey (le site demande la
+    /// vérification de l'utilisateur). `item` est l'élément, ou
+    /// `passkey:<site>` pour un nouvel identifiant.
+    Passkey,
 }
 
 impl From<Purpose> for AccessPurpose {
@@ -1505,6 +1533,7 @@ impl From<Purpose> for AccessPurpose {
         match purpose {
             Purpose::Reveal => Self::Reveal,
             Purpose::Ssh => Self::Ssh,
+            Purpose::Passkey => Self::Passkey,
         }
     }
 }
@@ -1638,7 +1667,11 @@ impl Backend for SessionBackend {
                 // Coffre fictif : rien à écrire.
                 return Some(Err("coffre en lecture seule".to_owned()));
             };
+            // Le compteur d'une passkey avance à chaque connexion : rien à
+            // annoncer à l'utilisateur.
+            let quiet = matches!(write, Write::PasskeyCounter { .. });
             match session.perform_write(&connection, write).await {
+                Ok(id) if quiet => Some(Ok(id)),
                 Ok(id) => {
                     let title = session
                         .with_vault(|v| Ok(v.get(&id).map(|i| i.title.clone())))
@@ -2036,5 +2069,54 @@ mod tests {
         session.authorize_item(protected.clone());
         assert!(confirm(&protected));
         assert!(session.confirmations.pending.lock().unwrap().is_empty());
+    }
+}
+
+// MARK: Passkeys
+
+/// Une passkey d'un élément, telle que l'app la montre : jamais sa clé.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct PasskeyInfo {
+    /// Identifiant au format de Bitwarden, pour la supprimer.
+    pub credential_id: String,
+    pub rp_id: String,
+    pub rp_name: Option<String>,
+    pub user_name: Option<String>,
+    /// Horodatage Unix de création.
+    pub created: i64,
+}
+
+#[uniffi::export(async_runtime = "tokio")]
+impl VaultSession {
+    /// Les passkeys de l'élément (site, utilisateur, date), sans clé privée.
+    pub fn passkeys(&self, id: String) -> Vec<PasskeyInfo> {
+        self.with_vault(|v| {
+            Ok(v.passkeys_of(&id)
+                .into_iter()
+                .map(|p| PasskeyInfo {
+                    credential_id: p.credential_id.clone(),
+                    rp_id: p.rp_id.clone(),
+                    rp_name: p.rp_name.clone(),
+                    user_name: p.user_name.clone().or_else(|| p.user_display_name.clone()),
+                    created: p.created,
+                })
+                .collect())
+        })
+        .unwrap_or_default()
+    }
+
+    /// Retire une passkey de l'élément (sur le serveur), puis resynchronise.
+    pub async fn delete_passkey(
+        &self,
+        id: String,
+        credential_id: String,
+    ) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let decrypted = connection
+            .lock()
+            .await
+            .delete_passkey(&id, &credential_id)
+            .await?;
+        self.install_if_current(&connection, decrypted)
     }
 }

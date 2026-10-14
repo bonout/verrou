@@ -32,6 +32,7 @@ use zeroize::Zeroize as _;
 use crate::access::{self, Write};
 use crate::clients::{ClientInfo, ClientStore};
 use crate::crypto::{Direction, KeyPair};
+use crate::passkeys;
 use crate::protocol::{
     CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
     MAX_FRAME, Outgoing, Reply, ReplyResult, Request, SaveAction, SecretValue, Suggestion,
@@ -111,6 +112,10 @@ pub enum Purpose {
     Reveal,
     /// Signer avec la clé SSH de l'élément.
     Ssh,
+    /// Extension : utiliser ou créer une passkey quand le site demande la
+    /// vérification de l'utilisateur (l'élément, ou `passkey:<site>` pour un
+    /// nouvel identifiant).
+    Passkey,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -408,6 +413,10 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         | Command::FillForm { .. }
         | Command::LinkSite { .. }
         | Command::SearchLogins { .. }) => forms(&**backend, command).await,
+        command @ (Command::PasskeyList(_)
+        | Command::PasskeyGet(_)
+        | Command::PasskeyTargets(_)
+        | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
         Command::Unlock => {
             backend.request_unlock();
             ReplyResult::Done
@@ -674,5 +683,97 @@ async fn forms(backend: &dyn Backend, command: Command) -> ReplyResult {
         _ => ReplyResult::Denied {
             reason: "commande inattendue".to_owned(),
         },
+    }
+}
+
+// MARK: Passkeys
+
+/// Passkeys de la page ([`crate::passkeys`]). La vérification de
+/// l'utilisateur demandée par le site passe par l'accord de Verrou (Touch
+/// ID) ; sinon, un élément protégé attend sa confirmation, comme au
+/// remplissage.
+async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
+    let backend = &*shared.backend;
+    let denied = |reason: String| ReplyResult::Denied { reason };
+    match command {
+        Command::PasskeyList(query) => match read(backend, |v| passkeys::list(v, &query)) {
+            None => ReplyResult::Locked,
+            Some(Ok(items)) => ReplyResult::Passkeys { items },
+            Some(Err(reason)) => denied(reason),
+        },
+        Command::PasskeyTargets(query) => match read(backend, |v| passkeys::targets(v, &query)) {
+            None => ReplyResult::Locked,
+            Some(Ok((excluded, logins))) => ReplyResult::PasskeyTargets { excluded, logins },
+            Some(Err(reason)) => denied(reason),
+        },
+        Command::PasskeyGet(request) => {
+            let found = read(backend, |v| {
+                passkeys::find(v, &request).map(|(item, _)| (item.id.clone(), item.title.clone()))
+            });
+            let (item, title) = match found {
+                None => return ReplyResult::Locked,
+                Some(Err(reason)) => return denied(reason),
+                Some(Ok(found)) => found,
+            };
+            if request.uv {
+                // L'accord de Verrou couvre aussi un élément protégé.
+                if !approved(shared, client, Purpose::Passkey, &item, &title).await {
+                    return refused();
+                }
+            } else {
+                match read(backend, |v| v.get(&item).is_some_and(|i| backend.gate(i))) {
+                    None => return ReplyResult::Locked,
+                    Some(false) => return ReplyResult::Confirm,
+                    Some(true) => {}
+                }
+            }
+            let uv = request.uv;
+            let slot = Arc::new(Mutex::new(None));
+            let out = Arc::clone(&slot);
+            let outcome = backend
+                .write(Box::new(move |vault| {
+                    let (write, assertion) = passkeys::plan_assertion(vault, &request, uv)?;
+                    *lock(&out) = Some(assertion);
+                    Ok(write)
+                }))
+                .await;
+            let assertion = lock(&slot).take();
+            match (written(outcome), assertion) {
+                (ReplyResult::Saved { .. }, Some(assertion)) => ReplyResult::Assertion(assertion),
+                (ReplyResult::Saved { .. }, None) => denied("passkey indisponible".to_owned()),
+                (other, _) => other,
+            }
+        }
+        Command::PasskeyCreate(request) => {
+            let (key, title) = match read(backend, |v| passkeys::check_creation(v, &request)) {
+                None => return ReplyResult::Locked,
+                Some(Err(reason)) => return denied(reason),
+                Some(Ok(found)) => found,
+            };
+            if request.uv && !approved(shared, client, Purpose::Passkey, &key, &title).await {
+                return refused();
+            }
+            let uv = request.uv;
+            let now = now_ms() / 1000;
+            let slot = Arc::new(Mutex::new(None));
+            let out = Arc::clone(&slot);
+            let outcome = backend
+                .write(Box::new(move |vault| {
+                    let (write, registration) = passkeys::plan_creation(vault, &request, uv, now)?;
+                    *lock(&out) = Some(registration);
+                    Ok(write)
+                }))
+                .await;
+            let registration = lock(&slot).take();
+            match (written(outcome), registration) {
+                (ReplyResult::Saved { item }, Some(mut registration)) => {
+                    registration.item = item;
+                    ReplyResult::Registration(registration)
+                }
+                (ReplyResult::Saved { .. }, None) => denied("passkey indisponible".to_owned()),
+                (other, _) => other,
+            }
+        }
+        _ => denied("commande inattendue".to_owned()),
     }
 }

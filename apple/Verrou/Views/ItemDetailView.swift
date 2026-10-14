@@ -26,6 +26,7 @@ struct ItemDetailView: View {
                         }
                     }
                 }
+                PasskeysSection(itemID: detail.summary.id, passkeys: model.session.passkeys(id: detail.summary.id))
                 if detail.hasNotes {
                     SectionTitle("Notes")
                     FieldCard { NotesRow(itemID: detail.summary.id) }

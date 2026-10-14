@@ -1086,3 +1086,14 @@ final class AutoLock {
         }
     }
 }
+
+// MARK: Passkeys
+
+extension AppModel {
+    /// Retire une passkey de l'identifiant, sur le serveur.
+    func deletePasskey(itemID: String, credentialID: String) async {
+        await perform("Passkey supprimée", select: itemID) {
+            try await self.session.deletePasskey(id: itemID, credentialId: credentialID)
+        }
+    }
+}
