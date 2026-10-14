@@ -220,6 +220,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         launchedAtLogin = LaunchAtLogin.launchedAtLogin
+        // Infobulles des boutons (barre d'outils, icônes) au bout de 0,3 s
+        // au lieu d'environ une seconde : le survol répond tout de suite.
+        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 300])
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
