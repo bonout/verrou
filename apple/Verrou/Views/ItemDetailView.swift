@@ -89,7 +89,9 @@ struct ItemDetailView: View {
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
-                HStack(spacing: 8) {
+                // Les pastilles passent à la ligne quand la colonne est
+                // étroite, sans jamais couper leur texte.
+                FlowLayout(spacing: 8, lineSpacing: 6) {
                     Chip(text: detail.summary.kindLabel, symbol: detail.summary.symbol, tint: detail.summary.tint)
                     if let folder = detail.summary.folder {
                         Chip(text: folder, symbol: "folder", tint: .secondary)
@@ -213,6 +215,8 @@ struct Chip: View {
 
     var body: some View {
         Label(text, systemImage: symbol)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .font(.caption.weight(.medium))
             .foregroundStyle(tint == .secondary ? Color.secondary : tint)
             .padding(.horizontal, 8)
