@@ -36,21 +36,21 @@ struct AuditView: View {
                             Text("Même mot de passe sur \(group.count) éléments")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .padding(.horizontal, 8).padding(.top, 6)
-                            ForEach(group, id: \.id) { row($0).id("reused-\($0.id)") }
+                            ForEach(group, id: \.id) { row($0, change: true).id("reused-\($0.id)") }
                         }
                     }
                     if !audit.weak.isEmpty {
                         title("Faibles", count: audit.weak.count,
                               detail: "Trop courts ou trop simples pour résister à une attaque hors ligne.")
                         ForEach(audit.weak, id: \.item.id) { weak in
-                            row(weak.item, note: "\(Int(weak.bits)) bits")
+                            row(weak.item, note: "\(Int(weak.bits)) bits", change: true)
                                 .id("weak-\(weak.item.id)")
                         }
                     }
                     if !audit.insecure.isEmpty {
                         title("Sites en HTTP", count: audit.insecure.count,
                               detail: "Le mot de passe y circule en clair : Verrou ne le remplit pas dans Brave.")
-                        ForEach(audit.insecure, id: \.id) { row($0).id("http-\($0.id)") }
+                        ForEach(audit.insecure, id: \.id) { row($0, change: true).id("http-\($0.id)") }
                     }
                     if audit.reused.isEmpty && audit.weak.isEmpty && audit.insecure.isEmpty {
                         Label("Aucun mot de passe réutilisé ou faible", systemImage: "checkmark.seal.fill")
@@ -58,7 +58,7 @@ struct AuditView: View {
                             .padding(8)
                     }
                 }
-                WatchtowerSections(row: { row($0, note: $1) })
+                WatchtowerSections(row: { row($0, note: $1, change: $2) })
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
@@ -85,7 +85,7 @@ struct AuditView: View {
                       ? "Aucun de vos mots de passe n'apparaît dans les fuites recensées."
                       : "Ces mots de passe circulent dans des fuites publiques : changez-les en premier.")
             ForEach(breaches, id: \.item.id) { breach in
-                row(breach.item, note: "vu \(breach.count.formatted()) fois")
+                row(breach.item, note: "vu \(breach.count.formatted()) fois", change: true)
                     .id("breach-\(breach.item.id)")
             }
         } else {
@@ -123,13 +123,18 @@ struct AuditView: View {
         .padding(.bottom, 2)
     }
 
-    private func row(_ summary: ItemSummary, note: String? = nil) -> some View {
+    /// `change` : la ligne propose « Changer le mot de passe » (identifiant
+    /// avec un site).
+    private func row(_ summary: ItemSummary, note: String? = nil, change: Bool = false) -> some View {
         let selected = summary.id == model.selection
         return HStack {
             ItemRow(summary: summary, highlights: [], selected: selected)
             if let note {
                 Text(note).font(.caption).monospacedDigit()
                     .foregroundStyle(selected ? Color.white.opacity(0.85) : .secondary)
+            }
+            if change, summary.canChangePassword {
+                ChangePasswordButton(summary: summary, title: "Changer", selected: selected)
             }
         }
         .padding(.horizontal, 8)
@@ -144,7 +149,8 @@ struct AuditView: View {
 /// expirées ou bientôt expirées, mots de passe anciens (`Watchtower`).
 private struct WatchtowerSections<Row: View>: View {
     @Environment(AppModel.self) private var model
-    let row: (ItemSummary, String?) -> Row
+    /// Ligne d'un élément : note, et bouton « Changer le mot de passe ».
+    let row: (ItemSummary, String?, Bool) -> Row
 
     var body: some View {
         let watchtower = model.watchtower
@@ -154,7 +160,7 @@ private struct WatchtowerSections<Row: View>: View {
                 title("Cartes expirées ou bientôt expirées", count: report.cards.count,
                       detail: "Mettez à jour la date et le cryptogramme de la nouvelle carte, ici et chez les marchands.")
                 ForEach(report.cards, id: \.item.id) { card in
-                    row(card.item, cardNote(card))
+                    row(card.item, cardNote(card), false)
                         .id("card-\(card.item.id)")
                 }
             }
@@ -162,7 +168,7 @@ private struct WatchtowerSections<Row: View>: View {
                 title("Mots de passe anciens", count: report.old.count,
                       detail: "Éléments inchangés depuis plus de 3 ans : leur mot de passe date au moins de cette époque.")
                 ForEach(report.old, id: \.item.id) { old in
-                    row(old.item, age(days: old.days))
+                    row(old.item, age(days: old.days), true)
                         .id("old-\(old.item.id)")
                 }
             }
@@ -176,7 +182,7 @@ private struct WatchtowerSections<Row: View>: View {
                       detail: twoFactorDetail(report))
                 ForEach(report.missing, id: \.item.id) { missing in
                     HStack(spacing: 4) {
-                        row(missing.item, missing.totp ? nil : methods(missing.methods))
+                        row(missing.item, missing.totp ? nil : methods(missing.methods), false)
                         if let doc = missing.documentation, let url = URL(string: doc) {
                             Link(destination: url) {
                                 Image(systemName: "questionmark.circle")
@@ -248,5 +254,44 @@ private struct WatchtowerSections<Row: View>: View {
         .padding(.horizontal, 8)
         .padding(.top, 14)
         .padding(.bottom, 2)
+    }
+}
+
+/// « Changer le mot de passe » : ouvre la page du site où le faire
+/// (`AppModel.changePassword`). Un indicateur le temps de la vérification.
+struct ChangePasswordButton: View {
+    @Environment(AppModel.self) private var model
+    let summary: ItemSummary
+    var title = "Changer le mot de passe"
+    /// Ligne sélectionnée (fond d'accent) : texte blanc.
+    var selected = false
+    /// Bouton bordé (fiche de l'élément) plutôt que lien discret (audit).
+    var bordered = false
+
+    var body: some View {
+        let busy = model.changingPassword == summary.id
+        let button = Button {
+            Task { await model.changePassword(of: summary) }
+        } label: {
+            HStack(spacing: 4) {
+                if busy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                Text(title)
+            }
+        }
+        .disabled(model.changingPassword != nil || model.lockState != .unlocked)
+        .help("Ouvrir la page de changement du mot de passe sur \(summary.host ?? "le site")")
+        .accessibilityLabel("Changer le mot de passe")
+        if bordered {
+            button
+        } else {
+            button
+                .buttonStyle(.borderless)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(selected ? Color.white : Theme.accent)
+        }
     }
 }

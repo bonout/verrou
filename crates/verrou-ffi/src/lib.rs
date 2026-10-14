@@ -717,6 +717,10 @@ pub struct VaultSession {
     /// Identifiants dont le mot de passe vient d'être enregistré depuis
     /// Verrou, en attente de `check_new_passwords`.
     new_passwords: Mutex<Vec<String>>,
+    /// Empreinte (SHA-256) du mot de passe de chaque identifiant trouvé dans
+    /// des fuites, au moment de la vérification : un mot de passe changé
+    /// depuis sort de la liste (`still_breached`). Effacé au verrouillage.
+    breached: Mutex<HashMap<String, [u8; 32]>>,
     /// Éléments dont une modification faite hors ligne attend le serveur.
     pending_items: RwLock<HashSet<String>>,
     /// Éléments créés hors ligne : identifiant provisoire → serveur.
@@ -1005,6 +1009,7 @@ impl VaultSession {
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
             new_passwords: Mutex::new(Vec::new()),
+            breached: Mutex::new(HashMap::new()),
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
         })
@@ -1309,6 +1314,7 @@ impl VaultSession {
                 })
                 .collect())
         })?;
+        self.remember_breached(&candidates, &breached);
         breached.sort_by_key(|b| std::cmp::Reverse(b.count));
         Ok(breached)
     }
@@ -1423,6 +1429,7 @@ impl VaultSession {
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
             new_passwords: Mutex::new(Vec::new()),
+            breached: Mutex::new(HashMap::new()),
             pending_items: RwLock::new(HashSet::new()),
             remapped: RwLock::new(HashMap::new()),
         })
@@ -1482,6 +1489,10 @@ impl VaultSession {
             .clear();
         self.cancel_import();
         self.forget_new_passwords();
+        self.breached
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
     }
 
     /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets

@@ -30,6 +30,12 @@ struct ItemDetailView: View {
                         }
                     }
                 }
+                if detail.summary.canChangePassword {
+                    HStack {
+                        ChangePasswordButton(summary: detail.summary, bordered: true)
+                        Spacer()
+                    }
+                }
                 if detail.summary.template == .wifi {
                     WifiQRButton(itemID: detail.summary.id, title: detail.summary.title)
                 }

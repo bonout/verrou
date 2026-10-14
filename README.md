@@ -54,7 +54,9 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   In Brave, the extension reloads itself when Verrou is updated.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
-  two-factor authentication you haven't turned on.
+  two-factor authentication you haven't turned on. *Changer le mot de passe*
+  opens the site's change-password page in one click, and the extension then
+  suggests a strong password and saves it.
 - **Share**: shared vaults with family or a team (Vaultwarden organizations),
   encrypted links that expire for a text or a file (Send), and emergency
   access for trusted contacts.
@@ -84,6 +86,9 @@ Verrou talks to your own server, with two exceptions:
 - **The audit** downloads the public [2fa.directory](https://2fa.directory)
   list, at most once a week, as a whole file: it never asks about your sites
   one by one.
+- **Changer le mot de passe** asks only the site you are about to open
+  whether it has a [change-password page](https://w3c.github.io/webappsec-change-password-url/),
+  and only when you click.
 
 The browser extension only receives the logins of the site in front of it, over
 an end-to-end encrypted channel. Copied secrets are hidden from clipboard
