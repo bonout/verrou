@@ -10,6 +10,10 @@
 //! pour que le test le compare à celui de l'extension. Les demandes d'accord
 //! du terminal aussi (`CONFIRM …`). Le coffre contient une clé SSH ed25519,
 //! créée au démarrage, pour l'agent SSH.
+//!
+//! `VERROU_EXTENSION_MANIFEST` : le `manifest.json` dont la version est
+//! annoncée en réponse à `status`, comme celui du paquet de l'app (relu à
+//! chaque fois : un test peut le changer pour simuler une mise à jour).
 
 use std::io::Write as _;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -253,6 +257,7 @@ fn main() {
         }),
     )
     .unwrap();
+    bridge.set_extension_manifest(std::env::var_os("VERROU_EXTENSION_MANIFEST").map(Into::into));
     println!("PORT {}", bridge.port());
     let _ = std::io::stdout().flush();
     BRIDGE.get_or_init(|| Mutex::new(Some(bridge)));

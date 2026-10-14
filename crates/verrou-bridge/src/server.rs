@@ -141,6 +141,9 @@ struct Shared {
     pending: Mutex<Option<(String, oneshot::Sender<bool>)>>,
     last_pairing: Mutex<Option<Instant>>,
     approvals: Mutex<Approvals>,
+    /// `manifest.json` de l'extension livrée avec l'app : relu à chaque
+    /// `status`, pour annoncer sa version à l'extension.
+    extension_manifest: Mutex<Option<PathBuf>>,
 }
 
 /// Le pont en marche. Le libérer l'arrête.
@@ -163,6 +166,7 @@ impl Bridge {
             pending: Mutex::new(None),
             last_pairing: Mutex::new(None),
             approvals: Mutex::new(HashMap::new()),
+            extension_manifest: Mutex::new(None),
         });
         let (shutdown, mut stop) = oneshot::channel::<()>();
         let state = Arc::clone(&shared);
@@ -225,6 +229,14 @@ impl Bridge {
     pub fn revoke(&self, id: &str) {
         lock(&self.shared.clients).remove(id);
         lock(&self.shared.approvals).retain(|(client, _, _), _| client != id);
+    }
+
+    /// Le `manifest.json` de l'extension livrée avec l'app (voir
+    /// [`crate::bundled_extension_manifest`]) : sa version est annoncée dans
+    /// la réponse à `status`, pour que l'extension se recharge quand l'app a
+    /// été mise à jour.
+    pub fn set_extension_manifest(&self, path: Option<PathBuf>) {
+        *lock(&self.shared.extension_manifest) = path;
     }
 
     /// Oublie les accords donnés au terminal (au verrouillage du coffre).
@@ -402,6 +414,9 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         },
         Command::Status => ReplyResult::Status {
             unlocked: backend.is_unlocked(),
+            extension_version: lock(&shared.extension_manifest)
+                .as_deref()
+                .and_then(crate::extension_version_at),
         },
         Command::Suggest { url } => match backend.suggestions(&url) {
             None => ReplyResult::Locked,

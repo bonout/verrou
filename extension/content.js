@@ -3,6 +3,10 @@
 // champ « nouveau mot de passe », un mot de passe fort ; après l'envoi d'un
 // formulaire, d'enregistrer l'identifiant dans Verrou.
 //
+// Quand la page attend une passkey en remplissage automatique (`mediation:
+// "conditional"`), le menu propose aussi les passkeys de Verrou pour ce site
+// (passkeys.js, cadre principal).
+//
 // Le menu et le bandeau vivent dans un shadow DOM fermé : la page ne peut ni
 // les lire ni les modifier, et seuls les clics réels (`isTrusted`) les
 // déclenchent. Les secrets n'arrivent qu'au moment du remplissage, pour
@@ -455,6 +459,12 @@
         if (reply?.ok) applyForm(reply.data, anchor);
         return;
       }
+      if (row.passkey) {
+        // La signature et sa fenêtre d'avancement : passkeys.js.
+        this.hide();
+        passkeyMenu()?.choose(row.passkey);
+        return;
+      }
       if (row.action === "generate") {
         this.hide();
         applyGenerated(row.password, anchor);
@@ -507,7 +517,7 @@
             if (document.activeElement === anchor) offer(anchor);
             return;
           }
-          const rows = rowsFor(reply, kind);
+          const rows = [...passkeyRows(await passkeyEntries(kind)), ...rowsFor(reply, kind)];
           if (rows.length && this.anchor === anchor) this.show(anchor, kind, rows);
           else this.hide();
         }
@@ -528,6 +538,32 @@
         title: kind === "otp" ? `Code de ${item.title}` : item.title,
         subtitle: item.username,
       }));
+  }
+
+  // MARK: Passkeys (remplissage automatique)
+
+  // L'interface de passkeys.js, dans le cadre principal seulement.
+  const passkeyMenu = () => (window === top ? globalThis.__verrouPasskeyMenu : undefined);
+
+  // Les passkeys de Verrou que la page attend, pour un champ de connexion.
+  async function passkeyEntries(kind) {
+    const api = passkeyMenu();
+    if (!api || (kind !== "username" && kind !== "password")) return { state: "none" };
+    try {
+      return await api.entries();
+    } catch {
+      return { state: "none" };
+    }
+  }
+
+  function passkeyRows(entries) {
+    if (entries.state !== "ready") return [];
+    return entries.items.map((item) => ({
+      passkey: item.credential,
+      badge: "🔑",
+      title: `Passkey · ${item.user_name || item.title}`,
+      subtitle: item.title,
+    }));
   }
 
   function generatorRow() {
@@ -559,14 +595,30 @@
       else menu.hide();
       return;
     }
-    const reply = await send({ kind: "suggest" });
+    const [reply, passkeys] = await Promise.all([send({ kind: "suggest" }), passkeyEntries(kind)]);
     if (document.activeElement !== input) return;
     // Verrouillé : on ne le signale que sur un vrai formulaire de connexion.
     if (reply.state === "locked" && kind === "otp") return;
-    const rows = rowsFor(reply, kind);
+    // Les passkeys d'abord, comme le navigateur ; « Déverrouiller » suffit
+    // pour les deux.
+    let rows = rowsFor(reply, kind);
+    if (passkeys.state === "locked" && !rows.some((row) => row.action === "unlock")) {
+      rows = [{ action: "unlock", badge: "🔒", title: "Déverrouiller Verrou", subtitle: "pour utiliser une passkey" }, ...rows];
+    }
+    rows = [...passkeyRows(passkeys), ...rows];
     if (rows.length) menu.show(input, kind, rows);
     else menu.hide();
   }
+
+  // La page vient de demander une passkey (ou la demande s'est terminée) :
+  // le menu ouvert se met à jour, et un champ de connexion déjà actif reçoit
+  // le menu, comme s'il venait d'être sélectionné.
+  passkeyMenu()?.subscribe(() => {
+    const active = menu.open ? menu.anchor : document.activeElement;
+    if (filling || !(active instanceof HTMLInputElement)) return;
+    const kind = classify(active);
+    if (kind === "username" || kind === "password") offer(active);
+  });
 
   // MARK: Enregistrement après l'envoi d'un formulaire
 
@@ -749,7 +801,9 @@
   }, true);
 
   document.addEventListener("keydown", (event) => {
-    if (menu.open && event.target === menu.anchor) {
+    // Seulement les vraies touches : la page ne choisit pas à la place de
+    // l'utilisateur.
+    if (event.isTrusted && menu.open && event.target === menu.anchor) {
       const keys = {
         ArrowDown: () => menu.move(1),
         ArrowUp: () => menu.move(-1),

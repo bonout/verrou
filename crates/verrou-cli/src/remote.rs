@@ -232,7 +232,7 @@ impl Remote {
 
     pub fn unlocked(&mut self) -> Result<bool, Error> {
         match self.call(&Command::Status)? {
-            ReplyResult::Status { unlocked } => Ok(unlocked),
+            ReplyResult::Status { unlocked, .. } => Ok(unlocked),
             other => Err(Error::Protocol(format!("réponse inattendue : {other:?}"))),
         }
     }

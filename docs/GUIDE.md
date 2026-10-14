@@ -56,7 +56,14 @@ iOS to follow), a Brave extension and a CLI, built around a Rust core.
   from the popup (*Remplir avec un autre identifiant…*).
 - **Passkeys in Brave**: when a site asks for a passkey, Verrou offers its
   own for that site, or to save a new one in the site's login (or a new
-  one); "use the browser" hands over to Brave. Passkeys are stored the
+  one); "use the browser" hands over to Brave. Sites that offer passkey
+  autofill (`mediation: "conditional"`, e.g. a username field with
+  `autocomplete="username webauthn"`) get them in the field menu, like
+  1Password: *Passkey · user* sits above the passwords, and Enter or a click
+  signs in. No passkey in Verrou for that site, or Verrou not reachable:
+  Brave's own autofill takes over. When Verrou cannot take a passkey request
+  (app not running, extension not linked, key type it cannot create), a short
+  notice says so instead of silently handing over to Brave. Passkeys are stored the
   Bitwarden way (`fido2Credentials`), so they work both ways with the
   official apps and web vault. The private key stays in the Rust core:
   Verrou signs (ES256) and only the public key and signatures reach the
@@ -297,10 +304,21 @@ Verrou from the Accessibility list and allow it again.
 3. Click Verrou's icon in Brave, *Relier à Verrou* (link to Verrou), check that
    Verrou shows the same code, and accept.
 
+No manual reload after an update: each build gives the bundled extension a
+version derived from its files (`scripts/stamp-extension.sh`), and the
+bridge reports it. The extension compares it with its own (at startup, on
+each connection to Verrou and every 10 minutes) and reloads itself from
+disk, at most once per version. Tabs opened before the reload need a page
+reload to get the new scripts; a passkey request there says so. If the
+popup warns that the extension isn't Verrou's, it was loaded from another
+folder: load the one inside `Verrou.app` instead.
+
 ```sh
 node --test extension/test/bridge.test.mjs   # extension protocol against the real bridge
 node --test extension/test/passkeys.test.mjs # passkeys: page options, creation and sign-in
+node --test extension/test/seamless.test.mjs # self-reload, passkey autofill, fallback notices
 node extension/e2e/brave.mjs                  # walkthrough in a real Brave (throwaway profile)
+node extension/e2e/seamless.mjs               # passkey autofill in a real Brave (SEAMLESS_UPDATE=1: self-reload)
 ```
 
 (Both need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`.)

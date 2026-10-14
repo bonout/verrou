@@ -516,6 +516,55 @@ fn refused_or_forged_clients_get_nothing() {
     let _ = std::fs::remove_file(file);
 }
 
+#[test]
+fn status_announces_the_bundled_extension_version() {
+    let (bridge, _backend, pairings, file) = start();
+    let mut client = paired(&bridge, &pairings, "browser");
+
+    // Sans extension livrée (tests, terminal) : rien d'annoncé.
+    let status = client.request(&json!({ "cmd": "status" }));
+    assert_eq!(status["result"], "status");
+    assert!(status.get("extension_version").is_none());
+
+    // La version du manifeste livré, relue à chaque fois : une mise à jour
+    // de l'app se voit sans redémarrer le pont.
+    let manifest =
+        std::env::temp_dir().join(format!("verrou-manifest-{}.json", uuid::Uuid::new_v4()));
+    std::fs::write(
+        &manifest,
+        r#"{ "name": "Verrou", "version": "0.3.0.1234" }"#,
+    )
+    .unwrap();
+    bridge.set_extension_manifest(Some(manifest.clone()));
+    let status = client.request(&json!({ "cmd": "status" }));
+    assert_eq!(status["extension_version"], "0.3.0.1234");
+    assert_eq!(status["unlocked"], true);
+    std::fs::write(
+        &manifest,
+        r#"{ "name": "Verrou", "version": "0.3.0.4321" }"#,
+    )
+    .unwrap();
+    let status = client.request(&json!({ "cmd": "status" }));
+    assert_eq!(status["extension_version"], "0.3.0.4321");
+
+    // Un manifeste illisible ou une version invalide : rien plutôt que n'importe quoi.
+    std::fs::write(&manifest, r#"{ "version": "1.2.3.4.5" }"#).unwrap();
+    assert!(
+        client
+            .request(&json!({ "cmd": "status" }))
+            .get("extension_version")
+            .is_none()
+    );
+    std::fs::remove_file(&manifest).unwrap();
+    assert!(
+        client
+            .request(&json!({ "cmd": "status" }))
+            .get("extension_version")
+            .is_none()
+    );
+    let _ = std::fs::remove_file(file);
+}
+
 /// Appaire un client qui annonce `kind`, accepté d'office.
 fn paired(bridge: &Bridge, pairings: &mpsc::Receiver<PairingRequest>, kind: &str) -> Client {
     let mut client = Client::connect(bridge.port());

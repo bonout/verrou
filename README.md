@@ -44,7 +44,9 @@ your logins in Brave and in any other Mac app. The interface is in French.
   strong passwords, offers to save new accounts, and reads two-factor QR codes
   shown on a page.
 - **Passkeys in Brave**: create and use passkeys stored in your vault, in the
-  Bitwarden format, so they work with the official apps too.
+  Bitwarden format, so they work with the official apps too. Sites with
+  passkey autofill get them right in the field menu, next to passwords.
+  The extension reloads itself when Verrou is updated.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
   two-factor authentication you haven't turned on.
