@@ -1,7 +1,21 @@
 import ServiceManagement
 import SwiftUI
 
+/// Point d'entrée : l'app, ou (builds Debug, `VERROU_REVIEW=1`) la revue
+/// visuelle hors écran, qui n'ouvre aucune scène SwiftUI ni aucune fenêtre.
 @main
+enum VerrouMain {
+    static func main() {
+        #if DEBUG
+        if AppModel.isReview {
+            MainActor.assumeIsolated { ReviewDriver.run() }
+            return
+        }
+        #endif
+        VerrouApp.main()
+    }
+}
+
 struct VerrouApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true

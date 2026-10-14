@@ -168,6 +168,7 @@ struct EmergencyDetailView: View {
                 Text(contact.displayName)
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
+                    .layoutMark("detail-title")
                 HStack(spacing: 8) {
                     Chip(text: trusted ? "Mon contact" : "M'a choisi", symbol: "person.2.badge.key", tint: Theme.accent)
                     Chip(text: contact.accessType.label, symbol: contact.accessType == .view ? "eye" : "key",
@@ -221,8 +222,13 @@ struct EmergencyDetailView: View {
     }
 
     private func line(_ label: String, _ value: String) -> some View {
-        LabeledContent(label) {
+        // Libellé à gauche, valeur à droite : hors d'un `Form`, `LabeledContent`
+        // les collait l'un à l'autre au milieu de la carte.
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
             Text(value).textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

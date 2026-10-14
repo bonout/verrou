@@ -9,6 +9,12 @@
 # contenir le jeu d'essai des tests d'intégration (voir
 # crates/verrou-vaultwarden/tests/server.rs). Le vrai compte de l'app n'est
 # jamais touché : le parcours travaille dans un dossier temporaire.
+#
+# Chaque écran visité passe aussi par l'audit de mise en page (LayoutAudit) :
+# « E2E_OK mise en page : … » ou « E2E_FAIL mise en page cassée : … ».
+#
+# Chaque écran visité passe aussi par l'audit de mise en page (LayoutAudit) :
+# « E2E_OK mise en page : … » ou « E2E_FAIL mise en page cassée : … ».
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"

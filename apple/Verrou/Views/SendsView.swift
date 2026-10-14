@@ -174,6 +174,7 @@ struct SendDetailView: View {
                 Text(send.name)
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
+                    .layoutMark("detail-title")
                 HStack(spacing: 8) {
                     Chip(text: send.content == .file ? "Fichier" : "Texte", symbol: "paperplane", tint: Theme.accent)
                     if !send.available {
@@ -195,8 +196,13 @@ struct SendDetailView: View {
     }
 
     private func line(_ label: String, _ value: String) -> some View {
-        LabeledContent(label) {
+        // Libellé à gauche, valeur à droite : hors d'un `Form`, `LabeledContent`
+        // les collait l'un à l'autre au milieu de la carte.
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer(minLength: 12)
             Text(value).monospacedDigit().textSelection(.enabled)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

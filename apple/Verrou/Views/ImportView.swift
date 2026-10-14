@@ -29,6 +29,7 @@ struct ImportView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(flow.review.map { "Importer depuis \($0.source)" } ?? "Importer des mots de passe")
                     .font(.title3.weight(.semibold))
+                    .layoutMark("sheet-title")
                 Text(flow.url.lastPathComponent + (flow.review.map { " · \($0.formatLabel)" } ?? ""))
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -71,6 +72,7 @@ struct ImportView: View {
                 Button(importLabel) { Task { await model.commitImport(flow) } }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
+                    .layoutMark("sheet-primary")
                     .disabled(flow.writeCount == 0)
             case .done:
                 Button("Afficher le fichier dans le Finder") {

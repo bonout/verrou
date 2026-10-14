@@ -30,6 +30,7 @@ struct DuplicatesView: View {
                     .foregroundStyle(Theme.accent)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Doublons").font(.title3.weight(.semibold))
+                        .layoutMark("sheet-title")
                     Text("Même site et même identifiant. L'élément suggéré a un code à usage unique, ou est le plus récent.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -66,6 +67,7 @@ struct DuplicatesView: View {
                     .keyboardShortcut(.cancelAction)
                 Button(trashLabel) { confirm = true }
                     .buttonStyle(.borderedProminent)
+                    .layoutMark("sheet-primary")
                     .disabled(flow.selected.isEmpty || flow.busy || !model.canEdit)
                     .help(model.canEdit ? "" : "Coffre fictif : lecture seule")
             }

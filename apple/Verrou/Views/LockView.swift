@@ -13,6 +13,7 @@ struct LockView: View {
                 VStack(spacing: 6) {
                     Text("Verrou")
                         .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .layoutMark("lock-title")
                     Text(subtitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)

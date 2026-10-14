@@ -35,7 +35,7 @@ struct EditItemView: View {
                 Section {
                     TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
                         .focused($titleFocused)
-                        .accessibilityIdentifier("edit-title")
+                        .layoutMark("edit-title")
                     if isLogin {
                         TextField("Identifiant", text: loginText(\.username), prompt: Text("e-mail ou nom d'utilisateur"))
                             .textContentType(.username)
@@ -115,12 +115,13 @@ struct EditItemView: View {
                 Button(isNew ? "Créer" : "Enregistrer") { save() }
                     .keyboardShortcut("s", modifiers: .command)
                     .buttonStyle(.borderedProminent)
+                    .layoutMark("sheet-primary")
                     .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || model.editorBusy)
             }
             .padding(16)
         }
         .frame(width: 540)
-        .frame(minHeight: isLogin ? 640 : 520)
+        .frame(minHeight: isLogin ? 640 : 520, maxHeight: 700)
         .navigationTitle(windowTitle)
         .onAppear { titleFocused = isNew }
         .confirmationDialog("Mettre « \(draft.name) » à la corbeille ?", isPresented: $confirmTrash) {

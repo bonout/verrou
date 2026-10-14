@@ -1,0 +1,441 @@
+#if DEBUG
+import AppKit
+import SwiftUI
+
+/// Revue visuelle hors écran (`VERROU_REVIEW=1`, builds Debug) : chaque écran
+/// de l'app, rendu sur le coffre fictif dans une fenêtre jamais affichée, en
+/// clair et en sombre, puis écrit en PNG. Ni ScreenCaptureKit, ni activation :
+/// l'app n'a pas le droit d'avoir de fenêtre à l'écran (`.prohibited`), et
+/// la revue échoue si l'une d'elles devient visible.
+///
+/// Annonce `REVIEW_OUT <dossier>`, `REVIEW_SNAP <nom>` par image,
+/// `REVIEW_OK`/`REVIEW_FAIL` pour l'audit de mise en page de chaque écran
+/// (`LayoutAudit`), puis `REVIEW_DONE`. Lancée par `scripts/review-capture.sh`.
+///
+/// Ne lit ni n'écrit le compte : le coffre fictif vit en mémoire, et les
+/// préférences des vues (`@AppStorage`) vont dans un domaine à part, effacé
+/// à la fin.
+@MainActor
+final class ReviewDriver: NSObject, NSApplicationDelegate {
+    private static var current: ReviewDriver?
+
+    static func run() {
+        let app = NSApplication.shared
+        // Ni Dock, ni fenêtre, ni activation.
+        app.setActivationPolicy(.prohibited)
+        let driver = ReviewDriver()
+        current = driver
+        app.delegate = driver
+        app.run()
+    }
+
+    private static let defaultsSuite = "app.verrou.review"
+    private let model = AppModel()
+    private let defaults = UserDefaults(suiteName: ReviewDriver.defaultsSuite) ?? .standard
+    private let output = FileManager.default.temporaryDirectory.appending(path: "verrou-review")
+    /// Fenêtre principale : 1280 × 800, comme les captures de la démonstration.
+    private let mainSize = NSSize(width: 1280, height: 800)
+    /// Zone de contenu de la fenêtre principale : la hauteur permise d'une feuille.
+    private var sheetLimit: CGFloat = 740
+    private var failures = 0
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task {
+            await run()
+            defaults.removePersistentDomain(forName: Self.defaultsSuite)
+            // Le fichier vide du domaine reste sinon dans le conteneur.
+            try? FileManager.default.removeItem(at: URL.libraryDirectory
+                .appending(path: "Preferences/\(Self.defaultsSuite).plist"))
+            log(failures == 0 ? "REVIEW_DONE" : "REVIEW_DONE \(failures) écran(s) en échec")
+            exit(failures == 0 ? 0 : 1)
+        }
+    }
+
+    private func log(_ line: String) {
+        print(line)
+        fflush(stdout)
+    }
+
+    // MARK: Parcours
+
+    private func run() async {
+        try? FileManager.default.removeItem(at: output)
+        try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        log("REVIEW_OUT \(output.path)")
+        defaults.removePersistentDomain(forName: Self.defaultsSuite)
+
+        // Écrans d'avant le coffre.
+        await screen("01-verrouille", root: RootView(), expect: .init(identifiers: ["lock-title"]))
+        model.loginEmail = "camille.martin@exemple.fr"
+        model.reviewLogin(true)
+        await screen("02-connexion", root: RootView(), expect: .init(identifiers: ["login-title"]))
+        model.reviewLogin(true, twoFactor: [.authenticator, .email])
+        await screen("03-second-facteur", root: RootView(), expect: .init(identifiers: ["login-title"]))
+        model.reviewLogin(false)
+
+        // Coffre : une fiche de chaque sorte.
+        model.openVault()
+        let vault = LayoutAudit.Expectation(identifiers: ["search", "detail-title", "sidebar-footer"], columns: 3)
+        let items: [(String, SidebarFilter, String, String)] = [
+            ("10-identifiant", .all, "", "GitHub"),
+            ("11-carte", .category(category: .card), "", "Visa Boursorama"),
+            ("12-identite", .category(category: .identity), "", "Camille Martin"),
+            ("13-wifi", .template(template: .wifi), "", "Wi-Fi maison"),
+            ("14-cle-ssh", .category(category: .sshKey), "", ""),
+            ("15-coffre-partage", .all, "famille", "Google — famille"),
+        ]
+        for (name, filter, query, title) in items {
+            model.filter = filter
+            model.query = query
+            select(title)
+            await screen(name, root: RootView(), expect: vault)
+        }
+        model.query = ""
+        model.filter = .all
+        select("GitHub")
+
+        // Volets de la barre latérale.
+        let pane = LayoutAudit.Expectation(identifiers: ["pane-title", "sidebar-footer", "detail-title"], columns: 3)
+        model.openAudit()
+        await screen("20-audit", root: RootView(), expect: pane)
+        model.sends.set(Self.mockSends())
+        model.pane = .sends
+        await screen("21-envois", root: RootView(), expect: pane)
+        model.emergency.set(Self.mockEmergency())
+        model.pane = .emergency
+        await screen("22-urgence", root: RootView(), expect: pane)
+        model.filter = .all
+
+        // Feuilles, rendues seules à leur taille (comme posées sur la fenêtre).
+        await sheets()
+
+        // Accès rapide.
+        model.quickQuery = "net"
+        await screen("40-acces-rapide", root: QuickAccessView(autofill: nil, close: {}), size: nil,
+                     expect: .init(), chrome: false)
+        model.quickQuery = ""
+        model.lock()
+    }
+
+    private func sheets() async {
+        let sheet = LayoutAudit.Expectation(identifiers: ["sheet-primary"], maxHeight: sheetLimit)
+        // Le coffre fictif est en lecture seule : brouillon composé ici, comme
+        // celui que le serveur donnerait pour GitHub.
+        if let github = id(of: "GitHub") {
+            let draft = ItemDraft(name: "GitHub", folderId: nil, favorite: true, notes: "Codes de secours dans le coffre.",
+                                  login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
+                                                     totp: "JBSWY3DPEHPK3PXP", urls: ["https://github.com"]),
+                                  fields: [], template: nil)
+            await screen("30-modification-identifiant",
+                         root: EditItemView(editor: .init(itemID: github, draft: draft)),
+                         size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
+            var custom = draft
+            custom.fields += [
+                CustomField(name: "Code PIN", value: "1234", fieldType: .hidden, linkedId: nil),
+                CustomField(name: "Question secrète", value: "Le nom du premier chat", fieldType: .text, linkedId: nil),
+                CustomField(name: "Double authentification", value: "true", fieldType: .boolean, linkedId: nil),
+            ]
+            await screen("31-modification-champs",
+                         root: EditItemView(editor: .init(itemID: github, draft: custom)),
+                         size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
+        } else {
+            fail("30-modification-identifiant", "GitHub introuvable dans le coffre fictif")
+        }
+        await screen("32-generateur", root: GeneratorView(use: { _, _ in }), size: nil, expect: .init(), chrome: false)
+
+        let tabs: [(String, SettingsTab)] = [
+            ("33-reglages-general", .general), ("34-reglages-securite", .security),
+            ("35-reglages-compte", .account), ("36-reglages-navigateurs", .integrations),
+        ]
+        for (name, tab) in tabs {
+            defaults.set(tab.rawValue, forKey: "settingsTab")
+            await screen(name, root: SettingsView(), size: nil, expect: .init(), chrome: false)
+        }
+
+        let duplicates = DuplicatesFlow(groups: (try? model.session.duplicates()) ?? [])
+        await screen("37-doublons", root: DuplicatesView(flow: duplicates), size: nil,
+                     expect: withTitle(sheet, "sheet-title"), chrome: false)
+
+        // Import : un export d'Apple fictif, comparé au coffre fictif.
+        let csv = output.appending(path: "export-fictif.csv")
+        let lines = [
+            "Title,URL,Username,Password,Notes,OTPAuth",
+            "GitHub,https://github.com,camille.martin@exemple.fr,un-autre-mot-de-passe,,",
+            "Mastodon,https://mastodon.social,camille,correct-cheval-pile,,",
+            "Strava,https://www.strava.com,camille.martin@exemple.fr,velo-annecy-2026,,",
+            "Strava,https://www.strava.com,camille.martin@exemple.fr,velo-annecy-2027,,",
+            "Impots,https://www.impots.gouv.fr,1234567890123,motdepasse,,",
+        ]
+        try? lines.joined(separator: "\n").write(to: csv, atomically: true, encoding: .utf8)
+        let flow = ImportFlow(url: csv)
+        model.importFlow = flow
+        await model.readImport(flow)
+        model.importFlow = nil
+        try? FileManager.default.removeItem(at: csv)
+        if flow.review != nil {
+            await screen("38-import", root: ImportView(flow: flow), size: nil,
+                         expect: withTitle(sheet, "sheet-title"), chrome: false)
+        } else {
+            fail("38-import", "l'export fictif n'a pas été lu")
+        }
+        model.session.cancelImport()
+    }
+
+    private func withTitle(_ base: LayoutAudit.Expectation, _ identifier: String) -> LayoutAudit.Expectation {
+        var expectation = base
+        expectation.identifiers.insert(identifier, at: 0)
+        return expectation
+    }
+
+    private func id(of title: String) -> String? {
+        model.summaries.first { $0.title == title }?.id
+    }
+
+    /// Sélectionne l'élément de ce titre parmi les résultats (le premier si vide).
+    private func select(_ title: String) {
+        model.selection = title.isEmpty
+            ? model.results.first?.id
+            : model.results.first { model.summary(for: $0)?.title == title }?.id
+    }
+
+    private func fail(_ name: String, _ message: String) {
+        failures += 1
+        log("REVIEW_FAIL \(name) : \(message)")
+    }
+
+    // MARK: Rendu
+
+    /// Rend `root` en clair puis en sombre. `size` : taille de la fenêtre
+    /// (`nil` : celle que demande la vue, comme une feuille) ; `chrome` :
+    /// fenêtre à barre d'outils, comme la principale.
+    private func screen<V: View>(_ name: String, root: V, size: NSSize? = nil, expect: LayoutAudit.Expectation,
+                                 chrome: Bool = true) async {
+        for dark in [false, true] {
+            let window = makeWindow(chrome: chrome)
+            window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+            let host = NSHostingController(rootView: AnyView(
+                root.environment(model).defaultAppStorage(defaults)))
+            host.sceneBridgingOptions = chrome ? [.toolbars, .title] : []
+            if size == nil && !chrome { host.sizingOptions = .preferredContentSize }
+            window.contentViewController = host
+            let frame = chrome ? NSRect(origin: Self.offscreen, size: size ?? mainSize) : nil
+            if let frame { window.setFrame(frame, display: false) }
+            // SwiftUI met à jour au tour de boucle suivant (tâches, `onAppear`).
+            for _ in 0..<6 {
+                window.contentView?.layoutSubtreeIfNeeded()
+                try? await Task.sleep(for: .milliseconds(150))
+            }
+            if !chrome {
+                window.setContentSize(size ?? host.view.fittingSize)
+                window.contentView?.layoutSubtreeIfNeeded()
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            if chrome, size == nil { sheetLimit = window.contentLayoutRect.height }
+
+            let visible = NSApp.windows.filter(\.isVisible)
+            if !visible.isEmpty {
+                fail(name, "une fenêtre est apparue à l'écran ("
+                    + visible.map { "\(type(of: $0)) \(Int($0.frame.minX)),\(Int($0.frame.minY)) \(Int($0.frame.width))×\(Int($0.frame.height))" }
+                        .joined(separator: ", ") + ")")
+                visible.forEach { $0.orderOut(nil) }
+            }
+            if !dark {
+                var expectation = expect
+                if chrome { expectation.size = frame?.size }
+                let problems = LayoutAudit.problems(in: window, expectation)
+                if problems.isEmpty {
+                    log("REVIEW_OK \(name) : mise en page")
+                } else {
+                    fail(name, "mise en page cassée : " + problems.joined(separator: " ; "))
+                }
+            }
+            write(window, chrome: chrome, to: "\(name)-\(dark ? "sombre" : "clair")")
+            window.contentViewController = nil
+            window.close()
+        }
+    }
+
+    private static let offscreen = NSPoint(x: -30_000, y: -30_000)
+
+    private func makeWindow(chrome: Bool) -> NSWindow {
+        let style: NSWindow.StyleMask = chrome
+            ? [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+            : [.borderless]
+        let window = ReviewWindow(contentRect: NSRect(origin: Self.offscreen, size: mainSize), styleMask: style,
+                                  backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        window.animationBehavior = .none
+        if chrome {
+            window.toolbarStyle = .unified
+            window.titleVisibility = .hidden
+        }
+        return window
+    }
+
+    /// Dessin de la fenêtre par AppKit (`cacheDisplay`), sans passer par
+    /// l'écran : barre de titre et barre d'outils comprises si `chrome`. Les
+    /// matériaux translucides (barre latérale) sont rendus opaques.
+    private func write(_ window: NSWindow, chrome: Bool, to name: String) {
+        guard let content = window.contentView else { return }
+        let view = chrome ? (content.superview ?? content) : content
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            fail(name, "rendu impossible")
+            return
+        }
+        // Bords de défilement (flou, miroir du contenu) : `cacheDisplay` ne
+        // sait pas les dessiner, on les retire le temps du rendu.
+        var hidden: [NSView] = []
+        func hideEffects(_ inner: NSView) {
+            let name = String(describing: type(of: inner))
+            if !inner.isHidden, name == "NSScrollPocket" || name == "BackdropView" || name == "PortalView" {
+                inner.isHidden = true
+                hidden.append(inner)
+                return
+            }
+            inner.subviews.forEach(hideEffects)
+        }
+        hideEffects(view)
+        defer { hidden.forEach { $0.isHidden = false } }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        compositeGlass(in: view, onto: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        do {
+            try data.write(to: output.appending(path: "\(name).png"))
+            log("REVIEW_SNAP \(name)")
+        } catch {
+            fail(name, "écriture : \(error.localizedDescription)")
+        }
+    }
+
+    /// `cacheDisplay` ne dessine ni les effets de verre (barre latérale,
+    /// groupes de la barre d'outils) ni ce qu'ils contiennent : on peint un
+    /// fond opaque à leur place, puis leur contenu par-dessus.
+    private func compositeGlass(in root: NSView, onto rep: NSBitmapImageRep) {
+        var glasses: [NSView] = []
+        func visit(_ view: NSView) {
+            if view.isHidden { return }
+            // Vue transparente (le coffre monté derrière l'écran verrouillé) : rien à peindre.
+            if view.alphaValue < 0.01 || (view.layer?.opacity ?? 1) < 0.01 { return }
+            if String(describing: type(of: view)).contains("GlassEffectView") {
+                glasses.append(view)
+                return
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(root)
+        guard !glasses.isEmpty, let context = NSGraphicsContext(bitmapImageRep: rep) else { return }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = context
+        // Le contexte du bitmap est déjà en points (`rep.size`).
+        if root.isFlipped {
+            context.cgContext.translateBy(x: 0, y: root.bounds.height)
+            context.cgContext.scaleBy(x: 1, y: -1)
+        }
+        let dark = root.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        for glass in glasses {
+            let frame = glass.convert(glass.bounds, to: root)
+            let radius = min(14, frame.height / 2)
+            (dark ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.95, alpha: 1)).setFill()
+            NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
+            for content in drawable(in: glass) {
+                // Seulement la partie visible : une cellule défilée hors de la
+                // liste ne doit pas recouvrir le pied de la barre latérale.
+                let shown = content.visibleRect
+                guard !shown.isEmpty,
+                      let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { continue }
+                content.cacheDisplay(in: content.bounds, to: image)
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(rect: content.convert(shown, to: root)).setClip()
+                // …ni passer sous le pied (dessiné sur un matériau que
+                // `cacheDisplay` laisse transparent) : la zone utile de la liste.
+                if let scroll = content.enclosingScrollView, content !== scroll {
+                    let insets = scroll.contentInsets
+                    var useful = scroll.bounds
+                    useful.size.height -= insets.top + insets.bottom
+                    useful.origin.y += scroll.isFlipped ? insets.top : insets.bottom
+                    NSBezierPath(rect: scroll.convert(useful, to: root)).addClip()
+                }
+                image.draw(in: content.convert(content.bounds, to: root), from: .zero, operation: .sourceOver,
+                           fraction: 1, respectFlipped: true, hints: nil)
+                NSGraphicsContext.restoreGraphicsState()
+            }
+        }
+        context.flushGraphics()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+
+    /// Fenêtre de rendu : jamais clé, jamais de champ actif. Un champ de mot
+    /// de passe actif ferait apparaître le panneau de remplissage automatique
+    /// du système, une vraie fenêtre à l'écran.
+    private final class ReviewWindow: NSWindow {
+        override var canBecomeKey: Bool { false }
+        override var canBecomeMain: Bool { false }
+        override func makeFirstResponder(_ responder: NSResponder?) -> Bool {
+            responder == nil || responder === self ? super.makeFirstResponder(responder) : false
+        }
+    }
+
+    /// Ce qu'un effet de verre contient et que `cacheDisplay` sait dessiner :
+    /// les vues SwiftUI et les éléments de la barre d'outils.
+    private func drawable(in glass: NSView) -> [NSView] {
+        var found: [NSView] = []
+        func visit(_ view: NSView) {
+            if view.isHidden { return }
+            let name = String(describing: type(of: view))
+            if name.hasPrefix("NSHostingView") || name.hasPrefix("CellHostingView") || view is NSControl {
+                found.append(view)
+                // Les listes (tables AppKit) ne se dessinent pas avec la vue
+                // qui les porte : leurs cellules, par-dessus.
+                var tables: [NSView] = []
+                func findTables(_ inner: NSView) {
+                    if inner is NSTableView { tables.append(inner); return }
+                    inner.subviews.forEach(findTables)
+                }
+                view.subviews.forEach(findTables)
+                tables.forEach { $0.subviews.forEach(visit) }
+                return
+            }
+            view.subviews.forEach(visit)
+        }
+        glass.subviews.forEach(visit)
+        return found
+    }
+
+    // MARK: Données fictives
+
+    private static func mockSends() -> [SendSummary] {
+        let now = Int64(Date().timeIntervalSince1970)
+        let day: Int64 = 86_400
+        return [
+            SendSummary(id: "send-wifi", name: "Wi-Fi du chalet", content: .text, fileName: nil, fileSize: nil,
+                        hasPassword: true, accessCount: 2, maxAccessCount: 5, disabled: false, hideEmail: false,
+                        deletionDate: now + 6 * day, expirationDate: now + 2 * day, revisionDate: now - 3_600,
+                        available: true),
+            SendSummary(id: "send-bail", name: "Bail de l'appartement signé.pdf", content: .file,
+                        fileName: "Bail de l'appartement signé.pdf", fileSize: 1_482_000, hasPassword: false,
+                        accessCount: 1, maxAccessCount: nil, disabled: false, hideEmail: true,
+                        deletionDate: now + 13 * day, expirationDate: nil, revisionDate: now - 2 * day,
+                        available: true),
+            SendSummary(id: "send-porte", name: "Code de la porte", content: .text, fileName: nil, fileSize: nil,
+                        hasPassword: false, accessCount: 3, maxAccessCount: 3, disabled: false, hideEmail: false,
+                        deletionDate: now + day, expirationDate: now - day, revisionDate: now - 5 * day,
+                        available: false),
+        ]
+    }
+
+    private static func mockEmergency() -> EmergencyOverview {
+        EmergencyOverview(
+            trusted: [
+                EmergencyContact(id: "em-alex", userId: "u-alex", name: "Alex Martin", email: "alex.martin@exemple.fr",
+                                 accessType: .view, state: .confirmed, waitTimeDays: 7),
+                EmergencyContact(id: "em-sam", userId: "u-sam", name: nil, email: "sam@exemple.fr",
+                                 accessType: .takeover, state: .accepted, waitTimeDays: 14),
+            ],
+            granted: [
+                EmergencyContact(id: "em-lou", userId: "u-lou", name: "Lou Bernard", email: "lou.bernard@exemple.fr",
+                                 accessType: .view, state: .recoveryInitiated, waitTimeDays: 3),
+            ])
+    }
+}
+#endif

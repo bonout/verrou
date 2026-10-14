@@ -273,8 +273,8 @@ struct SidebarView: View {
                     .padding(.bottom, 6)
                 AuditSidebarButton()
                 DuplicatesSidebarButton()
-                if model.mode == .vaultwarden { EmergencySidebarButton() }
-                if model.mode == .vaultwarden { SendsSidebarButton() }
+                if model.showsAccountPanes { EmergencySidebarButton() }
+                if model.showsAccountPanes { SendsSidebarButton() }
                 VaultFooter()
             }
             .background(.bar)
@@ -350,6 +350,7 @@ struct PaneHeader<Action: View>: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text(title).font(.title3.weight(.semibold))
+                    .layoutMark("pane-title")
                 Spacer()
                 if busy { ProgressView().controlSize(.small) }
                 action
@@ -390,6 +391,7 @@ struct VaultFooter: View {
             }
             VStack(alignment: .leading, spacing: 0) {
                 Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+                    .layoutMark("sidebar-footer")
                 Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
@@ -608,7 +610,7 @@ struct SearchField: View {
             TextField("Rechercher dans Verrou", text: $text)
                 .textFieldStyle(.plain)
                 .focused(focused)
-                .accessibilityIdentifier("search")
+                .layoutMark("search")
             if !text.isEmpty {
                 Button { text = "" } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
