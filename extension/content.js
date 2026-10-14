@@ -344,49 +344,48 @@
        clics : seuls la pastille et le bandeau en reçoivent. */
     .pill, .banner { pointer-events: auto; }
     .pill { display: flex; flex-direction: column; align-items: center; max-width: 100%; animation: drop .18s ease-out; }
-    .capsule, .tab, .list, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
-    .capsule {
-      display: flex; align-items: center; gap: 10px; max-width: 100%;
-      padding: 5px 5px 5px 7px; border-radius: 999px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2);
+    .shell, .tab, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
+    /* La capsule, puis, ouverte, une carte arrondie : en-tête, filet, comptes. */
+    .shell {
+      display: flex; flex-direction: column; min-width: 360px; max-width: min(480px, calc(100vw - 32px));
+      border-radius: 999px; overflow: hidden;
+      box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(108,108,240,.18);
     }
-    .icon { flex: none; position: relative; width: 26px; height: 26px; border-radius: 8px;
-      background: linear-gradient(135deg, #6f6ff2, #3b3bbd); }
-    .icon::before { content: ""; position: absolute; left: 8px; top: 4px; width: 10px; height: 10px;
-      border: 2px solid #fff; border-bottom: 0; border-radius: 5px 5px 0 0; }
-    .icon::after { content: ""; position: absolute; left: 6px; top: 11px; width: 14px; height: 10px;
-      border-radius: 2.5px; background: #fff; }
-    .text { min-width: 0; display: flex; flex-direction: column; }
-    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-    .title { font-weight: 600; }
-    .sub { color: #a3a3ad; font-size: 12px; }
+    .shell.open { border-radius: 28px; }
+    .capsule { display: flex; align-items: center; gap: 14px; padding: 10px 12px 10px 14px; }
+    .icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px;
+      background: linear-gradient(135deg, #7474f4, #3b3bbd); }
+    .icon svg { width: 20px; height: 20px; display: block; }
+    .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+    .title { font-weight: 600; font-size: 14.5px; }
+    .sub { color: #a3a3ad; font-size: 12.5px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
     button:focus-visible { outline: 2px solid #a5a5ff; outline-offset: 2px; }
     .primary {
-      flex: none; max-width: 280px; padding: 7px 15px; border-radius: 999px;
+      flex: none; max-width: 280px; padding: 9px 18px; border-radius: 999px; font-size: 14px;
       background: #5b5bd6; color: #fff; font-weight: 600;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .primary:hover { background: #6b6be6; }
-    .close { flex: none; width: 28px; height: 28px; border-radius: 50%; color: #a3a3ad; }
+    .close { flex: none; width: 32px; height: 32px; border-radius: 50%; color: #a3a3ad; font-size: 15px; }
     .close:hover { background: rgba(255,255,255,.1); color: #fff; }
     .tab {
-      display: flex; align-items: center; gap: 6px; padding: 3px 12px 5px;
-      border-top: 0; border-radius: 0 0 10px 10px; font-size: 12px; color: #d4d4da;
+      display: flex; align-items: center; gap: 6px; padding: 5px 16px 7px;
+      border-top: 0; border-radius: 0 0 12px 12px; font-size: 12.5px; color: #d4d4da;
     }
     .chev { display: inline-block; transition: transform .15s ease; }
     .tab[aria-expanded="true"] .chev { transform: rotate(180deg); }
     .list {
-      margin-top: 6px; min-width: 280px; max-width: min(420px, calc(100vw - 32px)); max-height: 320px;
-      overflow-y: auto; padding: 4px; border-width: 1px; border-color: rgba(255,255,255,.14); border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      max-height: 340px; overflow-y: auto; padding: 8px 10px 12px;
+      border-top: 1px solid rgba(255,255,255,.12);
     }
-    .row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7px 8px; border-radius: 8px; text-align: left; }
+    .row { display: flex; align-items: center; gap: 14px; width: 100%; padding: 10px 10px; border-radius: 14px; text-align: left; }
     .row:hover, .row:focus-visible { background: rgba(108,108,240,.28); outline: none; }
     .badge {
-      flex: none; width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center;
-      font-weight: 700; font-size: 12px; color: #fff; background: rgba(255,255,255,.12);
+      flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
+      font-weight: 700; font-size: 13px; color: #2b2b6e; background: #b9b9f6;
     }
     .banner {
       width: 360px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
@@ -399,14 +398,15 @@
     .actions button.primary { background: #5b5bd6; }
     .actions button.quiet { background: none; color: #a3a3ad; padding: 6px 4px; margin-right: auto; }
     .field { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 6px; }
-    .field .icon { transform: scale(var(--scale, .75)); }
+    .field .icon { width: 26px; height: 26px; border-radius: 8px; transform: scale(var(--scale, .75)); }
+    .field .icon svg { width: 16px; height: 16px; }
     @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
     @media (prefers-reduced-motion: reduce) {
       .pill, .banner { animation: none; }
       .chev { transition: none; }
     }
     @media (prefers-color-scheme: dark) {
-      .capsule, .tab, .list, .banner { background: #222228; }
+      .shell, .tab, .banner { background: #222228; }
     }
   `;
 
@@ -460,15 +460,37 @@
     return button;
   }
 
+  // « Maif » → « Ma », comme les pastilles de 1Password.
+  function initials(title) {
+    const word = (title ?? "").trim().replace(/^[^\p{L}\p{N}]+/u, "");
+    if (!word) return "?";
+    return word[0].toUpperCase() + (word[1] ?? "").toLowerCase();
+  }
+
   function textBlock(title, subtitle, mono = false) {
     const text = div("text");
     text.append(div("title", title), div(`sub${mono ? " mono" : ""}`, subtitle ?? ""));
     return text;
   }
 
+  // Le cadenas de Verrou : anse, corps et trou de serrure, en SVG (le dessin
+  // en CSS se déformait selon la taille).
   function icon() {
     const node = div("icon");
     node.setAttribute("aria-hidden", "true");
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    const shape = (tag, attrs) => {
+      const el = document.createElementNS(ns, tag);
+      for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+      svg.append(el);
+    };
+    shape("path", { d: "M7.5 10.5V8a4.5 4.5 0 0 1 9 0v2.5", fill: "none", stroke: "#fff", "stroke-width": "2.2", "stroke-linecap": "round" });
+    shape("rect", { x: "4.5", y: "10", width: "15", height: "11", rx: "3", fill: "#fff" });
+    shape("circle", { cx: "12", cy: "14.6", r: "1.6", fill: "#4646c8" });
+    shape("rect", { x: "11.2", y: "15.2", width: "1.6", height: "3.1", rx: ".8", fill: "#4646c8" });
+    node.append(svg);
     return node;
   }
 
@@ -571,7 +593,9 @@
       close.setAttribute("title", "Fermer");
       close.setAttribute("data-key", "close");
       capsule.append(close);
-      area.append(capsule);
+      const shell = div(`shell${this.expanded && view.others?.length ? " open" : ""}`);
+      shell.append(capsule);
+      area.append(shell);
       if (view.others?.length) {
         const tab = trustedButton(view.tab ?? "Autres identifiants", "tab", () => {
           this.expanded = !this.expanded;
@@ -582,7 +606,6 @@
         const chevron = span("chev", "⌄");
         chevron.setAttribute("aria-hidden", "true");
         tab.append(chevron);
-        area.append(tab);
         if (this.expanded) {
           const list = div("list");
           list.setAttribute("role", "group");
@@ -594,8 +617,9 @@
             line.append(div("badge", row.badge), textBlock(row.title, row.subtitle, row.mono));
             list.append(line);
           });
-          area.append(list);
+          shell.append(list);
         }
+        area.append(tab);
       }
       if (this.node?.isConnected) this.node.replaceWith(area);
       else ui.stack.prepend(area);
@@ -808,7 +832,7 @@
       ...(reply.state === "unlocked" ? reply.items : [])
         .filter((item) => kind !== "otp" || item.has_totp)
         .map((item) => ({
-          badge: (item.title.trim()[0] ?? "?").toUpperCase(),
+          badge: initials(item.title),
           title: kind === "otp" ? `Code de ${item.title}` : item.title,
           subtitle: item.username,
           username: item.username,
