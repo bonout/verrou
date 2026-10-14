@@ -22,6 +22,7 @@ mod error;
 mod import;
 mod passkeys;
 pub mod security_key;
+pub mod ssh_key;
 mod store;
 pub mod two_factor_directory;
 pub mod unlock_keys;

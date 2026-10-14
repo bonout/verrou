@@ -32,6 +32,7 @@ struct MainView: View {
                 Menu {
                     Button("Nouvel identifiant") { model.newItem(login: true) }
                     Button("Nouvelle note sécurisée") { model.newItem(login: false) }
+                    Button("Nouvelle clé SSH…") { model.newSshKey() }
                 } label: {
                     Label("Nouvel élément", systemImage: "plus")
                 } primaryAction: {
@@ -110,6 +111,10 @@ struct MainView: View {
         }
         .sheet(item: $model.duplicatesFlow) { flow in
             DuplicatesView(flow: flow)
+                .environment(model)
+        }
+        .sheet(item: $model.sshKeyGenerator) { generator in
+            NewSshKeyView(generator: generator)
                 .environment(model)
         }
         // La vue reste montée derrière l'écran verrouillé (voir RootView) :
@@ -273,6 +278,12 @@ struct ItemListView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                 Spacer()
+                if model.filter == .category(category: .sshKey) && model.canEdit {
+                    Button("Nouvelle clé SSH…", systemImage: "plus") { model.newSshKey() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .help("Générer une clé SSH dans le coffre")
+                }
                 Menu {
                     Picker("Trier", selection: $model.sort) {
                         Text("Pertinence").tag(ResultOrder.relevance)
@@ -425,6 +436,9 @@ struct RowMenu: View {
         if summary.category == .login {
             Button("Copier l'identifiant") { model.copy(summary.subtitle, label: "Identifiant", secret: false) }
             Button("Copier le mot de passe") { model.copyPassword(of: summary.id) }
+        }
+        if summary.category == .sshKey {
+            Button("Copier la clé publique") { model.copyPublicKey(of: summary.id) }
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
             Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }

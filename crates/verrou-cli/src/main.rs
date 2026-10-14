@@ -17,6 +17,7 @@ use verrou_bridge::access;
 use verrou_bridge::protocol::{Command as Ask, ItemSummary, ItemView, ReplyResult};
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
+use verrou_cli::git_signing;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
@@ -94,6 +95,29 @@ enum Command {
         /// Socket Unix (défaut : `~/.verrou/agent.sock`).
         #[arg(long)]
         socket: Option<PathBuf>,
+    },
+    /// Signer ses commits git avec une clé SSH du coffre, par l'agent de
+    /// Verrou. Affiche les réglages de git ; `--apply` les écrit.
+    GitSigning {
+        /// Titre ou empreinte de la clé (inutile s'il n'y en a qu'une).
+        query: Vec<String>,
+        /// Adresse des commits (défaut : `git config user.email`).
+        #[arg(long)]
+        email: Option<String>,
+        /// Signataires autorisés, pour vérifier les signatures (défaut :
+        /// `~/.config/verrou/allowed_signers`).
+        #[arg(long)]
+        allowed_signers: Option<PathBuf>,
+        /// Socket de l'agent (défaut : `~/.verrou/agent.sock`).
+        #[arg(long)]
+        socket: Option<PathBuf>,
+        /// Écrire les réglages (configuration globale de git) et ajouter la
+        /// clé aux signataires autorisés.
+        #[arg(long)]
+        apply: bool,
+        /// Configuration du dépôt courant plutôt que la globale.
+        #[arg(long)]
+        local: bool,
     },
     /// Mesurer la recherche sur un gros coffre fictif.
     Bench {
@@ -274,6 +298,21 @@ impl Source {
             },
         }
     }
+
+    /// Les clés SSH du coffre : clés publiques seulement, sans accord à donner.
+    fn ssh_keys(&mut self) -> Result<Vec<git_signing::SigningKey>, String> {
+        let identities = match self {
+            Self::Mock(vault) => verrou_bridge::ssh::identities(vault),
+            Self::App(remote) => match Self::ask(remote, &Ask::SshKeys)? {
+                ReplyResult::SshKeys { keys } => keys,
+                other => return Err(unexpected(&other)),
+            },
+        };
+        Ok(identities
+            .iter()
+            .filter_map(git_signing::SigningKey::from_identity)
+            .collect())
+    }
 }
 
 fn unexpected(reply: &ReplyResult) -> String {
@@ -361,7 +400,62 @@ fn run(cli: &Cli) -> Result<(), String> {
             writeln!(out, "{password}").ok();
         }
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
+        Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
         Command::Bench { items } => bench(&mut out, *items),
+    }
+    Ok(())
+}
+
+/// `verrou git-signing` : affiche (ou, avec `--apply`, écrit) les réglages
+/// de git pour signer avec une clé SSH du coffre.
+fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), String> {
+    let Command::GitSigning {
+        query,
+        email,
+        allowed_signers,
+        socket,
+        apply,
+        local,
+    } = &cli.command
+    else {
+        return Ok(());
+    };
+    let keys = Source::open(cli)?.ssh_keys()?;
+    let key = git_signing::choose(&keys, &query.join(" "))?.clone();
+    let git = || std::process::Command::new("git");
+    let email = email
+        .clone()
+        .or_else(|| git_signing::git_email(git))
+        .ok_or("adresse des commits inconnue : --email, ou « git config user.email »")?;
+    let plan = git_signing::Plan {
+        key,
+        email,
+        allowed_signers: match allowed_signers {
+            Some(path) => path.clone(),
+            None => git_signing::default_allowed_signers()?,
+        },
+        scope: if *local {
+            git_signing::Scope::Local
+        } else {
+            git_signing::Scope::Global
+        },
+    };
+    let socket = match socket {
+        Some(path) => path.clone(),
+        None => agent::default_socket()?,
+    };
+    if *apply {
+        plan.apply(git)?;
+        eprintln!(
+            "git signera avec « {} » ({}) ; clé ajoutée à {}.\nDans chaque terminal : export SSH_AUTH_SOCK={} (et « verrou ssh-agent » lancé).",
+            plan.key.title,
+            plan.key.fingerprint,
+            plan.allowed_signers.display(),
+            git_signing::shell_quote(&socket.to_string_lossy()),
+        );
+    } else {
+        write!(out, "{}", plan.script(&socket)).ok();
+        eprintln!("(rien n'est écrit : relancez avec --apply pour appliquer ces réglages)");
     }
     Ok(())
 }

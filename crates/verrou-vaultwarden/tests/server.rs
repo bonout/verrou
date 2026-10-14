@@ -1420,3 +1420,58 @@ async fn passkeys_round_trip_with_bitwarden() {
     ));
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
+
+/// Une clé SSH générée par Verrou : un élément « clé SSH » (type 5) tel que
+/// les apps Bitwarden le lisent, la clé privée au format OpenSSH.
+#[tokio::test]
+async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
+    use bitwarden_vault::CipherType;
+    use verrou_vaultwarden::ssh_key::{SshKeyAlgorithm, generate};
+
+    let Some(server) = server() else { return };
+    let email = unique_email();
+    let seeder = Seeder::register(&server, &email).await;
+    let store = temp_store();
+    let mut connection = unlocked(
+        login(&store, &server, &email, SecretString::new(PASSWORD))
+            .await
+            .unwrap(),
+    )
+    .connection;
+
+    let key = generate(SshKeyAlgorithm::Ed25519).unwrap();
+    let public_key = key.public_key.clone();
+    let fingerprint = key.fingerprint.clone();
+    let (id, vault) = connection
+        .create_ssh_key("Signature git".to_owned(), None, key)
+        .await
+        .unwrap();
+    let item = vault.items.iter().find(|i| i.id == id).unwrap();
+    assert_eq!(item.kind, ItemKind::SshKey);
+    assert_eq!(item.title, "Signature git");
+    assert_eq!(item.subtitle, fingerprint);
+    assert_eq!(item.field("public_key").unwrap().value.expose(), public_key);
+    assert_eq!(
+        item.field("fingerprint").unwrap().value.expose(),
+        fingerprint
+    );
+    let private = item.field("private_key").unwrap();
+    assert_eq!(private.kind, FieldKind::Concealed);
+    let parsed = ssh_key::PrivateKey::from_openssh(private.value.expose()).unwrap();
+    assert_eq!(parsed.public_key().to_openssh().unwrap(), public_key);
+
+    // Ce qu'un autre client Bitwarden lit sur le serveur.
+    let stored = seeder.fetch(&id).await;
+    assert_eq!(stored.r#type, CipherType::SshKey);
+    assert!(stored.secure_note.is_none() && stored.login.is_none());
+    let stored_key = stored.ssh_key.unwrap();
+    assert_eq!(stored_key.public_key, public_key);
+    assert_eq!(stored_key.fingerprint, fingerprint);
+    assert!(
+        stored_key
+            .private_key
+            .starts_with("-----BEGIN OPENSSH PRIVATE KEY-----")
+    );
+
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}

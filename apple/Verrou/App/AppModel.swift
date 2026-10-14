@@ -126,6 +126,8 @@ final class AppModel {
     var importFlow: ImportFlow?
     /// Nettoyage des doublons ouvert.
     var duplicatesFlow: DuplicatesFlow?
+    /// Génération d'une clé SSH ouverte (voir `SshKeys.swift`).
+    var sshKeyGenerator: SshKeyGenerator?
 
     /// Remplissage dans Brave (absent en démonstration et pendant les parcours scriptés).
     var browserBridge: BrowserBridge?

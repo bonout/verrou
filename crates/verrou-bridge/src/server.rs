@@ -116,6 +116,10 @@ pub enum Purpose {
     /// vérification de l'utilisateur (l'élément, ou `passkey:<site>` pour un
     /// nouvel identifiant).
     Passkey,
+    /// Signer un commit ou une étiquette git avec la clé SSH de l'élément
+    /// (`ssh-keygen -Y sign -n git`). Accord distinct de [`Purpose::Ssh`] :
+    /// accepter une connexion ne vaut pas accord pour signer, ni l'inverse.
+    GitSign,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -616,7 +620,14 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
                 Some(None) => return denied("clé SSH inconnue".to_owned()),
                 Some(Some(found)) => found,
             };
-            if !approved(shared, client, Purpose::Ssh, &item, &title).await {
+            // `ssh-keygen -Y sign -n git` (git en `gpg.format=ssh`) : la
+            // demande d'accord le dit.
+            let purpose = if ssh::is_git_signature(&data) {
+                Purpose::GitSign
+            } else {
+                Purpose::Ssh
+            };
+            if !approved(shared, client, purpose, &item, &title).await {
                 return refused();
             }
             let signed = read(backend, |v| ssh::sign(v, &blob, &data, flags));

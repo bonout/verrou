@@ -331,6 +331,22 @@ ssh ──socket Unix──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   quitte jamais l'app. Verrou signe (crate `ssh-key` de RustCrypto) et ne
   rend que la signature ; l'agent ne voit que les clés publiques. Les clés
   protégées par une phrase de passe sont ignorées.
+- **Nouvelles clés SSH** : tirées dans le cœur Rust (Ed25519, ou RSA 4096 ;
+  générateur du système, `getrandom`), rangées comme un élément « clé SSH »
+  de Bitwarden (clé privée OpenSSH sans phrase de passe, protégée par le
+  chiffrement du coffre comme le reste). La clé privée ne passe jamais par
+  Swift : l'app ne reçoit que l'identifiant de l'élément créé.
+- **Signatures git** : `ssh-keygen -Y sign` (que git appelle en
+  `gpg.format=ssh`) fait signer à l'agent un bloc « SSHSIG » qui porte son
+  espace de noms. Quand il vaut `git`, Verrou le dit (« signer un commit git
+  avec la clé « titre » ») et l'accord est **distinct** de celui de `ssh` :
+  accepter une connexion ne laisse pas signer de commits pendant 5 minutes,
+  ni l'inverse. Le contenu signé reste choisi par le programme qui le
+  demande : l'accord ne montre pas le commit. Une authentification SSH ne
+  peut pas passer pour une signature git (elle commence par la longueur de
+  l'identifiant de session, jamais par « SSHSIG »). `verrou git-signing`
+  n'écrit la configuration de git qu'avec `--apply`, et n'y met que la clé
+  publique.
 - **Ce qui est sur le disque** : `~/.config/verrou/cli.json` (mode 600,
   dossier 700) garde l'identifiant du client et la clé du canal. Un
   programme qui le lit peut se faire passer pour le terminal : chercher sans

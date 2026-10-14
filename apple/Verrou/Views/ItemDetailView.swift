@@ -9,6 +9,15 @@ struct ItemDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 stateBanner
+                if detail.summary.category == .sshKey, fields.contains(where: { $0.id == "public_key" }) {
+                    HStack {
+                        Button("Copier la clé publique", systemImage: "doc.on.doc") {
+                            model.copyPublicKey(of: detail.summary.id)
+                        }
+                        .help("Pour ~/.ssh/authorized_keys, GitHub, GitLab…")
+                        Spacer()
+                    }
+                }
                 if !detail.urls.isEmpty || !fields.isEmpty {
                     FieldCard {
                         ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
