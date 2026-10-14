@@ -6,10 +6,20 @@
 // (`isTrusted`) : la page peut demander, jamais choisir à la place de
 // l'utilisateur. Le service worker ajoute l'adresse de l'onglet ; Verrou
 // vérifie le site (`rpId`), signe, et garde la clé privée.
+//
+// Remplissage automatique (`mediation: "conditional"`) : la demande reste en
+// attente, et le menu de content.js (même monde isolé, hors de portée de la
+// page) propose les passkeys de Verrou sous le champ de connexion, par
+// `globalThis.__verrouPasskeyMenu`. Rien pour ce site, ou Verrou absent : la
+// demande passe au navigateur.
+//
+// Quand une demande explicite (create, get) part au navigateur parce que
+// Verrou ne peut pas la prendre (injoignable, extension non reliée ou
+// périmée, type de clé non géré), un avis discret le dit : jamais de repli
+// silencieux.
 
 (() => {
-  if (window !== top || globalThis.__verrouPasskeys) return;
-  globalThis.__verrouPasskeys = true;
+  if (window !== top || globalThis.__verrouPasskeyMenu) return;
 
   const origin = location.origin;
   const RETRY_MS = 1000;
@@ -21,17 +31,36 @@
     try {
       return await chrome.runtime.sendMessage(message);
     } catch {
-      return { state: "offline" };
+      // Extension rechargée (mise à jour) : ce script est orphelin, la page
+      // doit être rechargée pour retrouver Verrou.
+      return { state: chrome.runtime?.id ? "offline" : "outdated" };
     }
   }
 
-  // La demande en cours (une à la fois, comme le navigateur).
+  // La demande explicite en cours (une à la fois, comme le navigateur), et la
+  // demande de remplissage automatique, qui attend un choix dans le menu.
   let current = null;
+  let conditional = null;
+  const listeners = new Set();
+
+  function changed() {
+    for (const listener of listeners) {
+      try {
+        listener();
+      } catch {
+        // Un abonné en erreur n'empêche pas les autres.
+      }
+    }
+  }
 
   function answer(request, outcome, credential) {
-    if (current !== request) return;
-    current = null;
+    if (request.done) return;
     request.done = true;
+    if (current === request) current = null;
+    if (conditional === request) {
+      conditional = null;
+      changed();
+    }
     postMessage({ verrouPasskey: "reply", id: request.id, outcome, credential }, origin);
   }
 
@@ -39,17 +68,37 @@
     if (event.source !== window) return;
     const data = event.data;
     if (data?.verrouPasskey === "request" && typeof data.id === "string"
-      && ["create", "get"].includes(data.kind) && data.request && typeof data.request === "object") {
+      && ["create", "get", "conditional"].includes(data.kind) && data.request && typeof data.request === "object") {
+      const request = { id: data.id, kind: data.kind, request: data.request, done: false };
+      // Une nouvelle demande remplace le remplissage automatique en attente,
+      // comme dans le navigateur.
+      if (conditional) answer(conditional, "cancelled");
+      if (data.kind === "conditional") {
+        conditional = request;
+        prepareConditional(request);
+        return;
+      }
       if (current) {
         answer(current, "cancelled");
         panel.close();
       }
-      current = { id: data.id, kind: data.kind, request: data.request, done: false };
+      current = request;
       (data.kind === "get" ? signIn : register)(current);
-    } else if (data?.verrouPasskey === "cancel" && current?.id === data.id) {
-      current.done = true;
-      current = null;
-      panel.close();
+    } else if (data?.verrouPasskey === "cancel") {
+      // Annulée par la page (AbortSignal) : rien à répondre, la page a déjà
+      // rejeté sa promesse.
+      for (const request of [current, conditional]) {
+        if (request?.id !== data.id) continue;
+        request.done = true;
+        if (request === current) {
+          current = null;
+          panel.close();
+        } else {
+          conditional = null;
+          if (panel.owner === request) panel.close();
+          changed();
+        }
+      }
     }
   });
 
@@ -138,6 +187,8 @@
     host: null,
     root: null,
     timer: null,
+    // La demande dont la fenêtre montre l'avancement (remplissage automatique).
+    owner: null,
 
     show(...nodes) {
       if (!this.host) {
@@ -186,6 +237,35 @@
     );
   }
 
+  // MARK: Avis de repli vers le navigateur
+
+  const NOTICES = {
+    offline: ["Verrou n'est pas joignable : la passkey est laissée au navigateur",
+      "Ouvrez Verrou, et activez « Brave et le terminal » dans ses réglages."],
+    unpaired: ["L'extension n'est pas reliée à Verrou : la passkey est laissée au navigateur",
+      "Reliez l'extension depuis son icône dans la barre d'outils."],
+    outdated: ["Verrou vient d'être mis à jour : la passkey est laissée au navigateur",
+      "Rechargez la page pour utiliser les passkeys de Verrou."],
+    algorithm: ["Verrou ne gère pas ce type de clé : la passkey est laissée au navigateur",
+      "Le site n'accepte pas les clés ES256, les seules que Verrou sait créer."],
+  };
+
+  // Avis discret, qui ne bloque rien et s'efface seul.
+  function notice(kind, reason) {
+    const [title, hint] = NOTICES[kind]
+      ?? ["Verrou n'a pas pu prendre la demande : la passkey est laissée au navigateur", reason || "Verrou ne répond pas"];
+    panel.owner = null;
+    panel.show(head(title, hint), actions(button("OK", "", () => panel.close())));
+    panel.close(8000);
+  }
+
+  // Repli vers le navigateur parce que Verrou ne peut pas prendre la demande :
+  // le dire.
+  function fallback(request, state, reason) {
+    answer(request, "browser");
+    notice(state, reason);
+  }
+
   // Verrou verrouillé : proposer de le déverrouiller, puis reprendre.
   function locked(request, resume) {
     panel.show(
@@ -224,9 +304,14 @@
       else retryLater(request, (t) => signIn(request, t), tries);
       return;
     }
-    // Rien dans Verrou pour ce site (ou Verrou absent) : le navigateur, sans détour.
-    if (list.state !== "unlocked" || !list.items?.length) {
+    // Rien dans Verrou pour ce site : le navigateur, sans détour.
+    if (list.state === "unlocked" && !list.items?.length) {
       toBrowser(request);
+      return;
+    }
+    // Verrou absent, non relié… : le navigateur, en le disant.
+    if (list.state !== "unlocked") {
+      fallback(request, list.state, list.reason);
       return;
     }
     const rows = div("list");
@@ -249,7 +334,10 @@
 
   async function use(request, item, tries = 0) {
     if (request.done) return;
-    if (tries === 0) panel.show(head("Connexion…", `${item.user_name || item.title} · ${siteOf(request)}`));
+    if (tries === 0) {
+      panel.owner = request;
+      panel.show(head("Connexion…", `${item.user_name || item.title} · ${siteOf(request)}`));
+    }
     const { rp_id, challenge, uv } = request.request;
     const reply = await send({ kind: "passkeyGet", rp_id, item: item.item, credential: item.credential, challenge, uv });
     if (request.done) return;
@@ -271,7 +359,7 @@
     const { rp_id, exclude, algorithms } = request.request;
     // Verrou ne crée que des clés ES256.
     if (algorithms?.length && !algorithms.includes(-7)) {
-      toBrowser(request);
+      fallback(request, "algorithm");
       return;
     }
     const targets = await send({ kind: "passkeyTargets", rp_id, exclude });
@@ -282,7 +370,7 @@
       return;
     }
     if (targets.state !== "unlocked") {
-      toBrowser(request);
+      fallback(request, targets.state, targets.reason);
       return;
     }
     const user = request.request.user_name || request.request.user_display_name || "";
@@ -350,4 +438,50 @@
       failure(request, "Enregistrement impossible", reply.state === "locked" ? "Verrou est verrouillé" : reply.reason);
     }
   }
+
+  // MARK: Remplissage automatique (mediation: "conditional")
+
+  // Les passkeys de Verrou pour la demande en attente : `ready` (avec
+  // `items`), `locked` (Verrou à déverrouiller d'abord) ou `none`. Rien pour
+  // ce site, ou Verrou injoignable : la demande passe au navigateur, dont le
+  // remplissage reprend la main (sans avis : l'utilisateur n'a rien demandé).
+  async function conditionalEntries(request) {
+    if (!request || request.done) return { state: "none" };
+    const { rp_id, allow } = request.request;
+    const list = await send({ kind: "passkeyList", rp_id, allow });
+    if (request.done) return { state: "none" };
+    if (list.state === "locked") return { state: "locked" };
+    if (list.state !== "unlocked" || !list.items?.length) {
+      answer(request, "browser");
+      return { state: "none" };
+    }
+    request.items = list.items;
+    return { state: "ready", items: list.items };
+  }
+
+  async function prepareConditional(request) {
+    const entries = await conditionalEntries(request);
+    if (entries.state !== "none") changed();
+  }
+
+  // Pour le menu de content.js (même monde isolé : la page n'y a pas accès).
+  globalThis.__verrouPasskeyMenu = Object.freeze({
+    // Les passkeys à proposer sous le champ (relues : Verrou a pu être
+    // déverrouillé entre-temps).
+    entries: () => conditionalEntries(conditional),
+    // Choisie dans le menu, d'un vrai clic ou d'une vraie touche : la même
+    // signature qu'une connexion explicite (Touch ID, élément protégé…).
+    choose(credential) {
+      const request = conditional;
+      const item = request?.items?.find((i) => i.credential === credential);
+      if (!request || request.done || !item) return false;
+      use(request, item);
+      return true;
+    },
+    // Appelé quand la demande en attente arrive, change ou se termine.
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  });
 })();

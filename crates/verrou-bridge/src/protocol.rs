@@ -208,6 +208,11 @@ pub struct Reply {
 pub enum ReplyResult {
     Status {
         unlocked: bool,
+        /// Version de l'extension livrée avec Verrou (le `manifest.json` du
+        /// paquet de l'app) : l'extension se recharge si elle diffère de la
+        /// sienne. Absente : inconnue (tests, autre client).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        extension_version: Option<String>,
     },
     Suggestions {
         items: Vec<Suggestion>,

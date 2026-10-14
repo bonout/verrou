@@ -2168,6 +2168,9 @@ impl VaultSession {
             .map_err(|e| VerrouError::Storage {
                 message: format!("pont vers le navigateur et le terminal : {e}"),
             })?;
+        // Version de l'extension livrée avec l'app : l'extension se recharge
+        // d'elle-même quand l'app a été mise à jour.
+        bridge.set_extension_manifest(verrou_bridge::bundled_extension_manifest());
         let port = bridge.port();
         *slot = Some(bridge);
         Ok(port)

@@ -4,6 +4,11 @@
 // l'utilisateur ; s'il préfère le navigateur, ou si Verrou n'a rien pour ce
 // site, l'implémentation d'origine prend le relais avec les mêmes options.
 //
+// Remplissage automatique (`mediation: "conditional"`) : la demande reste en
+// attente chez Verrou, qui propose ses passkeys dans le menu sous le champ
+// de connexion (content.js) ; sans passkey de Verrou pour ce site, ou sans
+// Verrou, elle passe au navigateur, dont le remplissage marche comme avant.
+//
 // Ce script vit dans le monde de la page : il ne détient rien de secret et
 // n'est cru sur rien. Il ne fait que relayer des options que la page aurait
 // pu passer elle-même au navigateur ; l'adresse, Verrou la tient du
@@ -28,8 +33,8 @@
     if (settle) settle(event.data);
   });
 
-  // Demande à passkeys.js ; la réponse : `credential`, `browser`, `exists`
-  // ou `cancelled`.
+  // Demande à passkeys.js (`create`, `get` ou `conditional`) ; la réponse :
+  // `credential`, `browser`, `exists` ou `cancelled`.
   function ask(kind, request, signal) {
     return new Promise((resolve, reject) => {
       next += 1;
@@ -82,15 +87,16 @@
 
   async function get(options) {
     const publicKey = options?.publicKey;
-    // Remplissage automatique du navigateur (`conditional`) : laissé au navigateur.
-    if (!publicKey || options.mediation === "conditional") return nativeGet(options);
+    if (!publicKey) return nativeGet(options);
     let request;
     try {
       request = codec.getRequest(publicKey);
     } catch {
       return nativeGet(options);
     }
-    const reply = await ask("get", request, options.signal);
+    // Remplissage automatique : proposé dans le menu de Verrou sous le champ.
+    const kind = options.mediation === "conditional" ? "conditional" : "get";
+    const reply = await ask(kind, request, options.signal);
     return outcome(reply, () => nativeGet(options), (credential) => codec.assertionCredential(credential));
   }
 

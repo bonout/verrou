@@ -257,25 +257,51 @@ function unpairLink() {
   return link;
 }
 
+// Avertissement en tête de la fenêtre.
+function warning(title, text) {
+  return element("div", { className: "warning", role: "alert" },
+    element("strong", { textContent: title }), element("span", { textContent: text }));
+}
+
+// L'extension qui tourne n'est pas celle que livre Verrou : elle s'est
+// rechargée sans changer (chargée depuis un autre dossier), ou va le faire.
+function versionWarning(extension) {
+  if (!extension?.mismatch) return null;
+  return warning("L'extension n'est pas celle de Verrou",
+    `Elle est en version ${extension.running}, Verrou livre la ${extension.bundled}. `
+    + "Dans brave://extensions, chargez le dossier « extension » de Verrou.app "
+    + "(Réglages de Verrou › Navigateur et terminal › Copier le chemin), ou rechargez-la.");
+}
+
 async function render() {
   const { pairing } = await chrome.storage.session.get("pairing");
   if (renderPairing(pairing)) return;
   const status = await send({ kind: "status" });
+  const versionNote = versionWarning(status.extension);
   switch (status.state) {
     case "unpaired":
-      return renderUnpaired(pairing?.state === "failed" ? pairing.error : null);
+      await renderUnpaired(pairing?.state === "failed" ? pairing.error : null);
+      break;
     case "offline":
       stateLabel.textContent = "Hors ligne";
-      return show(element("p", { textContent: "Verrou ne répond pas. Ouvrez l'app et activez « Remplissage dans Brave » dans ses réglages." }), unpairLink());
+      show(
+        warning("Verrou n'est pas joignable",
+          "Ouvrez l'app et activez « Brave et le terminal » dans ses réglages. "
+          + "D'ici là, ni remplissage ni passkeys : le navigateur reprend la main."),
+        unpairLink(),
+      );
+      break;
     case "locked": {
       stateLabel.textContent = "Verrouillé";
       const button = element("button", { textContent: "Déverrouiller Verrou" });
       button.addEventListener("click", () => send({ kind: "unlock" }));
-      return show(element("p", { textContent: "Verrou est verrouillé." }), button);
+      show(element("p", { textContent: "Verrou est verrouillé." }), button);
+      break;
     }
     default:
-      return renderUnlocked();
+      await renderUnlocked();
   }
+  if (versionNote) main.prepend(versionNote);
 }
 
 // Un rendu à la fois : les étapes d'appairage arrivent en rafale.

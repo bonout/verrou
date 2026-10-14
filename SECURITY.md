@@ -252,9 +252,20 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   n'autorise que l'identifiant de l'extension de Verrou (fixé par la clé de
   son manifeste ; un test vérifie la concordance). Droits du sandbox limités
   aux dossiers `NativeMessagingHosts` de Brave et de Chrome.
+- **Mise à jour de l'extension** : la copie livrée dans `Verrou.app` reçoit à
+  la compilation une version tirée de l'empreinte de ses fichiers
+  (`scripts/stamp-extension.sh`). Le pont annonce cette version (réponse à
+  `status`, lue dans le manifeste du paquet de l'app) ; l'extension la compare
+  à la sienne et à celle du manifeste sur le disque, au démarrage, à chaque
+  connexion à Verrou et toutes les dix minutes, et se recharge
+  (`chrome.runtime.reload()`) si elles diffèrent : une fois par version au
+  plus, une fois par minute au plus (`chrome.storage.local`). Elle ne relit
+  que ses propres fichiers ; une version annoncée ne fait rien charger
+  d'autre que le dossier déjà choisi par l'utilisateur.
 - **Limites connues** : un programme qui lit le profil de Brave peut en tirer
   la clé du canal (comme les cookies) ; l'extension se charge en mode
-  développeur (pas de Chrome Web Store).
+  développeur (pas de Chrome Web Store). Les onglets ouverts avant un
+  rechargement gardent l'ancien script, détaché : il faut recharger la page.
 
 ## Accès d'urgence
 
@@ -336,13 +347,25 @@ page ──postMessage──▶ passkeys.js ──▶ service worker ──pont 
   avant ses scripts, fait passer `navigator.credentials.create` et `.get`
   (avec `publicKey`) par Verrou. Il ne détient rien : il relaie des options
   que la page pourrait donner elle-même au navigateur, et rend la réponse.
-  `mediation: "conditional"` (remplissage automatique du navigateur) reste au
-  navigateur. Cadre principal seulement.
+  Cadre principal seulement.
+- **Remplissage automatique** (`mediation: "conditional"`) : la demande reste
+  en attente dans `passkeys.js`, et le menu sous le champ de connexion
+  (`content.js`, même monde isolé de l'extension : la page n'atteint ni l'un
+  ni l'autre) propose les passkeys de Verrou pour ce site (« Passkey ·
+  utilisateur »). Seul un vrai clic ou une vraie touche (`isTrusted`) les
+  choisit ; la signature suit le même chemin qu'une demande explicite
+  (Touch ID si demandé, élément protégé, compteur). La page annule
+  (`AbortSignal`) ou lance une autre demande : la passkey quitte le menu.
+  Sans passkey de Verrou pour ce site, ou Verrou injoignable ou non relié, la
+  demande passe aussitôt au navigateur.
 - **Choix de l'utilisateur** : la fenêtre de Verrou (shadow DOM fermé, clics
   réels seulement) propose les passkeys du site, ou d'en enregistrer une
   (dans un identifiant du site, ou un nouveau). « Utiliser le navigateur »
   rend la main à l'implémentation d'origine, avec les mêmes options ; sans
-  passkey pour ce site, ou Verrou injoignable, c'est le navigateur d'emblée.
+  passkey pour ce site, c'est le navigateur d'emblée. Quand Verrou ne peut pas
+  prendre une demande explicite (injoignable, extension non reliée ou rechargée
+  depuis, type de clé non géré), elle passe au navigateur et un avis discret
+  le dit : jamais de repli silencieux.
 - **Origine et site** : l'adresse vient du navigateur (`sender.url`, cadre
   principal), jamais de la page. Le cœur Rust (`verrou-core/src/passkey.rs`)
   en tire l'origine écrite dans `clientDataJSON` et vérifie le `rpId` : l'hôte
@@ -378,7 +401,7 @@ page ──postMessage──▶ passkeys.js ──▶ service worker ──pont 
   déjà n'est pas recréée (`InvalidStateError`).
 - **Limites connues** : clés ES256 seulement (un site qui n'accepte pas ES256
   passe par le navigateur) ; pas d'extensions WebAuthn (PRF, `largeBlob`) ;
-  pas de passkey dans les cadres ni dans le remplissage automatique ; pendant
+  pas de passkey dans les cadres ; pendant
   une demande de Touch ID, les autres requêtes de l'extension attendent.
 
 ## Éléments protégés et audit

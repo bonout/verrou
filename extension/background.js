@@ -5,6 +5,8 @@
 // (`sender.url`), jamais une adresse fournie par la page.
 
 import { Channel } from "./bridge.js";
+import { passkeyCommand, passkeyResult } from "./passkey-bridge.js";
+import { ATTEMPT_KEY, createUpdater } from "./update.js";
 
 const HOST = "app.verrou.bridge";
 const IDLE_MS = 60_000;
@@ -63,8 +65,12 @@ function keepAlive() {
 async function call(command) {
   await ready;
   keepAlive();
+  // Nouvelle connexion à Verrou : l'occasion de comparer les versions.
+  const connecting = !channel.transport;
   try {
-    return await channel.request(command);
+    const reply = await channel.request(command);
+    if (connecting && command.cmd !== "status") checkWithBridge();
+    return reply;
   } catch (error) {
     if (error.code === "unknown_client") {
       // Révoqué dans Verrou : il faudra appairer de nouveau.
@@ -83,11 +89,58 @@ function stateOf(error) {
 async function status() {
   try {
     const reply = await call({ cmd: "status" });
-    return { state: reply.unlocked ? "unlocked" : "locked" };
+    await updater.check({ bridgeVersion: reply.extension_version ?? null });
+    return { state: reply.unlocked ? "unlocked" : "locked", extension: updater.state() };
   } catch (error) {
-    return { state: stateOf(error) };
+    return { state: stateOf(error), extension: updater.state() };
   }
 }
+
+// MARK: Mise à jour (extension chargée depuis Verrou.app)
+//
+// Au démarrage, à chaque connexion à Verrou, et toutes les dix minutes : si
+// l'extension sur le disque (ou celle que Verrou livre) n'est plus celle qui
+// tourne, elle se recharge (voir update.js).
+
+async function diskVersion() {
+  const response = await fetch(chrome.runtime.getURL("manifest.json"), { cache: "no-store" });
+  return (await response.json()).version;
+}
+
+const updater = createUpdater({
+  running: chrome.runtime.getManifest().version,
+  readDisk: diskVersion,
+  reload: () => chrome.runtime.reload(),
+  store: {
+    get: async () => (await chrome.storage.local.get(ATTEMPT_KEY))[ATTEMPT_KEY],
+    set: (attempt) => chrome.storage.local.set({ [ATTEMPT_KEY]: attempt }),
+  },
+  busy: () => Boolean(channel.pairing),
+});
+
+// La version annoncée par Verrou, sans le lancer : seulement s'il est relié.
+async function checkWithBridge() {
+  if (!channel.client) return updater.check();
+  try {
+    const reply = await channel.request({ cmd: "status" });
+    return updater.check({ bridgeVersion: reply.extension_version ?? null });
+  } catch {
+    return updater.check();
+  }
+}
+
+const UPDATE_ALARM = "verrou-update";
+// Recréer l'alarme à chaque réveil du service worker la repousserait sans fin.
+chrome.alarms.get(UPDATE_ALARM)
+  .then((alarm) => alarm ?? chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 10 }))
+  .catch(() => {});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== UPDATE_ALARM) return;
+  // Connexion déjà ouverte : demander aussi à Verrou ; sinon le disque seul
+  // (ouvrir la connexion lancerait l'app).
+  (channel.transport ? checkWithBridge() : updater.check()).catch(() => {});
+});
+updater.check().catch(() => {});
 
 async function suggest(url) {
   try {
@@ -303,57 +356,16 @@ async function fillForm(url, item) {
 // MARK: Passkeys
 //
 // Demandes de passkeys.js (cadre principal seulement), pour l'adresse de
-// l'onglet. Les options viennent de la page : Verrou les vérifie (site,
-// longueurs) ; ici, seulement leur forme.
-
-const str = (value, max = 4096) => (typeof value === "string" && value ? value.slice(0, max) : null);
-const strings = (list) => (Array.isArray(list) ? list.filter((v) => typeof v === "string").slice(0, 64) : []);
+// l'onglet (voir passkey-bridge.js).
 
 async function passkey(message, sender) {
   if (sender.frameId !== 0 || !sender.url) return { state: "offline" };
-  const url = sender.url;
-  const rp_id = str(message.rp_id, 253);
-  const commands = {
-    passkeyList: () => ({ cmd: "passkey_list", url, rp_id, allow: strings(message.allow) }),
-    passkeyTargets: () => ({ cmd: "passkey_targets", url, rp_id, exclude: strings(message.exclude) }),
-    passkeyGet: () => ({
-      cmd: "passkey_get", url, rp_id, item: str(message.item), credential: str(message.credential),
-      challenge: str(message.challenge), uv: Boolean(message.uv),
-    }),
-    passkeyCreate: () => ({
-      cmd: "passkey_create", url, rp_id, rp_name: str(message.rp_name, 256),
-      user_id: str(message.user_id), user_name: str(message.user_name, 256),
-      user_display_name: str(message.user_display_name, 256), challenge: str(message.challenge),
-      algorithms: Array.isArray(message.algorithms) ? message.algorithms.filter(Number.isInteger).slice(0, 16) : [],
-      exclude: strings(message.exclude), uv: Boolean(message.uv), attestation: str(message.attestation, 32),
-      item: str(message.item),
-    }),
-  };
-  let reply;
+  const command = passkeyCommand(message, sender.url);
+  if (!command) return { error: "commande inconnue" };
   try {
-    reply = await call(commands[message.kind]());
+    return passkeyResult(await call(command));
   } catch (error) {
     return { state: stateOf(error) };
-  }
-  const { id, result, ...data } = reply;
-  switch (result) {
-    case "locked":
-      return { state: "locked" };
-    case "passkeys":
-      return { state: "unlocked", items: data.items ?? [] };
-    case "passkey_targets":
-      return { state: "unlocked", excluded: Boolean(data.excluded), logins: data.logins ?? [] };
-    case "assertion":
-    case "registration":
-      return { ok: true, credential: data };
-    case "confirm":
-      return { ok: false, state: "confirm" };
-    default:
-      return {
-        ok: false,
-        state: data.reason === "cette passkey est déjà dans Verrou" ? "exists" : (result ?? "denied"),
-        reason: data.reason,
-      };
   }
 }
 
@@ -418,7 +430,7 @@ async function handle(message, sender) {
     // Depuis la fenêtre de l'extension.
     case "status":
       await ready;
-      return channel.client ? status() : { state: "unpaired" };
+      return channel.client ? status() : { state: "unpaired", extension: updater.state() };
     case "pair":
       return startPairing();
     case "unpair":
