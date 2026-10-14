@@ -142,6 +142,7 @@ private struct SecuritySettings: View {
                 }
 
                 SecurityKeysSection()
+                NewPasswordBreachSection()
             }
         }
     }
@@ -346,5 +347,20 @@ struct BrowserSection: View {
             return "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Cliquez ensuite sur l'icône Verrou de Brave pour relier l'extension. \(terminal)"
         }
         return "L'extension ne reçoit que les identifiants du site ouvert, en HTTPS, coffre déverrouillé. Le terminal cherche sans voir les secrets ; chacun demande Touch ID."
+    }
+}
+
+/// Vérification des nouveaux mots de passe dans les fuites connues
+/// (`AppModel.checkNewPasswords`).
+private struct NewPasswordBreachSection: View {
+    @AppStorage(Watchtower.checkNewPasswordsKey) private var checkNewPasswords = true
+
+    var body: some View {
+        Section {
+            Toggle("Vérifier les nouveaux mots de passe dans les fuites connues", isOn: $checkNewPasswords)
+        } footer: {
+            Text("À chaque mot de passe créé ou modifié dans Verrou (éditeur, Brave, import), Have I Been Pwned est interrogé en arrière-plan. Seuls les 5 premiers caractères de son empreinte SHA-1 quittent ce Mac.")
+                .foregroundStyle(.secondary)
+        }
     }
 }

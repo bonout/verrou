@@ -22,6 +22,7 @@ mod error;
 mod import;
 pub mod security_key;
 mod store;
+pub mod two_factor_directory;
 pub mod unlock_keys;
 
 use std::collections::HashMap;

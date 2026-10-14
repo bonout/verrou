@@ -352,7 +352,7 @@ impl VaultSession {
                 .map(|(title, reason)| ImportSkipped { title, reason })
                 .collect(),
         };
-        self.install_if_current(&connection, report.vault)?;
+        self.install_written(&connection, report.vault)?;
         Ok(outcome)
     }
 

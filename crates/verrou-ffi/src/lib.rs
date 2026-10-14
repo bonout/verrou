@@ -40,10 +40,14 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod import;
+mod watchtower;
 
 pub use import::{
     DuplicateGroupView, ImportChoice, ImportDestination, ImportEntry, ImportFormat, ImportOutcome,
     ImportReview, ImportSkipped, ImportStatus,
+};
+pub use watchtower::{
+    ExpiringCard, MissingTwoFactor, OldPassword, TwoFactorReport, WatchtowerReport,
 };
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -571,6 +575,9 @@ pub struct VaultSession {
     confirmations: Arc<Confirmations>,
     /// Export lu, en attente de confirmation (secrets compris).
     pending_import: Mutex<Option<import::PendingImport>>,
+    /// Identifiants dont le mot de passe vient d'être enregistré depuis
+    /// Verrou, en attente de `check_new_passwords`.
+    new_passwords: Mutex<Vec<String>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -730,7 +737,7 @@ impl VaultSession {
             }
         };
         drop(open);
-        self.install_if_current(connection, decrypted)?;
+        self.install_written(connection, decrypted)?;
         Ok(id)
     }
 
@@ -804,6 +811,7 @@ impl VaultSession {
             authorized: Mutex::new(HashMap::new()),
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
+            new_passwords: Mutex::new(Vec::new()),
         })
     }
 
@@ -1004,14 +1012,14 @@ impl VaultSession {
     pub async fn create_item(&self, draft: ItemDraft) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (id, decrypted) = connection.lock().await.create(draft.into()).await?;
-        self.install_if_current(&connection, decrypted)?;
+        self.install_written(&connection, decrypted)?;
         Ok(id)
     }
 
     pub async fn update_item(&self, id: String, draft: ItemDraft) -> Result<(), VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.update(&id, draft.into()).await?;
-        self.install_if_current(&connection, decrypted)
+        self.install_written(&connection, decrypted)
     }
 
     /// Met l'élément à la corbeille du serveur (restaurable depuis le coffre web).
@@ -1140,6 +1148,7 @@ impl VaultSession {
             authorized: Mutex::new(HashMap::new()),
             confirmations: Arc::default(),
             pending_import: Mutex::new(None),
+            new_passwords: Mutex::new(Vec::new()),
         })
     }
 
@@ -1180,6 +1189,7 @@ impl VaultSession {
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
         self.cancel_import();
+        self.forget_new_passwords();
     }
 
     /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets
