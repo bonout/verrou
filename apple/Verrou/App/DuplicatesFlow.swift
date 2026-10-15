@@ -72,8 +72,24 @@ final class DuplicatesFlow: Identifiable {
         selected.remove(id)
     }
 
-    func toggle(_ id: String, _ on: Bool) {
-        if on { selected.insert(id) } else { selected.remove(id) }
+    /// Coche ou décoche un élément. Cocher l'élément gardé le met à la
+    /// corbeille et garde à sa place le premier élément non coché du groupe.
+    func toggle(_ id: String, _ on: Bool, in group: DuplicateGroupView) {
+        guard on else {
+            selected.remove(id)
+            return
+        }
+        if id == keptID(group) {
+            guard let next = replacement(for: id, in: group) else { return }
+            kept[group.key] = next
+        }
+        selected.insert(id)
+    }
+
+    /// L'élément qui serait gardé si `id` partait à la corbeille : le premier
+    /// non coché du groupe, dans l'ordre suggéré par Verrou.
+    func replacement(for id: String, in group: DuplicateGroupView) -> String? {
+        group.members.map(\.item.id).first { $0 != id && !selected.contains($0) }
     }
 
     /// Les éléments cochés d'un groupe (jamais l'élément gardé).

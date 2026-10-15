@@ -258,7 +258,7 @@ private struct GroupView: View {
     }
 }
 
-/// Un élément : case à cocher (jamais pour l'élément gardé), titre,
+/// Un élément : case à cocher (cocher l'élément gardé en garde un autre), titre,
 /// identifiant, site, date, et pourquoi il ressemble à l'élément gardé.
 private struct MemberRow: View {
     @Bindable var flow: DuplicatesFlow
@@ -270,12 +270,12 @@ private struct MemberRow: View {
         HStack(alignment: .top, spacing: 8) {
             Toggle("", isOn: Binding(
                 get: { flow.selected.contains(member.item.id) },
-                set: { flow.toggle(member.item.id, $0) })
+                set: { flow.toggle(member.item.id, $0, in: group) })
             )
             .toggleStyle(.checkbox)
             .labelsHidden()
-            .disabled(kept)
-            .help(kept ? "L'élément gardé ne part pas à la corbeille" : "Cocher pour mettre à la corbeille")
+            .disabled(kept && replacement == nil)
+            .help(checkboxHelp)
             .padding(.top, 4)
             ItemIcon(summary: member.item, size: 26)
             VStack(alignment: .leading, spacing: 1) {
@@ -315,6 +315,16 @@ private struct MemberRow: View {
                     .padding(.top, 3)
             }
         }
+    }
+
+    private var replacement: String? {
+        flow.replacement(for: member.item.id, in: group)
+    }
+
+    private var checkboxHelp: String {
+        guard kept else { return "Cocher pour mettre à la corbeille" }
+        guard let next = replacement else { return "Il faut garder au moins un élément du groupe" }
+        return "Cocher pour mettre à la corbeille et garder « \(flow.title(of: next)) » à la place"
     }
 
     private var detail: String {
