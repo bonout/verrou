@@ -114,10 +114,3 @@ extension AppModel {
         NSWorkspace.shared.open(url)
     }
 }
-
-extension ItemSharing {
-    /// « Organisation › Collection, Collection ».
-    var label: String {
-        collections.isEmpty ? organization : "\(organization) › \(collections.joined(separator: ", "))"
-    }
-}

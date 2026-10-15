@@ -26,9 +26,10 @@ struct BrandHeader: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            AppMark(size: 72)
+            AppMark(size: 80)
+                .padding(.bottom, 4)
             Text(title)
-                .font(.system(.title, design: .rounded, weight: .bold))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
             Text(subtitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -69,7 +70,7 @@ private struct CredentialsStep: View {
                     .onSubmit { focus = .email }
                     .accessibilityIdentifier("login-server")
             } header: {
-                Text("Serveur")
+                SectionHeader("Serveur")
             }
 
             Section {
@@ -87,31 +88,41 @@ private struct CredentialsStep: View {
                     .submitLabel(.go)
                     .onSubmit(submit)
             } header: {
-                Text("Compte")
+                SectionHeader("Compte")
             } footer: {
                 Text("Le mot de passe principal ne quitte jamais l'iPhone : seule une empreinte dérivée est envoyée au serveur.")
             }
 
             Section {
-                Button(action: submit) {
-                    HStack {
-                        Spacer()
-                        if model.loginBusy { ProgressView().padding(.trailing, 6) }
-                        Text(model.loginBusy ? "Connexion…" : "Se connecter").fontWeight(.semibold)
-                        Spacer()
+                GlassGroup {
+                    VStack(spacing: 12) {
+                        Button(action: submit) {
+                            HStack(spacing: 8) {
+                                if model.loginBusy { ProgressView() }
+                                Text(model.loginBusy ? "Connexion…" : "Se connecter").fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                        }
+                        .controlSize(.large)
+                        .glassButton(prominent: true)
+                        .disabled(!canSubmit)
+                        if model.reloginRequired {
+                            Button("Continuer hors ligne") { model.continueOffline() }
+                                .frame(maxWidth: .infinity)
+                                .controlSize(.large)
+                                .glassButton()
+                        }
                     }
                 }
-                .disabled(!canSubmit)
-                if model.reloginRequired {
-                    Button("Continuer hors ligne") { model.continueOffline() }
-                        .frame(maxWidth: .infinity)
-                }
-            } footer: {
                 if let error = model.loginError {
                     ErrorLabel(text: error)
                 }
             }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
         }
+        .scrollContentBackground(.hidden)
+        .background { LockBackground() }
         .disabled(model.loginBusy)
         .navigationTitle("Connexion")
         .navigationBarTitleDisplayMode(.inline)
@@ -147,6 +158,7 @@ private struct TwoFactorStep: View {
                 BrandHeader(title: "Second facteur", subtitle: model.loginEmail)
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
             if options.count > 1 {
                 Section {
@@ -184,6 +196,8 @@ private struct TwoFactorStep: View {
                     .frame(maxWidth: .infinity)
             }
         }
+        .scrollContentBackground(.hidden)
+        .background { LockBackground() }
         .disabled(model.loginBusy)
         .navigationTitle("Vérification")
         .navigationBarTitleDisplayMode(.inline)

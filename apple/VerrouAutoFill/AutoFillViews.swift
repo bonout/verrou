@@ -53,7 +53,7 @@ struct AutoFillRootView: View {
             }
         case .none:
             VStack(spacing: 12) {
-                AppMark(size: 64)
+                AppMark(size: 64, glow: false)
                 Text("Verrou remplit vos identifiants, codes et passkeys.")
                     .multilineTextAlignment(.center)
             }
@@ -97,57 +97,38 @@ private struct AutoFillLockView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 22) {
-            Spacer(minLength: 12)
-            AppMark(size: 72)
-            VStack(spacing: 6) {
-                Text("Déverrouiller Verrou")
-                    .font(.title2.weight(.bold))
-                if let site = model.site {
-                    Text("pour \(site)").foregroundStyle(.secondary)
-                }
-                if let account = model.account {
-                    Text(account.email).font(.footnote).foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 12)
-            VStack(spacing: 14) {
-                if model.canUseBiometrics {
-                    Button {
-                        Task { await model.unlockWithBiometrics() }
-                    } label: {
-                        Label("Déverrouiller avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
-                            .font(.body.weight(.semibold))
-                            .frame(maxWidth: .infinity, minHeight: 34)
+        ZStack {
+            LockBackground()
+            VStack(spacing: 22) {
+                Spacer(minLength: 12)
+                AppMark(size: 76)
+                VStack(spacing: 6) {
+                    Text("Déverrouiller Verrou")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                    if let site = model.site {
+                        Text("pour \(site)").foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .disabled(model.phase == .unlocking)
+                    if let account = model.account {
+                        Text(account.email).font(.footnote).foregroundStyle(.secondary)
+                    }
                 }
-                HStack(spacing: 8) {
-                    SecureField("Mot de passe principal", text: $password)
-                        .textContentType(.password)
-                        .submitLabel(.go)
-                        .focused($focused)
-                        .onSubmit(submit)
-                        .disabled(model.phase == .unlocking)
-                    Button(action: submit) {
-                        if model.phase == .unlocking {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
+                .multilineTextAlignment(.center)
+                Spacer(minLength: 12)
+                GlassGroup(spacing: 14) {
+                    VStack(spacing: 14) {
+                        if model.canUseBiometrics {
+                            BiometricUnlockButton(title: "Déverrouiller avec \(Biometrics.name)",
+                                                  symbol: Biometrics.symbolName,
+                                                  busy: model.phase == .unlocking) {
+                                Task { await model.unlockWithBiometrics() }
+                            }
                         }
+                        MasterPasswordField(password: $password, busy: model.phase == .unlocking,
+                                            focused: $focused, submit: submit)
                     }
-                    .disabled(password.isEmpty)
-                    .accessibilityLabel("Déverrouiller")
                 }
-                .padding(.horizontal, 16)
-                .frame(height: 52)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 if let error = model.unlockError {
-                    Text(error)
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
@@ -156,6 +137,7 @@ private struct AutoFillLockView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 24)
         }
+        .sensoryFeedback(.error, trigger: model.unlockError) { _, new in new != nil }
         .task { await model.autoUnlock() }
     }
 
@@ -177,7 +159,7 @@ private struct CredentialListView: View {
         List {
             if model.query.isEmpty {
                 if !model.passkeys.isEmpty {
-                    Section("Passkeys") {
+                    Section(header: SectionHeader("Passkeys")) {
                         ForEach(model.passkeys, id: \.credentialId) { passkey in
                             Button { model.choose(passkey) } label: {
                                 Row(title: passkey.userName, subtitle: "Passkey · \(passkey.rpId)",
@@ -187,18 +169,22 @@ private struct CredentialListView: View {
                         }
                     }
                 }
-                Section(model.site.map { "Pour \($0)" } ?? "Suggestions") {
+                Section {
                     if model.matches.isEmpty {
                         Text("Aucun identifiant pour ce site : cherchez dans le coffre.")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(model.matches, id: \.id) { item in itemButton(item) }
+                } header: {
+                    SectionHeader(model.site.map { "Pour \($0)" } ?? "Suggestions")
                 }
-                Section("Tout le coffre") {
+                Section {
                     ForEach(model.everything.prefix(100), id: \.id) { item in itemButton(item) }
+                } header: {
+                    SectionHeader("Tout le coffre")
                 }
             } else {
-                Section("Résultats") {
+                Section(header: SectionHeader("Résultats")) {
                     let results = model.searchResults
                     if results.isEmpty {
                         Text("Aucun résultat").foregroundStyle(.secondary)
@@ -211,21 +197,11 @@ private struct CredentialListView: View {
     }
 
     private func itemButton(_ item: ItemSummary) -> some View {
+        // La ligne de l'app (sans icône de site : rien à télécharger ici).
         Button { model.choose(item) } label: {
-            HStack(spacing: 12) {
-                ItemIconContent(summary: item, image: nil, size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text(item.title).foregroundStyle(.primary)
-                        if item.reprompt {
-                            Image(systemName: "lock.shield").font(.caption).foregroundStyle(.secondary)
-                                .accessibilityLabel("protégé")
-                        }
-                    }
-                    Text(item.subtitle.isEmpty ? (item.host ?? "") : item.subtitle)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
+            ItemRowContent(summary: item, highlights: [], spacing: 12, subtitleFont: .subheadline,
+                           showsProtection: true) {
+                ItemIconContent(summary: item, image: nil, size: 38, initialShadow: false)
             }
         }
         .accessibilityIdentifier("autofill-item-\(item.title)")
@@ -240,11 +216,7 @@ private struct Row: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            TintedSymbol(symbol: symbol, tint: Theme.accent, size: 38)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
                     Text(title).foregroundStyle(.primary)
@@ -267,9 +239,7 @@ private struct PasskeyRegistrationView: View {
         List {
             Section {
                 VStack(spacing: 10) {
-                    Image(systemName: "person.badge.key.fill")
-                        .font(.system(size: 40))
-                        .foregroundStyle(Theme.accent)
+                    TintedSymbol(symbol: "person.badge.key.fill", tint: Theme.accent, size: 64)
                     Text("Nouvelle passkey pour \(model.site ?? "ce site")")
                         .font(.headline)
                         .multilineTextAlignment(.center)
@@ -296,7 +266,7 @@ private struct PasskeyRegistrationView: View {
                     ForEach(model.targets, id: \.id) { item in
                         Button { model.register(into: item) } label: {
                             HStack(spacing: 12) {
-                                ItemIconContent(summary: item, image: nil, size: 34)
+                                ItemIconContent(summary: item, image: nil, size: 38, initialShadow: false)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title).foregroundStyle(.primary)
                                     Text(item.subtitle).font(.footnote).foregroundStyle(.secondary)
@@ -306,7 +276,7 @@ private struct PasskeyRegistrationView: View {
                         .disabled(model.phase == .working)
                     }
                 } header: {
-                    Text("Ajouter à un identifiant")
+                    SectionHeader("Ajouter à un identifiant")
                 } footer: {
                     Text("Un identifiant porte une passkey : celle qu'il avait est remplacée.")
                 }
@@ -331,9 +301,7 @@ private struct ConfirmationSheet: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(Theme.accent)
+            TintedSymbol(symbol: "lock.shield.fill", tint: .orange, size: 60)
             Text("« \(model.confirmation?.title ?? "") » est protégé")
                 .font(.headline)
                 .multilineTextAlignment(.center)
@@ -346,14 +314,17 @@ private struct ConfirmationSheet: View {
                     Task { await model.confirmWithBiometrics() }
                 } label: {
                     Label("Confirmer avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
-                        .frame(maxWidth: .infinity, minHeight: 30)
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 34)
                 }
-                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .glassButton(prominent: true)
             }
             SecureField("Mot de passe principal", text: $password)
                 .textContentType(.password)
-                .padding(12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 16)
+                .frame(minHeight: 48)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .onSubmit {
                     let typed = password
                     password = ""

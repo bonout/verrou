@@ -39,6 +39,8 @@ final class PhoneModel {
         case vault
         case generator
         case settings
+        /// Recherche dans tout le coffre (onglet à part, rôle « search »).
+        case search
     }
 
     /// Écrans empilés dans l'onglet Coffre.
@@ -117,9 +119,17 @@ final class PhoneModel {
 
     // Navigation et feuilles
     var tab: Tab = .vault
-    var vaultPath: [Route] = []
-    /// Recherche de l'accueil du coffre (dans tout le coffre).
+    var vaultPath: [Route] = [] {
+        didSet { forgetClosedItems() }
+    }
+    /// Écrans empilés dans l'onglet Rechercher.
+    var searchPath: [Route] = [] {
+        didSet { forgetClosedItems() }
+    }
+    /// Recherche dans tout le coffre (onglet Rechercher).
     var searchQuery = ""
+    /// Copies faites : chacune déclenche un retour haptique (`sensoryFeedback`).
+    private(set) var copies = 0
     var editor: Editor?
     var editorBusy = false
     var editorError: String?
@@ -171,6 +181,11 @@ final class PhoneModel {
     init() {
         let environment = ProcessInfo.processInfo.environment
         mockSize = UInt32(environment["VERROU_MOCK_SIZE"] ?? "") ?? 0
+        #if DEBUG
+        showcase = environment["VERROU_SHOWCASE"] == "1" && environment["VERROU_MOCK"] == "1"
+        #else
+        showcase = false
+        #endif
         autoFaceID = environment["VERROU_E2E_SERVER"] == nil && environment["VERROU_MOCK"] == nil
         var location = VerrouStorage.accountLocation()
         #if DEBUG
@@ -210,7 +225,11 @@ final class PhoneModel {
         mode == .demo ? Biometrics.isAvailable : biometricEnrolled && Biometrics.isAvailable
     }
 
-    var canEdit: Bool { mode == .vaultwarden && lockState == .unlocked }
+    var canEdit: Bool { (mode == .vaultwarden || showcase) && lockState == .unlocked }
+
+    /// Vitrine (builds Debug, `VERROU_SHOWCASE=1`) : sur le coffre fictif, les
+    /// boutons de modification sont affichés pour les captures d'écran.
+    @ObservationIgnored let showcase: Bool
 
     // MARK: Réglages
 
@@ -450,6 +469,7 @@ final class PhoneModel {
         reprompt = nil
         toast = nil
         vaultPath = []
+        searchPath = []
         searchQuery = ""
         Attachments.purge()
         clipboard.clearIfOurs()
@@ -626,14 +646,19 @@ final class PhoneModel {
         refreshPending()
         // Un élément créé a reçu son identifiant du serveur : la fiche ouverte
         // suit ; un élément disparu (écriture refusée, annulée) la ferme.
-        vaultPath = vaultPath.compactMap { route in
+        vaultPath = resolved(vaultPath)
+        searchPath = resolved(searchPath)
+        revision += 1
+        publishAutofillIdentities()
+        Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
+    }
+
+    private func resolved(_ path: [Route]) -> [Route] {
+        path.compactMap { route in
             guard case .item(let id) = route else { return route }
             let resolved = session.resolveItemId(id: id)
             return summaryIndex[resolved] == nil ? nil : .item(resolved)
         }
-        revision += 1
-        publishAutofillIdentities()
-        Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
     }
 
     // MARK: Remplissage automatique
@@ -713,6 +738,15 @@ final class PhoneModel {
     func open(_ itemID: String) {
         tab = .vault
         vaultPath.append(.item(itemID))
+    }
+
+    /// Une fiche qui n'est plus dans aucune pile perd ses secrets révélés,
+    /// sans attendre la fin de l'animation (ni compter sur `onDisappear`).
+    private func forgetClosedItems() {
+        guard !revealed.isEmpty else { return }
+        var open = Set<String>()
+        for case .item(let id) in vaultPath + searchPath { open.insert(id) }
+        for id in revealed.keys where !open.contains(id) { revealed[id] = nil }
     }
 
     /// La fiche est quittée : ses secrets révélés sont oubliés.
@@ -825,7 +859,7 @@ final class PhoneModel {
     func copy(_ value: String, label: String, secret: Bool) {
         let seconds = secret ? clipboardSeconds : 0
         clipboard.copy(value, expiresIn: seconds > 0 ? TimeInterval(seconds) : nil)
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        copies += 1
         withAnimation(.snappy) {
             toast = Toast(message: "\(label) copié",
                           detail: secret && seconds > 0 ? "Effacé du presse-papiers dans \(Self.durationLabel(seconds))" : nil)

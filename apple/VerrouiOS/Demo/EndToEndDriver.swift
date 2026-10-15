@@ -132,12 +132,14 @@ final class EndToEndDriver {
         check(model.syncState == .idle, "synchronisation")
         await snap("03-coffre")
 
-        // Recherche (cœur Rust), sans accents ni majuscules
+        // Recherche (cœur Rust), sans accents ni majuscules, dans l'onglet Rechercher
+        model.tab = .search
         model.searchQuery = "gith"
         check(model.rows(query: "gith", filter: .all).first?.summary.title == "GitHub", "recherche floue")
         check(model.rows(query: "telecom", filter: .all).isEmpty, "recherche sans résultat")
         await snap("04-recherche")
         model.searchQuery = ""
+        model.tab = .vault
 
         // Fiche, révélation, copie
         guard let github = id(of: "GitHub") else { return check(false, "GitHub présent") }

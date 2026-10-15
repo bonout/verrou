@@ -660,45 +660,10 @@ struct ItemRow: View {
         #if DEBUG || BENCH
         let _ = BenchDriver.rowsBuilt += 1
         #endif
-        HStack(spacing: 11) {
+        ItemRowContent(summary: summary, highlights: highlights, selected: selected) {
             ItemIcon(summary: summary, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    HighlightedText(text: summary.title, highlights: highlights,
-                                    tint: selected ? nil : Theme.accent)
-                        .lineLimit(1)
-                    if summary.favorite {
-                        Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow)
-                    }
-                    if let sharing = summary.sharing {
-                        Image(systemName: "person.2.fill")
-                            .font(.system(size: 9))
-                            .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.indigo))
-                            .help(sharing.label)
-                    }
-                }
-                Text(summary.subtitle)
-                    .font(.callout)
-                    .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 0)
-            if summary.pendingSync {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.caption)
-                    .foregroundStyle(selected ? .white : .orange)
-                    .help("En attente de synchronisation")
-                    .accessibilityLabel("En attente de synchronisation")
-            }
-            if summary.hasTotp {
-                Image(systemName: "clock.badge.checkmark")
-                    .font(.caption)
-                    .foregroundStyle(selected ? .white : .teal)
-                    .help("Code à usage unique")
-            }
         }
         .padding(.vertical, 6)
-        .foregroundStyle(selected ? Color.white : Color.primary)
         .contentShape(Rectangle())
     }
 }

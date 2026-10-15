@@ -74,6 +74,9 @@ struct ItemIconContent: View {
     /// Icône du site, déjà chargée (`SiteIcons`).
     let image: PlatformImage?
     var size: CGFloat = 32
+    /// Ombre légère sous l'initiale ; sans, sur l'iPhone : une ombre de texte
+    /// par ligne coûte un rendu hors écran pendant le défilement.
+    var initialShadow = true
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
@@ -94,10 +97,14 @@ struct ItemIconContent: View {
                         colors: [Color(hue: hue, saturation: 0.62, brightness: 0.90),
                                  Color(hue: hue, saturation: 0.78, brightness: 0.68)],
                         startPoint: .topLeading, endPoint: .bottomTrailing))
-                Text(initial)
+                let letter = Text(initial)
                     .font(.system(size: size * 0.48, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                if initialShadow {
+                    letter.shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                } else {
+                    letter
+                }
             } else {
                 shape.fill(summary.tint.gradient)
                 Image(systemName: summary.symbol)
@@ -199,6 +206,8 @@ struct TotpCodeView: View {
             Text(grouped)
                 .font(.system(size: size, weight: .semibold, design: .monospaced))
                 .contentTransition(.numericText())
+                // Les chiffres roulent quand le code change.
+                .animation(.snappy, value: code.code)
             CountdownRing(remaining: code.remaining, period: code.period)
                 .frame(width: size * 0.9, height: size * 0.9)
         }
@@ -227,6 +236,8 @@ struct CountdownRing: View {
                 .animation(.linear(duration: 1), value: remaining)
             Text("\(remaining)")
                 .font(.system(size: 9, weight: .bold, design: .rounded))
+                .contentTransition(.numericText(countsDown: true))
+                .animation(.snappy, value: remaining)
                 .foregroundStyle(urgent ? Color.orange : Color.secondary)
                 .monospacedDigit()
         }
@@ -276,24 +287,4 @@ struct Toast: Equatable, Identifiable {
     var failure = false
     /// Durée d'affichage.
     var seconds = 2.2
-}
-
-// MARK: Logo
-
-/// Le logo : un verrou sur un écusson arrondi.
-struct AppMark: View {
-    var size: CGFloat = 64
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
-                .fill(LinearGradient(colors: [Color(red: 0.36, green: 0.42, blue: 1.0), Color(red: 0.20, green: 0.17, blue: 0.62)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .shadow(color: Color(red: 0.25, green: 0.25, blue: 0.8).opacity(0.35), radius: size * 0.18, y: size * 0.08)
-            Image(systemName: "lock.fill")
-                .font(.system(size: size * 0.46, weight: .semibold))
-                .foregroundStyle(.white.gradient)
-        }
-        .frame(width: size, height: size)
-    }
 }

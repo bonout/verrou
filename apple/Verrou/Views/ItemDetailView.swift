@@ -208,23 +208,6 @@ struct SectionTitle: View {
     }
 }
 
-struct Chip: View {
-    let text: String
-    let symbol: String
-    let tint: Color
-
-    var body: some View {
-        Label(text, systemImage: symbol)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .font(.caption.weight(.medium))
-            .foregroundStyle(tint == .secondary ? Color.secondary : tint)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background((tint == .secondary ? Color.secondary : tint).opacity(0.12), in: Capsule())
-    }
-}
-
 /// Une ligne de champ : un clic copie, le survol montre les actions.
 struct FieldRow: View {
     @Environment(AppModel.self) private var model
@@ -371,21 +354,5 @@ struct NotesRow: View {
             }
         }
         .padding(14)
-    }
-}
-
-struct TagsRow: View {
-    let tags: [String]
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ForEach(tags, id: \.self) { tag in
-                Text("#\(tag)")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(.quaternary.opacity(0.7), in: Capsule())
-            }
-        }
     }
 }

@@ -8,6 +8,7 @@ struct VerrouPhoneApp: App {
     #if DEBUG
     @State private var endToEnd: EndToEndDriver?
     @State private var autoFillSetup: AutoFillSetupDriver?
+    @State private var bench: PhoneBenchDriver?
     #endif
 
     var body: some Scene {
@@ -25,6 +26,11 @@ struct VerrouPhoneApp: App {
                     if autoFillSetup == nil, let config = AutoFillSetupDriver.Config(ProcessInfo.processInfo.environment) {
                         let driver = AutoFillSetupDriver(model: model, config: config)
                         autoFillSetup = driver
+                        driver.start()
+                    }
+                    if bench == nil, PhoneBenchDriver.enabled {
+                        let driver = PhoneBenchDriver(model: model)
+                        bench = driver
                         driver.start()
                     }
                     #endif
@@ -62,6 +68,9 @@ struct RootView: View {
         }
         .animation(.easeOut(duration: 0.2), value: model.lockState)
         .animation(.easeOut(duration: 0.2), value: model.needsLogin)
+        // Chaque copie : un retour haptique de réussite.
+        .sensoryFeedback(.success, trigger: model.copies)
+        .tint(Theme.accent)
         // Coffre ouvert : au-dessus de la barre d'onglets ; sinon en haut, loin
         // des champs de saisie.
         .overlay(alignment: model.lockState == .unlocked ? .bottom : .top) { ToastHost() }
@@ -108,7 +117,7 @@ struct PrivacyCover: View {
         ZStack {
             Rectangle().fill(.regularMaterial)
             VStack(spacing: 14) {
-                AppMark(size: 76)
+                AppMark(size: 76, glow: false)
                 Text("Verrou")
                     .font(.system(.title2, design: .rounded, weight: .bold))
             }
@@ -118,22 +127,20 @@ struct PrivacyCover: View {
     }
 }
 
-/// Les onglets du coffre ouvert.
+/// Les onglets du coffre ouvert : Coffre, Générateur, Réglages et
+/// Rechercher (iOS 18+ : onglet de recherche à part, dans la barre d'onglets
+/// de verre sur iOS 26, qui se replie au défilement).
 struct MainTabs: View {
     @Environment(PhoneModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        TabView(selection: $model.tab) {
-            VaultTab()
-                .tabItem { Label("Coffre", systemImage: "lock.rectangle.stack.fill") }
-                .tag(PhoneModel.Tab.vault)
-            GeneratorTab()
-                .tabItem { Label("Générateur", systemImage: "wand.and.stars") }
-                .tag(PhoneModel.Tab.generator)
-            SettingsTab()
-                .tabItem { Label("Réglages", systemImage: "gearshape.fill") }
-                .tag(PhoneModel.Tab.settings)
+        Group {
+            if #available(iOS 18, *) {
+                modernTabs
+            } else {
+                legacyTabs
+            }
         }
         .sheet(item: $model.editor) { editor in
             EditItemView(editor: editor)
@@ -149,6 +156,60 @@ struct MainTabs: View {
             ShareSheet(url: file.url)
         }
         .quickLookPreview($model.preview)
+    }
+
+    @available(iOS 18, *)
+    private var modernTabs: some View {
+        @Bindable var model = model
+        return TabView(selection: $model.tab) {
+            Tab("Coffre", systemImage: "lock.rectangle.stack.fill", value: PhoneModel.Tab.vault) {
+                VaultTab()
+            }
+            Tab("Générateur", systemImage: "wand.and.stars", value: PhoneModel.Tab.generator) {
+                GeneratorTab()
+            }
+            Tab("Réglages", systemImage: "gearshape.fill", value: PhoneModel.Tab.settings) {
+                SettingsTab()
+            }
+            Tab("Rechercher", systemImage: "magnifyingglass", value: PhoneModel.Tab.search, role: .search) {
+                SearchTab()
+            }
+        }
+        .modifier(MinimizingTabBar())
+    }
+
+    /// iOS 17 : les mêmes onglets, la recherche en dernier.
+    private var legacyTabs: some View {
+        @Bindable var model = model
+        return TabView(selection: $model.tab) {
+            VaultTab()
+                .tabItem { Label("Coffre", systemImage: "lock.rectangle.stack.fill") }
+                .tag(PhoneModel.Tab.vault)
+            GeneratorTab()
+                .tabItem { Label("Générateur", systemImage: "wand.and.stars") }
+                .tag(PhoneModel.Tab.generator)
+            SettingsTab()
+                .tabItem { Label("Réglages", systemImage: "gearshape.fill") }
+                .tag(PhoneModel.Tab.settings)
+            SearchTab()
+                .tabItem { Label("Rechercher", systemImage: "magnifyingglass") }
+                .tag(PhoneModel.Tab.search)
+        }
+    }
+}
+
+/// iOS 26 : la barre d'onglets se replie quand on fait défiler vers le bas.
+private struct MinimizingTabBar: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) {
+            content.tabBarMinimizeBehavior(.onScrollDown)
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }
 
@@ -175,15 +236,16 @@ private struct ToastHost: View {
     }
 }
 
-/// La notification, en verre sur iOS 26.
+/// La notification, en verre sur iOS 26 (matériau flou avant).
 private struct PhoneToast: View {
     let toast: Toast
 
     var body: some View {
-        let content = HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Image(systemName: toast.failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(toast.failure ? .orange : .green)
-                .font(.title3)
+                .font(.title2)
+                .symbolEffect(.bounce, value: toast.id)
             VStack(alignment: .leading, spacing: 1) {
                 Text(toast.message).font(.callout.weight(.semibold))
                 if let detail = toast.detail {
@@ -194,22 +256,9 @@ private struct PhoneToast: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        // Verre (Liquid Glass) avec le SDK d'iOS 26 (Xcode 26, Swift 6.2) ;
-        // matériau flou sinon.
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 22))
-        } else {
-            materialToast(content)
-        }
-        #else
-        materialToast(content)
-        #endif
-    }
-
-    private func materialToast(_ content: some View) -> some View {
-        content
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .glassSurface(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: LiquidGlass.isAvailable ? .clear : .black.opacity(0.15), radius: 12, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("toast")
     }
 }

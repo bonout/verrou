@@ -83,6 +83,7 @@ targets:
     scheme:
       testTargets:
         - VerrouAutoFillUITests
+        - VerrouiOSUITests
     settings:
       base:
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
@@ -166,6 +167,25 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.autofill-uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: VerrouiOS
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+
+  # Vitrine et mesures de l'app iPhone (XCUITest) sur le coffre fictif :
+  # captures demandées au script (`simctl io screenshot`), défilement mesuré
+  # (XCTOSSignpostMetric). Lancés par scripts/ios-showcase.sh et
+  # scripts/ios-bench.sh.
+  VerrouiOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: VerrouiOSUITests
+    dependencies:
+      - target: VerrouiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.uitests
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1"
         TEST_TARGET_NAME: VerrouiOS
