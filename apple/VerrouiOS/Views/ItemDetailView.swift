@@ -10,6 +10,7 @@ struct ItemDetailView: View {
     @State private var importingFile = false
     @State private var deletingAttachment: AttachmentEntry?
     @State private var deletingPasskey: PasskeyInfo?
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         Group {
@@ -32,9 +33,16 @@ struct ItemDetailView: View {
         List {
             Section {
                 DetailHeader(summary: summary)
+                // Très grand texte : les lignes des champs suffisent (elles copient aussi).
+                if summary.state == .active, !typeSize.isAccessibilitySize,
+                   summary.category == .login || summary.hasTotp {
+                    QuickCopyBar(summary: summary, fields: fields)
+                        .padding(.top, 4)
+                }
             }
             .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+            .listRowInsets(EdgeInsets(top: 4, leading: 4, bottom: 8, trailing: 4))
+            .listRowSeparator(.hidden)
 
             stateBanner(summary)
 
@@ -61,10 +69,12 @@ struct ItemDetailView: View {
             }
 
             if !detail.urls.isEmpty {
-                Section("Sites") {
+                Section {
                     ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
                         WebsiteRow(url: url, primary: index == 0)
                     }
+                } header: {
+                    SectionHeader("Sites")
                 }
             }
 
@@ -82,30 +92,34 @@ struct ItemDetailView: View {
                             }
                     }
                 } header: {
-                    Text("Passkeys")
+                    SectionHeader("Passkeys")
                 } footer: {
                     Text("Utilisables dans Brave et Firefox avec Verrou sur le Mac, et par les apps Bitwarden.")
                 }
             }
 
             if detail.hasNotes {
-                Section("Notes") { NotesRow(itemID: itemID) }
+                Section { NotesRow(itemID: itemID) } header: { SectionHeader("Notes") }
             }
 
             if !history.isEmpty {
-                Section("Anciens mots de passe") {
+                Section {
                     ForEach(history, id: \.id) { field in
                         FieldRow(itemID: itemID, field: field)
                     }
+                } header: {
+                    SectionHeader("Anciens mots de passe")
                 }
             }
 
             attachmentsSection(summary)
 
             if !summary.tags.isEmpty {
-                Section("Étiquettes") {
-                    Text(summary.tags.map { "#\($0)" }.joined(separator: "  "))
-                        .foregroundStyle(.secondary)
+                Section {
+                    TagsRow(tags: summary.tags)
+                        .padding(.vertical, 2)
+                } header: {
+                    SectionHeader("Étiquettes")
                 }
             }
 
@@ -235,8 +249,7 @@ struct ItemDetailView: View {
                         model.openAttachment(entry, of: itemID)
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "doc.fill")
-                                .foregroundStyle(Theme.accent)
+                            TintedSymbol(symbol: "doc.fill", tint: Theme.accent, size: 32)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.readable ? entry.fileName : "Fichier illisible")
                                     .foregroundStyle(.primary)
@@ -271,7 +284,7 @@ struct ItemDetailView: View {
                     }
                 }
             } header: {
-                Text("Pièces jointes")
+                SectionHeader("Pièces jointes")
             } footer: {
                 Text("Téléchargées et déchiffrées à chaque ouverture : il faut le réseau.")
             }
@@ -289,117 +302,204 @@ struct ItemDetailView: View {
     }
 }
 
-/// Icône, titre et pastilles (type, dossier, partage, protection).
+/// Icône, titre et pastilles (type, dossier, partage, protection), étoile
+/// des favoris : l'en-tête de la fiche du Mac.
 private struct DetailHeader: View {
     @Environment(PhoneModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
     let summary: ItemSummary
 
     var body: some View {
-        VStack(spacing: 10) {
-            ItemIcon(summary: summary, size: 64)
-            Text(summary.title)
-                .font(.title2.weight(.bold))
-                .multilineTextAlignment(.center)
-                .textSelection(.enabled)
-            FlowChips(chips: chips)
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
+        layout {
+            ItemIcon(summary: summary, size: 68)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(summary.title)
+                    .font(.title2.weight(.bold))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                // Les pastilles passent à la ligne, sans jamais couper leur texte.
+                FlowLayout(spacing: 6, lineSpacing: 6) {
+                    ForEach(chips, id: \.text) { chip in
+                        Chip(text: chip.text, symbol: chip.symbol, tint: chip.tint)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            FavoriteButton(summary: summary)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
     }
 
-    private var chips: [Chip] {
-        var chips = [Chip(text: summary.kindLabel, symbol: summary.symbol, tint: summary.tint)]
-        if let folder = summary.folder { chips.append(Chip(text: folder, symbol: "folder", tint: .secondary)) }
-        if summary.favorite { chips.append(Chip(text: "Favori", symbol: "star.fill", tint: .yellow)) }
-        if summary.pendingSync {
-            chips.append(Chip(text: "En attente de synchronisation", symbol: "arrow.triangle.2.circlepath", tint: .orange))
-        }
-        if summary.reprompt { chips.append(Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)) }
+    private var chips: [(text: String, symbol: String, tint: Color)] {
+        var chips: [(text: String, symbol: String, tint: Color)] = [(summary.kindLabel, summary.symbol, summary.tint)]
+        if let folder = summary.folder { chips.append((folder, "folder", .secondary)) }
+        if summary.pendingSync { chips.append(("En attente de synchronisation", "arrow.triangle.2.circlepath", .orange)) }
+        if summary.reprompt { chips.append(("Protégé", "lock.shield", .orange)) }
         if let sharing = summary.sharing {
-            chips.append(Chip(text: sharing.organization, symbol: "person.2.fill", tint: .indigo))
-            if sharing.readOnly { chips.append(Chip(text: "Lecture seule", symbol: "eye", tint: .secondary)) }
-            if sharing.hidePasswords { chips.append(Chip(text: "Mot de passe masqué", symbol: "eye.slash", tint: .secondary)) }
+            chips.append((sharing.organization, "person.2.fill", .indigo))
+            if sharing.readOnly { chips.append(("Lecture seule", "eye", .secondary)) }
+            if sharing.hidePasswords { chips.append(("Mot de passe masqué", "eye.slash", .secondary)) }
         }
         return chips
     }
 }
 
-private struct Chip: Hashable {
-    let text: String
-    let symbol: String
-    let tint: Color
-}
-
-/// Pastilles centrées ; trop nombreuses pour la largeur, elles défilent.
-private struct FlowChips: View {
-    let chips: [Chip]
+/// L'étoile des favoris, qui rebondit quand on la touche.
+private struct FavoriteButton: View {
+    @Environment(PhoneModel.self) private var model
+    let summary: ItemSummary
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            row
-            ScrollView(.horizontal, showsIndicators: false) { row.padding(.horizontal, 4) }
+        Button {
+            Task { await model.setFavorite(summary.id, !summary.favorite) }
+        } label: {
+            Image(systemName: summary.favorite ? "star.fill" : "star")
+                .font(.title2)
+                .foregroundStyle(summary.favorite ? Color.yellow : Color.secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: summary.favorite)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.borderless)
+        .disabled(!model.canModify(summary) || summary.state != .active || model.editorBusy)
+        .accessibilityLabel(summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris")
     }
+}
 
-    private var row: some View {
-        HStack(spacing: 6) {
-            ForEach(chips, id: \.self) { chip in
-                Label(chip.text, systemImage: chip.symbol)
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                    .fixedSize()
-                    .foregroundStyle(chip.tint == .secondary ? Color.secondary : chip.tint)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background((chip.tint == .secondary ? Color.secondary : chip.tint).opacity(0.14), in: Capsule())
+/// Copie en un geste : identifiant, mot de passe, code. Boutons de verre
+/// fondus ensemble sur iOS 26, en capsules teintées avant.
+private struct QuickCopyBar: View {
+    @Environment(PhoneModel.self) private var model
+    let summary: ItemSummary
+    let fields: [FieldView]
+
+    var body: some View {
+        GlassGroup(spacing: 10) {
+            HStack(spacing: 10) {
+                if summary.category == .login, fields.contains(where: { $0.fieldType == .username || $0.id == "username" }) {
+                    action("Identifiant", symbol: "person.fill") { model.copyUsername(of: summary.id) }
+                }
+                if summary.category == .login, fields.contains(where: { $0.id == "password" }) {
+                    action("Mot de passe", symbol: "key.fill") { model.copyPassword(of: summary.id) }
+                }
+                if summary.hasTotp {
+                    action("Code", symbol: "clock.fill") { model.copyCode(of: summary.id) }
+                }
             }
         }
     }
+
+    private func action(_ title: String, symbol: String, perform: @escaping () -> Void) -> some View {
+        Button(action: perform) {
+            Label(title, systemImage: symbol)
+                .labelStyle(StackedLabelStyle())
+                .frame(maxWidth: .infinity)
+        }
+        .glassButton()
+        .accessibilityLabel("Copier : \(title.lowercased())")
+        .accessibilityIdentifier("quick-copy-\(title)")
+    }
 }
 
-/// Une ligne de champ : un appui copie, l'œil révèle.
+/// Symbole au-dessus du texte, dans les boutons de copie rapide.
+private struct StackedLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(spacing: 4) {
+            configuration.icon
+                .font(.system(size: 17, weight: .semibold))
+                .frame(height: 22)
+            configuration.title
+                .font(.caption.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// Une ligne de champ : un appui copie (le bouton passe à la coche), l'œil révèle.
 struct FieldRow: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
     let field: FieldView
+    @State private var copied = false
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(field.label)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(field.fieldType == .password || field.fieldType == .totp ? Theme.accent : Color.secondary)
                 FieldValue(itemID: itemID, field: field)
             }
             Spacer(minLength: 8)
             if field.secret && field.fieldType != .totp && !field.hidden {
                 let shown = model.revealedValue(field.id, of: itemID) != nil
-                Button {
+                RowIconButton(symbol: shown ? "eye.slash" : "eye", label: shown ? "Masquer" : "Afficher") {
                     withAnimation(.snappy(duration: 0.18)) { model.toggleReveal(field.id, of: itemID) }
-                } label: {
-                    Image(systemName: shown ? "eye.slash" : "eye")
-                        .font(.body)
-                        .frame(width: 34, height: 34)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(shown ? "Masquer" : "Afficher")
+            }
+            if !field.hidden {
+                RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copier",
+                              tint: copied ? .green : Theme.accent, action: copy)
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.copyField(field, of: itemID) }
+        .onTapGesture(perform: copy)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Touchez deux fois pour copier")
-        .accessibilityAction(named: "Copier") { model.copyField(field, of: itemID) }
+        .accessibilityAction(named: "Copier", copy)
         .contextMenu {
-            Button("Copier", systemImage: "doc.on.doc") { model.copyField(field, of: itemID) }
+            Button("Copier", systemImage: "doc.on.doc", action: copy)
             if field.secret && field.fieldType != .totp && !field.hidden {
                 Button(model.revealedValue(field.id, of: itemID) == nil ? "Afficher" : "Masquer", systemImage: "eye") {
                     model.toggleReveal(field.id, of: itemID)
                 }
             }
         }
+        .task(id: copied) {
+            guard copied else { return }
+            try? await Task.sleep(for: .seconds(1.6))
+            copied = false
+        }
+    }
+
+    private func copy() {
+        let before = model.copies
+        model.copyField(field, of: itemID)
+        // La coche seulement si la copie a eu lieu (pas d'attente de Face ID).
+        if model.copies != before {
+            withAnimation(.snappy) { copied = true }
+        }
+    }
+}
+
+/// Petit bouton rond d'une ligne (afficher, copier) : un fond discret, pas
+/// de verre dans une liste.
+private struct RowIconButton: View {
+    let symbol: String
+    let label: String
+    var tint: Color = Theme.accent
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 36, height: 36)
+                .background(tint.opacity(0.12), in: Circle())
+                .contentShape(Circle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(label)
     }
 }
 
@@ -414,7 +514,7 @@ private struct FieldValue: View {
         case .totp:
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 if let code = model.totpCode(of: itemID, at: context.date) {
-                    TotpCodeView(code: code, size: 24)
+                    TotpCodeView(code: code, size: 28)
                 } else {
                     // Élément protégé : le code n'apparaît qu'après confirmation.
                     MaskedText(count: 6)
@@ -455,18 +555,12 @@ private struct WebsiteRow: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text(primary ? "Site principal" : "Site").font(.caption).foregroundStyle(.secondary)
+                Text(primary ? "Site principal" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             if let link = URL(string: url), link.scheme == "https" || link.scheme == "http" {
-                Button {
-                    openURL(link)
-                } label: {
-                    Image(systemName: "safari")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Ouvrir dans Safari")
+                RowIconButton(symbol: "safari", label: "Ouvrir dans Safari") { openURL(link) }
             }
         }
         .contentShape(Rectangle())
@@ -479,8 +573,7 @@ private struct PasskeyRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "person.badge.key.fill")
-                .foregroundStyle(Theme.accent)
+            TintedSymbol(symbol: "person.badge.key.fill", tint: Theme.accent, size: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(passkey.rpName ?? passkey.rpId)
                 Text([passkey.userName, created].compactMap { $0 }.joined(separator: " · "))
@@ -513,14 +606,10 @@ private struct NotesRow: View {
                 }
                 Spacer()
             }
-            Button {
+            RowIconButton(symbol: model.revealedValue("notes", of: itemID) == nil ? "eye" : "eye.slash",
+                          label: "Afficher la note") {
                 withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
-            } label: {
-                Image(systemName: model.revealedValue("notes", of: itemID) == nil ? "eye" : "eye.slash")
-                    .frame(width: 34, height: 34)
             }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Afficher la note")
         }
     }
 }

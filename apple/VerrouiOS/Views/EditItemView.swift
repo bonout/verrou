@@ -29,10 +29,14 @@ struct EditItemView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
-                        .font(.headline)
-                        .focused($titleFocused)
-                        .accessibilityIdentifier("edit-title")
+                    HStack(spacing: 14) {
+                        TintedSymbol(symbol: kindSymbol.symbol, tint: kindSymbol.tint, size: 44)
+                        TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
+                            .font(.title3.weight(.semibold))
+                            .focused($titleFocused)
+                            .accessibilityIdentifier("edit-title")
+                    }
+                    .padding(.vertical, 4)
                 }
                 if draft.login != nil { loginSections }
                 if draft.card != nil { cardSection }
@@ -48,7 +52,7 @@ struct EditItemView: View {
                     }
                     Toggle("Favori", isOn: $draft.favorite)
                 }
-                Section("Notes") {
+                Section(header: SectionHeader("Notes")) {
                     TextField("Notes", text: optionalText(\.notes), axis: .vertical)
                         .lineLimit(3...12)
                 }
@@ -142,9 +146,9 @@ struct EditItemView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         } header: {
-            Text("Identifiant")
+            SectionHeader("Identifiant")
         }
-        Section("Sites") {
+        Section(header: SectionHeader("Sites")) {
             ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
                 TextField("https://exemple.fr", text: urlBinding(index))
                     .keyboardType(.URL)
@@ -159,7 +163,7 @@ struct EditItemView: View {
     // MARK: Carte
 
     @ViewBuilder private var cardSection: some View {
-        Section("Carte") {
+        Section(header: SectionHeader("Carte")) {
             TextField("Titulaire", text: cardText(\.cardholderName))
                 .textContentType(.name)
                 .textInputAutocapitalization(.characters)
@@ -202,20 +206,20 @@ struct EditItemView: View {
     // MARK: Identité
 
     @ViewBuilder private var identitySections: some View {
-        Section("Identité") {
+        Section(header: SectionHeader("Identité")) {
             TextField("Civilité", text: identityText(\.title))
             TextField("Prénom", text: identityText(\.firstName)).textContentType(.givenName)
             TextField("Deuxième prénom", text: identityText(\.middleName)).textContentType(.middleName)
             TextField("Nom", text: identityText(\.lastName)).textContentType(.familyName)
             TextField("Société", text: identityText(\.company)).textContentType(.organizationName)
         }
-        Section("Contact") {
+        Section(header: SectionHeader("Contact")) {
             TextField("E-mail", text: identityText(\.email))
                 .keyboardType(.emailAddress).textContentType(.emailAddress).textInputAutocapitalization(.never)
             TextField("Téléphone", text: identityText(\.phone)).keyboardType(.phonePad).textContentType(.telephoneNumber)
             TextField("Nom d'utilisateur", text: identityText(\.username)).textInputAutocapitalization(.never)
         }
-        Section("Adresse") {
+        Section(header: SectionHeader("Adresse")) {
             TextField("Adresse", text: identityText(\.address1)).textContentType(.streetAddressLine1)
             TextField("Complément", text: identityText(\.address2)).textContentType(.streetAddressLine2)
             TextField("Complément (suite)", text: identityText(\.address3))
@@ -224,7 +228,7 @@ struct EditItemView: View {
             TextField("Région", text: identityText(\.state)).textContentType(.addressState)
             TextField("Pays", text: identityText(\.country)).textContentType(.countryName)
         }
-        Section("Documents") {
+        Section(header: SectionHeader("Documents")) {
             SecureField("N° de sécurité sociale", text: identityText(\.ssn))
             SecureField("N° de passeport", text: identityText(\.passportNumber))
             SecureField("N° de permis de conduire", text: identityText(\.licenseNumber))
@@ -264,6 +268,15 @@ struct EditItemView: View {
         if draft.card != nil { return "Visa perso" }
         if draft.identity != nil { return "Moi" }
         return "Digicode, code du portail…"
+    }
+
+    /// Symbole et teinte du type d'élément, en tête de l'écran.
+    private var kindSymbol: (symbol: String, tint: Color) {
+        if let template = draft.template { return (template.symbol, template.tint) }
+        if draft.login != nil { return (ItemCategory.login.symbol, ItemCategory.login.tint) }
+        if draft.card != nil { return (ItemCategory.card.symbol, ItemCategory.card.tint) }
+        if draft.identity != nil { return (ItemCategory.identity.symbol, ItemCategory.identity.tint) }
+        return (ItemCategory.secureNote.symbol, ItemCategory.secureNote.tint)
     }
 
     private var windowTitle: String {
@@ -340,7 +353,7 @@ private struct PhoneCustomFieldsSection: View {
                 Label("Ajouter un champ", systemImage: "plus.circle.fill")
             }
         } header: {
-            Text("Champs personnalisés")
+            SectionHeader("Champs personnalisés")
         } footer: {
             if !fields.isEmpty {
                 Text("Balayez un champ vers la gauche pour le supprimer.")

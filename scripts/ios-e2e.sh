@@ -21,7 +21,8 @@
 #      puis efface simulateur, relais et conteneur.
 #
 # Variables : OUT (captures, défaut target/ios-e2e), SKIP_BUILD=1,
-# KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME,
+# KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, VW_CONTAINER
+# et VW_PORT (autre conteneur, pour deux exécutions en parallèle),
 # VERROU_E2E_SERVER (+ _EMAIL, _PASSWORD, _TOTP : un compte déjà prêt).
 #
 # Tout se passe sans fenêtre : `simctl boot` ne lance pas Simulator.app et
@@ -38,8 +39,8 @@ SIM_RUNTIME="${SIM_RUNTIME:-$(xcrun simctl list runtimes -j | python3 -I -c '
 import json, sys
 runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
 print(runtimes[-1]["identifier"])')}"
-CONTAINER=verrou-vw-ios
-VW_PORT=8118
+CONTAINER="${VW_CONTAINER:-verrou-vw-ios}"
+VW_PORT="${VW_PORT:-8118}"
 # Port libre pour le relais (le même pendant tout le parcours).
 RELAY_PORT="${RELAY_PORT:-$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')}"
 WORK="$(mktemp -d)"

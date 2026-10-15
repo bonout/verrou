@@ -178,16 +178,9 @@ private struct ConfidenceCount: View {
     let count: Int
 
     var body: some View {
-        HStack(spacing: 4) {
-            Circle().fill(level.tint).frame(width: 7, height: 7)
-            Text("\(count) \(level.label.lowercased())\(count > 1 && level != .review ? "s" : "")")
-                .font(.caption.weight(.medium))
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(.quaternary.opacity(0.6), in: Capsule())
-        .help(level.help)
+        CountCapsule(text: "\(count) \(level.label.lowercased())\(count > 1 && level != .review ? "s" : "")",
+                     tint: level.tint)
+            .help(level.help)
     }
 }
 
@@ -195,12 +188,7 @@ private struct ConfidenceBadge: View {
     let level: DuplicateConfidence
 
     var body: some View {
-        Text(level.label)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(level == .review ? Color.primary : Color.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(level == .review ? AnyShapeStyle(.quaternary) : AnyShapeStyle(level.tint), in: Capsule())
+        Badge(text: level.label, tint: level == .review ? nil : level.tint)
             .help(level.help)
     }
 }

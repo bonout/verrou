@@ -1,21 +1,47 @@
 import SwiftUI
 
-/// L'onglet Coffre : l'accueil (recherche, catégories, dossiers, coffres
+/// L'onglet Coffre : l'accueil (raccourcis, catégories, dossiers, coffres
 /// partagés, rangement), puis les listes et les fiches.
 struct VaultTab: View {
     @Environment(PhoneModel.self) private var model
+    @Namespace private var zoom
 
     var body: some View {
         @Bindable var model = model
         NavigationStack(path: $model.vaultPath) {
             VaultHomeView()
-                .navigationDestination(for: PhoneModel.Route.self) { route in
-                    switch route {
-                    case .list(let filter): ItemListView(filter: filter)
-                    case .item(let id): ItemDetailView(itemID: id)
-                    case .audit: AuditView()
-                    }
-                }
+                .navigationDestination(for: PhoneModel.Route.self) { RouteDestination(route: $0) }
+        }
+        .environment(\.zoomNamespace, zoom)
+    }
+}
+
+/// L'onglet Rechercher : tout le coffre, avec ses propres fiches empilées.
+struct SearchTab: View {
+    @Environment(PhoneModel.self) private var model
+    @Namespace private var zoom
+
+    var body: some View {
+        @Bindable var model = model
+        NavigationStack(path: $model.searchPath) {
+            SearchResultsView()
+                .navigationDestination(for: PhoneModel.Route.self) { RouteDestination(route: $0) }
+        }
+        .environment(\.zoomNamespace, zoom)
+    }
+}
+
+/// Écran d'une étape de navigation ; la fiche s'ouvre en zoomant depuis sa
+/// ligne (iOS 18+).
+private struct RouteDestination: View {
+    @Environment(\.zoomNamespace) private var zoom
+    let route: PhoneModel.Route
+
+    var body: some View {
+        switch route {
+        case .list(let filter): ItemListView(filter: filter)
+        case .item(let id): ItemDetailView(itemID: id).zoomDestination(id: id, in: zoom)
+        case .audit: AuditView()
         }
     }
 }
@@ -24,43 +50,31 @@ struct VaultTab: View {
 
 struct VaultHomeView: View {
     @Environment(PhoneModel.self) private var model
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        @Bindable var model = model
         List {
-            if model.searchQuery.isEmpty {
-                browseSections
-            } else {
-                searchResults
-            }
+            browseSections
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Coffre")
-        .searchable(text: $model.searchQuery, placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Rechercher dans le coffre")
-        .autocorrectionDisabled()
-        .textInputAutocapitalization(.never)
         .refreshable { await model.syncNow() }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) { SyncStatusButton() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    model.lock()
+                } label: {
+                    Image(systemName: "lock.fill")
+                }
+                .accessibilityLabel("Verrouiller")
+            }
+            ToolbarSpacerIfAvailable()
             ToolbarItem(placement: .topBarTrailing) { NewItemMenu() }
         }
-    }
-
-    @ViewBuilder private var searchResults: some View {
-        let rows = model.rows(query: model.searchQuery, filter: .all)
-        if rows.isEmpty {
-            ContentUnavailableView.search(text: model.searchQuery)
-                .listRowBackground(Color.clear)
-        } else {
-            Section {
-                ForEach(rows) { row in
-                    ItemRowLink(row: row)
-                }
-            } footer: {
-                Text(rows.count == 1 ? "1 résultat" : "\(rows.count) résultats")
-            }
-        }
+        #if DEBUG
+        .onAppear { PhoneBenchDriver.homeShown = true }
+        #endif
     }
 
     @ViewBuilder private var browseSections: some View {
@@ -75,14 +89,24 @@ struct VaultHomeView: View {
             }
         }
         Section {
-            FilterLink(title: "Tous les éléments", symbol: "square.grid.2x2.fill", tint: Theme.accent,
-                       count: counts?.all, filter: .all)
-            FilterLink(title: "Favoris", symbol: "star.fill", tint: .yellow, count: counts?.favorites, filter: .favorites)
-            FilterLink(title: "Codes à usage unique", symbol: "clock.badge.checkmark.fill", tint: .teal,
-                       count: counts?.withTotp, filter: .withTotp)
+            let tiles = Group {
+                SmartTile(title: "Tous les éléments", symbol: "square.grid.2x2.fill", tint: Theme.accent,
+                          count: counts?.all, filter: .all)
+                SmartTile(title: "Favoris", symbol: "star.fill", tint: .yellow, count: counts?.favorites,
+                          filter: .favorites)
+                SmartTile(title: "Codes à usage unique", symbol: "clock.badge.checkmark.fill", tint: .teal,
+                          count: counts?.withTotp, filter: .withTotp)
+            }
+            if typeSize.isAccessibilitySize {
+                VStack(spacing: 10) { tiles }
+            } else {
+                HStack(spacing: 10) { tiles }
+            }
         }
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         if let categories = counts?.categories.filter({ $0.count > 0 }), !categories.isEmpty {
-            Section("Types") {
+            Section {
                 ForEach(categories, id: \.category) { entry in
                     FilterLink(title: entry.category.label, symbol: entry.category.symbol, tint: entry.category.tint,
                                count: entry.count, filter: .category(category: entry.category))
@@ -91,18 +115,22 @@ struct VaultHomeView: View {
                     FilterLink(title: entry.template.label, symbol: entry.template.symbol, tint: entry.template.tint,
                                count: entry.count, filter: .template(template: entry.template))
                 }
+            } header: {
+                SectionHeader("Catégories")
             }
         }
         if let folders = counts?.folders, !folders.isEmpty {
-            Section("Dossiers") {
+            Section {
                 ForEach(folders, id: \.name) { folder in
                     FilterLink(title: folder.name, symbol: "folder.fill", tint: .blue, count: folder.count,
                                filter: .folder(name: folder.name))
                 }
+            } header: {
+                SectionHeader("Dossiers")
             }
         }
         if !model.organizations.isEmpty {
-            Section("Coffres partagés") {
+            Section {
                 ForEach(model.organizations, id: \.id) { org in
                     FilterLink(title: org.name, symbol: "person.2.fill", tint: .indigo, count: org.count,
                                filter: .organization(id: org.id))
@@ -112,22 +140,132 @@ struct VaultHomeView: View {
                             .padding(.leading, 18)
                     }
                 }
+            } header: {
+                SectionHeader("Coffres partagés")
             }
         }
         if let tags = counts?.tags, !tags.isEmpty {
-            Section("Étiquettes") {
+            Section {
                 ForEach(tags, id: \.name) { tag in
                     FilterLink(title: "#\(tag.name)", symbol: "number", tint: .gray, count: tag.count,
                                filter: .tag(name: tag.name))
                 }
+            } header: {
+                SectionHeader("Étiquettes")
             }
         }
-        Section("Rangement") {
+        Section {
             NavigationLink(value: PhoneModel.Route.audit) {
                 HomeRow(title: "Audit de sécurité", symbol: "checkmark.shield.fill", tint: .green, count: nil)
             }
             FilterLink(title: "Archives", symbol: "archivebox.fill", tint: .brown, count: counts?.archived, filter: .archived)
             FilterLink(title: "Corbeille", symbol: "trash.fill", tint: .gray, count: counts?.trashed, filter: .trash)
+        } header: {
+            SectionHeader("Rangement")
+        } footer: {
+            VaultStatusFooter()
+        }
+    }
+}
+
+/// Raccourci de l'accueil : symbole, nombre et titre, sur une carte.
+private struct SmartTile: View {
+    @Environment(PhoneModel.self) private var model
+    let title: String
+    let symbol: String
+    let tint: Color
+    let count: UInt32?
+    let filter: SidebarFilter
+
+    var body: some View {
+        Button {
+            model.vaultPath.append(.list(filter))
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 32, height: 32)
+                        .background(tint.gradient, in: Circle())
+                    Spacer(minLength: 4)
+                    Text(count.map { "\($0)" } ?? "–")
+                        .font(.system(.title2, design: .rounded, weight: .bold))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .contentTransition(.numericText())
+                        .foregroundStyle(.primary)
+                }
+                Text(title)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2, reservesSpace: true)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground),
+                        in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+        }
+        .buttonStyle(TileButtonStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(count.map { "\($0)" } ?? "")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("tile-\(title)")
+    }
+}
+
+/// Une carte qui s'enfonce légèrement sous le doigt.
+private struct TileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.snappy(duration: 0.2), value: configuration.isPressed)
+    }
+}
+
+/// État du coffre en pied de l'accueil, comme le pied de la barre latérale
+/// du Mac : pastille, mode et compte.
+private struct VaultStatusFooter: View {
+    @Environment(PhoneModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(dot).frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.primary)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.top, 10)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var dot: Color {
+        switch model.syncState {
+        case .offline: .orange
+        case .failed: .red
+        default: Theme.online
+        }
+    }
+
+    private var title: String {
+        guard model.mode == .vaultwarden, let account = model.account else { return "Coffre fictif" }
+        return account.email
+    }
+
+    private var detail: String {
+        guard model.mode == .vaultwarden, let account = model.account else { return "Hors ligne · données locales" }
+        let host = URL(string: account.server)?.host() ?? account.server
+        switch model.syncState {
+        case .syncing: return "\(host) · synchronisation…"
+        case .offline: return "\(host) · hors ligne"
+        case .failed: return "\(host) · échec de la synchronisation"
+        case .idle: return host
         }
     }
 }
@@ -155,16 +293,95 @@ private struct HomeRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 30, height: 30)
-                .background(tint.gradient, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            TintedSymbol(symbol: symbol, tint: tint)
             Text(title)
             Spacer()
             if let count {
                 Text("\(count)").foregroundStyle(.secondary).monospacedDigit()
             }
+        }
+    }
+}
+
+/// Séparation des groupes de boutons de la barre (iOS 26) ; rien avant.
+private struct ToolbarSpacerIfAvailable: ToolbarContent {
+    var body: some ToolbarContent {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
+        #endif
+    }
+}
+
+// MARK: Recherche
+
+/// Recherche dans tout le coffre (cœur Rust, à chaque frappe) ; sans saisie,
+/// les favoris.
+struct SearchResultsView: View {
+    @Environment(PhoneModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        List {
+            if model.searchQuery.isEmpty {
+                suggestions
+            } else {
+                results
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Rechercher")
+        .modifier(VaultSearchField(query: $model.searchQuery))
+        .autocorrectionDisabled()
+        .textInputAutocapitalization(.never)
+    }
+
+    @ViewBuilder private var results: some View {
+        let rows = model.rows(query: model.searchQuery, filter: .all)
+        if rows.isEmpty {
+            ContentUnavailableView.search(text: model.searchQuery)
+                .listRowBackground(Color.clear)
+        } else {
+            Section {
+                ForEach(rows) { row in
+                    ItemRowLink(row: row)
+                }
+            } footer: {
+                Text(rows.count == 1 ? "1 résultat" : "\(rows.count) résultats")
+            }
+        }
+    }
+
+    @ViewBuilder private var suggestions: some View {
+        let favorites = model.rows(query: "", filter: .favorites)
+        if favorites.isEmpty {
+            ContentUnavailableView("Rechercher dans le coffre", systemImage: "magnifyingglass",
+                                   description: Text("Titres, identifiants, sites, étiquettes : sans majuscules ni accents."))
+                .listRowBackground(Color.clear)
+        } else {
+            Section {
+                ForEach(favorites) { row in
+                    ItemRowLink(row: row)
+                }
+            } header: {
+                SectionHeader("Favoris")
+            }
+        }
+    }
+}
+
+/// Le champ de recherche : dans la barre d'onglets sur iOS 26 (onglet de
+/// recherche), sous le titre et toujours visible avant.
+private struct VaultSearchField: ViewModifier {
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.searchable(text: $query, prompt: "Rechercher dans le coffre")
+        } else {
+            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
+                               prompt: "Rechercher dans le coffre")
         }
     }
 }
@@ -179,7 +396,9 @@ private struct SyncStatusButton: View {
                 Task { await model.syncNow() }
             } label: {
                 switch model.syncState {
-                case .syncing: ProgressView()
+                case .syncing:
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .spinning(true)
                 case .offline: Image(systemName: "wifi.slash").foregroundStyle(.orange)
                 case .failed: Image(systemName: "exclamationmark.arrow.triangle.2.circlepath").foregroundStyle(.red)
                 case .idle: Image(systemName: "arrow.triangle.2.circlepath")
@@ -257,6 +476,7 @@ struct ItemListView: View {
         .listStyle(.plain)
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.large)
+        .navigationSubtitleIfAvailable(rows.count == 1 ? "1 élément" : "\(rows.count) éléments")
         .searchable(text: $query, prompt: "Rechercher")
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
@@ -277,6 +497,9 @@ struct ItemListView: View {
                     .accessibilityLabel("Trier")
                     NewItemMenu(folderID: folderID, destination: destination)
                 }
+            }
+            ToolbarSpacerIfAvailable()
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 if model.canEdit, !rows.isEmpty {
                     Button(editMode.isEditing ? "OK" : "Choisir") {
                         withAnimation {
@@ -312,6 +535,9 @@ struct ItemListView: View {
             let shown = Set(model.rows(query: query, filter: filter, order: order).map(\.id))
             selection.formIntersection(shown)
         }
+        #if DEBUG
+        .onAppear { PhoneBenchDriver.listShown = true }
+        #endif
     }
 
     private var trashTitle: String {
@@ -401,6 +627,7 @@ private struct BulkActionsBar: View {
         Text(selection.isEmpty ? "Aucune sélection" : "\(selection.count) sélectionné\(selection.count > 1 ? "s" : "")")
             .font(.footnote)
             .foregroundStyle(.secondary)
+            .fixedSize()
         Spacer()
         Menu {
             switch filter {
@@ -438,12 +665,15 @@ private struct BulkActionsBar: View {
 /// Une ligne d'élément qui ouvre sa fiche, avec ses actions rapides.
 struct ItemRowLink: View {
     @Environment(PhoneModel.self) private var model
+    @Environment(\.zoomNamespace) private var zoom
     let row: ResultRow
 
     var body: some View {
         let summary = row.summary
         NavigationLink(value: PhoneModel.Route.item(summary.id)) {
             ItemRow(row: row)
+                .equatable()
+                .zoomSource(id: summary.id, in: zoom)
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
             if summary.state == .active, model.canModify(summary) {
@@ -465,6 +695,7 @@ struct ItemRowLink: View {
                     } label: {
                         Label("Corbeille", systemImage: "trash")
                     }
+                    .tint(.red)
                     Button {
                         Task { await model.setArchived(summary.id, true) }
                     } label: {
@@ -500,44 +731,23 @@ struct ItemRowLink: View {
     }
 }
 
-/// Icône, titre (caractères trouvés surlignés), sous-titre et indicateurs.
-struct ItemRow: View {
+/// Icône, titre (caractères trouvés surlignés), sous-titre et indicateurs :
+/// la ligne du Mac (`ItemRowContent`). Comparée avant d'être recalculée :
+/// une ligne inchangée n'est pas reconstruite pendant la frappe.
+struct ItemRow: View, Equatable {
     let row: ResultRow
 
+    static func == (lhs: ItemRow, rhs: ItemRow) -> Bool {
+        lhs.row.summary == rhs.row.summary && lhs.row.highlights == rhs.row.highlights
+    }
+
     var body: some View {
-        let summary = row.summary
-        HStack(spacing: 12) {
-            ItemIcon(summary: summary, size: 38)
-            VStack(alignment: .leading, spacing: 2) {
-                HighlightedText(text: summary.title, highlights: row.highlights)
-                    .lineLimit(1)
-                if !summary.subtitle.isEmpty {
-                    Text(summary.subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            Spacer(minLength: 4)
-            HStack(spacing: 6) {
-                if summary.pendingSync {
-                    Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(.orange)
-                        .accessibilityLabel("En attente de synchronisation")
-                }
-                if summary.reprompt {
-                    Image(systemName: "lock.shield").foregroundStyle(.orange)
-                        .accessibilityLabel("Protégé")
-                }
-                if summary.sharing != nil {
-                    Image(systemName: "person.2.fill").foregroundStyle(.indigo)
-                        .accessibilityLabel("Partagé")
-                }
-                if summary.favorite {
-                    Image(systemName: "star.fill").foregroundStyle(.yellow)
-                        .accessibilityLabel("Favori")
-                }
-            }
-            .font(.caption)
+        #if DEBUG
+        let _ = PhoneBenchDriver.rowsBuilt += 1
+        #endif
+        ItemRowContent(summary: row.summary, highlights: row.highlights, spacing: 12,
+                       subtitleFont: .subheadline, showsProtection: true) {
+            ItemIcon(summary: row.summary, size: 40)
         }
         .padding(.vertical, 2)
     }
@@ -550,7 +760,7 @@ struct ItemIcon: View {
     var size: CGFloat = 36
 
     var body: some View {
-        ItemIconContent(summary: summary, image: siteImage, size: size)
+        ItemIconContent(summary: summary, image: siteImage, size: size, initialShadow: false)
     }
 
     private var siteImage: PlatformImage? {

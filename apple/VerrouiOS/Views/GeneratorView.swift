@@ -26,30 +26,45 @@ struct GeneratorView: View {
     @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
     @State private var value = ""
     @State private var bits: Double?
+    /// Tirages faits : le symbole « Autre » rebondit à chacun.
+    @State private var draws = 0
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    PasswordText(value: value, size: 20)
-                        .lineLimit(6)
-                        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-                        .contentTransition(.opacity)
-                        .accessibilityLabel("Valeur générée")
-                    StrengthMeter(password: value, bits: bits)
-                    HStack(spacing: 12) {
-                        Button {
-                            withAnimation(.snappy) { regenerate() }
-                        } label: {
-                            Label("Autre", systemImage: "arrow.clockwise")
-                                .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 16) {
+                        PasswordText(value: value, size: 22)
+                            .lineLimit(6)
+                            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                            .contentTransition(.interpolate)
+                            .accessibilityLabel("Valeur générée")
+                            .accessibilityValue(value)
+                        StrengthMeter(password: value, bits: bits)
+                        GlassGroup(spacing: 12) {
+                            HStack(spacing: 12) {
+                                Button {
+                                    withAnimation(.snappy) { regenerate() }
+                                    draws += 1
+                                } label: {
+                                    Label("Autre", systemImage: "arrow.clockwise")
+                                        .labelStyle(.titleAndIcon)
+                                        .symbolEffect(.bounce, value: draws)
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .glassButton()
+                                primaryButton
+                            }
+                            .controlSize(.large)
+                            .font(.body.weight(.semibold))
                         }
-                        .buttonStyle(.bordered)
-                        primaryButton
                     }
-                    .controlSize(.large)
-                    .listRowSeparator(.hidden)
+                    .padding(18)
+                    .background(Color(.secondarySystemGroupedBackground),
+                                in: RoundedRectangle(cornerRadius: Theme.cardRadius + 6, style: .continuous))
                 }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
                 Section {
                     Picker("Type", selection: $mode) {
                         ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -94,36 +109,43 @@ struct GeneratorView: View {
             Button {
                 model.copy(value, label: mode == .password ? "Mot de passe" : "Phrase de passe", secret: true)
             } label: {
-                Label("Copier", systemImage: "doc.on.doc").frame(maxWidth: .infinity)
+                Label("Copier", systemImage: "doc.on.doc").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         case .use(let use):
             Button {
                 use(value, bits)
             } label: {
-                Label("Utiliser", systemImage: "checkmark").frame(maxWidth: .infinity)
+                Label("Utiliser", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .glassButton(prominent: true)
         }
     }
 
     @ViewBuilder private var passwordOptions: some View {
-        Section("Mot de passe") {
+        Section {
             VStack(alignment: .leading) {
                 HStack {
                     Text("Longueur")
                     Spacer()
-                    Text("\(Int(length))").monospacedDigit().foregroundStyle(.secondary)
+                    Text("\(Int(length))")
+                        .font(.body.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(Theme.accent)
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: length)
                 }
                 Slider(value: $length, in: 8...64, step: 1)
             }
             Toggle("Chiffres", isOn: $digits)
             Toggle("Symboles", isOn: $symbols)
+        } header: {
+            SectionHeader("Mot de passe")
         }
     }
 
     @ViewBuilder private var passphraseOptions: some View {
-        Section("Phrase de passe") {
+        Section {
             Stepper("Mots : \(Int(words))", value: $words, in: 3...20, step: 1)
             Picker("Séparateur", selection: $separator) {
                 ForEach(PassphraseSeparatorChoice.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -133,6 +155,8 @@ struct GeneratorView: View {
             }
             Toggle("Majuscules", isOn: $capitalize)
             Toggle("Ajouter un chiffre", isOn: $number)
+        } header: {
+            SectionHeader("Phrase de passe")
         }
     }
 

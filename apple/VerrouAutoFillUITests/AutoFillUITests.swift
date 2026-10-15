@@ -32,7 +32,19 @@ final class AutoFillUITests: XCTestCase {
         return value
     }
 
+    /// Capture : prise par le script (`simctl io screenshot`) quand il
+    /// répond aux demandes (`_SNAP_DIR` : `req/<nom>` puis `ack/<nom>`),
+    /// sinon par XCUIScreen.
     private func shot(_ name: String) {
+        if let exchange = environment["VERROU_AUTOFILL_E2E_SNAP_DIR"] {
+            let base = URL(fileURLWithPath: exchange)
+            try? FileManager.default.createDirectory(at: base.appending(path: "req"), withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: base.appending(path: "req/\(name)").path, contents: nil)
+            let ack = base.appending(path: "ack/\(name)").path
+            let deadline = Date().addingTimeInterval(20)
+            while !FileManager.default.fileExists(atPath: ack), Date() < deadline { usleep(200_000) }
+            return
+        }
         guard let dir = environment["VERROU_AUTOFILL_E2E_SHOTS"] else { return }
         let data = XCUIScreen.main.screenshot().pngRepresentation
         try? data.write(to: URL(fileURLWithPath: dir).appending(path: "\(name).png"))

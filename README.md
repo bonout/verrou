@@ -194,6 +194,23 @@ create and edit logins, notes, cards, identities and templates, a password
 and passphrase generator, swipe actions and multi-select, offline edits, an
 audit, auto-lock in the background and a privacy screen in the app switcher.
 
+It looks like the Mac app: the same padlock mark, accent color, item icons,
+detail header chips and list rows, all shared from `apple/Shared/UI`. On
+iOS 26 it uses Liquid Glass (glass buttons and unlock field, a search tab in
+the tab bar that shrinks as you scroll, zoom transitions into an item); on
+iOS 17 to 25 the same screens fall back to bordered capsules and materials.
+
+<p align="center">
+  <a href="docs/media/ios-app.mp4">
+    <img src="docs/media/ios-app.gif" width="320" alt="Verrou on iPhone: unlock, scroll a 2,000-item vault, search, open an item, copy its password and watch the one-time code tick">
+  </a>
+</p>
+
+Above (the Simulator, iOS 26, a 2,000-item demo vault): unlock, scroll the
+list, search as you type, open GitHub with a zoom, copy the password (toast
+and haptic), then the one-time code counting down. Every screen, light and
+dark, is in [docs/media/ios/design](docs/media/ios/design).
+
 **AutoFill** fills your logins, one-time codes and passkeys in Safari and
 other apps: turn on Verrou in Settings → General → AutoFill & Passwords, then
 tap a login field. Verrou asks for Face ID, fills, and locks again; passkeys
@@ -227,6 +244,8 @@ xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS \
   -destination 'generic/platform=iOS Simulator' ARCHS=arm64 build
 scripts/ios-e2e.sh                       # headless walkthrough against a throwaway Vaultwarden
 scripts/ios-autofill-e2e.sh              # AutoFill in Safari: password, passkey, one-time code
+scripts/ios-showcase.sh                  # every screen, light and dark (simctl screenshots)
+scripts/ios-bench.sh                     # cold launch, search keystrokes, scrolling on 2,000 items
 ```
 
 Details, limits and what a signed build would add are in the

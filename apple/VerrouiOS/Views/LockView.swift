@@ -1,6 +1,8 @@
 import SwiftUI
 
 /// Coffre verrouillé : Face ID (ou Touch ID), sinon le mot de passe principal.
+/// Même composition que l'écran verrouillé du Mac : halo d'accent, logo,
+/// titre arrondi ; les commandes en verre au bas de l'écran (iOS 26).
 struct LockView: View {
     @Environment(PhoneModel.self) private var model
     @State private var password = ""
@@ -8,93 +10,54 @@ struct LockView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(colors: [Theme.accent.opacity(0.22), Color(.systemBackground)],
-                           startPoint: .top, endPoint: .center)
-                .ignoresSafeArea()
+            LockBackground()
             VStack(spacing: 28) {
                 Spacer()
-                VStack(spacing: 12) {
-                    AppMark(size: 92)
+                VStack(spacing: 14) {
+                    AppMark(size: 96)
+                        .padding(.bottom, 6)
                     Text("Verrou")
-                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
+                        .font(.system(size: 36, weight: .bold, design: .rounded))
+                        .accessibilityAddTraits(.isHeader)
                     Text(subtitle)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 Spacer()
-                VStack(spacing: 14) {
-                    if model.canUseBiometrics {
-                        biometricButton
-                    }
-                    passwordField
-                    if let error = model.unlockError, !error.isEmpty {
-                        Text(error)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .transition(.opacity)
+                GlassGroup(spacing: 14) {
+                    VStack(spacing: 14) {
+                        if model.canUseBiometrics {
+                            BiometricUnlockButton(title: "Déverrouiller avec \(Biometrics.name)",
+                                                  symbol: Biometrics.symbolName,
+                                                  busy: model.lockState == .unlocking) {
+                                Task { await model.unlockWithBiometrics() }
+                            }
+                        }
+                        MasterPasswordField(password: $password, busy: model.lockState == .unlocking,
+                                            focused: $passwordFocused, submit: submit)
                     }
                 }
-                .padding(.horizontal, 28)
-                .padding(.bottom, 24)
+                if let error = model.unlockError, !error.isEmpty {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 20)
+            .frame(maxWidth: 520)
         }
         .animation(.snappy, value: model.unlockError)
+        .sensoryFeedback(.error, trigger: model.unlockError) { _, new in new != nil }
         .onAppear {
             Perf.log.notice("écran verrouillé affiché à +\(Perf.msSinceLaunch) ms du lancement")
             if model.canUseBiometrics {
                 Task { await model.promptBiometricsIfPossible() }
             }
         }
-    }
-
-    @ViewBuilder private var biometricButton: some View {
-        let button = Button {
-            Task { await model.unlockWithBiometrics() }
-        } label: {
-            Label("Déverrouiller avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
-                .font(.body.weight(.semibold))
-                .frame(maxWidth: .infinity, minHeight: 34)
-        }
-        .controlSize(.large)
-        .disabled(model.lockState == .unlocking)
-        #if compiler(>=6.2)
-        if #available(iOS 26, *) {
-            button.buttonStyle(.glassProminent)
-        } else {
-            button.buttonStyle(.borderedProminent)
-        }
-        #else
-        button.buttonStyle(.borderedProminent)
-        #endif
-    }
-
-    private var passwordField: some View {
-        HStack(spacing: 8) {
-            SecureField("Mot de passe principal", text: $password)
-                .textContentType(.password)
-                .submitLabel(.go)
-                .focused($passwordFocused)
-                .onSubmit(submit)
-                .disabled(model.lockState == .unlocking)
-            Button(action: submit) {
-                if model.lockState == .unlocking {
-                    ProgressView()
-                } else {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
-                }
-            }
-            .disabled(password.isEmpty)
-            .accessibilityLabel("Déverrouiller")
-        }
-        .padding(.horizontal, 16)
-        .frame(height: 52)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
-            .strokeBorder(passwordFocused ? Theme.accent : Color.clear, lineWidth: 1.5))
     }
 
     private var subtitle: String {

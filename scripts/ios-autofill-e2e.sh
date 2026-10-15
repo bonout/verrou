@@ -29,7 +29,8 @@
 # VERROU_RECORD=<fichier.mp4> (vidéo du simulateur, `simctl io recordVideo`,
 # avec des pauses de RECORD_PAUSE secondes, défaut 2, aux étapes clés ; les
 # repères AUTOFILL_E2E_MARK du journal, comparés à RECORD_START, permettent
-# de la découper).
+# de la découper), APPEARANCE (light ou dark, défaut light). Les captures
+# sont prises par `simctl io screenshot`, à la demande du test.
 #
 # Rien ne s'affiche sur l'écran du Mac : `simctl boot` n'ouvre pas
 # Simulator.app, et les captures viennent de XCUIScreen (dans le simulateur).
@@ -55,6 +56,7 @@ WORK="$(mktemp -d)"
 DEV=""
 PAGE_PID=""
 FACE_PID=""
+SHOOTER_PID=""
 STARTED_SERVER=0
 
 stop_recording() {
@@ -69,6 +71,7 @@ stop_recording() {
 cleanup() {
   stop_recording
   [[ -n "$FACE_PID" ]] && kill "$FACE_PID" 2>/dev/null || true
+  [[ -n "$SHOOTER_PID" ]] && kill "$SHOOTER_PID" 2>/dev/null || true
   [[ -n "$PAGE_PID" ]] && kill "$PAGE_PID" 2>/dev/null || true
   if [[ -n "$DEV" && "${KEEP_SIMULATOR:-0}" != 1 ]]; then
     xcrun simctl shutdown "$DEV" >/dev/null 2>&1 || true
@@ -129,6 +132,7 @@ xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
 xcrun simctl status_bar "$DEV" override --time "9:41" --dataNetwork wifi --wifiBars 3 \
   --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+xcrun simctl ui "$DEV" appearance "${APPEARANCE:-light}"
 if [[ -n "$RECORD" ]]; then
   mkdir -p "$(dirname "$RECORD")"
   rm -f "$RECORD"
@@ -159,7 +163,21 @@ sleep 5
 ) &
 FACE_PID=$!
 
-rm -rf "$OUT" && mkdir -p "$OUT" "$WORK/ack"
+rm -rf "$OUT" && mkdir -p "$OUT" "$WORK/ack" "$WORK/snap/req" "$WORK/snap/ack"
+# Captures demandées par le test : req/<nom> → $OUT/<nom>.png.
+(
+  while true; do
+    for request in "$WORK"/snap/req/*; do
+      [[ -e "$request" ]] || continue
+      name="$(basename "$request")"
+      xcrun simctl io "$DEV" screenshot "$OUT/$name.png" >/dev/null 2>&1 || true
+      rm -f "$request"
+      touch "$WORK/snap/ack/$name"
+    done
+    sleep 0.2
+  done
+) &
+SHOOTER_PID=$!
 ONLY_ARG=(-only-testing:VerrouAutoFillUITests)
 [[ -n "${ONLY:-}" ]] && ONLY_ARG=(-only-testing:"VerrouAutoFillUITests/AutoFillUITests/$ONLY")
 status=0
@@ -171,6 +189,7 @@ TEST_RUNNER_VERROU_AUTOFILL_E2E_SITE="$SITE" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_PAGE="$SITE/" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_ACK="$WORK/ack" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_SHOTS="$OUT" \
+TEST_RUNNER_VERROU_AUTOFILL_E2E_SNAP_DIR="$WORK/snap" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_PAUSE="$( [[ -n "$RECORD" ]] && echo "${RECORD_PAUSE:-2}" || echo 0 )" \
   xcodebuild test-without-building -project apple/Verrou.xcodeproj -scheme VerrouiOS \
     -destination "id=$DEV" -derivedDataPath "$DERIVED" "${ONLY_ARG[@]}" \

@@ -135,14 +135,3 @@ struct LockView: View {
         Task { await model.unlock(masterPassword: typed) }
     }
 }
-
-/// Fond des écrans verrouillé et de connexion.
-struct LockBackground: View {
-    var body: some View {
-        ZStack {
-            Color(nsColor: .windowBackgroundColor)
-            RadialGradient(colors: [Theme.accent.opacity(0.18), .clear], center: .top, startRadius: 10, endRadius: 520)
-        }
-        .ignoresSafeArea()
-    }
-}

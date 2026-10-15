@@ -103,6 +103,13 @@ extension ItemSummary {
     var kindLabel: String { template?.singular ?? category.singular }
 }
 
+extension ItemSharing {
+    /// « Organisation › Collection, Collection ».
+    var label: String {
+        collections.isEmpty ? organization : "\(organization) › \(collections.joined(separator: ", "))"
+    }
+}
+
 // MARK: QR code
 
 enum QRCode {

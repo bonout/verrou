@@ -10,6 +10,9 @@ struct SettingsTab: View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                Section {
+                    AccountHeader()
+                }
                 if model.mode == .vaultwarden, let account = model.account {
                     Section {
                         LabeledContent("E-mail", value: account.email)
@@ -30,7 +33,7 @@ struct SettingsTab: View {
                         }
                         .disabled(model.syncState == .syncing)
                     } header: {
-                        Text("Compte")
+                        SectionHeader("Compte")
                     } footer: {
                         if case .failed(let message) = model.syncState {
                             Text("Dernière synchronisation impossible : \(message)").foregroundStyle(.red)
@@ -42,7 +45,7 @@ struct SettingsTab: View {
 
                 Section {
                     Toggle(isOn: $model.biometricsWanted) {
-                        Label("Déverrouiller avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
+                        SettingsLabel("Déverrouiller avec \(Biometrics.name)", symbol: Biometrics.symbolName, tint: .green)
                     }
                     .disabled(!Biometrics.isAvailable || model.mode == .demo)
                     Picker(selection: $model.autoLockSeconds) {
@@ -53,7 +56,7 @@ struct SettingsTab: View {
                         Text("Après 1 heure").tag(3600)
                         Text("Jamais").tag(-1)
                     } label: {
-                        Label("Verrouillage automatique", systemImage: "lock.badge.clock")
+                        SettingsLabel("Verrouillage automatique", symbol: "lock.badge.clock", tint: .indigo)
                     }
                     .pickerStyle(.navigationLink)
                     Picker(selection: $model.clipboardSeconds) {
@@ -62,16 +65,16 @@ struct SettingsTab: View {
                         Text("Après 3 minutes").tag(180)
                         Text("Après 10 minutes").tag(600)
                     } label: {
-                        Label("Effacer le presse-papiers", systemImage: "doc.on.clipboard")
+                        SettingsLabel("Effacer le presse-papiers", symbol: "doc.on.clipboard", tint: .orange)
                     }
                     .pickerStyle(.navigationLink)
                     Button {
                         model.lock()
                     } label: {
-                        Label("Verrouiller maintenant", systemImage: "lock.fill")
+                        SettingsLabel("Verrouiller maintenant", symbol: "lock.fill", tint: Theme.accent)
                     }
                 } header: {
-                    Text("Sécurité")
+                    SectionHeader("Sécurité")
                 } footer: {
                     Text(securityFooter)
                 }
@@ -80,22 +83,25 @@ struct SettingsTab: View {
                     AutoFillSection()
                 }
 
-                Section("Affichage") {
+                Section {
                     Toggle(isOn: $model.showSiteIcons) {
-                        Label("Icônes des sites", systemImage: "photo.on.rectangle")
+                        SettingsLabel("Icônes des sites", symbol: "photo.on.rectangle", tint: .teal)
                     }
+                } header: {
+                    SectionHeader("Affichage")
                 }
 
                 Section {
                     Button {
                         model.openAudit()
                     } label: {
-                        Label("Audit de sécurité", systemImage: "checkmark.shield")
+                        SettingsLabel("Audit de sécurité", symbol: "checkmark.shield.fill", tint: .green)
                     }
+                    .accessibilityIdentifier("settings-audit")
                     NavigationLink {
                         AboutView()
                     } label: {
-                        Label("À propos et licences", systemImage: "info.circle")
+                        SettingsLabel("À propos et licences", symbol: "info.circle.fill", tint: .gray)
                     }
                 }
 
@@ -144,8 +150,8 @@ struct AboutView: View {
         Form {
             Section {
                 VStack(spacing: 10) {
-                    AppMark(size: 64)
-                    Text("Verrou").font(.title2.weight(.bold))
+                    AppMark(size: 72)
+                    Text("Verrou").font(.system(.title2, design: .rounded, weight: .bold))
                     Text("Version \(version)").foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
@@ -200,48 +206,51 @@ struct AuditView: View {
         List {
             if let audit = model.audit {
                 Section {
-                    LabeledContent("Mots de passe examinés", value: "\(audit.checked)")
+                    AuditSummary(audit: audit, breaches: model.breaches)
                     breachesRow
                 } footer: {
                     Text("Seuls les 5 premiers caractères de l'empreinte SHA-1 de chaque mot de passe quittent l'iPhone.")
                 }
                 if let breaches = model.breaches, !breaches.isEmpty {
-                    Section("Compromis (\(breaches.count))") {
+                    Section {
                         ForEach(breaches, id: \.item.id) { breach in
                             AuditRow(summary: breach.item,
                                      detail: "Vu \(breach.count.formatted(.number.locale(Locale(identifier: "fr_FR")))) fois dans des fuites",
                                      tint: .red)
                         }
+                    } header: {
+                        AuditHeader(title: "Compromis", count: breaches.count, tint: .red)
                     }
                 }
                 if !audit.reused.isEmpty {
-                    Section("Réutilisés (\(audit.reused.count) groupe\(audit.reused.count > 1 ? "s" : ""))") {
+                    Section {
                         ForEach(Array(audit.reused.enumerated()), id: \.offset) { _, group in
                             ForEach(group, id: \.id) { summary in
                                 AuditRow(summary: summary, detail: "Même mot de passe que \(group.count - 1) autre\(group.count > 2 ? "s" : "")",
                                          tint: .orange)
                             }
                         }
+                    } header: {
+                        AuditHeader(title: "Réutilisés", count: audit.reused.count, tint: .orange,
+                                    unit: audit.reused.count > 1 ? "groupes" : "groupe")
                     }
                 }
                 if !audit.weak.isEmpty {
-                    Section("Faibles (\(audit.weak.count))") {
+                    Section {
                         ForEach(audit.weak, id: \.item.id) { weak in
                             AuditRow(summary: weak.item, detail: "\(Int(weak.bits)) bits d'entropie estimée", tint: .orange)
                         }
+                    } header: {
+                        AuditHeader(title: "Faibles", count: audit.weak.count, tint: .yellow)
                     }
                 }
                 if !audit.insecure.isEmpty {
-                    Section("Sites en HTTP (\(audit.insecure.count))") {
+                    Section {
                         ForEach(audit.insecure, id: \.id) { summary in
                             AuditRow(summary: summary, detail: "Le mot de passe circule en clair", tint: .yellow)
                         }
-                    }
-                }
-                if audit.reused.isEmpty, audit.weak.isEmpty, audit.insecure.isEmpty, model.breaches?.isEmpty ?? true {
-                    Section {
-                        Label("Rien à signaler", systemImage: "checkmark.seal.fill")
-                            .foregroundStyle(.green)
+                    } header: {
+                        AuditHeader(title: "Sites en HTTP", count: audit.insecure.count, tint: .blue)
                     }
                 }
             } else {
@@ -260,8 +269,8 @@ struct AuditView: View {
                 Task { await model.checkBreaches() }
             } label: {
                 HStack {
-                    Label(model.breaches == nil ? "Rechercher les fuites connues" : "Vérifier à nouveau",
-                          systemImage: "exclamationmark.shield")
+                    SettingsLabel(model.breaches == nil ? "Rechercher les fuites connues" : "Vérifier à nouveau",
+                                  symbol: "exclamationmark.shield.fill", tint: .red)
                     Spacer()
                     if model.checkingBreaches { ProgressView() }
                 }
@@ -277,6 +286,65 @@ struct AuditView: View {
     }
 }
 
+/// Bilan de l'audit : bouclier coloré, nombre de mots de passe examinés et
+/// compteurs par problème (les pastilles des doublons du Mac).
+private struct AuditSummary: View {
+    let audit: AuditReport
+    let breaches: [BreachedPassword]?
+
+    var body: some View {
+        let issues = (breaches?.count ?? 0) + audit.reused.count + audit.weak.count + audit.insecure.count
+        let tint: Color = (breaches?.isEmpty == false) ? .red : issues > 0 ? .orange : .green
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                Image(systemName: issues == 0 ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(tint.gradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    .symbolEffect(.bounce, value: issues)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(issues == 0 ? "Rien à signaler" : "\(issues) point\(issues > 1 ? "s" : "") à revoir")
+                        .font(.headline)
+                    Text("\(audit.checked) mots de passe examinés")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+            }
+            if issues > 0 {
+                FlowLayout(spacing: 6, lineSpacing: 6) {
+                    if let count = breaches?.count, count > 0 { CountCapsule(text: "\(count) compromis", tint: .red) }
+                    if !audit.reused.isEmpty {
+                        CountCapsule(text: "\(audit.reused.count) réutilisé\(audit.reused.count > 1 ? "s" : "")", tint: .orange)
+                    }
+                    if !audit.weak.isEmpty {
+                        CountCapsule(text: "\(audit.weak.count) faible\(audit.weak.count > 1 ? "s" : "")", tint: .yellow)
+                    }
+                    if !audit.insecure.isEmpty { CountCapsule(text: "\(audit.insecure.count) en HTTP", tint: .blue) }
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// En-tête d'une section de l'audit : titre et nombre en étiquette.
+private struct AuditHeader: View {
+    let title: String
+    let count: Int
+    let tint: Color
+    var unit: String?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            SectionHeader(title)
+            Badge(text: unit.map { "\(count) \($0)" } ?? "\(count)", tint: tint)
+        }
+    }
+}
+
 private struct AuditRow: View {
     let summary: ItemSummary
     let detail: String
@@ -285,12 +353,71 @@ private struct AuditRow: View {
     var body: some View {
         NavigationLink(value: PhoneModel.Route.item(summary.id)) {
             HStack(spacing: 12) {
-                ItemIcon(summary: summary, size: 34)
+                ItemIcon(summary: summary, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summary.title).lineLimit(1)
-                    Text(detail).font(.caption).foregroundStyle(tint)
+                    Text(detail).font(.caption.weight(.medium)).foregroundStyle(tint)
                 }
             }
+        }
+    }
+}
+
+/// En-tête des réglages : le logo, le compte et l'état de la synchronisation.
+private struct AccountHeader: View {
+    @Environment(PhoneModel.self) private var model
+
+    var body: some View {
+        HStack(spacing: 14) {
+            AppMark(size: 56, glow: false)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline).lineLimit(1)
+                HStack(spacing: 6) {
+                    Circle().fill(dot).frame(width: 7, height: 7)
+                    Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var title: String {
+        guard model.mode == .vaultwarden, let account = model.account else { return "Coffre fictif" }
+        return account.email
+    }
+
+    private var detail: String {
+        guard model.mode == .vaultwarden, let account = model.account else { return "Données de démonstration" }
+        return URL(string: account.server)?.host() ?? account.server
+    }
+
+    private var dot: Color {
+        switch model.syncState {
+        case .offline: .orange
+        case .failed: .red
+        default: Theme.online
+        }
+    }
+}
+
+/// Libellé d'un réglage : symbole sur un carré teinté, comme les Réglages d'iOS.
+struct SettingsLabel: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+
+    init(_ title: String, symbol: String, tint: Color) {
+        self.title = title
+        self.symbol = symbol
+        self.tint = tint
+    }
+
+    var body: some View {
+        Label {
+            Text(title).foregroundStyle(.primary)
+        } icon: {
+            TintedSymbol(symbol: symbol, tint: tint, size: 28)
         }
     }
 }
@@ -303,7 +430,7 @@ private struct AutoFillSection: View {
     var body: some View {
         Section {
             HStack {
-                Label("Remplissage automatique", systemImage: "key.viewfinder")
+                SettingsLabel("Remplissage automatique", symbol: "key.viewfinder", tint: .blue)
                 Spacer()
                 switch model.autofillEnabled {
                 case .some(true):
@@ -329,11 +456,11 @@ private struct AutoFillSection: View {
             Button {
                 model.openAutofillSettings()
             } label: {
-                Label(model.autofillEnabled == true ? "Réglages du remplissage" : "Ouvrir les Réglages",
-                      systemImage: "gear")
+                SettingsLabel(model.autofillEnabled == true ? "Réglages du remplissage" : "Ouvrir les Réglages",
+                              symbol: "gear", tint: .gray)
             }
         } header: {
-            Text("Remplissage automatique")
+            SectionHeader("Remplissage automatique")
         } footer: {
             Text("Le système ne reçoit que les sites et noms d'utilisateur, pour ses suggestions. Les mots de passe, codes et passkeys ne sortent du coffre qu'après \(Biometrics.name) ou votre mot de passe principal.")
         }

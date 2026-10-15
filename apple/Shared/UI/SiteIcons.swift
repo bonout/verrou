@@ -29,9 +29,18 @@ extension Image {
 @MainActor
 @Observable
 final class SiteIcons {
-    /// `nil` : téléchargement en cours, ou pas d'icône (on garde l'initiale).
-    private(set) var images: [String: PlatformImage] = [:]
-    @ObservationIgnored private var requested: Set<String> = []
+    /// L'icône d'un site : observée séparément, pour qu'une icône arrivée ne
+    /// redessine que les vues qui la montrent (pas toutes les lignes).
+    @MainActor
+    @Observable
+    final class Entry {
+        /// `nil` : téléchargement en cours, ou pas d'icône (on garde l'initiale).
+        fileprivate(set) var image: PlatformImage?
+    }
+
+    /// Sites demandés. Hors observation : en ajouter un pendant le calcul
+    /// d'une vue n'invalide aucune autre vue.
+    @ObservationIgnored private var entries: [String: Entry] = [:]
     /// L'image générique que Vaultwarden renvoie quand il ne trouve rien.
     @ObservationIgnored private var fallback: Task<Data?, Never>?
     @ObservationIgnored private let urlSession: URLSession = {
@@ -46,32 +55,50 @@ final class SiteIcons {
         didSet { if oldValue != server { clear() } }
     }
 
+    /// Icônes déjà arrivées, par site (mesures, tests).
+    var images: [String: PlatformImage] {
+        entries.compactMapValues(\.image)
+    }
+
     /// L'icône si elle est déjà là ; sinon la demande, et la vue se mettra à jour.
     func image(for host: String) -> PlatformImage? {
         let site = Self.site(of: host)
-        if let image = images[site] { return image }
-        guard let server, !site.isEmpty, !requested.contains(site) else { return nil }
-        requested.insert(site)
-        Task { await load(site, from: server) }
-        return nil
+        if let entry = entries[site] { return entry.image }
+        guard let server, !site.isEmpty else { return nil }
+        let entry = Entry()
+        entries[site] = entry
+        Task { await load(site, into: entry, from: server) }
+        return entry.image
     }
 
     /// Sites déjà demandés (mesures).
-    var requestedCount: Int { requested.count }
+    var requestedCount: Int { entries.count }
 
     func clear() {
-        images.removeAll()
-        requested.removeAll()
+        // Les vues qui montrent une icône la perdent tout de suite.
+        for entry in entries.values { entry.image = nil }
+        entries.removeAll()
         fallback?.cancel()
         fallback = nil
     }
 
-    private func load(_ site: String, from server: String) async {
+    private func load(_ site: String, into entry: Entry, from server: String) async {
         guard let data = await fetch(server: server, site: site),
               data != (await fallbackIcon(server: server)),
-              self.server == server,
-              let image = PlatformImage(data: data) else { return }
-        images[site] = image
+              self.server == server else { return }
+        // Décodée hors du fil principal : le défilement n'a plus qu'à l'afficher.
+        let image = await Task.detached(priority: .utility) { Self.decoded(data) }.value
+        guard let image, self.server == server, entries[site] === entry else { return }
+        entry.image = image
+    }
+
+    nonisolated private static func decoded(_ data: Data) -> PlatformImage? {
+        #if canImport(UIKit)
+        guard let image = UIImage(data: data) else { return nil }
+        return image.preparingForDisplay() ?? image
+        #else
+        return NSImage(data: data)
+        #endif
     }
 
     private func fallbackIcon(server: String) async -> Data? {
