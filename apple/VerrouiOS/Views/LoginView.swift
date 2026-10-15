@@ -171,14 +171,27 @@ private struct TwoFactorStep: View {
             }
 
             switch current {
-            case .securityKey:
+            case .securityKey(let challenge):
                 Section {
-                    Label {
-                        Text("Les clés de sécurité ne sont pas encore prises en charge sur iPhone (NFC). Choisissez une autre méthode, ou connectez-vous depuis l'app Mac.")
-                    } icon: {
-                        Image(systemName: "key.slash").foregroundStyle(.orange)
+                    Button {
+                        Task { await model.useSecurityKey(challenge: challenge) }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if model.loginBusy { ProgressView().padding(.trailing, 6) }
+                            Label("Utiliser ma clé de sécurité", systemImage: "key.horizontal.fill")
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
                     }
-                    .font(.callout)
+                    .accessibilityIdentifier("security-key")
+                } footer: {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("La page de connexion de votre serveur s'ouvre : approchez la YubiKey du haut de l'iPhone, ou branchez-la, puis touchez-la.")
+                        if let error = model.loginError {
+                            ErrorLabel(text: error)
+                        }
+                    }
                 }
             case .authenticator:
                 codeSection(prompt: "Code à 6 chiffres de votre application", option: .authenticator)
@@ -201,14 +214,6 @@ private struct TwoFactorStep: View {
         .disabled(model.loginBusy)
         .navigationTitle("Vérification")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            // La clé de sécurité n'est pas prise en charge : une autre méthode d'abord.
-            if case .securityKey = options.first, let other = options.firstIndex(where: {
-                if case .securityKey = $0 { return false } else { return true }
-            }) {
-                chosen = other
-            }
-        }
         .onChange(of: chosen) { code = "" }
     }
 
