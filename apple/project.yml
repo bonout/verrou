@@ -13,6 +13,10 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
+    # Groupe d'apps partagé par l'app iPhone et l'extension. Un identifiant de
+    # groupe est unique chez Apple : pour un iPhone, passer le sien, par
+    # exemple VERROU_APP_GROUP=group.<équipe>.verrou (scripts/install-ios.sh).
+    VERROU_APP_GROUP: group.app.verrou
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 targets:
@@ -80,6 +84,13 @@ targets:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
       - target: VerrouAutoFill
+    # Clés hors INFOPLIST_KEY_*, fusionnées avec l'Info.plist généré.
+    info:
+      path: VerrouiOS/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        VerrouAppGroup: $(VERROU_APP_GROUP)
     scheme:
       testTargets:
         - VerrouAutoFillUITests
@@ -130,6 +141,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSFaceIDUsageDescription: "Face ID déverrouille votre coffre pour remplir identifiants, codes et passkeys."
+        VerrouAppGroup: $(VERROU_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CredentialProviderViewController

@@ -234,8 +234,16 @@ signature. Stills:
 [saving a passkey](docs/media/ios/03-passkey-enregistrer.png),
 [passkey sign-in](docs/media/ios/04-passkey-connexion.png).
 
-For now it runs in the Simulator, AutoFill included, signed ad hoc (no
-developer account):
+To install it on your own iPhone (USB or Wi-Fi), you need a paid Apple
+Developer account, signed in to Xcode, and an App Group registered once on
+developer.apple.com; the steps are at the top of the script:
+
+```sh
+VERROU_TEAM=<your team ID> scripts/install-ios.sh
+```
+
+Without an account, it runs in the Simulator, AutoFill included, signed ad
+hoc:
 
 ```sh
 PLATFORMS=all scripts/build-apple.sh     # Rust core for macOS, iPhone and the Simulator
@@ -263,9 +271,10 @@ It's built and tested against Vaultwarden only.
 
 **Is there an iPhone app?**
 Yes, in progress: the iPhone app and its system-wide AutoFill (passwords,
-one-time codes, passkeys) work today in the iOS Simulator, signed ad hoc (see
-[iPhone](#iphone)). A real iPhone needs a signed build, which this project
-doesn't ship yet.
+one-time codes, passkeys). You build and install it yourself on your iPhone
+with your own Apple Developer account (`scripts/install-ios.sh`), or try it in
+the iOS Simulator without one (see [iPhone](#iphone)). There is no App Store
+release.
 
 **What if I stop using Verrou?**
 Nothing changes: everything lives on your Vaultwarden server in the standard
