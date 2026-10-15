@@ -347,6 +347,8 @@ fn import_view(
             login,
             fields: Some(fields),
             template: item.template,
+            card: None,
+            identity: None,
         },
         now,
     )?;

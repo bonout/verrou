@@ -81,6 +81,7 @@ fn draft(name: &str) -> ItemDraft {
         }),
         fields: Vec::new(),
         template: None,
+        ..ItemDraft::default()
     }
 }
 

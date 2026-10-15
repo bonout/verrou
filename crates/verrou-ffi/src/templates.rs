@@ -160,6 +160,7 @@ pub fn template_draft(template: ItemTemplate) -> ItemDraft {
         }),
         fields,
         template: Some(template.into()),
+        ..ItemDraft::default()
     }
 }
 

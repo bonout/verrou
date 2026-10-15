@@ -16,8 +16,9 @@ use std::collections::HashMap;
 
 use bitwarden_api_api::models::CipherRequestModel;
 use bitwarden_vault::{
-    CipherRepromptType, CipherType, CipherView, FieldType, FieldView, FolderId, LoginUriView,
-    LoginView, PasswordHistoryView, SecureNoteType, SecureNoteView, UriMatchType, VaultClientExt,
+    CardView, CipherRepromptType, CipherType, CipherView, FieldType, FieldView, FolderId,
+    IdentityView, LoginUriView, LoginView, PasswordHistoryView, SecureNoteType, SecureNoteView,
+    UriMatchType, VaultClientExt,
 };
 use chrono::{DateTime, Utc};
 use verrou_core::SecretString;
@@ -29,8 +30,9 @@ use crate::{Connection, Decrypted, Error};
 /// Anciens mots de passe gardés par élément, comme les apps Bitwarden.
 pub(crate) const MAX_PASSWORD_HISTORY: usize = 5;
 
-/// Ce que l'écran d'édition modifie. Un brouillon sans `login` crée une note
-/// sécurisée.
+/// Ce que l'écran d'édition modifie. Un brouillon avec `login` crée un
+/// identifiant, avec `card` une carte, avec `identity` une identité ; sans
+/// aucun des trois, une note sécurisée.
 #[derive(Clone, Debug, Default)]
 pub struct Draft {
     pub name: String,
@@ -43,6 +45,118 @@ pub struct Draft {
     pub fields: Option<Vec<CustomFieldDraft>>,
     /// Modèle (Wi-Fi, passeport…) : posé à la création, ensuite conservé.
     pub template: Option<Template>,
+    /// Carte bancaire : ses champs (ignoré pour un autre type).
+    pub card: Option<CardDraft>,
+    /// Identité : ses champs (ignoré pour un autre type).
+    pub identity: Option<IdentityDraft>,
+}
+
+/// Les champs d'une carte bancaire, ceux de Bitwarden. Le numéro et le
+/// cryptogramme sont des secrets.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CardDraft {
+    pub cardholder_name: Option<String>,
+    pub brand: Option<String>,
+    pub number: Option<SecretString>,
+    pub exp_month: Option<String>,
+    pub exp_year: Option<String>,
+    pub code: Option<SecretString>,
+}
+
+/// Les champs d'une identité, ceux de Bitwarden. Numéros de sécurité
+/// sociale, de passeport et de permis : des secrets.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct IdentityDraft {
+    pub title: Option<String>,
+    pub first_name: Option<String>,
+    pub middle_name: Option<String>,
+    pub last_name: Option<String>,
+    pub company: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub username: Option<String>,
+    pub address1: Option<String>,
+    pub address2: Option<String>,
+    pub address3: Option<String>,
+    pub postal_code: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
+    pub ssn: Option<SecretString>,
+    pub passport_number: Option<SecretString>,
+    pub license_number: Option<SecretString>,
+}
+
+impl CardDraft {
+    fn view(self) -> CardView {
+        CardView {
+            cardholder_name: text(self.cardholder_name),
+            exp_month: text(self.exp_month),
+            exp_year: text(self.exp_year),
+            code: secret(self.code),
+            brand: text(self.brand),
+            number: secret(self.number),
+        }
+    }
+
+    fn of(view: CardView) -> Self {
+        Self {
+            cardholder_name: view.cardholder_name,
+            brand: view.brand,
+            number: view.number.map(SecretString::new),
+            exp_month: view.exp_month,
+            exp_year: view.exp_year,
+            code: view.code.map(SecretString::new),
+        }
+    }
+}
+
+impl IdentityDraft {
+    fn view(self) -> IdentityView {
+        IdentityView {
+            title: text(self.title),
+            first_name: text(self.first_name),
+            middle_name: text(self.middle_name),
+            last_name: text(self.last_name),
+            address1: text(self.address1),
+            address2: text(self.address2),
+            address3: text(self.address3),
+            city: text(self.city),
+            state: text(self.state),
+            postal_code: text(self.postal_code),
+            country: text(self.country),
+            company: text(self.company),
+            email: text(self.email),
+            phone: text(self.phone),
+            ssn: secret(self.ssn),
+            username: text(self.username),
+            passport_number: secret(self.passport_number),
+            license_number: secret(self.license_number),
+        }
+    }
+
+    fn of(view: IdentityView) -> Self {
+        Self {
+            title: view.title,
+            first_name: view.first_name,
+            middle_name: view.middle_name,
+            last_name: view.last_name,
+            company: view.company,
+            email: view.email,
+            phone: view.phone,
+            username: view.username,
+            address1: view.address1,
+            address2: view.address2,
+            address3: view.address3,
+            postal_code: view.postal_code,
+            city: view.city,
+            state: view.state,
+            country: view.country,
+            ssn: view.ssn.map(SecretString::new),
+            passport_number: view.passport_number.map(SecretString::new),
+            license_number: view.license_number.map(SecretString::new),
+        }
+    }
 }
 
 /// Nature d'un champ personnalisé, celle de Bitwarden.
@@ -337,7 +451,17 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
     if name.is_empty() {
         return Err(Error::Invalid("le titre est obligatoire".to_owned()));
     }
+    let mut card = None;
+    let mut identity = None;
     let (r#type, login, secure_note) = match draft.login {
+        None if draft.card.is_some() => {
+            card = draft.card.map(CardDraft::view);
+            (CipherType::Card, None, None)
+        }
+        None if draft.identity.is_some() => {
+            identity = draft.identity.map(IdentityDraft::view);
+            (CipherType::Identity, None, None)
+        }
         Some(d) => {
             let mut login = LoginView {
                 username: text(d.username),
@@ -370,8 +494,8 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
         notes: secret(draft.notes),
         r#type,
         login,
-        identity: None,
-        card: None,
+        identity,
+        card,
         secure_note,
         ssh_key: None,
         bank_account: None,
@@ -414,6 +538,8 @@ pub(crate) fn draft_of(view: CipherView) -> Draft {
     Draft {
         fields: Some(fields),
         template,
+        card: view.card.map(CardDraft::of),
+        identity: view.identity.map(IdentityDraft::of),
         name: view.name,
         folder_id: view.folder_id.map(|f| f.to_string()),
         favorite: view.favorite,
@@ -445,6 +571,12 @@ pub(crate) fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> 
     view.notes = secret(draft.notes);
     if let Some(fields) = draft.fields {
         view.fields = merge_fields(fields, view.fields.take(), draft.template)?;
+    }
+    if let (Some(card), Some(_)) = (draft.card, view.card.as_ref()) {
+        view.card = Some(card.view());
+    }
+    if let (Some(identity), Some(_)) = (draft.identity, view.identity.as_ref()) {
+        view.identity = Some(identity.view());
     }
     let (Some(d), Some(login)) = (draft.login, view.login.as_mut()) else {
         return Ok(());
@@ -523,6 +655,76 @@ mod tests {
 
     fn uris_from(draft: &Draft, previous: &[LoginUriView]) -> Vec<LoginUriView> {
         uris(draft.login.as_ref().unwrap().uris.clone(), previous).unwrap()
+    }
+
+    #[test]
+    fn card_and_identity_drafts_round_trip() {
+        let now = Utc::now();
+        let card = CardDraft {
+            cardholder_name: Some("CAMILLE MARTIN".to_owned()),
+            brand: Some("Visa".to_owned()),
+            number: Some(SecretString::new("4242424242424242")),
+            exp_month: Some("9".to_owned()),
+            exp_year: Some("2029".to_owned()),
+            code: Some(SecretString::new("123")),
+        };
+        let mut view = new_view(
+            Draft {
+                name: "Visa".to_owned(),
+                card: Some(card.clone()),
+                ..Draft::default()
+            },
+            now,
+        )
+        .unwrap();
+        assert_eq!(view.r#type, CipherType::Card);
+        assert!(view.secure_note.is_none() && view.login.is_none());
+        let mut draft = draft_of(view.clone());
+        assert_eq!(draft.card.as_ref(), Some(&card));
+        // Modifier : le cryptogramme effacé disparaît, le reste est gardé.
+        draft.card.as_mut().unwrap().code = Some(SecretString::new("  "));
+        draft.card.as_mut().unwrap().exp_year = Some("2031".to_owned());
+        apply(&mut view, draft, now).unwrap();
+        let saved = view.card.clone().unwrap();
+        assert_eq!(saved.code, None);
+        assert_eq!(saved.exp_year.as_deref(), Some("2031"));
+        assert_eq!(saved.number.as_deref(), Some("4242424242424242"));
+
+        let identity = IdentityDraft {
+            first_name: Some("Camille".to_owned()),
+            last_name: Some("Martin".to_owned()),
+            city: Some("Annecy".to_owned()),
+            passport_number: Some(SecretString::new("12AB34567")),
+            ..IdentityDraft::default()
+        };
+        let mut view = new_view(
+            Draft {
+                name: "Moi".to_owned(),
+                identity: Some(identity.clone()),
+                ..Draft::default()
+            },
+            now,
+        )
+        .unwrap();
+        assert_eq!(view.r#type, CipherType::Identity);
+        let mut draft = draft_of(view.clone());
+        assert_eq!(draft.identity.as_ref(), Some(&identity));
+        draft.identity.as_mut().unwrap().email = Some("camille@exemple.fr".to_owned());
+        apply(&mut view, draft, now).unwrap();
+        let saved = view.identity.unwrap();
+        assert_eq!(saved.email.as_deref(), Some("camille@exemple.fr"));
+        assert_eq!(saved.passport_number.as_deref(), Some("12AB34567"));
+    }
+
+    #[test]
+    fn card_fields_never_turn_a_login_into_a_card() {
+        let now = Utc::now();
+        let mut view = new_view(login_draft("un"), now).unwrap();
+        let mut draft = login_draft("un");
+        draft.card = Some(CardDraft::default());
+        apply(&mut view, draft, now).unwrap();
+        assert_eq!(view.r#type, CipherType::Login);
+        assert!(view.card.is_none());
     }
 
     #[test]

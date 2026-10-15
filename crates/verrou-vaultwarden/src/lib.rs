@@ -68,7 +68,7 @@ use verrou_core::{Item, SecretString};
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
 pub use attachments::AttachmentInfo;
 pub use bulk::{BulkAction, BulkOutcome, Progress, Skipped};
-pub use edit::{CustomFieldDraft, CustomFieldKind, Draft, LoginDraft};
+pub use edit::{CardDraft, CustomFieldDraft, CustomFieldKind, Draft, IdentityDraft, LoginDraft};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
 pub use merge::{MergeOutcome, MergeSummary};

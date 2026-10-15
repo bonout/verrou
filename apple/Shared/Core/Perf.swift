@@ -5,8 +5,10 @@ import os
 /// affichage, synchronisation. Aucune donnée du coffre, seulement des durées :
 ///
 ///     log stream --predicate 'subsystem == "app.verrou.mac" AND category == "perf"'
+///     xcrun simctl spawn booted log stream --predicate 'subsystem == "app.verrou.ios" AND category == "perf"'
 enum Perf {
-    static let log = Logger(subsystem: "app.verrou.mac", category: "perf")
+    /// Sous-système : l'identifiant de l'app (`app.verrou.mac`, `app.verrou.ios`).
+    static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app.verrou", category: "perf")
 
     /// Millisecondes écoulées depuis `start`.
     static func ms(since start: ContinuousClock.Instant) -> Int {

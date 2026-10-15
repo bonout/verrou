@@ -182,6 +182,31 @@ throwaway Vaultwarden, the end-to-end walkthrough and the demo recording
 (`scripts/demo-capture.sh`) are described in the
 [full guide](docs/GUIDE.md#build).
 
+## iPhone
+
+The iPhone app (`apple/VerrouiOS`, iOS 17 or later, French interface) shares
+the Rust core and a Swift layer with the Mac app: sign in to Vaultwarden
+(TOTP or e-mail second factor), unlock with Face ID or the master password,
+search as you type, tap to copy (local-only clipboard that iOS clears after
+90 s), reveal with the same protected-item rules, one-time codes, cards,
+identities, Wi-Fi QR codes, attachments (Quick Look, share), passkeys listed,
+create and edit logins, notes, cards, identities and templates, a password
+and passphrase generator, swipe actions and multi-select, offline edits, an
+audit, auto-lock in the background and a privacy screen in the app switcher.
+
+For now it runs in the Simulator only, unsigned:
+
+```sh
+PLATFORMS=all scripts/build-apple.sh     # Rust core for macOS, iPhone and the Simulator
+(cd apple && xcodegen generate)
+xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS \
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+scripts/ios-e2e.sh                       # headless walkthrough against a throwaway Vaultwarden
+```
+
+Details, limits and the AutoFill plan are in the
+[guide](docs/GUIDE.md#iphone).
+
 ## FAQ
 
 **Why not just use the Bitwarden app?**
@@ -193,8 +218,9 @@ You can use both side by side.
 It's built and tested against Vaultwarden only.
 
 **Is there an iPhone app?**
-Not yet. iOS, Safari and system-wide AutoFill need a paid Apple developer
-account, which this project doesn't use.
+Yes, in progress: the iPhone app builds and runs in the iOS Simulator (see
+[iPhone](#iphone)). Installing it on a real iPhone, and system-wide AutoFill,
+need an Apple developer account, which this project doesn't use yet.
 
 **What if I stop using Verrou?**
 Nothing changes: everything lives on your Vaultwarden server in the standard

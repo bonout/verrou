@@ -744,6 +744,61 @@ Le SDK de Bitwarden accepte n'importe quelle clé bien formée (le coffre se
 déchiffre alors en zéro élément) : Verrou vérifie la clé rendue en déchiffrant
 avec elle le jeton de renouvellement, et la refuse sinon.
 
+## iPhone
+
+L'app iPhone (`apple/VerrouiOS`) reprend le cœur Rust et les règles
+ci-dessus ; ce qui change :
+
+- **Dossier du compte** (`VerrouStorage`) : le conteneur du groupe d'apps
+  `group.app.verrou`, que partagera l'extension de remplissage automatique
+  (phase 2). Sans ce groupe (build du simulateur non signé), le dossier
+  privé de l'app ; un compte qui s'y trouve est déplacé dans le groupe dès
+  qu'il existe. Le dossier est exclu des sauvegardes iCloud et Finder.
+  Son contenu est celui du Mac : cache chiffré par le serveur, file hors
+  ligne chiffrée, `touchid.json`. Aucune clé de sécurité (`hmac-secret`) sur
+  l'iPhone : pas de NFC dans cette version.
+- **Face ID** : le même scellement que Touch ID (clé d'accord P-256 du
+  Secure Enclave, `.biometryCurrentSet`, ECDH + HKDF-SHA256 + AES-GCM).
+  Ajouter ou retirer un visage oblige à repasser par le mot de passe.
+  **Simulateur seulement** : son Secure Enclave refuse les clés gardées par
+  la biométrie ; une clé
+  logicielle, rangée dans `touchid.json` lui-même, la remplace, et seule la
+  vérification de LocalAuthentication (Face ID simulé) garde l'ouverture.
+  Ce chemin n'est compilé que pour le simulateur (`targetEnvironment(simulator)`).
+- **Éléments protégés** : Face ID, sinon le mot de passe principal (vérifié
+  par le cœur Rust), valable 5 minutes par élément, comme sur le Mac.
+- **Presse-papiers** (`UIPasteboard`) : `localOnly` (jamais envoyé aux
+  autres appareils par le presse-papiers universel) et `expirationDate` (iOS
+  efface lui-même le secret après 90 s par défaut, réglable de 30 s à
+  10 min, même si Verrou a été fermé). Au verrouillage, Verrou l'efface s'il
+  contient encore ce qu'il y a mis (compteur `changeCount`, sans lire le
+  contenu). Les valeurs non secrètes (identifiant, site) n'expirent pas.
+- **Verrouillage automatique** : quand l'app passe en arrière-plan, après un
+  délai réglable (aussitôt, 1 min par défaut, 5 min, 15 min, 1 h, jamais) ;
+  le système peut aussi terminer l'app, ce qui libère le coffre. Hors du
+  premier plan, l'écran est flouté et recouvert : l'aperçu du sélecteur
+  d'apps ne montre aucun élément.
+- **Pièces jointes** : déchiffrées dans Rust, écrites le temps de l'aperçu ou
+  du partage dans un fichier temporaire protégé par le chiffrement de
+  l'iPhone (`completeFileProtection`), effacé à la fermeture, au
+  verrouillage et au lancement suivant. Un fichier partagé vers une autre app
+  sort, en clair, du contrôle de Verrou.
+- **Réseau** : le cœur Rust parle au serveur avec sa propre pile (rustls),
+  sans passer par App Transport Security ; HTTPS obligatoire comme sur le
+  Mac (HTTP seulement pour `localhost`, les tests). Les icônes des sites
+  viennent du serveur du compte (`URLSession` éphémère, rien sur le disque).
+- **Distribution** : pas de compte de développeur Apple, donc pas de build
+  pour un vrai iPhone dans cette version ; le simulateur est construit sans
+  signature (`CODE_SIGNING_ALLOWED=NO`). Le groupe d'apps et le groupe de
+  trousseau `app.verrou.shared` (fichier `VerrouiOS.entitlements`) ne
+  s'appliquent qu'à un build signé.
+- **Extension de remplissage (phase 2)** : elle ouvrira le coffre depuis le
+  cache partagé, en lecture, avec `VaultAccess` (Face ID ou mot de passe),
+  sans synchroniser ni écrire : deux processus qui écriraient le même cache
+  se marcheraient dessus. À vérifier alors : qu'une clé du Secure Enclave
+  créée par l'app s'ouvre depuis l'extension (sinon, la ranger dans le
+  trousseau partagé).
+
 ## Clé de sécurité (YubiKey, `hmac-secret`)
 
 Une YubiKey (ou toute clé FIDO2 avec l'extension `hmac-secret` et un code

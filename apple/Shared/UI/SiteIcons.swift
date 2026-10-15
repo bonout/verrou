@@ -1,17 +1,36 @@
-import AppKit
 import Observation
+import SwiftUI
+#if canImport(AppKit)
+import AppKit
+
+/// Image du système : `NSImage` sur le Mac, `UIImage` sur l'iPhone.
+typealias PlatformImage = NSImage
+
+extension Image {
+    init(platformImage: PlatformImage) { self.init(nsImage: platformImage) }
+}
+#else
+import UIKit
+
+/// Image du système : `NSImage` sur le Mac, `UIImage` sur l'iPhone.
+typealias PlatformImage = UIImage
+
+extension Image {
+    init(platformImage: PlatformImage) { self.init(uiImage: platformImage) }
+}
+#endif
 
 /// Icônes des sites, servies par le Vaultwarden du compte (`/icons/<site>/icon.png`).
 ///
 /// Seul le nom du site part, vers son propre serveur, qui les récupère pour
 /// nous ; rien ne touche le disque (session réseau éphémère, cache en
 /// mémoire vidé au verrouillage) : la liste des sites ne reste pas en clair
-/// sur le Mac.
+/// sur l'appareil.
 @MainActor
 @Observable
 final class SiteIcons {
     /// `nil` : téléchargement en cours, ou pas d'icône (on garde l'initiale).
-    private(set) var images: [String: NSImage] = [:]
+    private(set) var images: [String: PlatformImage] = [:]
     @ObservationIgnored private var requested: Set<String> = []
     /// L'image générique que Vaultwarden renvoie quand il ne trouve rien.
     @ObservationIgnored private var fallback: Task<Data?, Never>?
@@ -28,7 +47,7 @@ final class SiteIcons {
     }
 
     /// L'icône si elle est déjà là ; sinon la demande, et la vue se mettra à jour.
-    func image(for host: String) -> NSImage? {
+    func image(for host: String) -> PlatformImage? {
         let site = Self.site(of: host)
         if let image = images[site] { return image }
         guard let server, !site.isEmpty, !requested.contains(site) else { return nil }
@@ -51,7 +70,7 @@ final class SiteIcons {
         guard let data = await fetch(server: server, site: site),
               data != (await fallbackIcon(server: server)),
               self.server == server,
-              let image = NSImage(data: data) else { return }
+              let image = PlatformImage(data: data) else { return }
         images[site] = image
     }
 
