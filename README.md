@@ -211,6 +211,22 @@ list, search as you type, open GitHub with a zoom, copy the password (toast
 and haptic), then the one-time code counting down. Every screen, light and
 dark, is in [docs/media/ios/design](docs/media/ios/design).
 
+**Motion.** Unlocking opens the padlock's shackle, sends a ripple (a small
+Metal shader) from the button you used and slides the logo toward the vault,
+which is already usable underneath. Revealed and generated passwords
+"decrypt" character by character; on iOS 26 the Face ID button morphs into the
+master-password field; the lock screen has a slow mesh gradient; copy icons
+turn into a checkmark; the one-time code ring turns orange and pulses in its
+last 5 seconds; home counters roll up and the audit fills its score gauge.
+Every effect respects Reduce Motion (fades instead of movement) and falls
+back on iOS 17; nothing is animated inside the vault list.
+
+<p align="center">
+  <a href="docs/media/ios-motion.mp4">
+    <img src="docs/media/ios-motion.gif" width="320" alt="Verrou on iPhone: the padlock opens and a ripple spreads as the vault appears, a password decrypts on reveal, a copy icon turns into a checkmark, the one-time code ring pulses before a new code rolls in, and the generator decrypts each new password">
+  </a>
+</p>
+
 **AutoFill** fills your logins, one-time codes and passkeys in Safari and
 other apps: turn on Verrou in Settings → General → AutoFill & Passwords, then
 tap a login field. Verrou asks for Face ID, fills, and locks again; passkeys

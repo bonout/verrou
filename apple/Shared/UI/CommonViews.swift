@@ -163,11 +163,21 @@ struct HighlightedText: View {
 struct PasswordText: View {
     let value: String
     var size: CGFloat = 15
+    /// Texte sélectionnable. Faux sous un TextRenderer (effet « déchiffré » de
+    /// l'iPhone) : la sélection passe par un autre rendu, qui l'ignorerait.
+    var selectable = true
 
     var body: some View {
+        if selectable {
+            text.textSelection(.enabled)
+        } else {
+            text
+        }
+    }
+
+    private var text: some View {
         Text(attributed)
             .font(.system(size: size, design: .monospaced))
-            .textSelection(.enabled)
     }
 
     private var attributed: AttributedString {
@@ -220,13 +230,18 @@ struct TotpCodeView: View {
     }
 }
 
+/// Décompte du code : l'anneau se vide, puis passe à l'orange et bat à
+/// chaque seconde pendant les 5 dernières (un fondu avec « Réduire les
+/// animations »).
 struct CountdownRing: View {
     let remaining: UInt64
     let period: UInt64
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let fraction = Double(remaining) / Double(max(period, 1))
-        let urgent = remaining <= 7
+        let urgent = remaining <= 5
+        let reduceMotion = reduceMotion
         ZStack {
             Circle().stroke(.quaternary, lineWidth: 3)
             Circle()
@@ -240,6 +255,16 @@ struct CountdownRing: View {
                 .animation(.snappy, value: remaining)
                 .foregroundStyle(urgent ? Color.orange : Color.secondary)
                 .monospacedDigit()
+        }
+        .animation(.easeInOut(duration: 0.3), value: urgent)
+        // Un battement par seconde, seulement à la fin du décompte.
+        .keyframeAnimator(initialValue: 1.0, trigger: urgent ? remaining : 0) { content, pulse in
+            content
+                .scaleEffect(urgent && !reduceMotion ? pulse : 1)
+                .opacity(urgent && reduceMotion ? 1 - (pulse - 1) * 2.5 : 1)
+        } keyframes: { _ in
+            CubicKeyframe(1.18, duration: 0.14)
+            CubicKeyframe(1.0, duration: 0.36)
         }
         .accessibilityLabel("\(remaining) secondes restantes")
     }

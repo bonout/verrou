@@ -68,6 +68,7 @@ struct StrengthMeter: View {
     /// Entropie connue (phrase de passe générée) ; sinon estimée d'après les
     /// caractères.
     var bits: Double?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let bits = bits ?? passwordStrength(password: password)
@@ -86,7 +87,9 @@ struct StrengthMeter: View {
                 .monospacedDigit()
                 .fixedSize()
         }
-        .animation(.snappy, value: fraction)
+        // La barre se remplit avec un ressort (sans rebond si « Réduire les animations »).
+        .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.62),
+                   value: fraction)
     }
 
     static func grade(_ bits: Double) -> (String, Color, Double) {

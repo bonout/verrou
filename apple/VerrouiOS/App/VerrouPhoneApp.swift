@@ -28,6 +28,12 @@ struct VerrouPhoneApp: App {
                         autoFillSetup = driver
                         driver.start()
                     }
+                    // Captures : `VERROU_OPEN_TAB=generator|vault` ouvre le coffre fictif sur cet onglet.
+                    if let tab = ProcessInfo.processInfo.environment["VERROU_OPEN_TAB"], model.mode == .demo,
+                       model.lockState == .locked {
+                        model.openMockVault()
+                        model.tab = tab == "generator" ? .generator : .vault
+                    }
                     if bench == nil, PhoneBenchDriver.enabled {
                         let driver = PhoneBenchDriver(model: model)
                         bench = driver
@@ -42,32 +48,51 @@ struct VerrouPhoneApp: App {
 struct RootView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// L'écran verrouillé est affiché : au déverrouillage, il reste au-dessus
+    /// du coffre (déjà utilisable) le temps de s'effacer.
+    @State private var lockOnScreen = false
 
     /// Hors du premier plan (sélecteur d'apps, centre de contrôle) : le
     /// contenu est flouté et recouvert, l'aperçu du sélecteur ne montre rien.
     private var shielded: Bool { scenePhase != .active }
 
+    private var showsLock: Bool {
+        !model.needsLogin && (model.lockState != .unlocked || lockOnScreen)
+    }
+
     var body: some View {
         @Bindable var model = model
         ZStack {
-            Group {
+            ZStack {
                 if model.lockState == .unlocked {
                     MainTabs()
+                        .transition(.opacity)
+                        .zIndex(0)
                 } else if model.needsLogin {
                     LoginView()
-                } else {
-                    LockView()
+                        .transition(.opacity)
+                        .zIndex(0)
+                }
+                if showsLock {
+                    LockView(departing: model.lockState == .unlocked) { lockOnScreen = false }
+                        .onAppear { lockOnScreen = true }
+                        .transition(.opacity)
+                        // Toujours au-dessus du coffre qui s'insère dessous.
+                        .zIndex(1)
                 }
             }
             .blur(radius: shielded ? 28 : 0)
-            .transition(.opacity)
             if shielded {
-                PrivacyCover()
-                    .transition(.opacity)
+                PrivacyCover(opaque: scenePhase == .background)
+                    .transition(reduceMotion ? AnyTransition.opacity : AnyTransition(.blurReplace))
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.lockState)
         .animation(.easeOut(duration: 0.2), value: model.needsLogin)
+        // Flou progressif vers le sélecteur d'apps ; jamais en passant
+        // directement en arrière-plan, où l'aperçu est pris aussitôt.
+        .animation(scenePhase == .background ? nil : .easeOut(duration: 0.18), value: shielded)
         // Chaque copie : un retour haptique de réussite.
         .sensoryFeedback(.success, trigger: model.copies)
         .tint(Theme.accent)
@@ -113,8 +138,16 @@ private struct RepromptFields: View {
 
 /// Écran posé sur l'app quand elle quitte le premier plan.
 struct PrivacyCover: View {
+    /// En arrière-plan : un fond plein, posé sans animation, au cas où
+    /// l'aperçu du sélecteur serait pris avant la fin du flou.
+    var opaque = false
+
     var body: some View {
         ZStack {
+            if opaque {
+                Color(.systemBackground)
+                    .transition(.identity)
+            }
             Rectangle().fill(.regularMaterial)
             VStack(spacing: 14) {
                 AppMark(size: 76, glow: false)

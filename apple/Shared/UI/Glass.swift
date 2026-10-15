@@ -112,6 +112,27 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
+// MARK: Morphose
+
+extension View {
+    /// Identité de verre (iOS 26) : deux vues de même `id` dans un
+    /// `GlassGroup` se transforment l'une en l'autre ; `morph` faux (Réduire
+    /// les animations) : simple apparition du verre. Rien avant iOS 26.
+    @ViewBuilder
+    func glassMorphID(_ id: String, in namespace: Namespace.ID, morph: Bool = true) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26, *), !LiquidGlass.forcedFallback {
+            self.glassEffectID(id, in: namespace)
+                .glassEffectTransition(morph ? .matchedGeometry : .materialize)
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
+    }
+}
+
 // MARK: Navigation
 
 private struct ZoomNamespaceKey: EnvironmentKey {

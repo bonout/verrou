@@ -360,8 +360,9 @@ private struct FavoriteButton: View {
             Image(systemName: summary.favorite ? "star.fill" : "star")
                 .font(.title2)
                 .foregroundStyle(summary.favorite ? Color.yellow : Color.secondary)
-                .contentTransition(.symbolEffect(.replace))
-                .symbolEffect(.bounce, value: summary.favorite)
+                .symbolReplaceTransition()
+                .bounceOnChange(of: summary.favorite)
+                .animation(.snappy, value: summary.favorite)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
@@ -377,6 +378,9 @@ private struct QuickCopyBar: View {
     @Environment(PhoneModel.self) private var model
     let summary: ItemSummary
     let fields: [FieldView]
+    /// Le bouton qui vient de copier : sa coche s'affiche 1,5 s.
+    @State private var copied: String?
+    @State private var copyToken = 0
 
     var body: some View {
         GlassGroup(spacing: 10) {
@@ -395,10 +399,25 @@ private struct QuickCopyBar: View {
     }
 
     private func action(_ title: String, symbol: String, perform: @escaping () -> Void) -> some View {
-        Button(action: perform) {
-            Label(title, systemImage: symbol)
-                .labelStyle(StackedLabelStyle())
-                .frame(maxWidth: .infinity)
+        Button {
+            let before = model.copies
+            perform()
+            guard model.copies != before else { return }
+            copied = title
+            // Échéance plutôt que tâche de la vue (voir CopiedFlag).
+            copyToken += 1
+            let mine = copyToken
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if copyToken == mine { copied = nil }
+            }
+        } label: {
+            Label {
+                Text(title)
+            } icon: {
+                CopySymbol(symbol: symbol, copied: copied == title)
+            }
+            .labelStyle(StackedLabelStyle())
+            .frame(maxWidth: .infinity)
         }
         .glassButton()
         .accessibilityLabel("Copier : \(title.lowercased())")
@@ -442,12 +461,14 @@ struct FieldRow: View {
             if field.secret && field.fieldType != .totp && !field.hidden {
                 let shown = model.revealedValue(field.id, of: itemID) != nil
                 RowIconButton(symbol: shown ? "eye.slash" : "eye", label: shown ? "Masquer" : "Afficher") {
-                    withAnimation(.snappy(duration: 0.18)) { model.toggleReveal(field.id, of: itemID) }
+                    model.toggleReveal(field.id, of: itemID)
                 }
+                .animation(.snappy(duration: 0.25), value: shown)
             }
             if !field.hidden {
                 RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copier",
                               tint: copied ? .green : Theme.accent, action: copy)
+                    .animation(.snappy(duration: 0.3), value: copied)
             }
         }
         .contentShape(Rectangle())
@@ -463,19 +484,16 @@ struct FieldRow: View {
                 }
             }
         }
-        .task(id: copied) {
-            guard copied else { return }
-            try? await Task.sleep(for: .seconds(1.6))
-            copied = false
-        }
+        .modifier(CopiedFlag(copied: $copied))
     }
 
     private func copy() {
         let before = model.copies
         model.copyField(field, of: itemID)
-        // La coche seulement si la copie a eu lieu (pas d'attente de Face ID).
+        // La coche seulement si la copie a eu lieu (pas d'attente de Face ID) ;
+        // le retour haptique de réussite suit chaque copie (RootView).
         if model.copies != before {
-            withAnimation(.snappy) { copied = true }
+            copied = true
         }
     }
 }
@@ -493,7 +511,7 @@ private struct RowIconButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(tint)
-                .contentTransition(.symbolEffect(.replace))
+                .symbolReplaceTransition()
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.12), in: Circle())
                 .contentShape(Circle())
@@ -512,27 +530,26 @@ private struct FieldValue: View {
     var body: some View {
         switch field.fieldType {
         case .totp:
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                if let code = model.totpCode(of: itemID, at: context.date) {
-                    TotpCodeView(code: code, size: 28)
-                } else {
-                    // Élément protégé : le code n'apparaît qu'après confirmation.
-                    MaskedText(count: 6)
-                }
-            }
+            TotpFieldValue(itemID: itemID)
         case .password, .concealed, .pin, .cardNumber:
             if field.hidden {
                 Text("Masqué par l'organisation").foregroundStyle(.secondary)
-            } else if let revealed = model.revealedValue(field.id, of: itemID) {
-                if field.fieldType == .password || field.fieldType == .pin {
-                    PasswordText(value: revealed, size: 17)
-                } else {
-                    Text(revealed).font(.system(size: 17, design: .monospaced))
-                }
-            } else if field.fieldType == .cardNumber {
-                Text("•••• •••• •••• ••••").font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
             } else {
-                MaskedText(count: field.fieldType == .pin ? 4 : 12)
+                // Révélé : brouillé puis déchiffré caractère par caractère.
+                DecryptReveal(value: model.revealedValue(field.id, of: itemID), fontSize: 17) { revealed in
+                    if field.fieldType == .password || field.fieldType == .pin {
+                        // Copié d'un toucher sur la ligne : pas de sélection.
+                        PasswordText(value: revealed, size: 17, selectable: false)
+                    } else {
+                        Text(revealed).font(.system(size: 17, design: .monospaced))
+                    }
+                } masked: {
+                    if field.fieldType == .cardNumber {
+                        Text("•••• •••• •••• ••••").font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                    } else {
+                        MaskedText(count: field.fieldType == .pin ? 4 : 12)
+                    }
+                }
             }
         case .address, .multiline:
             Text(field.value ?? "")
@@ -543,6 +560,35 @@ private struct FieldValue: View {
         default:
             Text(field.value ?? "")
         }
+    }
+}
+
+/// Le code à usage unique de la fiche : ses chiffres roulent, et un léger
+/// retour haptique marque chaque nouveau code, seulement quand la fiche est
+/// à l'écran et l'app au premier plan.
+private struct TotpFieldValue: View {
+    @Environment(PhoneModel.self) private var model
+    @Environment(\.scenePhase) private var scenePhase
+    let itemID: String
+    @State private var onScreen = false
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let code = model.totpCode(of: itemID, at: context.date)
+            Group {
+                if let code {
+                    TotpCodeView(code: code, size: 28)
+                } else {
+                    // Élément protégé : le code n'apparaît qu'après confirmation.
+                    MaskedText(count: 6)
+                }
+            }
+            .sensoryFeedback(.impact(weight: .light), trigger: code?.code) { old, new in
+                onScreen && scenePhase == .active && old != nil && new != nil && old != new
+            }
+        }
+        .onAppear { onScreen = true }
+        .onDisappear { onScreen = false }
     }
 }
 
@@ -594,8 +640,9 @@ private struct NotesRow: View {
     let itemID: String
 
     var body: some View {
+        let notes = model.revealedValue("notes", of: itemID)
         HStack(alignment: .top) {
-            if let notes = model.revealedValue("notes", of: itemID) {
+            if let notes {
                 Text(notes)
                     .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -606,11 +653,12 @@ private struct NotesRow: View {
                 }
                 Spacer()
             }
-            RowIconButton(symbol: model.revealedValue("notes", of: itemID) == nil ? "eye" : "eye.slash",
+            RowIconButton(symbol: notes == nil ? "eye" : "eye.slash",
                           label: "Afficher la note") {
-                withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
+                model.toggleReveal("notes", of: itemID)
             }
         }
+        .animation(.snappy(duration: 0.2), value: notes)
     }
 }
 

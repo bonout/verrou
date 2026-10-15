@@ -239,8 +239,8 @@ private struct PasskeyRegistrationView: View {
         List {
             Section {
                 VStack(spacing: 10) {
-                    TintedSymbol(symbol: "person.badge.key.fill", tint: Theme.accent, size: 64)
-                    Text("Nouvelle passkey pour \(model.site ?? "ce site")")
+                    PasskeySymbol(created: model.passkeyCreated)
+                    Text(model.passkeyCreated ? "Passkey enregistrée" : "Nouvelle passkey pour \(model.site ?? "ce site")")
                         .font(.headline)
                         .multilineTextAlignment(.center)
                     Text("Elle est enregistrée dans votre coffre Vaultwarden, au format de Bitwarden : vos autres appareils la retrouvent.")
@@ -281,13 +281,50 @@ private struct PasskeyRegistrationView: View {
                     Text("Un identifiant porte une passkey : celle qu'il avait est remplacée.")
                 }
             }
-            if model.phase == .working {
+            if model.phase == .working, !model.passkeyCreated {
                 Section {
                     HStack {
                         ProgressView()
                         Text("Enregistrement sur le serveur…").foregroundStyle(.secondary)
                     }
                 }
+            }
+        }
+        .sensoryFeedback(.success, trigger: model.passkeyCreated) { _, created in created }
+    }
+}
+
+/// La clé de la feuille de création : elle rebondit et devient une coche
+/// une fois la passkey enregistrée. Effets de symboles seulement (rien de
+/// lourd dans l'extension) ; un fondu avec « Réduire les animations ».
+private struct PasskeySymbol: View {
+    let created: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Image(systemName: created ? "checkmark" : "person.badge.key.fill")
+            .font(.system(size: 30, weight: .semibold))
+            .foregroundStyle(.white)
+            .modifier(Replace(reduceMotion: reduceMotion))
+            .symbolEffect(.bounce, value: created)
+            .symbolEffectsRemoved(reduceMotion)
+            .frame(width: 64, height: 64)
+            .background((created ? Color.green : Theme.accent).gradient,
+                        in: RoundedRectangle(cornerRadius: 64 * 0.27, style: .continuous))
+            .animation(.snappy(duration: 0.35), value: created)
+            .accessibilityHidden(true)
+    }
+
+    private struct Replace: ViewModifier {
+        let reduceMotion: Bool
+
+        func body(content: Content) -> some View {
+            if reduceMotion {
+                content.contentTransition(.opacity)
+            } else if #available(iOS 18, *), !LiquidGlass.forcedFallback {
+                content.contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+            } else {
+                content.contentTransition(.symbolEffect(.replace))
             }
         }
     }

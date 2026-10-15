@@ -6,7 +6,9 @@
 #      (apple/VerrouiOS/Demo/PhoneBenchDriver.swift), puis ouverture de la
 #      liste et chaque frappe d'une recherche jusqu'à l'image suivante ;
 #   2. saccades du défilement de la liste (XCUITest,
-#      XCTOSSignpostMetric.scrollingAndDecelerationMetric).
+#      XCTOSSignpostMetric.scrollingAndDecelerationMetric) ;
+#   3. déverrouillage (même pilote) : du succès au coffre affiché et
+#      utilisable, puis au retrait de l'écran verrouillé.
 #
 #   scripts/ios-bench.sh
 #
@@ -77,7 +79,7 @@ done
 python3 -I - "$OUT" "$RUNS" <<'PY'
 import re, statistics, sys, pathlib
 out, runs = pathlib.Path(sys.argv[1]), int(sys.argv[2])
-launch, launch_cpu, lists, list_cpu, keys, key_cpu, built = [], [], [], [], [], [], []
+launch, launch_cpu, lists, list_cpu, keys, key_cpu, built, usable, gone = [], [], [], [], [], [], [], [], []
 for run in range(1, runs + 1):
     text = (out / f"run-{run}.log").read_text(errors="replace")
     m = re.search(r"BENCH LAUNCH .*\+(\d+) ms du lancement, CPU du processus (\d+) ms", text)
@@ -94,6 +96,9 @@ for run in range(1, runs + 1):
         keys.append(float(ms))
         key_cpu.append(float(cpu))
         built.append(int(rows))
+    for ms_usable, ms_gone in re.findall(r"BENCH UNLOCK .*utilisable en (\d+) ms, écran verrouillé retiré en (\d+) ms", text):
+        usable.append(int(ms_usable))
+        gone.append(int(ms_gone))
 keys.sort()
 p95 = keys[min(len(keys) - 1, int(len(keys) * 0.95))]
 print(f"lancement à froid → accueil ouvert : médiane {statistics.median(launch):.0f} ms (min {min(launch)}, max {max(launch)}, {len(launch)} lancements)")
@@ -101,6 +106,8 @@ print(f"  CPU du processus au même moment : médiane {statistics.median(launch_
 print(f"ouverture de « Tous les éléments » : médiane {statistics.median(lists):.0f} ms (CPU du fil principal : médiane {statistics.median(list_cpu):.0f} ms)")
 print(f"frappe de recherche : médiane {statistics.median(keys):.2f} ms, p95 {p95:.2f} ms, max {keys[-1]:.2f} ms ({len(keys)} frappes), lignes construites par frappe : médiane {statistics.median(built):.0f}")
 print(f"  CPU du fil principal par frappe : médiane {statistics.median(key_cpu):.2f} ms")
+if usable:
+    print(f"déverrouillage → coffre utilisable : médiane {statistics.median(usable):.0f} ms (max {max(usable)}, {len(usable)} déverrouillages), écran verrouillé retiré : médiane {statistics.median(gone):.0f} ms")
 PY
 
 if [[ "${SKIP_SCROLL:-0}" != 1 ]]; then

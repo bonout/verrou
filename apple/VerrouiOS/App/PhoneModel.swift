@@ -881,10 +881,10 @@ final class PhoneModel {
         let seconds = secret ? clipboardSeconds : 0
         clipboard.copy(value, expiresIn: seconds > 0 ? TimeInterval(seconds) : nil)
         copies += 1
-        withAnimation(.snappy) {
-            toast = Toast(message: "\(label) copié",
-                          detail: secret && seconds > 0 ? "Effacé du presse-papiers dans \(Self.durationLabel(seconds))" : nil)
-        }
+        // Pas d'animation ici : la notification anime son arrivée elle-même
+        // (ToastHost), sans entraîner les autres vues du modèle.
+        toast = Toast(message: "\(label) copié",
+                      detail: secret && seconds > 0 ? "Effacé du presse-papiers dans \(Self.durationLabel(seconds))" : nil)
     }
 
     func copyField(_ field: FieldView, of itemID: String) {
