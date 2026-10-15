@@ -23,17 +23,30 @@ extension Theme {
 /// SVG de l'extension (boîte de 24 × 24).
 struct Padlock: View {
     var size: CGFloat = 24
+    /// Ouverture de l'anse : 0 fermée, 1 levée et pivotée sur sa branche
+    /// droite (animation du déverrouillage de l'iPhone). Au-delà de 1 : léger
+    /// dépassement d'un ressort.
+    var shackle: CGFloat = 0
     var body: some View {
         Canvas { context, canvas in
             let unit = canvas.width / 24
-            var shackle = Path()
-            shackle.move(to: CGPoint(x: 7.5 * unit, y: 10.5 * unit))
-            shackle.addLine(to: CGPoint(x: 7.5 * unit, y: 8 * unit))
-            shackle.addArc(center: CGPoint(x: 12 * unit, y: 8 * unit), radius: 4.5 * unit,
-                           startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
-            shackle.addLine(to: CGPoint(x: 16.5 * unit, y: 10.5 * unit))
-            context.stroke(shackle, with: .color(.white),
-                           style: StrokeStyle(lineWidth: 2.2 * unit, lineCap: .round))
+            // Anse levée puis pivotée autour du pied de sa branche droite.
+            var shackleContext = context
+            if shackle != 0 {
+                let pivot = CGPoint(x: 16.5 * unit, y: 10.5 * unit)
+                shackleContext.translateBy(x: 0, y: -2.6 * unit * shackle)
+                shackleContext.translateBy(x: pivot.x, y: pivot.y)
+                shackleContext.rotate(by: .degrees(22 * Double(max(0, shackle - 0.35)) / 0.65))
+                shackleContext.translateBy(x: -pivot.x, y: -pivot.y)
+            }
+            var arc = Path()
+            arc.move(to: CGPoint(x: 7.5 * unit, y: 10.5 * unit))
+            arc.addLine(to: CGPoint(x: 7.5 * unit, y: 8 * unit))
+            arc.addArc(center: CGPoint(x: 12 * unit, y: 8 * unit), radius: 4.5 * unit,
+                       startAngle: .degrees(180), endAngle: .degrees(0), clockwise: false)
+            arc.addLine(to: CGPoint(x: 16.5 * unit, y: 10.5 * unit))
+            shackleContext.stroke(arc, with: .color(.white),
+                                  style: StrokeStyle(lineWidth: 2.2 * unit, lineCap: .round))
             let body = Path(roundedRect: CGRect(x: 4.5 * unit, y: 10 * unit, width: 15 * unit, height: 11 * unit),
                             cornerRadius: 3 * unit, style: .continuous)
             context.fill(body, with: .linearGradient(
@@ -52,6 +65,8 @@ struct AppMark: View {
     var size: CGFloat = 64
     /// Halo coloré sous le logo (écrans verrouillés) ; sans, pour les petites tailles.
     var glow = true
+    /// Ouverture de l'anse du cadenas (`Padlock.shackle`).
+    var shackle: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -63,7 +78,7 @@ struct AppMark: View {
                         .strokeBorder(.white.opacity(0.18), lineWidth: max(0.5, size / 120)))
                 .shadow(color: glow ? Theme.brandTop.opacity(0.35) : .clear,
                         radius: size * 0.18, y: size * 0.08)
-            Padlock(size: size * 0.62)
+            Padlock(size: size * 0.62, shackle: shackle)
                 .offset(y: -size * 0.01)
         }
         .frame(width: size, height: size)

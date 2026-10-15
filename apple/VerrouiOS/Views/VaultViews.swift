@@ -171,11 +171,15 @@ struct VaultHomeView: View {
 /// Raccourci de l'accueil : symbole, nombre et titre, sur une carte.
 private struct SmartTile: View {
     @Environment(PhoneModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let title: String
     let symbol: String
     let tint: Color
     let count: UInt32?
     let filter: SidebarFilter
+    /// Nombre affiché : part de 0 à la première apparition et roule jusqu'au
+    /// vrai nombre, puis suit ses changements.
+    @State private var shown: UInt32?
 
     var body: some View {
         Button {
@@ -189,12 +193,13 @@ private struct SmartTile: View {
                         .frame(width: 32, height: 32)
                         .background(tint.gradient, in: Circle())
                     Spacer(minLength: 4)
-                    Text(count.map { "\($0)" } ?? "–")
+                    Text(shown.map { "\($0)" } ?? "–")
                         .font(.system(.title2, design: .rounded, weight: .bold))
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)
-                        .contentTransition(.numericText())
+                        .contentTransition(reduceMotion ? .opacity : .numericText(value: Double(shown ?? 0)))
+                        .animation(reduceMotion ? .easeOut(duration: 0.2) : .snappy(duration: 0.7), value: shown)
                         .foregroundStyle(.primary)
                 }
                 Text(title)
@@ -210,6 +215,14 @@ private struct SmartTile: View {
             .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         }
         .buttonStyle(TileButtonStyle())
+        .task {
+            // Première apparition : de 0 au nombre, à l'image suivante.
+            guard shown == nil, let count else { return }
+            shown = 0
+            try? await Task.sleep(for: .milliseconds(30))
+            shown = count
+        }
+        .onChange(of: count) { _, new in shown = new }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(count.map { "\($0)" } ?? "")

@@ -8,7 +8,8 @@
 #
 # Variables : OUT, SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
 # SIM_RUNTIME, APPEARANCES (défaut « light dark »), RECORD (vidéo de
-# testRecording, avec des pauses de RECORD_PAUSE secondes, défaut 1).
+# testRecording, avec des pauses de RECORD_PAUSE secondes, défaut 1 ;
+# RECORD_TEST choisit un autre test, par exemple testMotionUnlock).
 #
 # Rien ne s'affiche sur l'écran du Mac : `simctl boot` n'ouvre pas
 # Simulator.app, et les captures ne s'affichent nulle part.
@@ -111,13 +112,15 @@ if [[ -n "$RECORD" ]]; then
   rm -f "$RECORD"
   xcrun simctl io "$DEV" recordVideo --codec=h264 --force "$RECORD" >"$WORK/record.log" 2>&1 &
   RECORD_PID=$!
+  # Repères pour découper la vidéo : RECORD_START ici, SHOWCASE_MARK dans le journal du test.
+  echo "RECORD_START $(python3 -I -c 'import time; print(time.time())')"
   sleep 2
-  run_test testRecording "$OUT/record.log" || status=$?
+  run_test "${RECORD_TEST:-testRecording}" "$OUT/record.log" || status=$?
   sleep 1
   kill -INT "$RECORD_PID" 2>/dev/null || true
   wait "$RECORD_PID" 2>/dev/null || true
   RECORD_PID=""
-  grep -E "Test Case .*(passed|failed)|error: " "$OUT/record.log" || true
+  grep -E "Test Case .*(passed|failed)|error: |SHOWCASE_MARK" "$OUT/record.log" || true
   echo "vidéo : $RECORD"
 else
   for appearance in ${APPEARANCES:-light dark}; do

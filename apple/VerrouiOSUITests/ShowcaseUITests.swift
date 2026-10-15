@@ -33,6 +33,11 @@ final class ShowcaseUITests: XCTestCase {
         print("SHOWCASE_SHOT \(name)")
     }
 
+    /// Repère horodaté pour découper la vidéo (`SHOWCASE_MARK <nom> <secondes>`).
+    private func mark(_ name: String) {
+        print("SHOWCASE_MARK \(name) \(Date().timeIntervalSince1970)")
+    }
+
     private func pause(_ factor: Double = 1) {
         guard let seconds = environment["VERROU_SHOWCASE_PAUSE"].flatMap(Double.init), seconds > 0 else { return }
         usleep(UInt32(seconds * factor * 1_000_000))
@@ -41,6 +46,8 @@ final class ShowcaseUITests: XCTestCase {
     private func launchMock(size: Int = 60, arguments: [String] = []) {
         app = XCUIApplication()
         app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "\(size)", "VERROU_SHOWCASE": "1"]
+        // Replis d'iOS 17 forcés (TEST_RUNNER_VERROU_LEGACY_UI=1).
+        if let legacy = environment["VERROU_LEGACY_UI"] { app.launchEnvironment["VERROU_LEGACY_UI"] = legacy }
         app.launchArguments = arguments
         app.launch()
     }
@@ -48,6 +55,12 @@ final class ShowcaseUITests: XCTestCase {
     /// Déverrouille le coffre fictif par le mot de passe (tout mot de passe convient).
     private func unlock(slowly: Bool = false) {
         let field = app.secureTextFields["Mot de passe principal"]
+        // Face ID proposé d'abord : on choisit le mot de passe.
+        let usePassword = app.buttons["lock-use-password"]
+        if !field.waitForExistence(timeout: 3), usePassword.waitForExistence(timeout: 20) {
+            pause(0.5)
+            usePassword.tap()
+        }
         XCTAssertTrue(field.waitForExistence(timeout: 20), "écran verrouillé")
         // Le premier appui peut tomber pendant l'animation d'apparition.
         for _ in 0..<4 {
@@ -126,7 +139,8 @@ final class ShowcaseUITests: XCTestCase {
 
         // Écran verrouillé, accueil.
         launchMock()
-        XCTAssertTrue(app.secureTextFields["Mot de passe principal"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons["lock-use-password"].waitForExistence(timeout: 20)
+                      || app.secureTextFields["Mot de passe principal"].exists)
         shot("02-verrouille")
         unlock()
         shot("03-coffre")
@@ -216,6 +230,84 @@ final class ShowcaseUITests: XCTestCase {
         github.tap()
         XCTAssertTrue(app.staticTexts["camille-dev"].waitForExistence(timeout: 10), "fiche ouverte")
         shot("15-fiche-grand-texte")
+    }
+
+    // MARK: Animations (une vidéo par moment, RECORD_TEST=testMotion…)
+
+    /// Ouvre la fiche d'un élément par la recherche.
+    private func openItem(_ query: String, title: String) {
+        let field = searchField()
+        field.tap()
+        field.typeText(query)
+        dismissKeyboardTip()
+        XCTAssertTrue(row(title).waitForExistence(timeout: 10), "résultat « \(title) »")
+        row(title).tap()
+        // Pas de balayage pour fermer le clavier : il refermerait la fiche (zoom).
+        XCTAssertTrue(app.staticTexts["camille-dev"].waitForExistence(timeout: 10), "fiche ouverte")
+    }
+
+    /// Déverrouillage : le champ du mot de passe, puis l'écran qui s'efface.
+    func testMotionUnlock() throws {
+        launchMock(size: 2000)
+        pause(1.5)
+        mark("start")
+        unlock(slowly: true)
+        pause(2)
+    }
+
+    /// Révélation du mot de passe, puis masquage et nouvelle révélation.
+    func testMotionReveal() throws {
+        launchMock()
+        unlock()
+        openItem("git", title: "GitHub")
+        pause(1)
+        mark("start")
+        app.buttons["Afficher"].firstMatch.tap()
+        pause(2)
+        app.buttons["Masquer"].firstMatch.tap()
+        pause(1)
+        app.buttons["Afficher"].firstMatch.tap()
+        pause(2)
+    }
+
+    /// Copie : l'icône passe à la coche, puis revient.
+    func testMotionCopy() throws {
+        launchMock()
+        unlock()
+        openItem("git", title: "GitHub")
+        pause(1)
+        mark("start")
+        app.buttons["quick-copy-Mot de passe"].firstMatch.tap()
+        pause(2.5)
+        app.buttons["quick-copy-Identifiant"].firstMatch.tap()
+        pause(2.5)
+    }
+
+    /// Code à usage unique : fin du décompte et renouvellement.
+    func testMotionTotp() throws {
+        launchMock()
+        unlock()
+        openItem("git", title: "GitHub")
+        // Une période entière : la fin du décompte et le renouvellement.
+        mark("start")
+        pause(32)
+    }
+
+    /// Générateur : nouvelles valeurs, robustesse, longueur.
+    func testMotionGenerator() throws {
+        launchMock()
+        unlock()
+        tapTab("Générateur", title: "Générateur")
+        pause(1.5)
+        mark("start")
+        for _ in 0..<3 {
+            app.buttons["Autre"].firstMatch.tap()
+            pause(1.6)
+        }
+        app.sliders.firstMatch.adjust(toNormalizedSliderPosition: 0.05)
+        pause(1.6)
+        app.sliders.firstMatch.adjust(toNormalizedSliderPosition: 0.6)
+        pause(2)
     }
 
     /// La vidéo de la vitrine : déverrouillage, défilement, recherche, fiche,

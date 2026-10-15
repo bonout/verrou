@@ -201,13 +201,17 @@ struct AboutView: View {
 /// k-anonymat : 5 caractères de l'empreinte SHA-1 de chaque mot de passe).
 struct AuditView: View {
     @Environment(PhoneModel.self) private var model
+    /// Les cartes sont apparues (une seule fois, en cascade).
+    @State private var appeared = false
 
     var body: some View {
         List {
             if let audit = model.audit {
                 Section {
                     AuditSummary(audit: audit, breaches: model.breaches)
+                        .staggered(0, shown: appeared)
                     breachesRow
+                        .staggered(1, shown: appeared)
                 } footer: {
                     Text("Seuls les 5 premiers caractères de l'empreinte SHA-1 de chaque mot de passe quittent l'iPhone.")
                 }
@@ -217,9 +221,11 @@ struct AuditView: View {
                             AuditRow(summary: breach.item,
                                      detail: "Vu \(breach.count.formatted(.number.locale(Locale(identifier: "fr_FR")))) fois dans des fuites",
                                      tint: .red)
+                                .staggered(2, shown: appeared)
                         }
                     } header: {
                         AuditHeader(title: "Compromis", count: breaches.count, tint: .red)
+                            .staggered(2, shown: appeared)
                     }
                 }
                 if !audit.reused.isEmpty {
@@ -228,29 +234,35 @@ struct AuditView: View {
                             ForEach(group, id: \.id) { summary in
                                 AuditRow(summary: summary, detail: "Même mot de passe que \(group.count - 1) autre\(group.count > 2 ? "s" : "")",
                                          tint: .orange)
+                                    .staggered(3, shown: appeared)
                             }
                         }
                     } header: {
                         AuditHeader(title: "Réutilisés", count: audit.reused.count, tint: .orange,
                                     unit: audit.reused.count > 1 ? "groupes" : "groupe")
+                            .staggered(3, shown: appeared)
                     }
                 }
                 if !audit.weak.isEmpty {
                     Section {
                         ForEach(audit.weak, id: \.item.id) { weak in
                             AuditRow(summary: weak.item, detail: "\(Int(weak.bits)) bits d'entropie estimée", tint: .orange)
+                                .staggered(4, shown: appeared)
                         }
                     } header: {
                         AuditHeader(title: "Faibles", count: audit.weak.count, tint: .yellow)
+                            .staggered(4, shown: appeared)
                     }
                 }
                 if !audit.insecure.isEmpty {
                     Section {
                         ForEach(audit.insecure, id: \.id) { summary in
                             AuditRow(summary: summary, detail: "Le mot de passe circule en clair", tint: .yellow)
+                                .staggered(5, shown: appeared)
                         }
                     } header: {
                         AuditHeader(title: "Sites en HTTP", count: audit.insecure.count, tint: .blue)
+                            .staggered(5, shown: appeared)
                     }
                 }
             } else {
@@ -259,6 +271,12 @@ struct AuditView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Audit de sécurité")
+        .onChange(of: model.audit != nil, initial: true) { _, ready in
+            // Première apparition seulement : les cartes, d'abord posées
+            // invisibles, apparaissent à l'image suivante.
+            guard ready, !appeared else { return }
+            DispatchQueue.main.async { appeared = true }
+        }
         .onAppear { model.refreshAudit() }
         .refreshable { model.refreshAudit() }
     }
@@ -297,12 +315,7 @@ private struct AuditSummary: View {
         let tint: Color = (breaches?.isEmpty == false) ? .red : issues > 0 ? .orange : .green
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                Image(systemName: issues == 0 ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
-                    .background(tint.gradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                    .symbolEffect(.bounce, value: issues)
+                AuditScoreGauge(score: score, tint: tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(issues == 0 ? "Rien à signaler" : "\(issues) point\(issues > 1 ? "s" : "") à revoir")
                         .font(.headline)
@@ -327,6 +340,69 @@ private struct AuditSummary: View {
         }
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
+    }
+
+    /// Part des mots de passe examinés sans aucun problème, sur 100.
+    private var score: Int {
+        guard audit.checked > 0 else { return 100 }
+        var flagged = Set<String>()
+        for group in audit.reused { flagged.formUnion(group.map(\.id)) }
+        flagged.formUnion(audit.weak.map(\.item.id))
+        flagged.formUnion(audit.insecure.map(\.id))
+        flagged.formUnion((breaches ?? []).map(\.item.id))
+        let clean = max(0, Int(audit.checked) - flagged.count)
+        return Int((Double(clean) / Double(audit.checked) * 100).rounded())
+    }
+}
+
+/// Score de l'audit : jauge en anneau qui se remplit à la première
+/// apparition et suit les changements, le nombre roulant avec elle.
+private struct AuditScoreGauge: View {
+    let score: Int
+    let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shown: Double?
+
+    var body: some View {
+        let value = shown ?? 0
+        Gauge(value: value, in: 0...100) {
+            Text("Score de sécurité")
+        } currentValueLabel: {
+            Text("\(Int(value))")
+                .contentTransition(reduceMotion ? .opacity : .numericText(value: value))
+        }
+        .gaugeStyle(ScoreRingGaugeStyle(tint: tint))
+        .frame(width: 56, height: 56)
+        .animation(reduceMotion ? .easeOut(duration: 0.2) : .spring(response: 1.0, dampingFraction: 0.86), value: shown)
+        .task {
+            guard shown == nil else { return }
+            shown = 0
+            try? await Task.sleep(for: .milliseconds(120))
+            shown = Double(score)
+        }
+        .onChange(of: score) { _, new in shown = Double(new) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Score de sécurité")
+        .accessibilityValue("\(score) sur 100")
+    }
+}
+
+/// Anneau de la jauge : piste discrète, arc teinté, nombre au centre.
+private struct ScoreRingGaugeStyle: GaugeStyle {
+    let tint: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        ZStack {
+            Circle().stroke(tint.opacity(0.18), lineWidth: 6)
+            Circle()
+                .trim(from: 0, to: configuration.value)
+                .stroke(tint.gradient, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            configuration.currentValueLabel
+                .font(.system(.headline, design: .rounded, weight: .bold))
+                .monospacedDigit()
+        }
+        .padding(3)
     }
 }
 

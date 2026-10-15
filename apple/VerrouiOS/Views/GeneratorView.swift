@@ -26,31 +26,42 @@ struct GeneratorView: View {
     @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
     @State private var value = ""
     @State private var bits: Double?
-    /// Tirages faits : le symbole « Autre » rebondit à chacun.
+    /// Tirages faits : la flèche de « Autre » tourne d'un tour à chacun.
     @State private var draws = 0
+    /// « Copier » vient de copier : coche pendant 1,5 s.
+    @State private var copied = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
-                        PasswordText(value: value, size: 22)
-                            .lineLimit(6)
-                            .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
-                            .contentTransition(.interpolate)
-                            .accessibilityLabel("Valeur générée")
-                            .accessibilityValue(value)
+                        // Chaque nouvelle valeur arrive « déchiffrée » (iOS 18).
+                        DecryptReveal(value: value.isEmpty ? nil : value, fontSize: 22, replaysOnChange: true) { value in
+                            PasswordText(value: value, size: 22, selectable: false)
+                                .lineLimit(6)
+                        } masked: {
+                            Color.clear
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Valeur générée")
+                        .accessibilityValue(value)
                         StrengthMeter(password: value, bits: bits)
                         GlassGroup(spacing: 12) {
                             HStack(spacing: 12) {
                                 Button {
-                                    withAnimation(.snappy) { regenerate() }
+                                    regenerate()
                                     draws += 1
                                 } label: {
-                                    Label("Autre", systemImage: "arrow.clockwise")
-                                        .labelStyle(.titleAndIcon)
-                                        .symbolEffect(.bounce, value: draws)
-                                        .frame(maxWidth: .infinity)
+                                    Label {
+                                        Text("Autre")
+                                    } icon: {
+                                        Image(systemName: "arrow.clockwise")
+                                            .rotatesOnChange(of: draws)
+                                    }
+                                    .labelStyle(.titleAndIcon)
+                                    .frame(maxWidth: .infinity)
                                 }
                                 .glassButton()
                                 primaryButton
@@ -87,6 +98,17 @@ struct GeneratorView: View {
             }
         }
         .onAppear(perform: regenerate)
+        #if DEBUG
+        // Captures : `VERROU_GENERATOR_DEMO=1` tire une valeur toutes les 2 s.
+        .task {
+            guard ProcessInfo.processInfo.environment["VERROU_GENERATOR_DEMO"] == "1" else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                regenerate()
+                draws += 1
+            }
+        }
+        #endif
         .onChange(of: mode) { regenerate() }
         .onChange(of: length) { regenerate() }
         .onChange(of: digits) { regenerate() }
@@ -107,11 +129,20 @@ struct GeneratorView: View {
         switch purpose {
         case .copy:
             Button {
+                let before = model.copies
                 model.copy(value, label: mode == .password ? "Mot de passe" : "Phrase de passe", secret: true)
+                if model.copies != before { copied = true }
             } label: {
-                Label("Copier", systemImage: "doc.on.doc").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
+                Label {
+                    Text("Copier")
+                } icon: {
+                    CopySymbol(copied: copied)
+                }
+                .labelStyle(.titleAndIcon)
+                .frame(maxWidth: .infinity)
             }
             .glassButton(prominent: true)
+            .modifier(CopiedFlag(copied: $copied))
         case .use(let use):
             Button {
                 use(value, bits)

@@ -7,7 +7,9 @@ import SwiftUI
 /// - lancement à froid jusqu'à l'accueil du coffre ouvert (le coffre fictif
 ///   est ouvert dès le démarrage, sans attendre de saisie) ;
 /// - ouverture de la liste de tous les éléments ;
-/// - chaque frappe d'une recherche, jusqu'à l'image suivante.
+/// - chaque frappe d'une recherche, jusqu'à l'image suivante ;
+/// - déverrouillage : du succès au coffre affiché et utilisable, puis
+///   jusqu'au retrait de l'écran verrouillé (fin de l'animation).
 ///
 /// Annonce `BENCH …` sur sa sortie standard (lue par `scripts/ios-bench.sh`),
 /// puis `BENCH_DONE`.
@@ -19,6 +21,8 @@ final class PhoneBenchDriver {
     static var homeShown = false
     /// La liste filtrée a été affichée.
     static var listShown = false
+    /// L'écran verrouillé est dans la hiérarchie des vues.
+    static var lockShown = false
 
     private let model: PhoneModel
 
@@ -119,6 +123,25 @@ final class PhoneBenchDriver {
         let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
         report(String(format: "SEARCH %d frappes : médiane %.2f ms, p95 %.2f ms, max %.2f ms",
                       sorted.count, median, p95, sorted.last ?? 0))
+        // Déverrouillage, trois fois : du succès au coffre affiché (les vues du
+        // coffre reçoivent les touchers dès cet instant), puis au retrait de
+        // l'écran verrouillé.
+        model.tab = .vault
+        try? await Task.sleep(for: .seconds(1))
+        for round in 0..<3 {
+            model.lock()
+            guard await wait(10, until: { Self.lockShown }) else { return report("ÉCHEC écran verrouillé jamais affiché") }
+            try? await Task.sleep(for: .seconds(1))
+            Self.homeShown = false
+            let start = ContinuousClock.now
+            model.openMockVault()
+            _ = await wait(10, until: { Self.homeShown })
+            await nextTurn()
+            let usable = Perf.ms(since: start)
+            _ = await wait(10, until: { !Self.lockShown })
+            report("UNLOCK tour \(round) : coffre utilisable en \(usable) ms, écran verrouillé retiré en \(Perf.ms(since: start)) ms")
+            try? await Task.sleep(for: .seconds(1))
+        }
         report("DONE")
         print("BENCH_DONE")
         fflush(stdout)

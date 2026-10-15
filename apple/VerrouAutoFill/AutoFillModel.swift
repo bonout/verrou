@@ -79,6 +79,8 @@ final class AutoFillModel {
     private(set) var passkeys: [AutofillPasskey] = []
     /// Création de passkey : identifiants du site qui peuvent la recevoir.
     private(set) var targets: [ItemSummary] = []
+    /// Passkey créée : la feuille confirme (coche) avant de se refermer.
+    private(set) var passkeyCreated = false
 
     private let complete: (Completion) -> Void
     private let log = Logger(subsystem: "app.verrou.autofill", category: "extension")
@@ -402,6 +404,9 @@ final class AutoFillModel {
             if let identities = try? session.autofillIdentities() {
                 await CredentialIdentities.publish(identities)
             }
+            // Courte confirmation dans la feuille (effets de symboles), puis réponse.
+            passkeyCreated = true
+            try? await Task.sleep(for: .milliseconds(650))
             finish(.registration(credential))
         } catch {
             phase = .ready
