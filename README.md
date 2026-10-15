@@ -200,7 +200,25 @@ tap a login field. Verrou asks for Face ID, fills, and locks again; passkeys
 are saved in your vault in the Bitwarden format. The system only learns sites
 and usernames, never a secret.
 
-For now it runs in the Simulator only, signed ad hoc (no developer account):
+<p align="center">
+  <a href="docs/media/ios-autofill.mp4">
+    <img src="docs/media/ios-autofill.gif" width="320" alt="iPhone AutoFill in Safari: a login filled after Face ID, a one-time code from the keyboard suggestion, then a passkey saved in Verrou and used to sign in">
+  </a>
+</p>
+
+In the recording above (the Simulator, iOS 26, French interface), Safari
+opens a test page: tapping the login field offers the Verrou login, Face ID
+unlocks Verrou and both fields fill; the one-time code field gets the current
+code from the suggestion above the keyboard; "Enregistrer dans Verrou" saves a
+new passkey in the vault, and the next sign-in uses it, the page checking its
+signature. Stills:
+[keyboard suggestion](docs/media/ios/01-suggestion-clavier.png),
+[Face ID unlock](docs/media/ios/02-deverrouillage-face-id.png),
+[saving a passkey](docs/media/ios/03-passkey-enregistrer.png),
+[passkey sign-in](docs/media/ios/04-passkey-connexion.png).
+
+For now it runs in the Simulator, AutoFill included, signed ad hoc (no
+developer account):
 
 ```sh
 PLATFORMS=all scripts/build-apple.sh     # Rust core for macOS, iPhone and the Simulator
@@ -225,9 +243,10 @@ You can use both side by side.
 It's built and tested against Vaultwarden only.
 
 **Is there an iPhone app?**
-Yes, in progress: the iPhone app and its AutoFill extension build and run in
-the iOS Simulator (see [iPhone](#iphone)). Installing them on a real iPhone
-needs an Apple developer account, which this project doesn't use yet.
+Yes, in progress: the iPhone app and its system-wide AutoFill (passwords,
+one-time codes, passkeys) work today in the iOS Simulator, signed ad hoc (see
+[iPhone](#iphone)). A real iPhone needs a signed build, which this project
+doesn't ship yet.
 
 **What if I stop using Verrou?**
 Nothing changes: everything lives on your Vaultwarden server in the standard

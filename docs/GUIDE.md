@@ -520,12 +520,19 @@ on as the AutoFill provider with `pluginkit -e use -i app.verrou.ios.autofill`
 (what the Settings switch does). The XCUITest then launches the app (a
 Debug-only driver, `AutoFillSetupDriver`, signs in and creates the test
 login with a TOTP seed), and drives Safari in the Simulator: password fill
-from the keyboard suggestion, passkey creation in Verrou, passkey sign-in,
-one-time code fill. The script answers every Face ID prompt, reports the
+from the keyboard suggestion, one-time code fill, passkey creation in
+Verrou, passkey sign-in. The script answers every Face ID prompt, reports the
 extension's peak memory (failing above 120 MB), then deletes the Simulator,
 the page server and the container. `SKIP_BUILD=1`, `KEEP_SIMULATOR=1`,
-`KEEP_SERVER=1` and `ONLY=<test name>` help when iterating. Nothing appears
-on the Mac's screen: screenshots come from `XCUIScreen` inside the Simulator.
+`KEEP_SERVER=1` and `ONLY=<test name>` help when iterating; `VW_CONTAINER`
+and `VW_PORT` pick another container. Nothing appears on the Mac's screen:
+screenshots come from `XCUIScreen` inside the Simulator.
+
+`VERROU_RECORD=<file.mp4>` also records the Simulator's screen
+(`simctl io recordVideo`, still headless) and pauses `RECORD_PAUSE` seconds
+(default 2) at each key step so a viewer can follow. The log prints
+`RECORD_START` and `AUTOFILL_E2E_MARK` timestamps to trim it; the result is
+in [`docs/media/ios-autofill.mp4`](media/ios-autofill.mp4).
 
 ## Install on your Mac
 
