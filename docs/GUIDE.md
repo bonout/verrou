@@ -286,6 +286,7 @@ apple/
 scripts/
   build-apple.sh     Rust core → VerrouFFI.xcframework (macOS, iPhone, Simulator) + Swift bindings
   install-macos.sh   Release build, signed locally, copied to /Applications
+  install-ios.sh     iPhone Release build, signed with your team, installed over USB/Wi-Fi
   demo-capture.sh    scripted demo → docs/media/
   e2e.sh             app walkthrough against a throwaway Vaultwarden
   ios-e2e.sh         iPhone walkthrough in a headless Simulator, same server
@@ -363,11 +364,38 @@ Not on iPhone yet: Send, emergency access, sharing an item into a shared
 vault after creation, import, duplicates, the browser extension, the CLI and
 SSH agent, YubiKey unlock. System AutoFill is described [below](#autofill-passwords-codes-and-passkeys).
 
+### Install on your iPhone
+
+`scripts/install-ios.sh` builds the iPhone app in Release, signs it with your
+own team and installs it on the connected iPhone:
+
+```sh
+VERROU_TEAM=<your team ID> scripts/install-ios.sh [device UDID]
+```
+
+You need, once:
+
+- a **paid** Apple Developer account signed in to Xcode → Settings →
+  Accounts, with the latest license agreement accepted (free accounts don't
+  get App Groups or the AutoFill provider entitlement);
+- Developer Mode on the iPhone;
+- an **App Group** registered on developer.apple.com (Identifiers → App
+  Groups), `group.app.verrou.<team ID in lower case>` by default or
+  `VERROU_APP_GROUP`, ticked in the App IDs `app.verrou.ios` and
+  `app.verrou.ios.autofill`. `xcodebuild -allowProvisioningUpdates` creates
+  the App IDs but not the group; an App Group ID is unique across Apple, so
+  `group.app.verrou` itself can't be reused. The app reads the group from its
+  Info.plist (`VerrouAppGroup`).
+
+Then turn Verrou on in Settings → General → AutoFill & Passwords. A
+development profile carries `get-task-allow` (a debugger can attach), and
+expires after a year: run the script again.
+
 ### Build and run in the Simulator
 
-There is no Apple developer account behind this project, so the iPhone app
-only runs in the iOS Simulator, **signed ad hoc** (`-`, never a developer
-team; the project sets it for Simulator builds):
+Without a developer account, the iPhone app runs in the iOS Simulator,
+**signed ad hoc** (`-`, never a developer team; the project sets it for
+Simulator builds):
 
 ```sh
 PLATFORMS=all scripts/build-apple.sh   # macOS + iPhone + Simulator slices

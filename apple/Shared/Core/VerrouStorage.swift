@@ -6,7 +6,7 @@ import Foundation
 ///
 /// - Mac : `~/Library/Application Support/Verrou`, dans le conteneur de l'app
 ///   (sandbox), comme avant.
-/// - iPhone : le conteneur du groupe d'apps `group.app.verrou`, que
+/// - iPhone : le conteneur du groupe d'apps (`appGroupID`), que
 ///   l'extension de remplissage automatique partage avec l'app.
 ///   Sans groupe (build du simulateur non signé, ou droit absent), le dossier
 ///   de l'app sert de repli ; dès que le groupe existe, un compte resté dans
@@ -15,8 +15,11 @@ import Foundation
 /// Rien n'y est en clair : le cache est la réponse chiffrée du serveur, la
 /// file hors ligne est chiffrée avec la clé de l'utilisateur.
 enum VerrouStorage {
-    /// Groupe d'apps partagé par l'app iPhone et ses extensions.
-    static let appGroupID = "group.app.verrou"
+    /// Groupe d'apps partagé par l'app iPhone et ses extensions : celui de
+    /// la signature (`VERROU_APP_GROUP`, recopié dans l'Info.plist), sinon
+    /// `group.app.verrou`.
+    static let appGroupID = (Bundle.main.object(forInfoDictionaryKey: "VerrouAppGroup") as? String)
+        .flatMap { $0.isEmpty || $0.hasPrefix("$(") ? nil : $0 } ?? "group.app.verrou"
     /// Groupe de trousseau partagé (préfixé par l'identifiant de l'équipe à la
     /// signature) : déclaré, inutilisé (l'extension lit les scellements
     /// Face ID du dossier partagé, voir `BiometricVault`).
