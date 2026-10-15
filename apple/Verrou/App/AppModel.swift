@@ -488,7 +488,7 @@ final class AppModel {
                 try await session.unlockWithUserKey(userKey: key)
             }
             didUnlock(failures: failures)
-        } catch BiometricVault.Failure.cancelled {
+        } catch BiometricVault.Failure.cancelled, BiometricVault.Failure.interrupted {
             lockState = .locked
         } catch BiometricVault.Failure.unavailable {
             unlockError = "Touch ID n'est pas disponible : saisissez votre mot de passe principal."

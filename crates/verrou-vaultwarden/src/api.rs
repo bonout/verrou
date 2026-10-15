@@ -28,6 +28,42 @@ const DEVICE_NAME: &str = "Verrou (macOS)";
 /// clients trop anciens.
 const CLIENT_VERSION: &str = "2026.6.0";
 
+/// Délai d'établissement d'une connexion. Court : une adresse injoignable
+/// (réseau local vu de l'extérieur, VPN qui monte, IPv6 sans route) ne
+/// retient pas la synchronisation 10 s ; hyper le partage entre les adresses
+/// du nom (et essaie IPv4 et IPv6 en parallèle, « happy eyeballs »). Le
+/// délai total des requêtes reste long, pour les gros transferts.
+pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Pause avant de retenter une connexion qui n'a pas pu s'établir.
+const CONNECT_RETRY_PAUSE: Duration = Duration::from_millis(250);
+
+/// Envoi qui retente une fois une connexion impossible (délai dépassé,
+/// refus) : rien n'est parti vers le serveur, la requête peut être rejouée
+/// sans risque. Le réseau du téléphone (radio, VPN à la demande) a souvent
+/// fini de monter entre-temps.
+pub(crate) trait SendRetrying {
+    fn send_retrying(
+        self,
+    ) -> impl std::future::Future<Output = reqwest::Result<reqwest::Response>> + Send;
+}
+
+impl SendRetrying for reqwest::RequestBuilder {
+    async fn send_retrying(self) -> reqwest::Result<reqwest::Response> {
+        // Corps en flux (pièce jointe) : pas de copie possible, un seul essai.
+        let Some(retry) = self.try_clone() else {
+            return self.send().await;
+        };
+        match self.send().await {
+            Err(error) if error.is_connect() => {
+                tokio::time::sleep(CONNECT_RETRY_PAUSE).await;
+                retry.send().await
+            }
+            result => result,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct Api {
     pub(crate) http: reqwest::Client,
@@ -102,6 +138,14 @@ pub(crate) struct PasswordGrant<'a> {
 
 impl Api {
     pub fn new(server: &str) -> Result<Self, Error> {
+        Self::with_client(server, |builder| builder)
+    }
+
+    /// `configure` complète le client (tests : résolution des noms imposée).
+    fn with_client(
+        server: &str,
+        configure: impl FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
+    ) -> Result<Self, Error> {
         let base = normalize_server(server)?;
         let mut headers = HeaderMap::new();
         headers.insert("bitwarden-client-name", HeaderValue::from_static("desktop"));
@@ -110,11 +154,12 @@ impl Api {
             HeaderValue::from_static(CLIENT_VERSION),
         );
         headers.insert("device-type", HeaderValue::from_static(DEVICE_TYPE));
-        let http = reqwest::Client::builder()
+        let builder = reqwest::Client::builder()
             .user_agent(concat!("Verrou/", env!("CARGO_PKG_VERSION"), " (macOS)"))
             .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
-            .default_headers(headers)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .default_headers(headers);
+        let http = configure(builder)
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
         Ok(Self { http, base })
@@ -138,7 +183,7 @@ impl Api {
             .http
             .post(format!("{}/identity/accounts/prelogin", self.base))
             .json(&serde_json::json!({ "email": email }))
-            .send()
+            .send_retrying()
             .await?
             .error_for_status()?
             .json()
@@ -179,7 +224,7 @@ impl Api {
                 data_encoding::BASE64URL_NOPAD.encode(grant.email.as_bytes()),
             )
             .form(&form)
-            .send()
+            .send_retrying()
             .await?;
         let status = response.status();
         let body: Value = response.json().await?;
@@ -206,7 +251,7 @@ impl Api {
                 ("client_id", CLIENT_ID),
                 ("refresh_token", refresh_token),
             ])
-            .send()
+            .send_retrying()
             .await?;
         let status = response.status();
         let body: Value = response.json().await.unwrap_or(Value::Null);
@@ -228,7 +273,7 @@ impl Api {
             .http
             .get(format!("{}/api/sync?excludeDomains=true", self.base))
             .bearer_auth(access_token)
-            .send()
+            .send_retrying()
             .await?;
         if response.status() == reqwest::StatusCode::UNAUTHORIZED {
             return Err(Error::SessionExpired);
@@ -261,7 +306,7 @@ impl Api {
             .post(format!("{}/api/ciphers", self.base))
             .bearer_auth(access_token)
             .json(cipher)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -290,7 +335,7 @@ impl Api {
             .put(format!("{}/api/ciphers/{id}", self.base))
             .bearer_auth(access_token)
             .json(cipher)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -307,7 +352,7 @@ impl Api {
             .http
             .put(format!("{}/api/ciphers/{id}/{action}", self.base))
             .bearer_auth(access_token)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -327,7 +372,7 @@ impl Api {
             // Des centaines d'éléments chiffrés : plus long qu'une écriture.
             .timeout(Duration::from_secs(120))
             .json(request)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await.map(drop)
     }
@@ -339,7 +384,7 @@ impl Api {
             .post(format!("{}/api/folders", self.base))
             .bearer_auth(access_token)
             .json(&serde_json::json!({ "name": name }))
-            .send()
+            .send_retrying()
             .await?;
         let body = write_response(response).await?;
         body.get("id")
@@ -369,7 +414,7 @@ impl Api {
             .put(format!("{}/api/ciphers/{action}", self.base))
             .bearer_auth(access_token)
             .json(&CipherBulkDeleteRequestModel::new(ids.to_vec()))
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -388,7 +433,7 @@ impl Api {
             .put(format!("{}/api/ciphers/move", self.base))
             .bearer_auth(access_token)
             .json(&serde_json::json!({ "folderId": folder_id, "ids": ids }))
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await.map(drop)
     }
@@ -409,7 +454,7 @@ impl Api {
         if let Some(body) = body {
             request = request.json(body);
         }
-        write_response(request.send().await?).await
+        write_response(request.send_retrying().await?).await
     }
 
     /// Jeton d'accès anonyme à un envoi (`grant_type=send_access`), avec
@@ -432,7 +477,7 @@ impl Api {
             .http
             .post(format!("{}/identity/connect/token", self.base))
             .form(&form)
-            .send()
+            .send_retrying()
             .await?;
         let status = response.status();
         let body: Value = response.json().await.unwrap_or(Value::Null);
@@ -464,7 +509,7 @@ impl Api {
             .http
             .post(format!("{}/api/sends/access", self.base))
             .bearer_auth(token)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -483,7 +528,7 @@ impl Api {
             .request(method, format!("{}{path}", self.base))
             .bearer_auth(access_token)
             .json(body)
-            .send()
+            .send_retrying()
             .await?;
         write_response(response).await
     }
@@ -503,7 +548,7 @@ impl Api {
                 "masterPasswordHash": auth_hash,
                 "deviceIdentifier": device_id,
             }))
-            .send()
+            .send_retrying()
             .await?;
         if response.status().is_success() {
             return Ok(());
@@ -688,6 +733,66 @@ pub(crate) fn error_message(body: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    /// Répond `{}` à une requête, sur `listener`.
+    async fn answer_once(listener: TcpListener) {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut buffer = [0u8; 4096];
+        let _ = stream.read(&mut buffer).await.unwrap();
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refused_connection_is_retried() {
+        // Le serveur n'écoute pas encore au premier essai (réseau qui monte).
+        let port = TcpListener::bind("127.0.0.1:0")
+            .await
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let server = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            answer_once(TcpListener::bind(("127.0.0.1", port)).await.unwrap()).await;
+        });
+        let api = Api::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        assert_eq!(api.sync("jeton").await.unwrap(), "{}");
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_unreachable_first_address_does_not_hold_the_sync() {
+        // Le nom donne d'abord une adresse qui ne répond jamais (réseau de
+        // documentation, aucune route), puis le serveur : avant, la
+        // connexion attendait 10 s (5 s par adresse).
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(answer_once(listener));
+        let addresses = [
+            std::net::SocketAddr::from(([192, 0, 2, 1], port)),
+            std::net::SocketAddr::from(([127, 0, 0, 1], port)),
+        ];
+        let api = Api::with_client(&format!("https://vault.exemple.fr:{port}"), |builder| {
+            builder.resolve_to_addrs("vault.exemple.fr", &addresses)
+        })
+        .unwrap();
+        // HTTPS vers un serveur en clair : la connexion TCP aboutit, puis la
+        // poignée de main TLS échoue aussitôt. Seul compte le délai.
+        let start = Instant::now();
+        let _ = api.sync("jeton").await;
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "connexion retenue {elapsed:?} par l'adresse injoignable"
+        );
+        server.abort();
+    }
 
     #[test]
     fn server_addresses_are_normalized() {

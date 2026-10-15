@@ -161,6 +161,11 @@ final class PhoneModel {
     let siteIcons = SiteIcons()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
+    /// La prochaine synchronisation est la première après le déverrouillage :
+    /// on mesure le plus long blocage du fil principal pendant qu'elle tourne.
+    @ObservationIgnored private var watchFirstSync = false
+    /// Synchronisations terminées depuis le lancement (mesures).
+    @ObservationIgnored private(set) var syncsFinished = 0
     @ObservationIgnored private var identitiesTask: Task<Void, Never>?
     /// Verrou est choisi comme fournisseur de remplissage automatique
     /// (`nil` : pas encore demandé au système).
@@ -173,6 +178,8 @@ final class PhoneModel {
     @ObservationIgnored private var reloads = 0
     @ObservationIgnored private var backgroundedAt: Date?
     @ObservationIgnored private var lastBiometricPrompt: Date?
+    /// La dernière demande de Face ID a été interrompue par le système.
+    @ObservationIgnored private var interruptedPrompt = false
     /// Face ID demandé de lui-même sur l'écran verrouillé (pas pendant les
     /// parcours scriptés).
     @ObservationIgnored private let autoFaceID: Bool
@@ -209,11 +216,12 @@ final class PhoneModel {
             if let account {
                 loginServer = account.server
                 loginEmail = account.email
+                NetworkWake.nudge(server: account.server)
             }
         }
         Attachments.purge()
         Biometrics.refresh()
-        Perf.log.notice("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
+        Perf.mark("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
     }
 
     /// Pas de compte sur cet iPhone, ou session expirée : écran de connexion.
@@ -385,15 +393,20 @@ final class PhoneModel {
 
     /// Écran verrouillé affiché ou app revenue au premier plan : Face ID
     /// directement, sans passer par le bouton.
+    ///
+    /// Au lancement, l'écran verrouillé apparaît avant que l'app ne soit
+    /// active (jusqu'à 300 ms plus tôt) : Face ID est demandé dès ce moment ;
+    /// si le système l'interrompt, il est redemandé à l'activation.
     func promptBiometricsIfPossible() async {
         guard autoFaceID, mode == .vaultwarden, canUseBiometrics, lockState == .locked, !needsLogin,
-              UIApplication.shared.applicationState == .active else { return }
+              UIApplication.shared.applicationState != .background else { return }
         if let last = lastBiometricPrompt, Date().timeIntervalSince(last) < 3 { return }
         await unlockWithBiometrics()
     }
 
     func unlockWithBiometrics() async {
-        defer { lastBiometricPrompt = Date() }
+        defer { lastBiometricPrompt = interruptedPrompt ? nil : Date() }
+        interruptedPrompt = false
         guard lockState == .locked else { return }
         lockState = .unlocking
         unlockError = nil
@@ -408,12 +421,16 @@ final class PhoneModel {
             return
         }
         do {
-            let failures = try await Perf.measure("Face ID + déchiffrement du coffre") {
+            let failures = try await Perf.measure("\(Biometrics.name) + déchiffrement du coffre") {
                 try await vault.unlockWithBiometrics(reason: "déverrouiller votre coffre")
             }
             didUnlock(failures: failures)
         } catch BiometricVault.Failure.cancelled {
             lockState = .locked
+        } catch BiometricVault.Failure.interrupted {
+            // Pas un refus : redemandé à la prochaine activation, sans délai.
+            lockState = .locked
+            interruptedPrompt = true
         } catch BiometricVault.Failure.unavailable {
             unlockError = "\(Biometrics.name) n'est pas disponible : saisissez votre mot de passe principal."
             lockState = .locked
@@ -441,6 +458,7 @@ final class PhoneModel {
             let failures = try await Perf.measure("déverrouillage par mot de passe") {
                 try await vault.unlock(masterPassword: masterPassword)
             }
+            Perf.unlockSucceeded("le mot de passe")
             didUnlock(failures: failures)
             await enrollBiometricsIfWanted()
         } catch {
@@ -452,6 +470,7 @@ final class PhoneModel {
     /// Coffre fictif (démonstration).
     func openMockVault() {
         session.unlockMock(size: mockSize, seed: 42)
+        Perf.unlockSucceeded("l'ouverture du coffre fictif")
         didUnlock(failures: 0)
     }
 
@@ -463,6 +482,7 @@ final class PhoneModel {
             toast = Toast(message: "\(failures) élément\(failures > 1 ? "s" : "") illisible\(failures > 1 ? "s" : "")",
                           detail: "Le SDK Bitwarden n'a pas pu les déchiffrer", failure: true)
         }
+        watchFirstSync = true
         startSyncLoop()
     }
 
@@ -510,6 +530,11 @@ final class PhoneModel {
             syncLoop = nil
             if lockState == .unlocked, autoLockSeconds == 0 { lock() }
         case .active:
+            // Retour de l'arrière-plan (pas d'un simple état inactif) : le
+            // réseau est réveillé pendant Face ID ou avant la synchronisation.
+            if backgroundedAt != nil, mode == .vaultwarden, let server = account?.server {
+                NetworkWake.nudge(server: server)
+            }
             if let since = backgroundedAt, lockState == .unlocked, autoLockSeconds > 0,
                Date().timeIntervalSince(since) >= TimeInterval(autoLockSeconds) {
                 lock()
@@ -517,7 +542,11 @@ final class PhoneModel {
             backgroundedAt = nil
             Biometrics.refresh()
             if lockState == .unlocked {
-                startSyncLoop()
+                // Retour de l'arrière-plan : la boucle avait été arrêtée.
+                // Simple retour de l'état inactif (Face ID, centre de
+                // contrôle) : elle tourne encore, et la relancer doublerait
+                // la synchronisation du déverrouillage.
+                if syncLoop == nil { startSyncLoop() }
                 Task { await refreshAutofillStatus() }
             } else {
                 Task { await promptBiometricsIfPossible() }
@@ -564,6 +593,14 @@ final class PhoneModel {
             if syncsInFlight == 0, lockState == .unlocked { syncState = result }
             refreshPending()
             Task { await self.showSyncReport() }
+        }
+        let watch = watchFirstSync ? MainThreadWatch() : nil
+        watchFirstSync = false
+        defer {
+            syncsFinished += 1
+            if let watch {
+                Perf.mark("plus long blocage du fil principal pendant la première synchro : \(watch.stop()) ms")
+            }
         }
         do {
             let outcome = try await Perf.measure("synchronisation") {
@@ -671,7 +708,7 @@ final class PhoneModel {
         searchPath = resolved(searchPath)
         revision += 1
         publishAutofillIdentities()
-        Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
+        Perf.mark("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
     }
 
     private func resolved(_ path: [Route]) -> [Route] {

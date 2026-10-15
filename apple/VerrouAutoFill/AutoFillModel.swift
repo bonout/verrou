@@ -164,7 +164,7 @@ final class AutoFillModel {
             _ = try await vault.unlockForAutofill(reason: "remplir avec Verrou")
             userVerified = true
             didUnlock()
-        } catch BiometricVault.Failure.cancelled {
+        } catch BiometricVault.Failure.cancelled, BiometricVault.Failure.interrupted {
             phase = .locked
         } catch BiometricVault.Failure.unavailable {
             unlockError = "\(Biometrics.name) n'est pas disponible : saisissez votre mot de passe principal."

@@ -5,10 +5,12 @@ import SwiftUI
 /// titre arrondi ; les commandes en verre au bas de l'écran (iOS 26).
 ///
 /// Au déverrouillage (`departing`), le coffre est déjà affiché et utilisable
-/// dessous : cet écran ne reçoit plus les touchers et s'efface en moins d'une
-/// demi-seconde. L'anse du cadenas s'ouvre (images clés), une onde part du
-/// bouton utilisé (shader Metal) et le logo file vers le coffre
-/// (`matchedGeometryEffect`) ; un simple fondu avec « Réduire les animations ».
+/// dessous : cet écran ne reçoit plus les touchers et s'efface aussitôt, en
+/// un quart de seconde, sans rien attendre. Pendant ce fondu, l'anse du
+/// cadenas saute (images clés), une onde part du bouton utilisé (shader
+/// Metal, compilé d'avance) et le logo file vers le coffre
+/// (`matchedGeometryEffect`) ; un fondu enchaîné bref avec « Réduire les
+/// animations ».
 struct LockView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,9 +30,9 @@ struct LockView: View {
     /// 0,3 s) s'affiche par un simple fondu, sans l'animation complète.
     @State private var shownAt = Date()
 
-    /// Durée de l'effacement.
+    /// Durée de l'effacement : l'écran quitte ensuite la hiérarchie.
     static func departure(reduceMotion: Bool) -> Duration {
-        reduceMotion ? .milliseconds(240) : .milliseconds(480)
+        reduceMotion ? .milliseconds(160) : .milliseconds(260)
     }
 
     private var flourish: Bool {
@@ -41,28 +43,28 @@ struct LockView: View {
         KeyframeAnimator(initialValue: UnlockFrame(), trigger: departing) { frame in
             screen(flourish ? frame : UnlockFrame())
         } keyframes: { _ in
+            // Un saut bref de l'anse, joué pendant le fondu (jamais attendu).
             KeyframeTrack(\.shackle) {
-                SpringKeyframe(1.15, duration: 0.18, spring: .snappy)
-                SpringKeyframe(1, duration: 0.2, spring: .bouncy)
-                LinearKeyframe(1, duration: 0.4)
+                SpringKeyframe(1.15, duration: 0.1, spring: .snappy)
+                SpringKeyframe(1, duration: 0.12, spring: .bouncy)
             }
             KeyframeTrack(\.ripple) {
                 LinearKeyframe(RippleEffect.duration, duration: RippleEffect.duration)
             }
         }
-        // Tout l'écran s'efface ensemble, lentement d'abord (l'onde et l'anse
-        // restent visibles), sans délai : un délai ne s'applique pas au calque
-        // du shader, qui disparaîtrait avant le texte.
+        // Tout l'écran s'efface ensemble, dès la première image : le coffre
+        // apparaît dessous aussitôt. Sans délai : un délai ne s'applique pas
+        // au calque du shader, qui disparaîtrait avant le texte.
         .opacity(departing ? 0 : 1)
         .animation(departing
-                   ? (reduceMotion ? .easeOut(duration: 0.22) : .timingCurve(0.55, 0, 0.75, 0.6, duration: 0.45))
+                   ? (reduceMotion ? .linear(duration: 0.15) : .easeOut(duration: 0.24))
                    : .easeOut(duration: 0.15),
                    value: departing)
         .allowsHitTesting(!departing)
         .accessibilityHidden(departing)
         .task(id: departing) {
             guard departing else { return }
-            Perf.log.notice("écran verrouillé : effacement au-dessus du coffre")
+            Perf.mark("écran verrouillé : effacement au-dessus du coffre")
             // Tâche annulée (vue reconstruite) : la suivante prend le relais.
             do { try await Task.sleep(for: Self.departure(reduceMotion: reduceMotion)) } catch { return }
             if departing { departed() }
@@ -73,12 +75,18 @@ struct LockView: View {
         .onAppear { PhoneBenchDriver.lockShown = true }
         .onDisappear { PhoneBenchDriver.lockShown = false }
         #endif
+        .onDisappear {
+            Perf.mark("écran verrouillé retiré à +\(Perf.msSinceLaunch) ms du lancement")
+        }
         .onAppear {
             guard !departing else { return }
-            Perf.log.notice("écran verrouillé affiché à +\(Perf.msSinceLaunch) ms du lancement")
+            Perf.mark("écran verrouillé affiché à +\(Perf.msSinceLaunch) ms du lancement")
             if model.canUseBiometrics {
                 Task { await model.promptBiometricsIfPossible() }
             }
+            // L'onde du déverrouillage, compilée pendant que Face ID attend :
+            // pas au premier déverrouillage, où elle retarderait l'image.
+            if !reduceMotion { RippleEffect.prewarm() }
         }
     }
 
@@ -94,7 +102,8 @@ struct LockView: View {
 
     private func screen(_ frame: UnlockFrame) -> some View {
         ZStack {
-            LockMeshBackground(rippleOrigin: controlCenter, rippleElapsed: Self.frozenRipple ?? frame.ripple)
+            LockMeshBackground(rippleOrigin: controlCenter, rippleElapsed: Self.frozenRipple ?? frame.ripple,
+                               frozen: departing)
             VStack(spacing: 28) {
                 Spacer()
                 VStack(spacing: 14) {
@@ -152,7 +161,7 @@ struct LockView: View {
                 .padding(.top, 4)
                 .allowsHitTesting(false)
         }
-        .animation(.spring(response: 0.34, dampingFraction: 0.86).delay(0.1), value: flourish)
+        .animation(.spring(response: 0.24, dampingFraction: 0.9), value: flourish)
     }
 
     private var subtitle: String {
