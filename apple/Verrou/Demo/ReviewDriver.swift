@@ -201,6 +201,21 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
            let routeur = duplicates.visible.first(where: { $0.members.count == 2 && $0.confidence == .probable }) {
             duplicates.ignore(routeur)
             duplicates.keep(google.members[2].item.id, in: google)
+            // Cocher l'élément gardé : il part à la corbeille, un autre est gardé.
+            let first = google.members[2].item.id
+            let before = duplicates.selected
+            duplicates.toggle(first, true, in: google)
+            if !duplicates.selected.contains(first) || duplicates.keptID(google) == first
+                || duplicates.selected.contains(duplicates.keptID(google)) {
+                fail("37b-doublons-ignores", "cocher l'élément gardé n'en garde pas un autre")
+            }
+            // Tout cocher : le dernier élément non coché reste gardé.
+            for member in google.members { duplicates.toggle(member.item.id, true, in: google) }
+            if google.members.allSatisfy({ duplicates.selected.contains($0.item.id) }) {
+                fail("37b-doublons-ignores", "tous les éléments d'un groupe sont cochés")
+            }
+            duplicates.selected = before
+            duplicates.keep(first, in: google)
         }
         await screen("37b-doublons-ignores", root: DuplicatesView(flow: duplicates), size: nil,
                      expect: withTitle(sheet, "sheet-title"), chrome: false)
