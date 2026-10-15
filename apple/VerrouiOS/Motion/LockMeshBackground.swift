@@ -9,6 +9,9 @@ struct LockMeshBackground: View {
     /// secondes écoulées (0 : pas d'onde).
     var rippleOrigin: CGPoint = .zero
     var rippleElapsed: Double = 0
+    /// Au déverrouillage : le maillage s'immobilise pendant le fondu, le
+    /// rendu va au coffre qui apparaît dessous.
+    var frozen = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -40,7 +43,7 @@ struct LockMeshBackground: View {
     @available(iOS 18, *)
     private var mesh: some View {
         // 30 images par seconde suffisent à une dérive aussi lente.
-        let paused = !onScreen || scenePhase != .active || reduceMotion
+        let paused = !onScreen || scenePhase != .active || reduceMotion || frozen
         return TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
             ZStack {

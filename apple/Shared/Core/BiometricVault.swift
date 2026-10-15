@@ -47,6 +47,9 @@ enum BiometricVault {
     enum Failure: Error {
         case unavailable
         case cancelled
+        /// Demande interrompue par le système (app pas encore active,
+        /// appel entrant) : à reposer dès que l'app est au premier plan.
+        case interrupted
         /// Empreintes modifiées, ou clé du Secure Enclave perdue : il faut
         /// repasser par le mot de passe principal.
         case invalidated
@@ -105,11 +108,16 @@ enum BiometricVault {
         let context = LAContext()
         context.localizedFallbackTitle = ""
         let prompted = ContinuousClock.now
-        defer { Perf.log.notice("Touch ID (attente du doigt comprise) : \(Perf.ms(since: prompted)) ms") }
+        Perf.mark("\(Biometrics.name) demandé à +\(Perf.msSinceLaunch) ms du lancement")
         do {
             try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
-        } catch let error as LAError where [.userCancel, .appCancel, .systemCancel, .userFallback].contains(error.code) {
+            Perf.unlockSucceeded()
+            Perf.mark("\(Biometrics.name) réussi à +\(Perf.msSinceLaunch) ms du lancement "
+                      + "(attente du visage ou du doigt : \(Perf.ms(since: prompted)) ms)")
+        } catch let error as LAError where [.userCancel, .userFallback].contains(error.code) {
             throw Failure.cancelled
+        } catch let error as LAError where [.appCancel, .systemCancel, .notInteractive].contains(error.code) {
+            throw Failure.interrupted
         } catch let error as LAError where [.biometryNotAvailable, .biometryNotEnrolled, .biometryLockout].contains(error.code) {
             throw Failure.unavailable
         }
@@ -117,7 +125,7 @@ enum BiometricVault {
         if sealed.simulated == true { return try openSimulated(sealed) }
         #endif
         let enclave = ContinuousClock.now
-        defer { Perf.log.notice("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms") }
+        defer { Perf.mark("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms") }
         do {
             // Le contexte déjà authentifié évite une seconde demande.
             let enclaveKey = try SecureEnclave.P256.KeyAgreement.PrivateKey(

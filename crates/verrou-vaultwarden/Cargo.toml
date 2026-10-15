@@ -27,7 +27,7 @@ thiserror.workspace = true
 uuid.workspace = true
 # Envoi de la file en arrière-plan (`sync_shared`) : la connexion partagée
 # derrière un verrou asynchrone, comme dans l'app.
-tokio = { workspace = true, features = ["sync", "rt"] }
+tokio = { workspace = true, features = ["sync", "rt", "time"] }
 # Déverrouillage par clé de sécurité : scellement de la clé de l'utilisateur
 # (HKDF-SHA256, AES-256-GCM), les primitives du pont vers l'extension.
 hkdf = "0.12"

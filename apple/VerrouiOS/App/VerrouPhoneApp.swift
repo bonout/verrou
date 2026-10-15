@@ -9,6 +9,7 @@ struct VerrouPhoneApp: App {
     @State private var endToEnd: EndToEndDriver?
     @State private var autoFillSetup: AutoFillSetupDriver?
     @State private var bench: PhoneBenchDriver?
+    @State private var launchBench: LaunchBenchDriver?
     #endif
 
     var body: some Scene {
@@ -34,6 +35,11 @@ struct VerrouPhoneApp: App {
                         model.openMockVault()
                         model.tab = tab == "generator" ? .generator : .vault
                     }
+                    if launchBench == nil, let phase = LaunchBenchDriver.phase {
+                        let driver = LaunchBenchDriver(model: model, phase: phase)
+                        launchBench = driver
+                        driver.start()
+                    }
                     if bench == nil, PhoneBenchDriver.enabled {
                         let driver = PhoneBenchDriver(model: model)
                         bench = driver
@@ -52,6 +58,11 @@ struct RootView: View {
     /// L'écran verrouillé est affiché : au déverrouillage, il reste au-dessus
     /// du coffre (déjà utilisable) le temps de s'effacer.
     @State private var lockOnScreen = false
+    /// Le coffre est construit sous l'écran verrouillé pendant que Face ID
+    /// (ou la dérivation du mot de passe) travaille : au succès, il n'y a
+    /// plus qu'à y verser les données, sans attendre la construction des
+    /// onglets, des listes et des barres.
+    @State private var vaultPrepared = false
 
     /// Hors du premier plan (sélecteur d'apps, centre de contrôle) : le
     /// contenu est flouté et recouvert, l'aperçu du sélecteur ne montre rien.
@@ -65,9 +76,19 @@ struct RootView: View {
         @Bindable var model = model
         ZStack {
             ZStack {
-                if model.lockState == .unlocked {
+                if model.lockState == .unlocked || (vaultPrepared && !model.needsLogin) {
+                    // Posé d'emblée, opaque, sous l'écran verrouillé qui
+                    // s'efface : aucun fondu croisé où les deux seraient à
+                    // moitié transparents. Coffre fermé, il est vide (aucun
+                    // élément chargé), caché par l'écran verrouillé opaque,
+                    // et ne reçoit ni toucher ni VoiceOver.
                     MainTabs()
-                        .transition(.opacity)
+                        .allowsHitTesting(model.lockState == .unlocked)
+                        .accessibilityHidden(model.lockState != .unlocked)
+                        // Les données arrivent d'un coup, sans animer les
+                        // sections : seul l'écran verrouillé s'efface.
+                        .animation(nil, value: model.lockState)
+                        .transition(.asymmetric(insertion: .identity, removal: .opacity))
                         .zIndex(0)
                 } else if model.needsLogin {
                     LoginView()
@@ -89,6 +110,13 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.lockState)
+        .onChange(of: model.lockState) { _, state in
+            switch state {
+            case .unlocking: vaultPrepared = true
+            case .locked: vaultPrepared = false
+            case .unlocked: break
+            }
+        }
         .animation(.easeOut(duration: 0.2), value: model.needsLogin)
         // Flou progressif vers le sélecteur d'apps ; jamais en passant
         // directement en arrière-plan, où l'aperçu est pris aussitôt.

@@ -27,17 +27,97 @@ enum Perf {
         return Int((Date().timeIntervalSince1970 - started) * 1000)
     }
 
+    /// Journalise une étape ; dans un build Debug mesuré
+    /// (`scripts/ios-bench.sh`), la recopie aussi sur la sortie standard
+    /// (`PERF …`), que lit le script.
+    static func mark(_ message: String) {
+        log.notice("\(message, privacy: .public)")
+        #if DEBUG
+        if echo {
+            print("PERF \(message)")
+            fflush(stdout)
+        }
+        #endif
+    }
+
+    #if DEBUG
+    private static let echo = ProcessInfo.processInfo.environment["VERROU_BENCH"] != nil
+        || ProcessInfo.processInfo.environment["VERROU_BENCH_LAUNCH"] != nil
+    #endif
+
     /// Mesure `body` et journalise sa durée.
     @MainActor
     static func measure<T>(_ label: String, _ body: () throws -> T) rethrows -> T {
         let start = ContinuousClock.now
-        defer { log.notice("\(label, privacy: .public) : \(ms(since: start)) ms") }
+        defer { mark("\(label) : \(ms(since: start)) ms") }
         return try body()
     }
 
     static func measure<T>(_ label: String, _ body: () async throws -> T) async rethrows -> T {
         let start = ContinuousClock.now
-        defer { log.notice("\(label, privacy: .public) : \(ms(since: start)) ms") }
+        defer { mark("\(label) : \(ms(since: start)) ms") }
         return try await body()
+    }
+
+    // MARK: Déverrouillage
+
+    /// Instant du dernier succès de Face ID / Touch ID (ou du mot de passe),
+    /// jusqu'au premier affichage de l'accueil qui suit.
+    private static let unlockedAt = OSAllocatedUnfairLock<(at: ContinuousClock.Instant, how: String)?>(initialState: nil)
+
+    /// Face ID (ou Touch ID, le mot de passe) vient de réussir ; `how` le
+    /// nomme dans les mesures qui suivent.
+    static func unlockSucceeded(_ how: String = Biometrics.name) {
+        unlockedAt.withLock { $0 = (ContinuousClock.now, how) }
+    }
+
+    /// L'accueil du coffre est à l'écran : le délai depuis le succès, puis
+    /// au tour suivant de la boucle principale (l'image est validée, les
+    /// touchers sont traités) le délai depuis le lancement.
+    @MainActor
+    static func homeAppeared() {
+        guard let (since, how) = unlockedAt.withLock({ value -> (at: ContinuousClock.Instant, how: String)? in
+            defer { value = nil }
+            return value
+        }) else { return }
+        mark("accueil visible à +\(ms(since: since)) ms après \(how)")
+        DispatchQueue.main.async {
+            mark("accueil interactif à +\(msSinceLaunch) ms du lancement (+\(ms(since: since)) ms après \(how))")
+        }
+    }
+}
+
+/// Plus long blocage du fil principal pendant une période (la première
+/// synchronisation après le déverrouillage) : un fil à part poste un bloc
+/// vide sur la file principale toutes les 16 ms et mesure son retard.
+/// Coût négligeable, et seulement pendant la période observée.
+final class MainThreadWatch: @unchecked Sendable {
+    private let state = OSAllocatedUnfairLock(initialState: (running: true, worst: 0))
+
+    init() {
+        let thread = Thread { [self] in self.run() }
+        thread.name = "verrou.perf.main-watch"
+        thread.qualityOfService = .userInitiated
+        thread.start()
+    }
+
+    private func run() {
+        let answered = DispatchSemaphore(value: 0)
+        while state.withLock({ $0.running }) {
+            let posted = ContinuousClock.now
+            DispatchQueue.main.async { answered.signal() }
+            answered.wait()
+            let late = Perf.ms(since: posted)
+            state.withLock { $0.worst = max($0.worst, late) }
+            Thread.sleep(forTimeInterval: 0.016)
+        }
+    }
+
+    /// Arrête l'observation ; rend le plus long retard, en millisecondes.
+    func stop() -> Int {
+        state.withLock {
+            $0.running = false
+            return $0.worst
+        }
     }
 }

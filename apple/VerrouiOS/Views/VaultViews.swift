@@ -51,6 +51,7 @@ private struct RouteDestination: View {
 struct VaultHomeView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         List {
@@ -72,6 +73,11 @@ struct VaultHomeView: View {
             ToolbarSpacerIfAvailable()
             ToolbarItem(placement: .topBarTrailing) { NewItemMenu() }
         }
+        .onAppear { if model.lockState == .unlocked { Perf.homeAppeared() } }
+        // Construit d'avance sous l'écran verrouillé : affiché au déverrouillage.
+        .onChange(of: model.lockState) { _, state in
+            if state == .unlocked { Perf.homeAppeared() }
+        }
         #if DEBUG
         .onAppear { PhoneBenchDriver.homeShown = true }
         #endif
@@ -88,20 +94,29 @@ struct VaultHomeView: View {
                 Text("Modifiées hors ligne : envoyées dès que le serveur répondra.")
             }
         }
+        // Sans favori, la tuile n'est pas affichée : les deux autres se
+        // partagent la largeur ; elle apparaît au premier favori.
+        let hasFavorites = (counts?.favorites ?? 0) > 0
         Section {
             let tiles = Group {
                 SmartTile(title: "Tous les éléments", symbol: "square.grid.2x2.fill", tint: Theme.accent,
                           count: counts?.all, filter: .all)
-                SmartTile(title: "Favoris", symbol: "star.fill", tint: .yellow, count: counts?.favorites,
-                          filter: .favorites)
+                if hasFavorites {
+                    SmartTile(title: "Favoris", symbol: "star.fill", tint: .yellow, count: counts?.favorites,
+                              filter: .favorites)
+                        .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.92)))
+                }
                 SmartTile(title: "Codes à usage unique", symbol: "clock.badge.checkmark.fill", tint: .teal,
                           count: counts?.withTotp, filter: .withTotp)
             }
-            if typeSize.isAccessibilitySize {
-                VStack(spacing: 10) { tiles }
-            } else {
-                HStack(spacing: 10) { tiles }
+            Group {
+                if typeSize.isAccessibilitySize {
+                    VStack(spacing: 10) { tiles }
+                } else {
+                    HStack(spacing: 10) { tiles }
+                }
             }
+            .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: hasFavorites)
         }
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
@@ -222,7 +237,19 @@ private struct SmartTile: View {
             try? await Task.sleep(for: .milliseconds(30))
             shown = count
         }
-        .onChange(of: count) { _, new in shown = new }
+        .onChange(of: count) { old, new in
+            // Construite d'avance, coffre fermé : le nombre roule de 0 à
+            // l'ouverture, comme à la première apparition.
+            guard old == nil, let new, !reduceMotion else {
+                shown = new
+                return
+            }
+            shown = 0
+            Task {
+                try? await Task.sleep(for: .milliseconds(30))
+                if count == new { shown = new }
+            }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(count.map { "\($0)" } ?? "")

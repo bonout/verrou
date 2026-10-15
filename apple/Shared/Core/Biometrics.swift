@@ -23,11 +23,15 @@ enum Biometrics {
 
     private static var state: (available: Bool, type: LABiometryType) {
         if let state = cache.withLock({ $0 }) { return state }
-        let context = LAContext()
-        let available = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        let state = (available, context.biometryType)
+        let state = query()
         cache.withLock { $0 = state }
         return state
+    }
+
+    private static func query() -> (available: Bool, type: LABiometryType) {
+        let context = LAContext()
+        let available = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        return (available, context.biometryType)
     }
 
     static var isAvailable: Bool { state.available }
@@ -58,10 +62,14 @@ enum Biometrics {
 
     /// À l'activation de l'app : un capteur a pu apparaître ou disparaître
     /// (clavier Touch ID branché, Mac refermé, Face ID enrôlé ou retiré). La question est reposée hors
-    /// du fil principal.
+    /// du fil principal ; l'ancienne réponse sert en attendant (pas de
+    /// question synchrone sur le fil principal à chaque activation, juste
+    /// avant de demander Face ID).
     static func refresh() {
-        cache.withLock { $0 = nil }
-        Task.detached(priority: .userInitiated) { _ = state }
+        Task.detached(priority: .userInitiated) {
+            let state = query()
+            cache.withLock { $0 = state }
+        }
     }
 
     static func authenticate(reason: String) async -> Outcome {
