@@ -38,6 +38,9 @@ zeroize.workspace = true
 # et le générateur du système (ssh-key attend rand_core 0.10).
 ssh-key = { version = "0.7.0-rc.11", features = ["ed25519", "rsa"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
+# Verrou entre processus du dossier du compte (`flock`) : l'app iPhone et son
+# extension de remplissage le partagent.
+rustix = { version = "1", default-features = false, features = ["fs", "std"] }
 
 # Dialogue USB avec les clés de sécurité (bibliothèque de Firefox), avec la
 # cryptographie de RustCrypto plutôt que NSS. Seulement sur macOS : la CI

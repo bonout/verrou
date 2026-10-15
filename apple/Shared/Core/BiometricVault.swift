@@ -23,6 +23,13 @@ import LocalAuthentication
 /// l'iPhone, dans le conteneur du groupe d'apps quand il existe, pour que
 /// l'extension de remplissage automatique puisse l'ouvrir aussi.
 ///
+/// Extension de remplissage : elle ouvre d'abord le scellement de l'app
+/// (`touchid.json`). Si la clé du Secure Enclave de l'app ne s'ouvre pas
+/// depuis l'extension (non vérifiable sans appareil signé), l'extension
+/// scelle la clé avec sa propre clé du Secure Enclave, dans un fichier à
+/// elle (`touchid-autofill.json`), après un déverrouillage par le mot de
+/// passe principal ; l'app efface les deux.
+///
 /// Simulateur iOS : son Secure Enclave refuse les clés gardées par la
 /// biométrie. Une clé logicielle, gardée
 /// dans le fichier lui-même, la remplace, et seul LocalAuthentication
@@ -47,23 +54,28 @@ enum BiometricVault {
 
     private static let info = Data("verrou.touchid.v1".utf8)
 
-    private static func file(in directory: URL) -> URL {
-        directory.appending(path: "touchid.json")
+    /// Scellement de l'app.
+    static let appFile = "touchid.json"
+    /// Scellement propre à l'extension de remplissage (voir plus haut).
+    static let autofillFile = "touchid-autofill.json"
+
+    private static func file(in directory: URL, name: String) -> URL {
+        directory.appending(path: name)
     }
 
-    static func isEnrolled(in directory: URL) -> Bool {
-        FileManager.default.fileExists(atPath: file(in: directory).path)
+    static func isEnrolled(in directory: URL, file name: String = appFile) -> Bool {
+        FileManager.default.fileExists(atPath: file(in: directory, name: name).path)
     }
 
-    static func remove(in directory: URL) {
-        try? FileManager.default.removeItem(at: file(in: directory))
+    static func remove(in directory: URL, file name: String = appFile) {
+        try? FileManager.default.removeItem(at: file(in: directory, name: name))
     }
 
-    static func enroll(userKey: String, in directory: URL) throws {
+    static func enroll(userKey: String, in directory: URL, file name: String = appFile) throws {
         #if targetEnvironment(simulator)
         // Le simulateur annonce un Secure Enclave, mais refuse d'y créer une
         // clé gardée par la biométrie (LAError -1020).
-        try enrollSimulated(userKey: userKey, in: directory)
+        try enrollSimulated(userKey: userKey, to: file(in: directory, name: name))
         return
         #else
         guard SecureEnclave.isAvailable, Biometrics.isAvailable else { throw Failure.unavailable }
@@ -82,13 +94,13 @@ enum BiometricVault {
             box: box.combined!)
         let data = try JSONEncoder().encode(sealed)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: file(in: directory), options: .atomic)
+        try data.write(to: file(in: directory, name: name), options: .atomic)
         #endif
     }
 
     /// Demande Touch ID et rend la clé de l'utilisateur.
-    static func open(in directory: URL, reason: String) async throws -> String {
-        guard let data = try? Data(contentsOf: file(in: directory)),
+    static func open(in directory: URL, reason: String, file name: String = appFile) async throws -> String {
+        guard let data = try? Data(contentsOf: file(in: directory, name: name)),
               let sealed = try? JSONDecoder().decode(Sealed.self, from: data) else { throw Failure.invalidated }
         let context = LAContext()
         context.localizedFallbackTitle = ""
@@ -129,7 +141,7 @@ enum BiometricVault {
     #if targetEnvironment(simulator)
     /// Simulateur : même scellement, avec une clé logicielle à la place de
     /// celle du Secure Enclave (voir plus haut).
-    private static func enrollSimulated(userKey: String, in directory: URL) throws {
+    private static func enrollSimulated(userKey: String, to url: URL) throws {
         guard Biometrics.isAvailable else { throw Failure.unavailable }
         let deviceKey = P256.KeyAgreement.PrivateKey()
         let ephemeral = P256.KeyAgreement.PrivateKey()
@@ -141,8 +153,8 @@ enum BiometricVault {
             ephemeralPublicKey: ephemeral.publicKey.rawRepresentation,
             box: box.combined!, simulated: true)
         let data = try JSONEncoder().encode(sealed)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try data.write(to: file(in: directory), options: .atomic)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: url, options: .atomic)
     }
 
     private static func openSimulated(_ sealed: Sealed) throws -> String {

@@ -194,17 +194,24 @@ create and edit logins, notes, cards, identities and templates, a password
 and passphrase generator, swipe actions and multi-select, offline edits, an
 audit, auto-lock in the background and a privacy screen in the app switcher.
 
-For now it runs in the Simulator only, unsigned:
+**AutoFill** fills your logins, one-time codes and passkeys in Safari and
+other apps: turn on Verrou in Settings → General → AutoFill & Passwords, then
+tap a login field. Verrou asks for Face ID, fills, and locks again; passkeys
+are saved in your vault in the Bitwarden format. The system only learns sites
+and usernames, never a secret.
+
+For now it runs in the Simulator only, signed ad hoc (no developer account):
 
 ```sh
 PLATFORMS=all scripts/build-apple.sh     # Rust core for macOS, iPhone and the Simulator
 (cd apple && xcodegen generate)
 xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS \
-  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 CODE_SIGNING_ALLOWED=NO build
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 build
 scripts/ios-e2e.sh                       # headless walkthrough against a throwaway Vaultwarden
+scripts/ios-autofill-e2e.sh              # AutoFill in Safari: password, passkey, one-time code
 ```
 
-Details, limits and the AutoFill plan are in the
+Details, limits and what a signed build would add are in the
 [guide](docs/GUIDE.md#iphone).
 
 ## FAQ
@@ -218,9 +225,9 @@ You can use both side by side.
 It's built and tested against Vaultwarden only.
 
 **Is there an iPhone app?**
-Yes, in progress: the iPhone app builds and runs in the iOS Simulator (see
-[iPhone](#iphone)). Installing it on a real iPhone, and system-wide AutoFill,
-need an Apple developer account, which this project doesn't use yet.
+Yes, in progress: the iPhone app and its AutoFill extension build and run in
+the iOS Simulator (see [iPhone](#iphone)). Installing them on a real iPhone
+needs an Apple developer account, which this project doesn't use yet.
 
 **What if I stop using Verrou?**
 Nothing changes: everything lives on your Vaultwarden server in the standard

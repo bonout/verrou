@@ -6,7 +6,7 @@
 #
 # Ce que fait le script :
 #   1. construit le cœur Rust (macOS de cette machine + simulateur), puis
-#      l'app iPhone pour le simulateur, sans signature (sauf SKIP_BUILD=1) ;
+#      l'app iPhone pour le simulateur, signée ad hoc (sauf SKIP_BUILD=1) ;
 #   2. lance un Vaultwarden jetable dans Docker (conteneur verrou-vw-ios,
 #      port 8118), sauf si VERROU_E2E_SERVER désigne déjà un serveur, et y
 #      crée le compte du parcours (crates/verrou-vaultwarden/tests/server.rs,
@@ -72,7 +72,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   (cd apple && xcodegen generate --quiet)
   xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED" \
-    ARCHS="$(uname -m)" CODE_SIGNING_ALLOWED=NO build -quiet
+    ARCHS="$(uname -m)" build -quiet
 fi
 
 # 2. Serveur et compte
@@ -159,7 +159,13 @@ xcrun simctl install "$DEV" "$APP"
 sleep 8
 
 rm -rf "$OUT" && mkdir -p "$OUT" "$WORK/ack"
-SIMCTL_CHILD_VERROU_E2E_SERVER="${VERROU_E2E_SERVER:-http://localhost:$RELAY_PORT}" \
+# Un serveur local passe aussi par le relais (coupure du réseau) ; un
+# serveur distant est joint directement.
+APP_SERVER="http://localhost:$RELAY_PORT"
+if [[ -n "${VERROU_E2E_SERVER:-}" ]] && ! grep -qE '^https?://(localhost|127\.0\.0\.1)(:|/|$)' <<< "$VERROU_E2E_SERVER"; then
+  APP_SERVER="$VERROU_E2E_SERVER"
+fi
+SIMCTL_CHILD_VERROU_E2E_SERVER="$APP_SERVER" \
 SIMCTL_CHILD_VERROU_E2E_EMAIL="$VERROU_E2E_EMAIL" \
 SIMCTL_CHILD_VERROU_E2E_PASSWORD="$VERROU_E2E_PASSWORD" \
 SIMCTL_CHILD_VERROU_E2E_TOTP="$VERROU_E2E_TOTP" \

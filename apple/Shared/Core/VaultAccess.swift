@@ -5,15 +5,18 @@ import Foundation
 /// identifiants d'un site.
 ///
 /// Utilisé par l'app iPhone, et pensé pour l'extension de remplissage
-/// automatique (phase 2) : elle tient dans la limite de mémoire des
+/// automatique (`VerrouAutoFill`) : elle tient dans la limite de mémoire des
 /// extensions (environ 120 Mo) parce que tout le travail (déchiffrement,
 /// recherche, correspondance des sites, codes à usage unique) reste dans le
 /// cœur Rust ; Swift ne reçoit que des résumés, et un secret seulement quand
 /// on le demande (`reveal`, `totp`).
 ///
-/// Les écritures (synchronisation, file hors ligne) restent à l'app : deux
-/// processus qui écriraient le même cache en même temps se marcheraient
-/// dessus. L'extension ouvrira le coffre depuis le cache, en lecture.
+/// Les écritures de la file (synchronisation, modifications hors ligne)
+/// restent à l'app. L'extension ouvre le coffre du dossier partagé en
+/// invitée (`init(autofillAt:)`) : elle lit le cache et la file de l'app,
+/// n'envoie ni n'écrit jamais la file, et n'écrit sur le serveur que ce qui
+/// ne peut pas attendre (passkey créée, compteur d'une passkey), avant
+/// d'enregistrer le cache resynchronisé (voir SECURITY.md).
 final class VaultAccess: @unchecked Sendable {
     let location: VerrouStorage.Location
     let session: VaultSession
@@ -22,6 +25,13 @@ final class VaultAccess: @unchecked Sendable {
     init(location: VerrouStorage.Location = VerrouStorage.accountLocation()) {
         self.location = location
         session = VaultSession.withStorage(dataDir: location.directory.path)
+    }
+
+    /// Extension de remplissage automatique : le même dossier, ouvert en
+    /// invitée (jamais d'envoi ni d'écriture de la file de l'app).
+    init(autofillAt location: VerrouStorage.Location) {
+        self.location = location
+        session = VaultSession.forAutofill(dataDir: location.directory.path)
     }
 
     /// Coffre fictif (démonstration, captures).
@@ -47,6 +57,48 @@ final class VaultAccess: @unchecked Sendable {
     /// Le scellement Face ID / Touch ID existe sur cet appareil.
     var biometricEnrolled: Bool { BiometricVault.isEnrolled(in: directory) }
 
+    /// Extension : un scellement (celui de l'app ou le sien) existe.
+    var autofillBiometricEnrolled: Bool {
+        BiometricVault.isEnrolled(in: directory)
+            || BiometricVault.isEnrolled(in: directory, file: BiometricVault.autofillFile)
+    }
+
+    /// Extension : ouvre le coffre avec Face ID. D'abord le scellement de
+    /// l'app ; s'il ne s'ouvre pas ici (clé du Secure Enclave propre à
+    /// l'app), celui de l'extension. `Failure.invalidated` : aucun des deux,
+    /// il faut le mot de passe principal (puis `enrollAutofillBiometrics`).
+    func unlockForAutofill(reason: String) async throws -> UInt32 {
+        if BiometricVault.isEnrolled(in: directory) {
+            do {
+                let key = try await BiometricVault.open(in: directory, reason: reason)
+                return try await session.unlockWithUserKey(userKey: key)
+            } catch BiometricVault.Failure.invalidated {
+                // Le scellement de l'app ne s'ouvre pas dans l'extension :
+                // le sien, s'il existe.
+            }
+        }
+        guard BiometricVault.isEnrolled(in: directory, file: BiometricVault.autofillFile) else {
+            throw BiometricVault.Failure.invalidated
+        }
+        do {
+            let key = try await BiometricVault.open(in: directory, reason: reason, file: BiometricVault.autofillFile)
+            return try await session.unlockWithUserKey(userKey: key)
+        } catch BiometricVault.Failure.invalidated {
+            BiometricVault.remove(in: directory, file: BiometricVault.autofillFile)
+            throw BiometricVault.Failure.invalidated
+        }
+    }
+
+    /// Extension, après le mot de passe principal : si l'app a activé Face ID
+    /// mais que son scellement ne s'ouvre pas ici, l'extension scelle la clé
+    /// pour elle-même.
+    func enrollAutofillBiometrics() async {
+        guard BiometricVault.isEnrolled(in: directory),
+              !BiometricVault.isEnrolled(in: directory, file: BiometricVault.autofillFile),
+              let key = try? await session.userKey() else { return }
+        try? BiometricVault.enroll(userKey: key, in: directory, file: BiometricVault.autofillFile)
+    }
+
     /// Demande Face ID / Touch ID, descelle la clé de l'utilisateur et ouvre
     /// le coffre avec. Les erreurs sont celles de `BiometricVault`
     /// (annulé, indisponible, invalidé) ou du cœur Rust.
@@ -62,8 +114,10 @@ final class VaultAccess: @unchecked Sendable {
         try BiometricVault.enroll(userKey: key, in: directory)
     }
 
+    /// Retire les scellements de l'app et de l'extension.
     func removeBiometrics() {
         BiometricVault.remove(in: directory)
+        BiometricVault.remove(in: directory, file: BiometricVault.autofillFile)
     }
 
     /// Referme le coffre : le cœur Rust efface ses secrets.
@@ -71,7 +125,7 @@ final class VaultAccess: @unchecked Sendable {
         session.lock()
     }
 
-    // MARK: Remplissage (phase 2)
+    // MARK: Remplissage
 
     /// Identifiants proposés pour une page (correspondance des sites comme
     /// l'extension de navigateur : domaine enregistrable, règles de

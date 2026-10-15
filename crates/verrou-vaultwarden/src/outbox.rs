@@ -714,7 +714,24 @@ async fn drain(
         }
         (open.api.clone(), open.refresh_token()?)
     };
-    let tokens = api.refresh(refresh.expose()).await;
+    let mut refresh = refresh;
+    let mut tokens = api.refresh(refresh.expose()).await;
+    if matches!(&tokens, Err(error) if !matches!(error, Error::Network(_))) {
+        // Jeton refusé : l'extension de remplissage a pu en enregistrer un
+        // nouveau entre-temps (voir `Connection::access_token`).
+        let saved = {
+            let mut open = connection.lock().await;
+            if open.adopt_saved_refresh_token() {
+                Some(open.refresh_token()?)
+            } else {
+                None
+            }
+        };
+        if let Some(saved) = saved {
+            refresh = saved;
+            tokens = api.refresh(refresh.expose()).await;
+        }
+    }
     let access = {
         let mut open = connection.lock().await;
         match tokens {
@@ -842,7 +859,8 @@ impl Connection {
             Err(error) => return Err(error),
         };
         self.offline_at = None;
-        if self.outbox.has_unsent() {
+        // L'extension (invitée) n'envoie jamais la file de l'app.
+        if self.outbox.has_unsent() && !self.store.is_guest() {
             if !self.replay(&access).await? {
                 // Un envoi est en cours (`sync_shared`) : il s'occupe de la
                 // file, l'écriture directe passe à côté.
@@ -920,6 +938,10 @@ impl Connection {
         access: Option<String>,
     ) -> Result<(String, Decrypted), Error> {
         let Some(access) = access else {
+            if self.store.is_guest() {
+                // L'extension n'a pas de file : sans serveur, pas d'écriture.
+                return Err(Error::Network("serveur injoignable".to_owned()));
+            }
             return self.queue_save(id, view).await;
         };
         let title = view.name.clone();
@@ -931,6 +953,9 @@ impl Connection {
         };
         let body = match sent {
             Ok(body) => body,
+            Err(Error::Network(message)) if self.store.is_guest() => {
+                return Err(Error::Network(message));
+            }
             Err(Error::Network(_)) => {
                 self.mark_offline();
                 let (id, created) = match id {
@@ -1005,6 +1030,9 @@ impl Connection {
 
     /// La prochaine requête de la file (voir `Outbox::begin`).
     pub(crate) fn begin(&mut self) -> Option<Job> {
+        if self.store.is_guest() {
+            return None;
+        }
         self.outbox.begin(&mut self.report.rejected)
     }
 

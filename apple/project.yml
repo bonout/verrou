@@ -63,10 +63,13 @@ targets:
         # paquet et y ajoute l'extension de Firefox.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
-  # App iPhone (phase 1 : l'app ; phase 2 : l'extension de remplissage
-  # automatique). Simulateur sans compte Apple : build non signé ou signé ad
-  # hoc (CODE_SIGNING_ALLOWED=NO ou CODE_SIGN_IDENTITY=-), jamais avec une
-  # équipe de développeur.
+  # App iPhone et son extension de remplissage automatique. Simulateur sans
+  # compte Apple : signé ad hoc (« - », jamais une équipe de développeur).
+  # La signature ad hoc du simulateur garde les droits dans le binaire
+  # (section __TEXT,__entitlements) : le groupe d'apps partagé avec
+  # l'extension et le droit de fournisseur de remplissage fonctionnent. Un
+  # build CODE_SIGNING_ALLOWED=NO n'a aucun droit : pas de groupe d'apps,
+  # l'extension ne voit pas le coffre.
   VerrouiOS:
     type: application
     platform: iOS
@@ -76,8 +79,13 @@ targets:
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
+      - target: VerrouAutoFill
+    scheme:
+      testTargets:
+        - VerrouAutoFillUITests
     settings:
       base:
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios
         PRODUCT_NAME: Verrou
         TARGETED_DEVICE_FAMILY: "1"
@@ -95,7 +103,70 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # Groupe d'apps et trousseau partagés avec l'extension (phase 2) :
-        # appliqués seulement à la signature.
+        # Groupe d'apps et trousseau partagés avec l'extension VerrouAutoFill :
+        # appliqués à la signature (ad hoc comprise, dans le simulateur).
         CODE_SIGN_ENTITLEMENTS: VerrouiOS/VerrouiOS.entitlements
         OTHER_LDFLAGS: ["-lc++"]
+
+  # Extension de remplissage automatique (identifiants, codes, passkeys),
+  # dans l'app iPhone. Elle ouvre le coffre du groupe d'apps en invitée
+  # (VaultAccess(autofillAt:)) : voir SECURITY.md, « Remplissage automatique ».
+  VerrouAutoFill:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: VerrouAutoFill
+      - path: Shared
+      - path: VerrouiOS/Resources/Assets.xcassets
+    dependencies:
+      - framework: Frameworks/VerrouFFI.xcframework
+        embed: false
+      - sdk: AuthenticationServices.framework
+    info:
+      path: VerrouAutoFill/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSFaceIDUsageDescription: "Face ID déverrouille votre coffre pour remplir identifiants, codes et passkeys."
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CredentialProviderViewController
+          NSExtensionAttributes:
+            ASCredentialProviderExtensionCapabilities:
+              ProvidesPasswords: true
+              ProvidesPasskeys: true
+              ProvidesOneTimeCodes: true
+              ProvidesTextToInsert: false
+            ASCredentialProviderExtensionShowsConfigurationUI: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.autofill
+        PRODUCT_NAME: VerrouAutoFill
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        ENABLE_HARDENED_RUNTIME: NO
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        CODE_SIGN_ENTITLEMENTS: VerrouAutoFill/VerrouAutoFill.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        OTHER_LDFLAGS: ["-lc++"]
+        # Le pilote de démonstration de l'app n'a rien à faire ici.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
+
+  # Test de bout en bout du remplissage (XCUITest) : Safari du simulateur,
+  # page de test servie par le Mac. Lancé par scripts/ios-autofill-e2e.sh.
+  VerrouAutoFillUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: VerrouAutoFillUITests
+    dependencies:
+      - target: VerrouiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.autofill-uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: VerrouiOS
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"

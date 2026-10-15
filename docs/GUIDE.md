@@ -361,20 +361,27 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
 
 Not on iPhone yet: Send, emergency access, sharing an item into a shared
 vault after creation, import, duplicates, the browser extension, the CLI and
-SSH agent, YubiKey unlock, and system AutoFill (phase 2, below).
+SSH agent, YubiKey unlock. System AutoFill is described [below](#autofill-passwords-codes-and-passkeys).
 
 ### Build and run in the Simulator
 
 There is no Apple developer account behind this project, so the iPhone app
-only runs in the iOS Simulator, built **unsigned**:
+only runs in the iOS Simulator, **signed ad hoc** (`-`, never a developer
+team; the project sets it for Simulator builds):
 
 ```sh
 PLATFORMS=all scripts/build-apple.sh   # macOS + iPhone + Simulator slices
 (cd apple && xcodegen generate)
 xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
   -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
-  -derivedDataPath target/xcode-ios.noindex CODE_SIGNING_ALLOWED=NO build
+  -derivedDataPath target/xcode-ios.noindex build
 ```
+
+Ad hoc signing matters: the Simulator reads the entitlements embedded in the
+binary (`__TEXT,__entitlements` section), so the app group shared with the
+AutoFill extension and the credential-provider entitlement work. A
+`CODE_SIGNING_ALLOWED=NO` build still runs, but has no entitlements: the app
+falls back to its private folder and the extension cannot see the vault.
 
 `scripts/build-apple.sh` takes `PLATFORMS=macos` (default, what
 `install-macos.sh` needs), `ios` or `all`; `IOS_TARGETS=""` skips the device
@@ -432,26 +439,93 @@ Simulator and the container. `SKIP_BUILD=1`, `KEEP_SIMULATOR=1` and
 `KEEP_SERVER=1` help when iterating; `VERROU_E2E_SERVER` (+ `_EMAIL`,
 `_PASSWORD`, `_TOTP`) uses an existing account.
 
-### Where the data lives, and AutoFill (phase 2)
+### Where the data lives
 
 `VerrouStorage` (in `apple/Shared/Core`) decides where the account folder
-lives: on iPhone, in the `group.app.verrou` app group container, which the
-AutoFill Credential Provider extension will share; without the group (an
-unsigned Simulator build), in the app's own Application Support folder, and
-an account found there is moved into the group as soon as it exists. On the
-Mac nothing changes. The folder is excluded from backups.
+lives: on iPhone, in the `group.app.verrou` app group container, shared with
+the AutoFill extension; without the group (a build with no entitlements), in
+the app's own Application Support folder, and an account found there is
+moved into the group as soon as it exists. On the Mac nothing changes. The
+folder is excluded from backups.
 
-`VaultAccess` (same folder) is the UI-free layer meant for the extension:
-open the vault from that folder with Face ID or the master password, list
-the logins for a page (`suggestions`, the extension's site matching), read a
-one-time code, lock. All the work stays in the Rust core, which keeps the
-extension well under its ~120 MB memory limit. The entitlements file
-(`apple/VerrouiOS/VerrouiOS.entitlements`) already declares the app group and
-a shared keychain group (`app.verrou.shared`); both only apply to signed
-builds. Phase 2 still has to add the extension target, a passkey assertion
-API for iOS (`ASPasskeyCredentialRequest`) on top of the Rust passkey code,
-and check that the Secure Enclave key sealed by the app opens from the
-extension (otherwise keep it in the shared keychain group).
+`VaultAccess` (same folder) is the UI-free layer used by both the app and
+the extension: open the vault from that folder with Face ID or the master
+password, list the logins for a site, read a one-time code, sign with a
+passkey, lock. All the work stays in the Rust core.
+
+### AutoFill: passwords, codes and passkeys
+
+The `VerrouAutoFill` extension (`apple/VerrouAutoFill`, bundle id
+`app.verrou.ios.autofill`, embedded in the app) is an AutoFill credential
+provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
+(iOS 17 and later) in Safari and in apps.
+
+- **Turn it on** in Settings → General → AutoFill & Passwords → Verrou
+  (French: *Réglages → Général → Remplissage automatique et mots de passe*).
+  Verrou's own Settings tab has a *Remplissage automatique* section with the
+  steps, the current state and a button that opens that page (iOS 18,
+  `ASSettingsHelper`).
+- **Keyboard suggestions**: after each unlock, sync or edit, the app
+  publishes sites (domains), usernames and passkey identifiers to the
+  system's credential identity store, never a secret. Tapping a suggestion
+  opens Verrou's sheet, which asks for Face ID by itself (or the master
+  password), then fills. Signing out clears the store; locking keeps it.
+- **List and search**: from the keyboard's passwords button, Verrou shows the
+  logins for the site (same site matching as the browser extension), the
+  site's passkeys, and a search across the whole vault.
+- **Protected items** need one more confirmation (Face ID or the master
+  password), as in the app.
+- **One-time codes**: logins with a TOTP seed show as code suggestions
+  (`autocomplete="one-time-code"` fields); the current code is filled.
+- **Passkeys**: when a site creates a passkey, choose *Enregistrer dans
+  Verrou* in the system sheet; Verrou saves it in a new login or an existing
+  one for the site, in the Bitwarden format (the official apps read it).
+  Signing in with it signs in the Rust core (ES256, `authenticatorData` built
+  from the `rpId` and the system's `clientDataHash`). Saving a passkey, or its
+  new counter, needs the server: offline, Verrou refuses instead of queuing.
+- **Writes from the extension**: it opens the shared folder as a *guest*. It
+  reads the app's cache and offline queue, writes passkeys and counters
+  straight to the server, then saves the refreshed cache; it never sends or
+  rewrites the app's queue. File writes are atomic and serialized by a
+  `flock` held only for the rename. Details in
+  [SECURITY.md](../SECURITY.md#écritures-depuis-lextension).
+- **Memory**: the extension peaked at 56 MB in the Simulator end-to-end test
+  (iOS allows about 120 MB); the extension logs `AUTOFILL_MEMORY` lines.
+
+**What was verified, and what needs a paid Apple account.** In an ad
+hoc-signed Simulator, everything above runs for real and is covered by
+`scripts/ios-autofill-e2e.sh`: the app group, the provider being picked by
+iOS, the keyboard suggestion and password fill in Safari, a passkey created
+in Verrou and then used to sign in (the test page checks the attestation,
+the ES256 signature, the counter and the user handle), and one-time code
+fill. Not verifiable without a device and a paid developer account: that the
+Secure Enclave key sealed by the app opens from the extension on a real
+iPhone (if not, the extension falls back to the master password once, then
+seals its own key), passkeys for native apps (associated domains need a
+team), and anything on a physical device.
+
+### AutoFill end-to-end test
+
+```sh
+scripts/ios-autofill-e2e.sh    # OUT=… for the screenshots (default target/ios-autofill-e2e)
+```
+
+It builds the app, the extension and an XCUITest bundle
+(`apple/VerrouAutoFillUITests`) signed ad hoc, starts its own Vaultwarden
+(`verrou-vw-autofill-ios`, port 8122) with the walkthrough account, serves
+the test page (`scripts/ios-autofill-page`) on `http://localhost` (WebAuthn
+is allowed there without HTTPS), creates and boots a headless Simulator
+("Verrou AutoFill E2E"), enrolls Face ID, installs the app and turns Verrou
+on as the AutoFill provider with `pluginkit -e use -i app.verrou.ios.autofill`
+(what the Settings switch does). The XCUITest then launches the app (a
+Debug-only driver, `AutoFillSetupDriver`, signs in and creates the test
+login with a TOTP seed), and drives Safari in the Simulator: password fill
+from the keyboard suggestion, passkey creation in Verrou, passkey sign-in,
+one-time code fill. The script answers every Face ID prompt, reports the
+extension's peak memory (failing above 120 MB), then deletes the Simulator,
+the page server and the container. `SKIP_BUILD=1`, `KEEP_SIMULATOR=1`,
+`KEEP_SERVER=1` and `ONLY=<test name>` help when iterating. Nothing appears
+on the Mac's screen: screenshots come from `XCUIScreen` inside the Simulator.
 
 ## Install on your Mac
 
@@ -931,7 +1005,7 @@ that every broken screen is listed.
 1. ✅ Core, search, macOS app and CLI on a mock vault
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
 3. ✅ Browser extension (Brave, Firefox): top-of-page pill, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
-4. iPhone: ✅ app in the Simulator (Face ID, vault, editing, offline), system AutoFill extension and passkeys next; iPad later
+4. iPhone: ✅ app in the Simulator (Face ID, vault, editing, offline), ✅ system AutoFill (passwords, one-time codes, passkeys) in the Simulator; a signed build for real iPhones and iPad later
 5. YubiKey: ✅ FIDO2 sign-in over USB, ✅ `hmac-secret` unlock
 
 ## License

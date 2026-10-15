@@ -24,6 +24,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zeroize.workspace = true
 sha2.workspace = true
 tokio.workspace = true
+# Clés des passkeys créées pour le remplissage automatique d'iOS.
+rand.workspace = true
 
 [dev-dependencies]
 # Tests contre un vrai Vaultwarden (`VERROU_TEST_SERVER`) : inscription d'un
