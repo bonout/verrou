@@ -51,6 +51,7 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod attachments;
+mod autofill;
 mod bulk;
 mod emergency;
 mod import;
@@ -79,6 +80,10 @@ pub use passphrase::{
 pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
+pub use autofill::{
+    AutofillIdentity, AutofillIdentityKind, AutofillPasskey, AutofillPassword,
+    PasskeyAssertionResult, PasskeyCreationRequest, PasskeyRegistrationResult,
+};
 pub use import::{
     DuplicateConfidence, DuplicateGroupView, DuplicateMemberView, ImportChoice, ImportDestination,
     ImportEntry, ImportFormat, ImportOutcome, ImportReview, ImportSkipped, ImportStatus,
@@ -916,6 +921,31 @@ impl Drop for PendingConfirmation<'_> {
 }
 
 impl VaultSession {
+    /// Session reliée au dossier du compte (`with_storage`), ou ouverte en
+    /// invitée par l'extension de remplissage (`for_autofill`).
+    fn with_store(store: Store) -> Arc<Self> {
+        Arc::new(Self {
+            vault: RwLock::new(None),
+            folders: RwLock::new(Vec::new()),
+            organizations: RwLock::new(Vec::new()),
+            store: Some(store),
+            connection: Mutex::new(None),
+            pending: Mutex::new(None),
+            security_key: Mutex::new(None),
+            bridge: Mutex::new(None),
+            authorized: Mutex::new(HashMap::new()),
+            confirmations: Arc::default(),
+            pending_import: Mutex::new(None),
+            new_passwords: Mutex::new(Vec::new()),
+            breached: Mutex::new(HashMap::new()),
+            pending_items: RwLock::new(HashSet::new()),
+            remapped: RwLock::new(HashMap::new()),
+            pending_invite: Mutex::new(None),
+            installed: Mutex::new(0),
+            closer: Mutex::new(None),
+        })
+    }
+
     fn with_vault<T>(
         &self,
         f: impl FnOnce(&Vault) -> Result<T, VerrouError>,
@@ -1182,26 +1212,7 @@ impl VaultSession {
     /// Session reliée à un compte, dont les fichiers vivent dans `data_dir`.
     #[uniffi::constructor]
     pub fn with_storage(data_dir: String) -> Arc<Self> {
-        Arc::new(Self {
-            vault: RwLock::new(None),
-            folders: RwLock::new(Vec::new()),
-            organizations: RwLock::new(Vec::new()),
-            store: Some(Store::new(data_dir)),
-            connection: Mutex::new(None),
-            pending: Mutex::new(None),
-            security_key: Mutex::new(None),
-            bridge: Mutex::new(None),
-            authorized: Mutex::new(HashMap::new()),
-            confirmations: Arc::default(),
-            pending_import: Mutex::new(None),
-            new_passwords: Mutex::new(Vec::new()),
-            breached: Mutex::new(HashMap::new()),
-            pending_items: RwLock::new(HashSet::new()),
-            remapped: RwLock::new(HashMap::new()),
-            pending_invite: Mutex::new(None),
-            installed: Mutex::new(0),
-            closer: Mutex::new(None),
-        })
+        Self::with_store(Store::new(data_dir))
     }
 
     /// Le compte enregistré, s'il y en a un.

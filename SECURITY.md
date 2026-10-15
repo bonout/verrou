@@ -750,8 +750,8 @@ L'app iPhone (`apple/VerrouiOS`) reprend le cœur Rust et les règles
 ci-dessus ; ce qui change :
 
 - **Dossier du compte** (`VerrouStorage`) : le conteneur du groupe d'apps
-  `group.app.verrou`, que partagera l'extension de remplissage automatique
-  (phase 2). Sans ce groupe (build du simulateur non signé), le dossier
+  `group.app.verrou`, que partage l'extension de remplissage automatique
+  (voir plus bas). Sans ce groupe (build du simulateur non signé), le dossier
   privé de l'app ; un compte qui s'y trouve est déplacé dans le groupe dès
   qu'il existe. Le dossier est exclu des sauvegardes iCloud et Finder.
   Son contenu est celui du Mac : cache chiffré par le serveur, file hors
@@ -788,16 +788,105 @@ ci-dessus ; ce qui change :
   Mac (HTTP seulement pour `localhost`, les tests). Les icônes des sites
   viennent du serveur du compte (`URLSession` éphémère, rien sur le disque).
 - **Distribution** : pas de compte de développeur Apple, donc pas de build
-  pour un vrai iPhone dans cette version ; le simulateur est construit sans
-  signature (`CODE_SIGNING_ALLOWED=NO`). Le groupe d'apps et le groupe de
-  trousseau `app.verrou.shared` (fichier `VerrouiOS.entitlements`) ne
-  s'appliquent qu'à un build signé.
-- **Extension de remplissage (phase 2)** : elle ouvrira le coffre depuis le
-  cache partagé, en lecture, avec `VaultAccess` (Face ID ou mot de passe),
-  sans synchroniser ni écrire : deux processus qui écriraient le même cache
-  se marcheraient dessus. À vérifier alors : qu'une clé du Secure Enclave
-  créée par l'app s'ouvre depuis l'extension (sinon, la ranger dans le
-  trousseau partagé).
+  pour un vrai iPhone dans cette version ; le simulateur est construit signé
+  ad hoc (« - », jamais une équipe de développeur). Le simulateur lit alors
+  les droits gravés dans le binaire (section `__TEXT,__entitlements`) : le
+  groupe d'apps `group.app.verrou` et le droit de fournisseur de remplissage
+  y fonctionnent. Un build `CODE_SIGNING_ALLOWED=NO` n'a aucun droit : l'app
+  se rabat sur son dossier privé, et l'extension ne voit pas le coffre. Le
+  groupe de trousseau `app.verrou.shared` n'est pas utilisé.
+
+## Remplissage automatique sur iPhone
+
+L'extension `VerrouAutoFill` (`apple/VerrouAutoFill`, fournisseur
+d'identifiants d'AuthenticationServices) remplit identifiants, codes à usage
+unique (iOS 18) et passkeys dans Safari et les apps.
+
+- **Ce que le système reçoit** : l'app publie dans le magasin d'identités
+  (`ASCredentialIdentityStore`), après chaque déverrouillage, synchronisation
+  ou écriture, les domaines et noms d'utilisateur de ses identifiants, les
+  mêmes pour les codes à usage unique, et pour les passkeys le site (`rpId`),
+  le nom d'utilisateur, l'identifiant de l'accréditation et l'identifiant de
+  l'utilisateur chez le site. **Jamais un mot de passe, une graine TOTP ou
+  une clé privée.** Ces données servent aux suggestions du clavier ; le
+  système les garde hors du coffre, en clair pour lui. Le magasin est vidé à
+  la déconnexion ; le verrouillage le garde (aucun secret). Les éléments
+  protégés y figurent (nom d'utilisateur seulement).
+- **Une demande, un déverrouillage** : chaque demande arrive dans un
+  processus neuf où le coffre est verrouillé. Les demandes « sans
+  interaction » rendent la main au système (`userInteractionRequired`) ;
+  l'extension s'affiche, Face ID part tout seul (ou le mot de passe
+  principal), puis elle répond et referme le coffre (le cœur Rust efface ses
+  secrets). Un secret ne sort que vers le système, pour l'élément choisi.
+- **Éléments protégés** (« redemander le mot de passe principal ») : une
+  confirmation de plus (Face ID ou mot de passe principal), même juste après
+  le déverrouillage, comme dans l'app. « Masquer les mots de passe » d'une
+  organisation n'empêche pas le remplissage (comme sur le Mac).
+- **Face ID dans l'extension** : elle ouvre d'abord le scellement de l'app
+  (`touchid.json`, dossier partagé). Dans le simulateur (clé logicielle),
+  c'est vérifié de bout en bout. Sur un appareil, une clé du Secure Enclave
+  créée par l'app devrait s'ouvrir depuis l'extension (la clé est liée à
+  l'appareil, pas au processus), **ce qui n'a pas pu être vérifié sans
+  appareil signé** ; si elle ne s'ouvre pas, l'extension demande le mot de
+  passe principal puis scelle la clé de l'utilisateur avec **sa propre** clé
+  du Secure Enclave (`touchid-autofill.json`, même schéma ECDH + HKDF +
+  AES-GCM, `.biometryCurrentSet`). L'app efface les deux scellements
+  (désactivation de Face ID, déconnexion, reconnexion).
+- **Passkeys** : c'est le système qui construit `clientDataJSON` et vérifie
+  que la page ou l'app a le droit de demander ce `rpId` (domaine de la page
+  dans Safari, domaines associés pour une app) ; l'extension reçoit le `rpId`
+  et l'empreinte SHA-256 de `clientDataJSON`. Le cœur Rust
+  (`passkey::register_for_system`, `assert_for_system`) vérifie la forme du
+  `rpId` (nom de domaine ou `localhost`, ni adresse IP ni suffixe public),
+  exige une empreinte de 32 octets, construit `authenticatorData` (empreinte
+  du `rpId`, indicateurs UP, UV si Face ID ou le mot de passe a été demandé
+  pour cette demande, BE/BS, compteur) et signe
+  `authenticatorData ‖ clientDataHash` en ES256 ; la clé privée ne traverse
+  jamais la frontière Swift. Attestation `none`, AAGUID nul. ES256 seulement :
+  un site qui ne l'accepte pas est refusé avec un message. Les passkeys
+  exclues par le site (`excludedCredentials`, iOS 18) ne sont pas recréées.
+  Une création ou une connexion n'aboutit qu'une fois écrite sur le serveur
+  (passkey, ou nouveau compteur) ; hors ligne, l'extension refuse.
+
+### Écritures depuis l'extension
+
+L'extension et l'app partagent le dossier du compte (groupe d'apps). Deux
+processus qui réécriraient chacun la file des modifications hors ligne
+(`outbox.json`) perdraient ou doubleraient des modifications : l'app la
+garde en mémoire et la réécrit en entier. Choix retenu :
+
+- **L'extension ouvre le dossier en invitée** (`Store::guest`,
+  `VaultSession::for_autofill`) : elle lit le cache et la file de l'app (pour
+  remplir aussi ce qui a été modifié hors ligne), mais n'envoie jamais la
+  file et ne l'écrit jamais (les écritures de `outbox.json` sont sans effet
+  en invitée, l'envoi est coupé à la source).
+- **Ses écritures vont directement sur le serveur**, sans file : passkey
+  créée (dans un nouvel identifiant ou un identifiant existant), compteur
+  d'une passkey. Puis elle resynchronise et enregistre le cache
+  (`account.json`), pour que la demande suivante reparte du bon compteur.
+  Sans serveur, elle refuse au lieu de mettre en file.
+- **Écritures de fichiers atomiques et verrouillées** : fichier temporaire
+  propre au processus et à l'écriture, renommé sous un verrou `flock` du
+  dossier (`.verrou.lock`). Le verrou n'est tenu que le temps du renommage,
+  jamais pendant le réseau : iOS met fin à une app suspendue qui garde un
+  verrou de fichier dans un conteneur partagé (`0xdead10cc`). Un lecteur voit
+  l'ancien fichier ou le nouveau, jamais un mélange.
+- **Jeton de renouvellement** : si le serveur refuse le jeton en mémoire
+  (l'autre processus en a reçu un nouveau), Verrou relit celui du disque et
+  réessaie une fois.
+- **Conséquences connues** : l'app ne voit une passkey créée par l'extension
+  qu'à sa synchronisation suivante (au retour au premier plan) ; si l'app
+  avait une modification hors ligne du **même** identifiant, l'écriture de
+  l'extension part avec elle, et l'envoi de l'app devient une copie
+  « (conflit hors ligne) » : rien n'est perdu. Si l'app réécrit le cache avec
+  une version plus ancienne entre deux demandes, elle le remplace par celle
+  du serveur à sa synchronisation suivante.
+- **Après une création**, l'extension met à jour le magasin d'identités
+  elle-même (sans quoi le système ne proposerait pas la nouvelle passkey
+  avant que l'app se synchronise).
+- **Mémoire** : l'extension reste loin de la limite d'environ 120 Mo (pic
+  mesuré à 56 Mo dans le simulateur, coffre de test) : le déchiffrement, la
+  recherche et la correspondance des sites restent dans le cœur Rust.
 
 ## Clé de sécurité (YubiKey, `hmac-secret`)
 

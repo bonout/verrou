@@ -89,15 +89,43 @@ impl Account {
     }
 }
 
+/// Verrou entre processus (`flock`) des écritures du dossier : l'app
+/// iPhone et son extension de remplissage partagent le dossier du compte.
+const LOCK_FILE: &str = ".verrou.lock";
+
 /// Le dossier de Verrou (dans le conteneur de l'app sandboxée).
 #[derive(Clone, Debug)]
 pub struct Store {
     dir: PathBuf,
+    /// Ouvert par un autre processus que l'app (extension de remplissage
+    /// automatique iOS) : la file des modifications appartient à l'app, il
+    /// n'y touche jamais (ni envoi, ni écriture). Voir `Store::guest`.
+    guest: bool,
 }
 
 impl Store {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
+        Self {
+            dir: dir.into(),
+            guest: false,
+        }
+    }
+
+    /// Le même dossier, ouvert en invité : par l'extension de remplissage
+    /// automatique, pendant que l'app peut tourner. L'invité lit le cache et
+    /// la file de l'app (pour afficher ses modifications pas encore
+    /// envoyées), écrit directement sur le serveur (passkeys) puis enregistre
+    /// le cache resynchronisé ; il n'envoie ni n'écrit jamais la file (l'app
+    /// la garde en mémoire : la réécrire ou l'envoyer depuis un autre
+    /// processus perdrait ou doublerait des modifications).
+    #[must_use]
+    pub fn guest(mut self) -> Self {
+        self.guest = true;
+        self
+    }
+
+    pub fn is_guest(&self) -> bool {
+        self.guest
     }
 
     pub fn dir(&self) -> &Path {
@@ -149,6 +177,9 @@ impl Store {
 
     /// Remplace la file ; vide (`None`), le fichier est supprimé.
     pub(crate) fn save_outbox(&self, file: Option<OutboxFile>) -> Result<(), Error> {
+        if self.guest {
+            return Ok(());
+        }
         let Some(mut file) = file else {
             return self.delete_outbox();
         };
@@ -158,6 +189,9 @@ impl Store {
     }
 
     pub(crate) fn delete_outbox(&self) -> Result<(), Error> {
+        if self.guest {
+            return Ok(());
+        }
         match fs::remove_file(self.dir.join(OUTBOX_FILE)) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -226,11 +260,22 @@ impl Store {
     }
 
     /// Écriture atomique (fichier temporaire puis renommage), lisible par le
-    /// seul utilisateur.
+    /// seul utilisateur. Le fichier temporaire est propre au processus et à
+    /// l'écriture, et le renommage se fait sous le verrou du dossier
+    /// (`flock`, tenu quelques millisecondes, jamais pendant le réseau :
+    /// iOS met fin à une app suspendue qui tient un verrou de fichier dans
+    /// un conteneur partagé). Un lecteur voit l'ancien fichier ou le
+    /// nouveau, jamais un mélange.
     fn write_private(&self, name: &str, data: &[u8]) -> Result<(), Error> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static WRITES: AtomicU64 = AtomicU64::new(0);
         fs::create_dir_all(&self.dir).map_err(Error::storage)?;
         let target = self.dir.join(name);
-        let temp = self.dir.join(format!(".{name}.tmp"));
+        let temp = self.dir.join(format!(
+            ".{name}.{}.{}.tmp",
+            std::process::id(),
+            WRITES.fetch_add(1, Ordering::Relaxed)
+        ));
         let mut options = fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
@@ -239,11 +284,43 @@ impl Store {
             options.mode(0o600);
         }
         let mut file = options.open(&temp).map_err(Error::storage)?;
-        file.write_all(data).map_err(Error::storage)?;
-        file.sync_all().map_err(Error::storage)?;
-        fs::rename(&temp, &target).map_err(Error::storage)
+        let written = file
+            .write_all(data)
+            .and_then(|()| file.sync_all())
+            .map_err(Error::storage)
+            .and_then(|()| {
+                let _lock = self.lock()?;
+                fs::rename(&temp, &target).map_err(Error::storage)
+            });
+        if written.is_err() {
+            let _ = fs::remove_file(&temp);
+        }
+        written
+    }
+
+    /// Verrou exclusif du dossier, entre processus, relâché à la fin de la
+    /// portée (fermeture du descripteur).
+    fn lock(&self) -> Result<DirLock, Error> {
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.dir.join(LOCK_FILE))
+            .map_err(Error::storage)?;
+        #[cfg(unix)]
+        loop {
+            match rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive) {
+                Ok(()) => break,
+                Err(rustix::io::Errno::INTR) => {}
+                Err(error) => return Err(Error::storage(std::io::Error::from(error))),
+            }
+        }
+        Ok(DirLock(file))
     }
 }
+
+/// Verrou tenu (`Store::lock`) : fermer le fichier le relâche.
+struct DirLock(#[allow(dead_code)] fs::File);
 
 #[cfg(test)]
 mod tests {
@@ -297,6 +374,66 @@ mod tests {
         }
         store.delete_account().unwrap();
         assert!(store.load_account().unwrap().is_none());
+        fs::remove_dir_all(store.dir()).unwrap();
+    }
+
+    #[test]
+    fn concurrent_writers_never_tear_a_file() {
+        let store = temp_store();
+        let guest = store.clone().guest();
+        let writers: Vec<_> = (0..8u8)
+            .map(|n| {
+                let store = if n % 2 == 0 {
+                    store.clone()
+                } else {
+                    guest.clone()
+                };
+                std::thread::spawn(move || {
+                    for _ in 0..25 {
+                        store.write_private("shared.json", &[n; 4096]).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for writer in writers {
+            writer.join().unwrap();
+        }
+        let data = fs::read(store.dir().join("shared.json")).unwrap();
+        assert_eq!(data.len(), 4096);
+        assert!(data.iter().all(|b| *b == data[0]));
+        // Aucun fichier temporaire oublié.
+        let leftovers = fs::read_dir(store.dir())
+            .unwrap()
+            .filter(|e| {
+                e.as_ref()
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .ends_with(".tmp")
+            })
+            .count();
+        assert_eq!(leftovers, 0);
+        fs::remove_dir_all(store.dir()).unwrap();
+    }
+
+    #[test]
+    fn a_guest_never_writes_the_outbox() {
+        let store = temp_store();
+        let file = OutboxFile {
+            version: 0,
+            user_id: "u".into(),
+            pending: 2,
+            data: "2.a|b|c".into(),
+        };
+        store.save_outbox(Some(file.clone())).unwrap();
+        let guest = store.clone().guest();
+        guest.save_outbox(None).unwrap();
+        guest.delete_outbox().unwrap();
+        guest
+            .save_outbox(Some(OutboxFile { pending: 9, ..file }))
+            .unwrap();
+        assert_eq!(store.pending_changes(), 2);
+        assert_eq!(guest.pending_changes(), 2);
         fs::remove_dir_all(store.dir()).unwrap();
     }
 }

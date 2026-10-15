@@ -440,7 +440,7 @@ impl Connection {
         self.offline_at = None;
         let before = self.report.clone();
         let had_outbox = !self.outbox.is_empty();
-        if self.outbox.has_unsent() {
+        if self.outbox.has_unsent() && !self.store.is_guest() {
             self.replay(&access).await?;
         }
         let sync_json = match self.api.sync(&access).await {
@@ -476,9 +476,38 @@ impl Connection {
     /// aussitôt si le serveur en donne un nouveau).
     async fn access_token(&mut self) -> Result<String, Error> {
         let refresh = self.refresh_token()?;
-        let tokens = self.api.refresh(refresh.expose()).await?;
+        let tokens = match self.api.refresh(refresh.expose()).await {
+            Err(Error::Network(message)) => return Err(Error::Network(message)),
+            // Refusé : l'autre processus (app ou extension) a pu recevoir et
+            // enregistrer un nouveau jeton entre-temps ; on le reprend une fois.
+            Err(error) => {
+                if !self.adopt_saved_refresh_token() {
+                    return Err(error);
+                }
+                let refresh = self.refresh_token()?;
+                let tokens = self.api.refresh(refresh.expose()).await?;
+                self.keep_refresh_token(&refresh, tokens.refresh)?;
+                return Ok(tokens.access);
+            }
+            Ok(tokens) => tokens,
+        };
         self.keep_refresh_token(&refresh, tokens.refresh)?;
         Ok(tokens.access)
+    }
+
+    /// Le jeton de renouvellement enregistré sur le disque, s'il diffère de
+    /// celui en mémoire (même compte) : rend `true` s'il a été repris.
+    pub(crate) fn adopt_saved_refresh_token(&mut self) -> bool {
+        let Ok(Some(saved)) = self.store.load_account() else {
+            return false;
+        };
+        if saved.user_id != self.account.user_id
+            || saved.refresh_token == self.account.refresh_token
+        {
+            return false;
+        }
+        self.account.refresh_token = saved.refresh_token;
+        true
     }
 
     /// Le jeton de renouvellement, déchiffré par la clé de l'utilisateur.

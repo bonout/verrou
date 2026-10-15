@@ -7,7 +7,7 @@ import Foundation
 /// - Mac : `~/Library/Application Support/Verrou`, dans le conteneur de l'app
 ///   (sandbox), comme avant.
 /// - iPhone : le conteneur du groupe d'apps `group.app.verrou`, que
-///   l'extension de remplissage automatique (phase 2) partage avec l'app.
+///   l'extension de remplissage automatique partage avec l'app.
 ///   Sans groupe (build du simulateur non signé, ou droit absent), le dossier
 ///   de l'app sert de repli ; dès que le groupe existe, un compte resté dans
 ///   le repli y est déplacé une fois.
@@ -18,7 +18,8 @@ enum VerrouStorage {
     /// Groupe d'apps partagé par l'app iPhone et ses extensions.
     static let appGroupID = "group.app.verrou"
     /// Groupe de trousseau partagé (préfixé par l'identifiant de l'équipe à la
-    /// signature) : réservé à l'extension de remplissage (phase 2).
+    /// signature) : déclaré, inutilisé (l'extension lit les scellements
+    /// Face ID du dossier partagé, voir `BiometricVault`).
     static let keychainAccessGroup = "app.verrou.shared"
 
     struct Location: Equatable {

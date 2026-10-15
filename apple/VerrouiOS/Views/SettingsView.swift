@@ -76,6 +76,10 @@ struct SettingsTab: View {
                     Text(securityFooter)
                 }
 
+                if model.mode == .vaultwarden {
+                    AutoFillSection()
+                }
+
                 Section("Affichage") {
                     Toggle(isOn: $model.showSiteIcons) {
                         Label("Icônes des sites", systemImage: "photo.on.rectangle")
@@ -288,5 +292,51 @@ private struct AuditRow: View {
                 }
             }
         }
+    }
+}
+
+/// Remplissage automatique : comment choisir Verrou dans les Réglages
+/// d'iOS, et où il en est.
+private struct AutoFillSection: View {
+    @Environment(PhoneModel.self) private var model
+
+    var body: some View {
+        Section {
+            HStack {
+                Label("Remplissage automatique", systemImage: "key.viewfinder")
+                Spacer()
+                switch model.autofillEnabled {
+                case .some(true):
+                    Text("Activé").foregroundStyle(.green)
+                case .some(false):
+                    Text("Désactivé").foregroundStyle(.secondary)
+                case .none:
+                    ProgressView()
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("autofill-status")
+            if model.autofillEnabled != true {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Pour remplir vos identifiants, codes et passkeys dans Safari et les apps :")
+                    Text("1. Ouvrez **Réglages → Général → Remplissage automatique et mots de passe**.")
+                    Text("2. Activez **Verrou** dans la liste des apps.")
+                    Text("3. Touchez un champ d'identifiant : Verrou propose les comptes du site au-dessus du clavier.")
+                }
+                .font(.callout)
+                .padding(.vertical, 2)
+            }
+            Button {
+                model.openAutofillSettings()
+            } label: {
+                Label(model.autofillEnabled == true ? "Réglages du remplissage" : "Ouvrir les Réglages",
+                      systemImage: "gear")
+            }
+        } header: {
+            Text("Remplissage automatique")
+        } footer: {
+            Text("Le système ne reçoit que les sites et noms d'utilisateur, pour ses suggestions. Les mots de passe, codes et passkeys ne sortent du coffre qu'après \(Biometrics.name) ou votre mot de passe principal.")
+        }
+        .task { await model.refreshAutofillStatus() }
     }
 }

@@ -7,6 +7,7 @@ struct VerrouPhoneApp: App {
     @Environment(\.scenePhase) private var scenePhase
     #if DEBUG
     @State private var endToEnd: EndToEndDriver?
+    @State private var autoFillSetup: AutoFillSetupDriver?
     #endif
 
     var body: some Scene {
@@ -19,6 +20,11 @@ struct VerrouPhoneApp: App {
                     if endToEnd == nil, let config = EndToEndDriver.Config(ProcessInfo.processInfo.environment) {
                         let driver = EndToEndDriver(model: model, config: config)
                         endToEnd = driver
+                        driver.start()
+                    }
+                    if autoFillSetup == nil, let config = AutoFillSetupDriver.Config(ProcessInfo.processInfo.environment) {
+                        let driver = AutoFillSetupDriver(model: model, config: config)
+                        autoFillSetup = driver
                         driver.start()
                     }
                     #endif

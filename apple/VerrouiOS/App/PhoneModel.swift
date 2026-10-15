@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Observation
 import SwiftUI
 import UIKit
@@ -150,6 +151,10 @@ final class PhoneModel {
     let siteIcons = SiteIcons()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
+    @ObservationIgnored private var identitiesTask: Task<Void, Never>?
+    /// Verrou est choisi comme fournisseur de remplissage automatique
+    /// (`nil` : pas encore demandé au système).
+    private(set) var autofillEnabled: Bool?
     /// Synchronisations en cours (le cœur Rust les regroupe) : la dernière
     /// qui se termine donne l'état affiché.
     @ObservationIgnored private var syncsInFlight = 0
@@ -323,6 +328,8 @@ final class PhoneModel {
     /// Oublie le compte : cache, file hors ligne, Face ID. Le serveur garde tout.
     func logout() {
         lock()
+        identitiesTask?.cancel()
+        Task { await CredentialIdentities.clear() }
         try? session.logout()
         vault.removeBiometrics()
         biometricEnrolled = false
@@ -470,6 +477,7 @@ final class PhoneModel {
             Biometrics.refresh()
             if lockState == .unlocked {
                 startSyncLoop()
+                Task { await refreshAutofillStatus() }
             } else {
                 Task { await promptBiometricsIfPossible() }
             }
@@ -624,7 +632,39 @@ final class PhoneModel {
             return summaryIndex[resolved] == nil ? nil : .item(resolved)
         }
         revision += 1
+        publishAutofillIdentities()
         Perf.log.notice("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
+    }
+
+    // MARK: Remplissage automatique
+
+    /// Sites, noms d'utilisateur et passkeys pour les suggestions du
+    /// système (jamais un secret), un instant après le dernier changement.
+    func publishAutofillIdentities() {
+        guard mode == .vaultwarden, session.isUnlocked() else { return }
+        identitiesTask?.cancel()
+        let session = session
+        identitiesTask = Task.detached(priority: .utility) {
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled, let identities = try? session.autofillIdentities() else { return }
+            await CredentialIdentities.publish(identities)
+        }
+    }
+
+    /// Demande au système si Verrou est choisi (Réglages), et republie.
+    func refreshAutofillStatus() async {
+        autofillEnabled = await CredentialIdentities.isEnabled()
+        if autofillEnabled == true { publishAutofillIdentities() }
+    }
+
+    /// Ouvre la page des réglages où choisir Verrou (iOS 18), sinon les
+    /// réglages de l'app.
+    func openAutofillSettings() {
+        if #available(iOS 18.0, *) {
+            Task { try? await ASSettingsHelper.openCredentialProviderAppSettings() }
+        } else if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
+        }
     }
 
     /// Après une synchronisation : la lecture se fait hors du fil principal,
