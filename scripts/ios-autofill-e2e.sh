@@ -24,7 +24,12 @@
 #
 # Variables : OUT (captures, défaut target/ios-autofill-e2e), SKIP_BUILD=1,
 # KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, ONLY (un
-# test, ex. test2_PasswordFillsFromTheKeyboardSuggestion).
+# test, ex. test2_PasswordFillsFromTheKeyboardSuggestion), VW_CONTAINER et
+# VW_PORT (autre conteneur, pour deux exécutions en parallèle),
+# VERROU_RECORD=<fichier.mp4> (vidéo du simulateur, `simctl io recordVideo`,
+# avec des pauses de RECORD_PAUSE secondes, défaut 2, aux étapes clés ; les
+# repères AUTOFILL_E2E_MARK du journal, comparés à RECORD_START, permettent
+# de la découper).
 #
 # Rien ne s'affiche sur l'écran du Mac : `simctl boot` n'ouvre pas
 # Simulator.app, et les captures viennent de XCUIScreen (dans le simulateur).
@@ -40,8 +45,11 @@ SIM_RUNTIME="${SIM_RUNTIME:-$(xcrun simctl list runtimes -j | python3 -I -c '
 import json, sys
 runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS" and r["isAvailable"]]
 print(runtimes[-1]["identifier"])')}"
-CONTAINER=verrou-vw-autofill-ios
-VW_PORT=8122
+CONTAINER="${VW_CONTAINER:-verrou-vw-autofill-ios}"
+VW_PORT="${VW_PORT:-8122}"
+RECORD="${VERROU_RECORD:-}"
+[[ -z "$RECORD" || "$RECORD" == /* ]] || RECORD="$PWD/$RECORD"
+RECORD_PID=""
 PAGE_PORT="$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')"
 WORK="$(mktemp -d)"
 DEV=""
@@ -49,7 +57,17 @@ PAGE_PID=""
 FACE_PID=""
 STARTED_SERVER=0
 
+stop_recording() {
+  if [[ -n "$RECORD_PID" ]]; then
+    # SIGINT : recordVideo termine proprement le fichier.
+    kill -INT "$RECORD_PID" 2>/dev/null || true
+    wait "$RECORD_PID" 2>/dev/null || true
+    RECORD_PID=""
+  fi
+}
+
 cleanup() {
+  stop_recording
   [[ -n "$FACE_PID" ]] && kill "$FACE_PID" 2>/dev/null || true
   [[ -n "$PAGE_PID" ]] && kill "$PAGE_PID" 2>/dev/null || true
   if [[ -n "$DEV" && "${KEEP_SIMULATOR:-0}" != 1 ]]; then
@@ -111,6 +129,13 @@ xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
 xcrun simctl status_bar "$DEV" override --time "9:41" --dataNetwork wifi --wifiBars 3 \
   --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100
+if [[ -n "$RECORD" ]]; then
+  mkdir -p "$(dirname "$RECORD")"
+  rm -f "$RECORD"
+  xcrun simctl io "$DEV" recordVideo --codec=h264 --force "$RECORD" >"$WORK/record.log" 2>&1 &
+  RECORD_PID=$!
+  echo "RECORD_START $(python3 -I -c 'import time; print(time.time())')"
+fi
 xcrun simctl spawn "$DEV" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
 xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit.enrollmentChanged
 xcrun simctl install "$DEV" "$APP"
@@ -146,10 +171,13 @@ TEST_RUNNER_VERROU_AUTOFILL_E2E_SITE="$SITE" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_PAGE="$SITE/" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_ACK="$WORK/ack" \
 TEST_RUNNER_VERROU_AUTOFILL_E2E_SHOTS="$OUT" \
+TEST_RUNNER_VERROU_AUTOFILL_E2E_PAUSE="$( [[ -n "$RECORD" ]] && echo "${RECORD_PAUSE:-2}" || echo 0 )" \
   xcodebuild test-without-building -project apple/Verrou.xcodeproj -scheme VerrouiOS \
     -destination "id=$DEV" -derivedDataPath "$DERIVED" "${ONLY_ARG[@]}" \
     > "$OUT/xcodebuild.log" 2>&1 || status=$?
 grep -E "Test Case .*(passed|failed|skipped)|error: |AUTOFILL_E2E|Executed" "$OUT/xcodebuild.log" || true
+stop_recording
+[[ -n "$RECORD" ]] && echo "vidéo : $RECORD"
 
 # 6. Mémoire de l'extension
 xcrun simctl spawn "$DEV" log show --last 30m --style compact \
