@@ -2,8 +2,8 @@ import CryptoKit
 import Foundation
 import LocalAuthentication
 
-/// Déverrouillage par Touch ID : la clé de l'utilisateur, scellée par une clé
-/// du Secure Enclave.
+/// Déverrouillage par Touch ID (Mac) ou Face ID (iPhone) : la clé de
+/// l'utilisateur, scellée par une clé du Secure Enclave.
 ///
 /// - Une clé d'accord P-256 est créée **dans** le Secure Enclave, utilisable
 ///   seulement après Touch ID (`.biometryCurrentSet` : ajouter ou retirer une
@@ -18,11 +18,23 @@ import LocalAuthentication
 ///
 /// Aucun trousseau, donc aucun droit (« entitlement ») ni équipe de
 /// développeur : l'app peut être signée localement.
+///
+/// Le fichier vit dans le dossier du compte (`VerrouStorage`) : sur
+/// l'iPhone, dans le conteneur du groupe d'apps quand il existe, pour que
+/// l'extension de remplissage automatique puisse l'ouvrir aussi.
+///
+/// Simulateur iOS : son Secure Enclave refuse les clés gardées par la
+/// biométrie. Une clé logicielle, gardée
+/// dans le fichier lui-même, la remplace, et seul LocalAuthentication
+/// (Face ID simulé) garde l'ouverture. Aucune protection réelle : ce chemin
+/// ne sert qu'aux tests et n'existe pas dans un build pour appareil.
 enum BiometricVault {
     struct Sealed: Codable {
         var enclaveKey: Data
         var ephemeralPublicKey: Data
         var box: Data
+        /// Simulateur seulement : `enclaveKey` est une clé logicielle.
+        var simulated: Bool?
     }
 
     enum Failure: Error {
@@ -48,6 +60,12 @@ enum BiometricVault {
     }
 
     static func enroll(userKey: String, in directory: URL) throws {
+        #if targetEnvironment(simulator)
+        // Le simulateur annonce un Secure Enclave, mais refuse d'y créer une
+        // clé gardée par la biométrie (LAError -1020).
+        try enrollSimulated(userKey: userKey, in: directory)
+        return
+        #else
         guard SecureEnclave.isAvailable, Biometrics.isAvailable else { throw Failure.unavailable }
         var error: Unmanaged<CFError>?
         guard let access = SecAccessControlCreateWithFlags(
@@ -65,6 +83,7 @@ enum BiometricVault {
         let data = try JSONEncoder().encode(sealed)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try data.write(to: file(in: directory), options: .atomic)
+        #endif
     }
 
     /// Demande Touch ID et rend la clé de l'utilisateur.
@@ -82,6 +101,9 @@ enum BiometricVault {
         } catch let error as LAError where [.biometryNotAvailable, .biometryNotEnrolled, .biometryLockout].contains(error.code) {
             throw Failure.unavailable
         }
+        #if targetEnvironment(simulator)
+        if sealed.simulated == true { return try openSimulated(sealed) }
+        #endif
         let enclave = ContinuousClock.now
         defer { Perf.log.notice("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms") }
         do {
@@ -103,4 +125,38 @@ enum BiometricVault {
         shared.hkdfDerivedSymmetricKey(
             using: SHA256.self, salt: info, sharedInfo: ephemeralPublicKey, outputByteCount: 32)
     }
+
+    #if targetEnvironment(simulator)
+    /// Simulateur : même scellement, avec une clé logicielle à la place de
+    /// celle du Secure Enclave (voir plus haut).
+    private static func enrollSimulated(userKey: String, in directory: URL) throws {
+        guard Biometrics.isAvailable else { throw Failure.unavailable }
+        let deviceKey = P256.KeyAgreement.PrivateKey()
+        let ephemeral = P256.KeyAgreement.PrivateKey()
+        let shared = try ephemeral.sharedSecretFromKeyAgreement(with: deviceKey.publicKey)
+        let symmetric = derive(shared, ephemeralPublicKey: ephemeral.publicKey.rawRepresentation)
+        let box = try AES.GCM.seal(Data(userKey.utf8), using: symmetric)
+        let sealed = Sealed(
+            enclaveKey: deviceKey.rawRepresentation,
+            ephemeralPublicKey: ephemeral.publicKey.rawRepresentation,
+            box: box.combined!, simulated: true)
+        let data = try JSONEncoder().encode(sealed)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try data.write(to: file(in: directory), options: .atomic)
+    }
+
+    private static func openSimulated(_ sealed: Sealed) throws -> String {
+        do {
+            let deviceKey = try P256.KeyAgreement.PrivateKey(rawRepresentation: sealed.enclaveKey)
+            let ephemeral = try P256.KeyAgreement.PublicKey(rawRepresentation: sealed.ephemeralPublicKey)
+            let shared = try deviceKey.sharedSecretFromKeyAgreement(with: ephemeral)
+            let symmetric = derive(shared, ephemeralPublicKey: sealed.ephemeralPublicKey)
+            let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: sealed.box), using: symmetric)
+            guard let key = String(data: plain, encoding: .utf8) else { throw Failure.invalidated }
+            return key
+        } catch {
+            throw Failure.invalidated
+        }
+    }
+    #endif
 }

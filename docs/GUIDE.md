@@ -2,8 +2,8 @@
 
 Everything Verrou does, in detail. For a short tour, see the [README](../README.md).
 
-Native password manager for a **Vaultwarden** server: a macOS app (iPadOS and
-iOS to follow), a browser extension for Brave and Firefox, and a CLI, built
+Native password manager for a **Vaultwarden** server: a macOS app, an iPhone
+app (in the iOS Simulator for now, see [iPhone](#iphone)), a browser extension for Brave and Firefox, and a CLI, built
 around a Rust core.
 
 > **Status: first usable version.** The Mac app signs in to Vaultwarden
@@ -21,7 +21,8 @@ around a Rust core.
   TOTP code, YubiKey OTP or e-mail. Syncs when the vault opens, then every
   5 min (⌘R to force it).
 - **Create and edit** (⌘N, ⌘E): logins (with the password generator and its
-  strength meter, see [Passwords and passphrases](#passwords-and-passphrases)) and secure notes; title, folder, favorite, notes and
+  strength meter, see [Passwords and passphrases](#passwords-and-passphrases)) and secure notes
+  (cards and identities on iPhone); title, folder, favorite, notes and
   **custom fields** (text, hidden, checkbox: add, remove, rename, reorder;
   linked fields are shown and kept) for every type. The rest of an item
   (passkeys, attachments) is kept intact, the old password goes to the item's
@@ -278,12 +279,16 @@ extension/      browser extension (Manifest V3), shipped inside the app; the Fir
                 variant (extension-firefox/) is generated from it at build time
 apple/
   Verrou/       SwiftUI macOS app (xcodegen: apple/project.yml)
-  Shared/       generated Swift bindings (not versioned)
+  VerrouiOS/    SwiftUI iPhone app (xcodegen target VerrouiOS)
+  Shared/       code shared by both apps: Core (storage, Face ID / Touch ID sealing,
+                VaultAccess, errors), UI (theme, labels, common views), Generated
+                (Swift bindings, not versioned)
 scripts/
-  build-apple.sh     Rust core → VerrouFFI.xcframework + Swift bindings
+  build-apple.sh     Rust core → VerrouFFI.xcframework (macOS, iPhone, Simulator) + Swift bindings
   install-macos.sh   Release build, signed locally, copied to /Applications
   demo-capture.sh    scripted demo → docs/media/
   e2e.sh             app walkthrough against a throwaway Vaultwarden
+  ios-e2e.sh         iPhone walkthrough in a headless Simulator, same server
   firefox-extension.sh  extension/ → Firefox variant (manifest only differs)
   stamp-extension.sh    content-derived version for the bundled extensions
   sign-firefox.sh       Mozilla-signed (unlisted) or unsigned .xpi, run by hand
@@ -294,6 +299,159 @@ The Rust/Swift boundary works like this: Swift receives item **summaries**
 returns **positions**. A password crosses the boundary only through `reveal`,
 when the user shows or copies it. Locking frees the vault, and its secrets
 (`SecretString`) are zeroed.
+
+## iPhone
+
+The iPhone app lives in `apple/VerrouiOS` (xcodegen target `VerrouiOS`,
+bundle id `app.verrou.ios`, iOS 17 or later, iPhone only for now). Its
+interface is in French, with the system's look (Liquid Glass on iOS 26).
+
+### What it does
+
+- **Sign in** to Vaultwarden: server, e-mail, master password, then the
+  second factor (authenticator code, e-mail code, YubiKey OTP typed in).
+  Security keys over NFC are not supported yet: the screen says so and
+  offers the other methods. Same Rust sign-in as the Mac.
+- **Unlock** with Face ID (or Touch ID) or the master password. Face ID uses
+  the same Secure Enclave sealing as Touch ID on the Mac; changing enrolled
+  faces sends you back to the master password. The lock screen asks for
+  Face ID by itself when the app comes back.
+- **Auto-lock** when the app goes to the background, after a delay chosen in
+  Settings (immediately, 1 min by default, 5 min, 15 min, 1 h, never). Out
+  of the foreground the screen is blurred and covered, so the app switcher
+  shows nothing.
+- **Vault tab**: a search field that is always visible (instant, fuzzy,
+  accent-insensitive search in the Rust core), then all items, favorites,
+  one-time codes, item types and templates, folders, shared vaults and
+  their collections, tags, the security audit, archives and trash, with
+  counts. Pull to refresh syncs. Lists have their own search, a sort order,
+  swipe actions (favorite, archive, trash, restore) and a context menu
+  (copy username, password, code).
+- **Select several items** (*Choisir*): favorite, move to a folder (existing
+  or new), archive, trash (with confirmation), restore from the trash or
+  unarchive, in one go through Vaultwarden's bulk routes.
+- **Item details**: tap a field to copy it, the eye reveals it, one-time
+  codes count down. Logins, cards, identities, secure notes, SSH keys (copy
+  the public key) and templates; custom fields, websites (copy, open in
+  Safari), password history, passkeys (listed, deletable), tags, dates.
+  Wi-Fi networks show a QR code. Attachments open in Quick Look, can be
+  shared (Files, AirDrop) or deleted, and new ones added from Files.
+- **Protected items** (master password re-prompt): Face ID, or the master
+  password, valid 5 minutes per item, like on the Mac.
+- **Clipboard**: secrets are copied local-only (never to your other devices
+  through Universal Clipboard) with an expiry date, so iOS itself clears
+  them after 90 s (30 s to 10 min in Settings); locking clears them too if
+  they are still Verrou's.
+- **Create and edit** logins (generator, strength meter, one-time code seed,
+  websites), secure notes, **cards** and **identities** (new in this version,
+  also for the Rust core), and every template; custom fields (text, hidden,
+  checkbox; rename, reorder, delete), folder, favorite, notes, and the shared
+  vault for a new item. Offline, edits wait in the encrypted outbox and are
+  sent on the next sync (when the app comes back to the foreground, every
+  5 minutes while it is open, every 30 s while changes are waiting, or by
+  pulling down).
+- **Generator tab**: passwords and passphrases (same settings as the Mac),
+  copied with the same clipboard rules.
+- **Audit**: reused, weak and plain-HTTP passwords, and known breaches on
+  request (Have I Been Pwned, k-anonymity).
+- **Settings**: account, last sync, pending changes, sync now; Face ID,
+  auto-lock delay, clipboard delay, lock now; site icons; about and
+  licenses; sign out of this iPhone (erases the account, cache and Face ID
+  sealing; asks first, and says how many offline changes would be lost).
+
+Not on iPhone yet: Send, emergency access, sharing an item into a shared
+vault after creation, import, duplicates, the browser extension, the CLI and
+SSH agent, YubiKey unlock, and system AutoFill (phase 2, below).
+
+### Build and run in the Simulator
+
+There is no Apple developer account behind this project, so the iPhone app
+only runs in the iOS Simulator, built **unsigned**:
+
+```sh
+PLATFORMS=all scripts/build-apple.sh   # macOS + iPhone + Simulator slices
+(cd apple && xcodegen generate)
+xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
+  -destination 'generic/platform=iOS Simulator' ARCHS=arm64 \
+  -derivedDataPath target/xcode-ios.noindex CODE_SIGNING_ALLOWED=NO build
+```
+
+`scripts/build-apple.sh` takes `PLATFORMS=macos` (default, what
+`install-macos.sh` needs), `ios` or `all`; `IOS_TARGETS=""` skips the device
+slice and `SIM_TARGETS` adds `x86_64-apple-ios` on an Intel Mac. Build the
+Rust core in release (the default) for the iPhone: debug builds of the
+Bitwarden SDK's futures overflow the 512 KB stacks of Swift Concurrency
+threads during writes.
+
+To try it by hand, boot a Simulator and install the app (the Simulator app
+window is optional; `simctl` works headless):
+
+```sh
+xcrun simctl boot "iPhone 17 Pro"
+xcrun simctl install booted target/xcode-ios.noindex/Build/Products/Debug-iphonesimulator/Verrou.app
+SIMCTL_CHILD_VERROU_MOCK=1 xcrun simctl launch booted app.verrou.ios   # mock vault; without it, your server
+```
+
+**Face ID in the Simulator**: enroll a face, then answer each prompt with a
+matching (or non-matching) face:
+
+```sh
+xcrun simctl spawn booted notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
+xcrun simctl spawn booted notifyutil -p com.apple.BiometricKit.enrollmentChanged
+xcrun simctl spawn booted notifyutil -p com.apple.BiometricKit_Sim.pearl.match     # recognized
+xcrun simctl spawn booted notifyutil -p com.apple.BiometricKit_Sim.pearl.nomatch   # not recognized
+```
+
+The Simulator's Secure Enclave refuses biometry-protected keys, so Simulator
+builds seal the vault key with a software key instead (see
+[SECURITY.md](../SECURITY.md#iphone)); device builds always use the Secure
+Enclave.
+
+### End-to-end walkthrough
+
+```sh
+scripts/ios-e2e.sh          # OUT=… for the screenshots (default target/ios-e2e)
+```
+
+It builds everything, starts a throwaway Vaultwarden in Docker
+(`verrou-vw-ios`, port 8118) and creates the walkthrough account with
+`seed_walkthrough_account` (an ignored tool in
+`crates/verrou-vaultwarden/tests/server.rs`), then creates and boots a
+dedicated Simulator ("Verrou E2E") **without opening Simulator.app**, sets
+it to French, enrolls Face ID and runs the app with its Debug-only driver
+(`apple/VerrouiOS/Demo/EndToEndDriver.swift`, environment passed through
+`SIMCTL_CHILD_*`). The driver signs in with TOTP, searches, reveals and
+copies, opens a protected item with Face ID, shows a Wi-Fi QR code, creates
+and edits a login (with a custom field) and a card, acts on two items at
+once, edits offline (the script cuts a TCP relay between the app and the
+server) and checks the outbox is sent when the relay is back, runs the
+audit, locks, unlocks with the master password and with Face ID, checks the
+background auto-lock and signs out. The script answers it (screenshots with
+`simctl io screenshot`, Face ID matches, network on/off), then deletes the
+Simulator and the container. `SKIP_BUILD=1`, `KEEP_SIMULATOR=1` and
+`KEEP_SERVER=1` help when iterating; `VERROU_E2E_SERVER` (+ `_EMAIL`,
+`_PASSWORD`, `_TOTP`) uses an existing account.
+
+### Where the data lives, and AutoFill (phase 2)
+
+`VerrouStorage` (in `apple/Shared/Core`) decides where the account folder
+lives: on iPhone, in the `group.app.verrou` app group container, which the
+AutoFill Credential Provider extension will share; without the group (an
+unsigned Simulator build), in the app's own Application Support folder, and
+an account found there is moved into the group as soon as it exists. On the
+Mac nothing changes. The folder is excluded from backups.
+
+`VaultAccess` (same folder) is the UI-free layer meant for the extension:
+open the vault from that folder with Face ID or the master password, list
+the logins for a page (`suggestions`, the extension's site matching), read a
+one-time code, lock. All the work stays in the Rust core, which keeps the
+extension well under its ~120 MB memory limit. The entitlements file
+(`apple/VerrouiOS/VerrouiOS.entitlements`) already declares the app group and
+a shared keychain group (`app.verrou.shared`); both only apply to signed
+builds. Phase 2 still has to add the extension target, a passkey assertion
+API for iOS (`ASPasskeyCredentialRequest`) on top of the Rust passkey code,
+and check that the Secure Enclave key sealed by the app opens from the
+extension (otherwise keep it in the shared keychain group).
 
 ## Install on your Mac
 
@@ -773,7 +931,7 @@ that every broken screen is listed.
 1. ✅ Core, search, macOS app and CLI on a mock vault
 2. ✅ Vaultwarden sign-in: Bitwarden Rust SDK, second factor, decryption, sync, encrypted offline cache, Touch ID through the Secure Enclave
 3. ✅ Browser extension (Brave, Firefox): top-of-page pill, multi-step forms, one-time codes, saving and updating accounts, generator, two-factor QR codes, cards, addresses, linking a new site to a login
-4. iPhone and iPad: Face ID, system AutoFill extension
+4. iPhone: ✅ app in the Simulator (Face ID, vault, editing, offline), system AutoFill extension and passkeys next; iPad later
 5. YubiKey: ✅ FIDO2 sign-in over USB, ✅ `hmac-secret` unlock
 
 ## License

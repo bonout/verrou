@@ -62,13 +62,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin
+          targets: aarch64-apple-darwin,aarch64-apple-ios-sim
       - uses: Swatinem/rust-cache@v2
       - run: brew install xcodegen
-      - run: PROFILE=debug TARGETS=aarch64-apple-darwin scripts/build-apple.sh
+      # macOS et simulateur iPhone dans le même xcframework (sans tranche appareil).
+      - run: PROFILE=debug PLATFORMS=all TARGETS=aarch64-apple-darwin IOS_TARGETS="" scripts/build-apple.sh
       - run: cd apple && xcodegen generate
       - name: Compiler l'app
         run: |
           xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode.noindex \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
+      - name: Compiler l'app iPhone (simulateur, sans signature)
+        run: |
+          xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' ARCHS=arm64 -derivedDataPath target/xcode-ios.noindex \
+            CODE_SIGNING_ALLOWED=NO build

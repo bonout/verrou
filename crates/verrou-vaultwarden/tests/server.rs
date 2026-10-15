@@ -1985,3 +1985,81 @@ async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
     assert_eq!(name, "bail.txt");
     assert_eq!(read.as_slice(), b"loyer : 800");
 }
+
+/// Compte du parcours de bout en bout des apps (`scripts/e2e.sh`,
+/// `scripts/ios-e2e.sh`) : pas un test, un outil, lancé à la main.
+///
+/// ```sh
+/// VERROU_TEST_SERVER=http://localhost:8118 VERROU_SEED_EMAIL=camille@verrou.test \
+///   cargo test -p verrou-vaultwarden --test server -- --ignored --nocapture seed_walkthrough_account
+/// ```
+///
+/// 9 éléments actifs (identifiants, carte, identité, notes, réseau Wi-Fi,
+/// un élément protégé), 1 à la corbeille, les dossiers « Personnel » et
+/// « Travail », second facteur TOTP. Affiche `SEED_EMAIL`, `SEED_PASSWORD`
+/// et `SEED_TOTP`.
+#[tokio::test]
+#[ignore = "outil : prépare le compte du parcours de bout en bout"]
+async fn seed_walkthrough_account() {
+    let Some(server) = server() else { return };
+    let email = std::env::var("VERROU_SEED_EMAIL").unwrap_or_else(|_| unique_email());
+    let seeder = Seeder::register(&server, &email).await;
+    seeder.fill().await;
+    let personnel = seeder.folder("Personnel").await;
+    let login = |name: &str, username: &str, password: &str, uri: &str| {
+        json!({
+            "name": name, "type": 1, "folderId": personnel,
+            "login": {
+                "username": username, "password": password, "passwordRevisionDate": null,
+                "totp": null, "uris": [{ "uri": uri, "match": null, "uriChecksum": null }],
+                "autofillOnPageLoad": null, "fido2Credentials": null,
+            },
+        })
+    };
+    seeder
+        .cipher(login(
+            "Amazon",
+            "camille@exemple.fr",
+            "colibri-Tempete-42",
+            "https://www.amazon.fr",
+        ))
+        .await;
+    seeder
+        .cipher(login(
+            "Netflix",
+            "camille@exemple.fr",
+            "netflix",
+            "https://www.netflix.com",
+        ))
+        .await;
+    let mut bank = login(
+        "Banque",
+        "12345678",
+        "7391-ronce-Ardoise",
+        "https://www.banque.fr",
+    );
+    // Élément protégé : ses secrets demandent une confirmation.
+    bank["reprompt"] = json!(1);
+    seeder.cipher(bank).await;
+    seeder
+        .cipher(json!({
+            "name": "Wi-Fi maison", "type": 2, "secureNote": { "type": 0 },
+            "fields": [
+                { "name": "verrou:type", "value": "wifi", "type": 0, "linkedId": null },
+                { "name": "Nom du réseau (SSID)", "value": "Maison-5G", "type": 0, "linkedId": null },
+                { "name": "Mot de passe", "value": "lilas-annecy-2024", "type": 1, "linkedId": null },
+                { "name": "Sécurité", "value": "WPA2", "type": 0, "linkedId": null },
+            ],
+        }))
+        .await;
+    seeder
+        .cipher(json!({
+            "name": "Digicode", "type": 2, "folderId": personnel,
+            "notes": "Porte de l'immeuble : 4B21", "secureNote": { "type": 0 },
+        }))
+        .await;
+    let secret = seeder.enable_totp(&email).await;
+    println!("SEED_EMAIL={email}");
+    println!("SEED_PASSWORD={PASSWORD}");
+    println!("SEED_TOTP={secret}");
+}

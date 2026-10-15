@@ -44,8 +44,8 @@ use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, So
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
 use verrou_vaultwarden::{
-    Closer, Connection, Decrypted, Draft, LoginDraft, LoginStep, Organization, PendingLogin, Store,
-    Synced, TwoFactorAnswer, TwoFactorMethod, Unlocked,
+    CardDraft, Closer, Connection, Decrypted, Draft, IdentityDraft, LoginDraft, LoginStep,
+    Organization, PendingLogin, Store, Synced, TwoFactorAnswer, TwoFactorMethod, Unlocked,
 };
 
 uniffi::setup_scaffolding!();
@@ -523,9 +523,10 @@ pub struct FolderOption {
     pub name: String,
 }
 
-/// L'écran de modification. Sans `login` : une note sécurisée (seuls le
-/// titre, le dossier, le favori, les notes et les champs personnalisés se
-/// modifient pour les autres types).
+/// L'écran de modification. Avec `login` : un identifiant ; avec `card` :
+/// une carte ; avec `identity` : une identité ; sans aucun : une note
+/// sécurisée. Pour les autres types (clé SSH), seuls le titre, le dossier,
+/// le favori, les notes et les champs personnalisés se modifient.
 #[derive(Clone, Debug, Default, uniffi::Record)]
 pub struct ItemDraft {
     pub name: String,
@@ -537,6 +538,131 @@ pub struct ItemDraft {
     pub fields: Vec<CustomField>,
     /// Modèle : choisi à la création, conservé ensuite.
     pub template: Option<ItemTemplate>,
+    /// Carte bancaire (valeur par défaut côté Swift : les appels existants
+    /// n'ont pas à la nommer).
+    #[uniffi(default = None)]
+    pub card: Option<CardFields>,
+    /// Identité.
+    #[uniffi(default = None)]
+    pub identity: Option<IdentityFields>,
+}
+
+/// Les champs modifiables d'une carte bancaire.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct CardFields {
+    pub cardholder_name: Option<String>,
+    pub brand: Option<String>,
+    pub number: Option<String>,
+    pub exp_month: Option<String>,
+    pub exp_year: Option<String>,
+    pub code: Option<String>,
+}
+
+/// Les champs modifiables d'une identité.
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct IdentityFields {
+    pub title: Option<String>,
+    pub first_name: Option<String>,
+    pub middle_name: Option<String>,
+    pub last_name: Option<String>,
+    pub company: Option<String>,
+    pub email: Option<String>,
+    pub phone: Option<String>,
+    pub username: Option<String>,
+    pub address1: Option<String>,
+    pub address2: Option<String>,
+    pub address3: Option<String>,
+    pub postal_code: Option<String>,
+    pub city: Option<String>,
+    pub state: Option<String>,
+    pub country: Option<String>,
+    pub ssn: Option<String>,
+    pub passport_number: Option<String>,
+    pub license_number: Option<String>,
+}
+
+fn secret(value: Option<String>) -> Option<SecretString> {
+    value.map(SecretString::new)
+}
+
+fn exposed(value: Option<SecretString>) -> Option<String> {
+    value.map(|v| v.expose().to_owned())
+}
+
+impl From<CardFields> for CardDraft {
+    fn from(card: CardFields) -> Self {
+        Self {
+            cardholder_name: card.cardholder_name,
+            brand: card.brand,
+            number: secret(card.number),
+            exp_month: card.exp_month,
+            exp_year: card.exp_year,
+            code: secret(card.code),
+        }
+    }
+}
+
+impl From<CardDraft> for CardFields {
+    fn from(card: CardDraft) -> Self {
+        Self {
+            cardholder_name: card.cardholder_name,
+            brand: card.brand,
+            number: exposed(card.number),
+            exp_month: card.exp_month,
+            exp_year: card.exp_year,
+            code: exposed(card.code),
+        }
+    }
+}
+
+impl From<IdentityFields> for IdentityDraft {
+    fn from(i: IdentityFields) -> Self {
+        Self {
+            title: i.title,
+            first_name: i.first_name,
+            middle_name: i.middle_name,
+            last_name: i.last_name,
+            company: i.company,
+            email: i.email,
+            phone: i.phone,
+            username: i.username,
+            address1: i.address1,
+            address2: i.address2,
+            address3: i.address3,
+            postal_code: i.postal_code,
+            city: i.city,
+            state: i.state,
+            country: i.country,
+            ssn: secret(i.ssn),
+            passport_number: secret(i.passport_number),
+            license_number: secret(i.license_number),
+        }
+    }
+}
+
+impl From<IdentityDraft> for IdentityFields {
+    fn from(i: IdentityDraft) -> Self {
+        Self {
+            title: i.title,
+            first_name: i.first_name,
+            middle_name: i.middle_name,
+            last_name: i.last_name,
+            company: i.company,
+            email: i.email,
+            phone: i.phone,
+            username: i.username,
+            address1: i.address1,
+            address2: i.address2,
+            address3: i.address3,
+            postal_code: i.postal_code,
+            city: i.city,
+            state: i.state,
+            country: i.country,
+            ssn: exposed(i.ssn),
+            passport_number: exposed(i.passport_number),
+            license_number: exposed(i.license_number),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, uniffi::Record)]
@@ -563,6 +689,8 @@ impl From<ItemDraft> for Draft {
             }),
             fields: Some(draft.fields.into_iter().map(Into::into).collect()),
             template: draft.template.map(Into::into),
+            card: draft.card.map(Into::into),
+            identity: draft.identity.map(Into::into),
         }
     }
 }
@@ -587,6 +715,8 @@ impl From<Draft> for ItemDraft {
                 .map(Into::into)
                 .collect(),
             template: draft.template.map(Into::into),
+            card: draft.card.map(Into::into),
+            identity: draft.identity.map(Into::into),
         }
     }
 }

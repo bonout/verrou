@@ -146,21 +146,3 @@ struct LockBackground: View {
         .ignoresSafeArea()
     }
 }
-
-/// Le logo : un verrou sur un écusson arrondi.
-struct AppMark: View {
-    var size: CGFloat = 64
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
-                .fill(LinearGradient(colors: [Color(red: 0.36, green: 0.42, blue: 1.0), Color(red: 0.20, green: 0.17, blue: 0.62)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .shadow(color: Color(red: 0.25, green: 0.25, blue: 0.8).opacity(0.35), radius: size * 0.18, y: size * 0.08)
-            Image(systemName: "lock.fill")
-                .font(.system(size: size * 0.46, weight: .semibold))
-                .foregroundStyle(.white.gradient)
-        }
-        .frame(width: size, height: size)
-    }
-}

@@ -1,7 +1,8 @@
 import LocalAuthentication
 import os
 
-/// Touch ID (et Apple Watch) via LocalAuthentication.
+/// Touch ID (et Apple Watch) sur le Mac, Face ID ou Touch ID sur l'iPhone,
+/// via LocalAuthentication.
 ///
 /// Pour le coffre fictif, un succès suffit à l'ouvrir. Avec Vaultwarden, ce
 /// n'est pas ce booléen qui décide : la clé du coffre est scellée par le
@@ -18,23 +19,45 @@ enum Biometrics {
     /// (2 ms, 40 ms la première fois) : la réponse est gardée jusqu'à la
     /// prochaine activation de l'app (`refresh()`), au lieu d'être reposée à
     /// chaque rendu de l'écran verrouillé.
-    private static let cache = OSAllocatedUnfairLock<(available: Bool, symbol: String)?>(initialState: nil)
+    private static let cache = OSAllocatedUnfairLock<(available: Bool, type: LABiometryType)?>(initialState: nil)
 
-    private static var state: (available: Bool, symbol: String) {
+    private static var state: (available: Bool, type: LABiometryType) {
         if let state = cache.withLock({ $0 }) { return state }
         let context = LAContext()
         let available = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
-        let state = (available, context.biometryType == .faceID ? "faceid" : "touchid")
+        let state = (available, context.biometryType)
         cache.withLock { $0 = state }
         return state
     }
 
     static var isAvailable: Bool { state.available }
 
-    static var symbolName: String { state.symbol }
+    static var symbolName: String {
+        switch state.type {
+        case .faceID: "faceid"
+        case .opticID: "opticid"
+        default: "touchid"
+        }
+    }
+
+    /// Le nom du capteur, pour les libellés (« Déverrouiller avec Face ID »).
+    /// Sans capteur détecté : celui de la plateforme.
+    static var name: String {
+        switch state.type {
+        case .faceID: "Face ID"
+        case .opticID: "Optic ID"
+        case .touchID: "Touch ID"
+        default:
+            #if os(macOS)
+            "Touch ID"
+            #else
+            "Face ID"
+            #endif
+        }
+    }
 
     /// À l'activation de l'app : un capteur a pu apparaître ou disparaître
-    /// (clavier Touch ID branché, Mac refermé). La question est reposée hors
+    /// (clavier Touch ID branché, Mac refermé, Face ID enrôlé ou retiré). La question est reposée hors
     /// du fil principal.
     static func refresh() {
         cache.withLock { $0 = nil }
@@ -46,7 +69,7 @@ enum Biometrics {
         context.localizedFallbackTitle = "Mot de passe principal"
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            return .failure(error?.localizedDescription ?? "Touch ID n'est pas disponible.")
+            return .failure(error?.localizedDescription ?? "\(name) n'est pas disponible.")
         }
         do {
             try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
