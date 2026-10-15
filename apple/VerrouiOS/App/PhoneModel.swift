@@ -302,6 +302,27 @@ final class PhoneModel {
         }
     }
 
+    /// Clé de sécurité (FIDO2) : la page de connexion du serveur, dans une
+    /// session Safari éphémère ; la YubiKey répond en NFC ou en USB-C.
+    func useSecurityKey(challenge: String) async {
+        guard !loginBusy else { return }
+        loginError = nil
+        do {
+            let token = try await SecurityKeySignIn().sign(server: normalizedServer, challenge: challenge)
+            await answerTwoFactor(.securityKey(challenge: challenge), token: token)
+        } catch SecurityKeySignIn.Failure.cancelled {
+            // Feuille fermée : rien à dire.
+        } catch {
+            loginError = ErrorText.describe(error)
+        }
+        if loginError != nil, twoFactorOptions != nil {
+            // Le serveur ne laisse qu'une tentative par défi : on en redemande un.
+            if case .twoFactorRequired(let options)? = try? await session.restartTwoFactor() {
+                twoFactorOptions = options
+            }
+        }
+    }
+
     func sendEmailCode() async {
         do {
             try await session.sendEmailCode()

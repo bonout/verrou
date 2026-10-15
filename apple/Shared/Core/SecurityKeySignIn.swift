@@ -1,5 +1,12 @@
-import AppKit
+// Pas dans l'extension de remplissage : elle n'ouvre pas de session et
+// UIApplication.shared lui est interdit.
+#if !AUTOFILL_EXTENSION
 import AuthenticationServices
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Second facteur par clé de sécurité (YubiKey en FIDO2/WebAuthn).
 ///
@@ -10,6 +17,8 @@ import AuthenticationServices
 /// `webauthn-mobile-connector.html`, ouverte dans une session Safari éphémère.
 /// Elle signe le défi avec la clé, puis redirige vers
 /// `bitwarden://webauthn-callback?data=…`, que la session intercepte.
+///
+/// Sur iPhone, Safari parle à la clé en NFC ou par le port USB-C/Lightning.
 @MainActor
 final class SecurityKeySignIn: NSObject, ASWebAuthenticationPresentationContextProviding {
     enum Failure: LocalizedError {
@@ -72,7 +81,15 @@ final class SecurityKeySignIn: NSObject, ASWebAuthenticationPresentationContextP
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
+            #if os(macOS)
             NSApp.windows.first { $0.identifier?.rawValue == "main" } ?? NSApp.keyWindow ?? ASPresentationAnchor()
+            #else
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first(where: \.isKeyWindow) ?? ASPresentationAnchor()
+            #endif
         }
     }
 }
+#endif
