@@ -50,6 +50,7 @@ use verrou_vaultwarden::{
 
 uniffi::setup_scaffolding!();
 
+mod activity;
 mod attachments;
 mod autofill;
 mod bulk;
@@ -886,6 +887,10 @@ pub struct VaultSession {
     /// Arrête l'envoi en cours de la dernière connexion (verrouillage), et
     /// ses écritures sur le disque (déconnexion), même s'il la garde en vie.
     closer: Mutex<Option<Closer>>,
+    /// Canal des mises à jour en direct (`wait_for_server_change`).
+    hub: tokio::sync::Mutex<Option<verrou_vaultwarden::hub::Hub>>,
+    /// Incrémenté au verrouillage : l'attente en cours du canal s'arrête.
+    hub_epoch: tokio::sync::watch::Sender<u64>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -948,6 +953,8 @@ impl VaultSession {
             pending_invite: Mutex::new(None),
             installed: Mutex::new(0),
             closer: Mutex::new(None),
+            hub: tokio::sync::Mutex::new(None),
+            hub_epoch: tokio::sync::watch::Sender::new(0),
         })
     }
 
@@ -1648,6 +1655,8 @@ impl VaultSession {
             pending_invite: Mutex::new(None),
             installed: Mutex::new(0),
             closer: Mutex::new(None),
+            hub: tokio::sync::Mutex::new(None),
+            hub_epoch: tokio::sync::watch::Sender::new(0),
         })
     }
 
@@ -1662,6 +1671,8 @@ impl VaultSession {
     }
 
     pub fn lock(&self) {
+        // Le canal des mises à jour (et son jeton) ne survit pas au verrouillage.
+        self.stop_server_changes();
         // Les accords donnés au terminal ne survivent pas au verrouillage.
         if let Some(bridge) = self
             .bridge
@@ -2097,6 +2108,15 @@ impl VaultSession {
             .create_shared(draft.into(), &organization_id, &collection_ids)
             .await?;
         self.install_if_current(&connection, decrypted)?;
+        // Créé ici : pas une nouvelle à annoncer à ce compte.
+        if let Some(store) = &self.store {
+            let user_id = connection.lock().await.account().user_id.clone();
+            let _ = verrou_vaultwarden::activity::acknowledge_items(
+                store,
+                &user_id,
+                std::slice::from_ref(&id),
+            );
+        }
         Ok(id)
     }
 

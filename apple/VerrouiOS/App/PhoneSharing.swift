@@ -201,24 +201,50 @@ extension PhoneModel {
 
     // MARK: Invitations et confirmations
 
-    /// Organisations en attente de confirmation (sans réseau) et membres à
-    /// confirmer dans celles qu'on administre, après une synchronisation.
-    func refreshSharingStatus() async {
+    /// Après une synchronisation : ce qui est nouveau pour le compte (cœur
+    /// Rust, une seule fois chaque chose), posté en notifications locales ;
+    /// organisations en attente de confirmation (sans réseau) et membres à
+    /// confirmer dans celles qu'on administre (réseau), pour les bandeaux.
+    /// `notify` faux : tout est marqué vu sans notification (juste après
+    /// une action de ce compte).
+    func refreshSharingStatus(notify: Bool = true) async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
+        let manages = organizations.contains(where: \.canManageMembers)
+        guard let report = try? await session.checkActivity(network: manages, emergency: false,
+                                                            notify: notify && ActivityNotifier.enabled),
+              lockState == .unlocked else { return }
         // Assignés seulement s'ils changent : l'accueil ne se redessine pas
         // à chaque synchronisation pour rien.
-        let pending = await session.pendingMemberships()
-        if sharing.pending != pending { sharing.pending = pending }
-        // Rien à compter sans organisation administrée (aucune requête).
-        guard organizations.contains(where: \.canManageMembers) else {
+        if sharing.pending != report.pending { sharing.pending = report.pending }
+        if !manages {
             if !sharing.toConfirm.isEmpty { sharing.toConfirm = [:] }
+        } else if report.toConfirmChecked {
+            let toConfirm = Dictionary(report.toConfirm.map { ($0.organizationId, Int($0.count)) },
+                                       uniquingKeysWith: { first, _ in first })
+            if sharing.toConfirm != toConfirm { sharing.toConfirm = toConfirm }
+        }
+        ActivityNotifier.shared.post(report.notices)
+        // Pastille : ce qui attend une action.
+        ActivityNotifier.shared.setBadge(sharing.totalToConfirm + sharing.pending.count)
+        // L'autorisation se demande quand le partage concerne ce compte,
+        // jamais au premier lancement.
+        if report.organizations > 0 || !report.pending.isEmpty {
+            await ActivityNotifier.shared.requestAuthorizationIfNeeded()
+        }
+    }
+
+    /// Le toucher d'une notification du partage : l'écran qui en parle.
+    func openActivity(_ route: ActivityRoute) {
+        guard lockState == .unlocked else {
+            pendingActivityRoute = route
             return
         }
-        let counts = await session.membersToConfirm()
-        guard lockState == .unlocked else { return }
-        let toConfirm = Dictionary(counts.map { ($0.organizationId, Int($0.count)) },
-                                   uniquingKeysWith: { first, _ in first })
-        if sharing.toConfirm != toConfirm { sharing.toConfirm = toConfirm }
+        tab = .vault
+        switch route {
+        case .members(let id): vaultPath = [.organization(id), .members(id)]
+        case .organization(let id): vaultPath = [.organization(id)]
+        case .pendingMemberships, .emergency: vaultPath = []
+        }
     }
 
     /// « N membres à confirmer » : les membres de la première organisation
@@ -361,7 +387,11 @@ extension PhoneModel {
                 let invited = try await self.session.inviteOrganizationMembers(
                     organizationId: organizationID, emails: draft.emails, role: draft.role, collections: draft.collections)
                 self.toast = Toast(message: invited.count == 1 ? "Invitation envoyée" : "\(invited.count) invitations envoyées",
-                                   detail: invited.joined(separator: ", "))
+                                   detail: "\(invited.joined(separator: ", ")) : voir « Et ensuite ? » sous les invitations")
+                // Sans courriel, le serveur accepte d'office un compte
+                // existant : ce membre à confirmer n'est pas une nouvelle
+                // pour qui l'invite.
+                await self.refreshSharingStatus(notify: false)
             }
             await self.loadMembers(organizationID)
         }

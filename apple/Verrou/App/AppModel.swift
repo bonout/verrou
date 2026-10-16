@@ -228,6 +228,10 @@ final class AppModel {
     /// parcours scriptés, qui n'ont personne pour toucher le capteur).
     private let autoTouchID: Bool
     private var syncLoop: Task<Void, Never>?
+    /// Mises à jour en direct du serveur (canal `WebSocket` de Vaultwarden).
+    @ObservationIgnored let live = LiveUpdates()
+    /// Notification touchée coffre verrouillé : ouverte après le déverrouillage.
+    @ObservationIgnored var pendingActivityRoute: ActivityRoute?
     /// Synchronisations demandées et pas encore finies (le cœur Rust les
     /// regroupe : une en cours, une après).
     @ObservationIgnored private var syncsInFlight = 0
@@ -544,15 +548,38 @@ final class AppModel {
             toast = Toast(message: "\(failures) élément\(failures > 1 ? "s" : "") illisible\(failures > 1 ? "s" : "")",
                           detail: "Le SDK Bitwarden n'a pas pu les déchiffrer")
         }
+        if let route = pendingActivityRoute {
+            pendingActivityRoute = nil
+            openActivity(route)
+        }
         guard mode == .vaultwarden else { return }
         syncLoop?.cancel()
         syncLoop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.syncNow()
-                // Des modifications attendent le serveur : on réessaie plus souvent.
+                // Des modifications attendent le serveur : on réessaie plus
+                // souvent. Sans canal en direct, toutes les 2 minutes ; avec,
+                // toutes les 5 (les membres à confirmer et l'accès d'urgence
+                // n'y passent pas).
                 let waiting = (self?.pendingChanges ?? 0) > 0
-                try? await Task.sleep(for: .seconds(waiting ? 30 : 5 * 60))
+                let live = self?.live.connected ?? false
+                try? await Task.sleep(for: .seconds(waiting ? 30 : live ? 5 * 60 : 2 * 60))
             }
+        }
+        startLiveUpdates()
+    }
+
+    /// Le canal des mises à jour en direct, tant que le coffre est ouvert :
+    /// un changement sur le serveur (partage, confirmation) est synchronisé
+    /// et notifié en quelques secondes.
+    func startLiveUpdates() {
+        guard mode == .vaultwarden, lockState == .unlocked else { return }
+        live.start(session: session) { [weak self] in
+            await self?.syncNow()
+        } expired: { [weak self] in
+            guard let self, self.lockState == .unlocked else { return }
+            self.reloginRequired = true
+            self.lock()
         }
     }
 
@@ -639,6 +666,7 @@ final class AppModel {
     func lock() {
         syncLoop?.cancel()
         syncLoop = nil
+        live.stop(session: session)
         session.lock()
         summaries = []
         results = []

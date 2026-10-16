@@ -67,25 +67,52 @@ enum OrganizationSheet: Identifiable {
 extension AppModel {
     // MARK: État des invitations
 
-    /// Organisations en attente de confirmation (sans réseau) et membres à
-    /// confirmer dans celles qu'on administre (réseau), après une
-    /// synchronisation.
-    func refreshSharingStatus() async {
+    /// Après une synchronisation : ce qui est nouveau pour le compte (cœur
+    /// Rust, une seule fois chaque chose), posté en notifications locales ;
+    /// organisations en attente de confirmation (sans réseau) et membres à
+    /// confirmer dans celles qu'on administre (réseau), pour les bandeaux.
+    /// `notify` faux : tout est marqué vu sans notification (juste après
+    /// une action de ce compte, qui ne doit pas lui être annoncée).
+    func refreshSharingStatus(notify: Bool = true) async {
         guard mode == .vaultwarden, lockState == .unlocked, !organizationAdmin.preview else { return }
+        let network = organizations.contains(where: \.canManageMembers) || emergencyAvailable
+        guard let report = try? await session.checkActivity(network: network, emergency: emergencyAvailable,
+                                                            notify: notify && ActivityNotifier.enabled),
+              lockState == .unlocked else { return }
         // Assignés seulement s'ils changent : l'accueil ne se redessine pas
         // à chaque synchronisation pour rien.
-        let pending = await session.pendingMemberships()
-        if organizationAdmin.pending != pending { organizationAdmin.pending = pending }
-        // Rien à compter sans organisation administrée (aucune requête).
-        guard organizations.contains(where: \.canManageMembers) else {
+        if organizationAdmin.pending != report.pending { organizationAdmin.pending = report.pending }
+        if !organizations.contains(where: \.canManageMembers) {
             if !organizationAdmin.toConfirm.isEmpty { organizationAdmin.toConfirm = [:] }
+        } else if report.toConfirmChecked {
+            let toConfirm = Dictionary(report.toConfirm.map { ($0.organizationId, Int($0.count)) },
+                                       uniquingKeysWith: { first, _ in first })
+            if organizationAdmin.toConfirm != toConfirm { organizationAdmin.toConfirm = toConfirm }
+        }
+        ActivityNotifier.shared.post(report.notices)
+        // L'autorisation se demande quand le partage concerne ce compte,
+        // jamais au premier lancement.
+        if report.organizations > 0 || !report.pending.isEmpty {
+            await ActivityNotifier.shared.requestAuthorizationIfNeeded()
+        }
+    }
+
+    /// Le toucher d'une notification du partage : l'écran qui en parle.
+    func openActivity(_ route: ActivityRoute) {
+        showMainWindow()
+        guard lockState == .unlocked else {
+            pendingActivityRoute = route
             return
         }
-        let counts = await session.membersToConfirm()
-        guard lockState == .unlocked else { return }
-        let toConfirm = Dictionary(counts.map { ($0.organizationId, Int($0.count)) },
-                                   uniquingKeysWith: { first, _ in first })
-        if organizationAdmin.toConfirm != toConfirm { organizationAdmin.toConfirm = toConfirm }
+        switch route {
+        case .members(let id): openMembers(id)
+        case .organization(let id):
+            pane = nil
+            filter = .organization(id: id)
+        case .pendingMemberships:
+            pane = nil
+        case .emergency: openEmergency()
+        }
     }
 
     /// « N membres à confirmer » : le volet des membres de la première
@@ -239,6 +266,7 @@ extension AppModel {
     // MARK: Invitations reçues
 
     func openJoin() {
+        Task { await ActivityNotifier.shared.requestAuthorizationIfNeeded() }
         guard canEdit || organizationAdmin.preview else { return }
         organizationAdmin.error = nil
         organizationAdmin.sheet = .join

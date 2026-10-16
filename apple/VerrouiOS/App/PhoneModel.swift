@@ -1,4 +1,5 @@
 import AuthenticationServices
+import BackgroundTasks
 import Observation
 import SwiftUI
 import UIKit
@@ -175,6 +176,10 @@ final class PhoneModel {
     let sharing = PhoneSharingModel()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
+    /// Mises à jour en direct du serveur, au premier plan.
+    @ObservationIgnored let live = LiveUpdates()
+    /// Notification touchée coffre verrouillé : ouverte après le déverrouillage.
+    @ObservationIgnored var pendingActivityRoute: ActivityRoute?
     /// La prochaine synchronisation est la première après le déverrouillage :
     /// on mesure le plus long blocage du fil principal pendant qu'elle tourne.
     @ObservationIgnored private var watchFirstSync = false
@@ -512,11 +517,16 @@ final class PhoneModel {
         }
         watchFirstSync = true
         startSyncLoop()
+        if let route = pendingActivityRoute {
+            pendingActivityRoute = nil
+            openActivity(route)
+        }
     }
 
     func lock() {
         syncLoop?.cancel()
         syncLoop = nil
+        live.stop(session: session)
         vault.lock()
         summaries = []
         summaryIndex = [:]
@@ -561,7 +571,9 @@ final class PhoneModel {
             backgroundedAt = Date()
             syncLoop?.cancel()
             syncLoop = nil
+            live.stop(session: session)
             if lockState == .unlocked, autoLockSeconds == 0 { lock() }
+            scheduleBackgroundCheck()
         case .active:
             // Retour de l'arrière-plan (pas d'un simple état inactif) : le
             // réseau est réveillé pendant Face ID ou avant la synchronisation.
@@ -603,6 +615,55 @@ final class PhoneModel {
                 try? await Task.sleep(for: .seconds(waiting ? 30 : 5 * 60))
             }
         }
+        // Au premier plan, le canal des mises à jour en direct : un partage
+        // ou une confirmation arrive en quelques secondes.
+        live.start(session: session) { [weak self] in
+            await self?.syncNow()
+        } expired: { [weak self] in
+            guard let self, self.lockState == .unlocked else { return }
+            self.reloginRequired = true
+            self.lock()
+        }
+    }
+
+    // MARK: Arrière-plan : nouveautés du partage
+
+    /// Identifiant de la tâche d'arrière-plan (Info.plist,
+    /// `BGTaskSchedulerPermittedIdentifiers`).
+    static let activityTaskID = "app.verrou.activite"
+
+    /// Demande à iOS un réveil dans 30 minutes au plus tôt (iOS choisit le
+    /// moment, ou ne réveille pas l'app du tout).
+    func scheduleBackgroundCheck() {
+        guard mode == .vaultwarden, account != nil, ActivityNotifier.enabled, !ActivityNotifier.shared.silent else {
+            return
+        }
+        let request = BGAppRefreshTaskRequest(identifier: Self.activityTaskID)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 30 * 60)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+
+    /// Réveil en arrière-plan (`BGAppRefreshTask`) : un examen léger, qui ne
+    /// déchiffre rien et ne garde aucune clé plus longtemps que prévu.
+    /// - Délai de verrouillage dépassé : on verrouille d'abord (la clé n'a
+    ///   plus rien à faire en mémoire).
+    /// - Coffre encore ouvert (dans le délai) : synchronisation et examen
+    ///   comme au premier plan, avec la clé déjà en mémoire.
+    /// - Verrouillé : seulement le cache déjà téléchargé, sans clé ni réseau
+    ///   (le jeton de renouvellement est chiffré par la clé de
+    ///   l'utilisateur) ; voir SECURITY.md.
+    func backgroundActivityCheck() async {
+        scheduleBackgroundCheck()
+        guard mode == .vaultwarden, account != nil, ActivityNotifier.enabled else { return }
+        if lockState == .unlocked, let since = backgroundedAt, autoLockSeconds > 0,
+           Date().timeIntervalSince(since) >= TimeInterval(autoLockSeconds) {
+            lock()
+        }
+        if lockState == .unlocked {
+            await syncNow(awaitActivity: true)
+        } else {
+            ActivityNotifier.shared.post(session.checkActivityLocked())
+        }
     }
 
     /// Envoie en arrière-plan ce qui vient d'être écrit (voir `outbox.rs`),
@@ -616,7 +677,7 @@ final class PhoneModel {
     /// peu, le cœur ne retente pas tout de suite (la synchronisation
     /// périodique s'en charge). Les demandes simultanées sont regroupées par
     /// le cœur Rust.
-    func syncNow(afterWrite: Bool = false) async {
+    func syncNow(afterWrite: Bool = false, awaitActivity: Bool = false) async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         syncsInFlight += 1
         syncState = .syncing
@@ -643,7 +704,13 @@ final class PhoneModel {
             account = session.account()
             // Invitations en attente et membres à confirmer : à chaque
             // synchronisation périodique (pas après chaque écriture).
-            if !afterWrite { Task { await self.refreshSharingStatus() } }
+            // En arrière-plan, l'examen est attendu : iOS peut suspendre
+            // l'app dès la fin de la tâche.
+            if awaitActivity {
+                await refreshSharingStatus()
+            } else if !afterWrite {
+                Task { await self.refreshSharingStatus() }
+            }
             guard outcome.changed else { return }
             await reloadVaultAfterSync()
             if outcome.failures > 0 { result = .failed("\(outcome.failures) élément(s) illisible(s)") }

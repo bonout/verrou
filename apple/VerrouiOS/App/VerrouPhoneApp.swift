@@ -12,12 +12,23 @@ struct VerrouPhoneApp: App {
     @State private var launchBench: LaunchBenchDriver?
     #endif
 
+    init() {
+        // Le toucher d'une notification qui lance l'app passe par ici :
+        // installé avant la fin du lancement, gardé jusqu'à ce que l'app soit
+        // prête (`setHandler`).
+        let environment = ProcessInfo.processInfo.environment
+        ActivityNotifier.shared.silent = environment["VERROU_E2E_SERVER"] != nil || environment["VERROU_DEMO"] != nil
+        ActivityNotifier.shared.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
                 .environment(model)
                 .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(to: phase) }
                 .task {
+                    if model.mode != .vaultwarden { ActivityNotifier.shared.silent = true }
+                    ActivityNotifier.shared.setHandler { [weak model] route in model?.openActivity(route) }
                     #if DEBUG
                     if endToEnd == nil, let config = EndToEndDriver.Config(ProcessInfo.processInfo.environment) {
                         let driver = EndToEndDriver(model: model, config: config)
@@ -47,6 +58,11 @@ struct VerrouPhoneApp: App {
                     }
                     #endif
                 }
+        }
+        // Réveil d'arrière-plan : nouveautés du partage (voir
+        // `PhoneModel.backgroundActivityCheck`).
+        .backgroundTask(.appRefresh(PhoneModel.activityTaskID)) {
+            await model.backgroundActivityCheck()
         }
     }
 }

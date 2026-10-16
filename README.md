@@ -67,6 +67,11 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   phrase. Invited people create their account from Verrou's sign-in screen,
   even on a server with sign-ups closed, with no admin token; people who
   already have an account join by pasting the invitation link.
+- **Hear about it**: local notifications when you get access to a shared
+  vault, when someone waits for your confirmation, when new items are shared
+  with you, and for emergency access requests (Mac). Computed on the device
+  after each sync, never through a push service; on the Mac they arrive
+  within seconds through Vaultwarden's live notifications channel.
 - **Store more than passwords**: cards, identities, secure notes, SSH keys,
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on
@@ -298,6 +303,15 @@ one-time codes, passkeys). You build and install it yourself on your iPhone
 with your own Apple Developer account (`scripts/install-ios.sh`), or try it in
 the iOS Simulator without one (see [iPhone](#iphone)). There is no App Store
 release.
+
+**Someone I invited got nothing. Where is the invitation?**
+Vaultwarden sends it by e-mail only: until it is accepted, the server shows
+it to nobody, not even in the invitee's app, and it never hands out the
+link. Check that your server's SMTP works (the invite fails with an error
+if the server can't send it), that the mail didn't land in spam, and that
+the invitee can reach the server (local network or VPN) when opening the
+link. Verrou then notifies you when they have accepted, so you can confirm
+them.
 
 **What if I stop using Verrou?**
 Nothing changes: everything lives on your Vaultwarden server in the standard

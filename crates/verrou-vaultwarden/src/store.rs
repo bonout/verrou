@@ -266,7 +266,7 @@ impl Store {
     /// iOS met fin à une app suspendue qui tient un verrou de fichier dans
     /// un conteneur partagé). Un lecteur voit l'ancien fichier ou le
     /// nouveau, jamais un mélange.
-    fn write_private(&self, name: &str, data: &[u8]) -> Result<(), Error> {
+    pub(crate) fn write_private(&self, name: &str, data: &[u8]) -> Result<(), Error> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static WRITES: AtomicU64 = AtomicU64::new(0);
         fs::create_dir_all(&self.dir).map_err(Error::storage)?;

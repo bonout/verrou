@@ -23,6 +23,8 @@ final class MembersModel {
     var confirmation: Confirmation?
     var confirmRemove: OrganizationMember?
     var confirmRevoke: OrganizationMember?
+    /// Adresse tout juste invitée : sa fiche s'ouvre sur « Et ensuite ? ».
+    var justInvited: String?
     /// Revue visuelle : membres fictifs, aucun serveur.
     var preview = false
 
@@ -74,6 +76,7 @@ final class MembersModel {
         confirmation = nil
         confirmRemove = nil
         confirmRevoke = nil
+        justInvited = nil
         preview = false
     }
 }
@@ -90,6 +93,7 @@ extension AppModel {
         showMainWindow()
         members.show(organizationID)
         pane = .members
+        Task { await ActivityNotifier.shared.requestAuthorizationIfNeeded() }
     }
 
     func reloadMembers() async {
@@ -132,8 +136,16 @@ extension AppModel {
                     collections: draft.collections)
                 self.members.draft = nil
                 self.members.notice = invited.count == 1
-                    ? "Invitation envoyée à \(invited[0])."
-                    : "\(invited.count) invitations envoyées."
+                    ? "Invitation envoyée à \(invited[0]) : voir « Et ensuite ? »."
+                    : "\(invited.count) invitations envoyées : voir « Et ensuite ? »."
+                self.members.justInvited = invited.first
+            }
+            // Sans courriel, le serveur accepte d'office un compte existant :
+            // ce membre à confirmer n'est pas une nouvelle pour qui l'invite.
+            await refreshSharingStatus(notify: false)
+            if let email = members.justInvited,
+               let invited = members.members.first(where: { $0.email.caseInsensitiveCompare(email) == .orderedSame }) {
+                members.selection = invited.id
             }
         }
     }

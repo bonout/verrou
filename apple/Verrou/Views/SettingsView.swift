@@ -88,6 +88,15 @@ private struct GeneralSettings: View {
                     .foregroundStyle(launchAtLoginError == nil ? .secondary : Color.red)
             }
 
+            if model.mode == .vaultwarden || AppModel.isReview {
+                Section {
+                    ActivityNotificationsToggle()
+                } footer: {
+                    Text(ActivityNotificationsText.explanation)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             AppAutofillSection()
         }
     }
