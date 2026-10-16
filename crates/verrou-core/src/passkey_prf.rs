@@ -152,20 +152,6 @@ pub fn evaluate_inputs(
     evaluate(passkey, &salts(first, second)?, user_verified)
 }
 
-/// `evalByCredential` : l'entrée propre à cette passkey si le site en donne
-/// une (identifiant brut), sinon `eval`.
-pub fn select_inputs<'a, T>(
-    credential_id: &[u8],
-    eval: Option<&'a T>,
-    by_credential: impl IntoIterator<Item = (&'a [u8], &'a T)>,
-) -> Option<&'a T> {
-    by_credential
-        .into_iter()
-        .find(|(id, _)| *id == credential_id)
-        .map(|(_, value)| value)
-        .or(eval)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -323,22 +309,5 @@ mod tests {
             evaluate_inputs(&broken, b"a", None, true),
             Err(PasskeyError::BadKey)
         );
-    }
-
-    #[test]
-    fn eval_by_credential_wins_over_eval() {
-        let eval = "défaut";
-        let mine = "pour moi";
-        let other = "pour une autre";
-        let list: Vec<(&[u8], &&str)> = vec![(b"\x02", &other), (b"\x01", &mine)];
-        assert_eq!(
-            select_inputs(b"\x01", Some(&eval), list.clone()),
-            Some(&mine)
-        );
-        assert_eq!(
-            select_inputs(b"\x03", Some(&eval), list.clone()),
-            Some(&eval)
-        );
-        assert_eq!(select_inputs::<&str>(b"\x03", None, list), None);
     }
 }

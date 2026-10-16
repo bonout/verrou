@@ -18,12 +18,13 @@
 use verrou_core::passkey::{
     self, AssertionRequest, ES256, RegistrationRequest, b64url, b64url_decode,
 };
+use verrou_core::passkey_prf;
 use verrou_core::{FieldKind, Item, Passkey, Vault};
 
 use crate::access::{Write, logins_for, page_allowed};
 use crate::protocol::{
     PasskeyAssertion, PasskeyCreation, PasskeyQuery, PasskeyRegistration, PasskeySuggestion,
-    PasskeyTarget, PasskeyTargetsQuery, PasskeyUse,
+    PasskeyTarget, PasskeyTargetsQuery, PasskeyUse, PrfCreated, PrfRequest, PrfValues,
 };
 
 /// Longueur maximale des textes venus de la page (noms, identifiants).
@@ -110,6 +111,44 @@ pub fn find<'v>(vault: &'v Vault, request: &PasskeyUse) -> Result<(&'v Item, &'v
     Ok((item, passkey))
 }
 
+/// Évalue la PRF de la passkey pour les entrées de la page (base64url).
+/// Sans vérification de l'utilisateur (Touch ID refusé ou non demandé), pas
+/// de sortie : la page ne reçoit rien plutôt qu'une erreur.
+fn prf_results(
+    passkey: &Passkey,
+    values: &PrfValues,
+    user_verified: bool,
+) -> Result<Option<PrfValues>, String> {
+    if !user_verified {
+        return Ok(None);
+    }
+    let first = b64url_decode(&values.first).ok_or_else(|| "entrée PRF illisible".to_owned())?;
+    let second = values
+        .second
+        .as_deref()
+        .map(|s| b64url_decode(s).ok_or_else(|| "entrée PRF illisible".to_owned()))
+        .transpose()?;
+    let out = passkey_prf::evaluate_inputs(passkey, &first, second.as_deref(), true)
+        .map_err(|e| e.to_string())?;
+    Ok(Some(PrfValues {
+        first: b64url(out.first.as_slice()),
+        second: out.second.map(|s| b64url(s.as_slice())),
+    }))
+}
+
+/// Les entrées PRF de la page pour cette passkey : `evalByCredential` si
+/// elle y figure (identifiant brut, quel que soit l'encodage base64url),
+/// sinon `eval`.
+fn prf_inputs<'r>(request: &'r PrfRequest, credential_id: &[u8]) -> Option<&'r PrfValues> {
+    request
+        .eval_by_credential
+        .iter()
+        .take(MAX_IDS)
+        .find(|(id, _)| b64url_decode(id).as_deref() == Some(credential_id))
+        .map(|(_, values)| values)
+        .or(request.eval.as_ref())
+}
+
 /// Signe le défi de la page ; l'écriture à faire : le nouveau compteur.
 pub fn plan_assertion(
     vault: &Vault,
@@ -141,6 +180,14 @@ pub fn plan_assertion(
             authenticator_data: b64url(&assertion.authenticator_data),
             signature: b64url(&assertion.signature),
             user_handle: assertion.user_handle.as_deref().map(b64url),
+            prf: match request
+                .prf
+                .as_ref()
+                .and_then(|p| prf_inputs(p, &assertion.credential_id))
+            {
+                Some(values) => prf_results(passkey, values, user_verified)?,
+                None => None,
+            },
         },
     ))
 }
@@ -237,6 +284,16 @@ pub fn plan_creation(
         &mut rand::rngs::OsRng,
     )
     .map_err(|e| e.to_string())?;
+    let prf = match &request.prf {
+        Some(prf) => Some(PrfCreated {
+            enabled: true,
+            results: match &prf.eval {
+                Some(values) => prf_results(&passkey, values, user_verified)?,
+                None => None,
+            },
+        }),
+        None => None,
+    };
     let (title, uri) = crate::access::new_site(&request.url)?;
     let write = Write::Passkey {
         item: request.item.clone(),
@@ -255,6 +312,7 @@ pub fn plan_creation(
             attestation_object: b64url(&registration.attestation_object),
             public_key: b64url(&registration.public_key),
             algorithm: ES256,
+            prf,
         },
     ))
 }
@@ -361,6 +419,7 @@ mod tests {
             uv: false,
             attestation: None,
             item: item.map(str::to_owned),
+            prf: None,
         }
     }
 
@@ -412,6 +471,7 @@ mod tests {
                 credential: registration.credential.clone(),
                 challenge: b64url(&[7; 32]),
                 uv: false,
+                prf: None,
             };
             let (write, assertion) = plan_assertion(&vault, &use_, false).unwrap();
             assert!(matches!(write, Write::PasskeyCounter { counter, .. } if counter == expected));
@@ -430,6 +490,7 @@ mod tests {
             credential: registration.credential.clone(),
             challenge: b64url(&[7; 32]),
             uv: false,
+            prf: None,
         };
         assert!(plan_assertion(&vault, &stolen, false).is_err());
 
@@ -452,6 +513,86 @@ mod tests {
         assert!(excluded);
         assert_eq!(logins.len(), 1);
         assert!(logins[0].has_passkey);
+    }
+
+    /// PRF : sorties à la création (`eval`), les mêmes à la connexion pour
+    /// la même entrée, `evalByCredential` prioritaire, rien sans Touch ID.
+    #[test]
+    fn prf_at_creation_and_assertion() {
+        let vault = Vault::new(vec![login("github", "https://github.com", "camille")]);
+        let values = |first: &[u8], second: Option<&[u8]>| PrfValues {
+            first: b64url(first),
+            second: second.map(b64url),
+        };
+        let mut request = creation("https://github.com/", Some("github"));
+        request.uv = true;
+        request.prf = Some(PrfRequest {
+            eval: Some(values(b"sel-a", Some(b"sel-b"))),
+            ..PrfRequest::default()
+        });
+        let (write, registration) = plan_creation(&vault, &request, true, 0).unwrap();
+        let created = registration.prf.clone().unwrap();
+        assert!(created.enabled);
+        let at_creation = created.results.unwrap();
+        assert_ne!(Some(&at_creation.first), at_creation.second.as_ref());
+        let (vault, _) = apply_in_memory(&vault, write, "x");
+
+        // Sans Touch ID : la passkey sait faire, mais pas de sortie.
+        let (_, quiet) = plan_creation(
+            &Vault::new(vec![login("github", "https://github.com", "camille")]),
+            &request,
+            false,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            quiet.prf,
+            Some(PrfCreated {
+                enabled: true,
+                results: None
+            })
+        );
+
+        let use_with = |prf: PrfRequest, uv: bool| PasskeyUse {
+            url: "https://github.com/login".to_owned(),
+            rp_id: None,
+            item: "github".to_owned(),
+            credential: registration.credential.clone(),
+            challenge: b64url(&[9; 32]),
+            uv,
+            prf: Some(prf),
+        };
+        let eval = PrfRequest {
+            eval: Some(values(b"sel-a", Some(b"sel-b"))),
+            ..PrfRequest::default()
+        };
+        let (_, assertion) = plan_assertion(&vault, &use_with(eval.clone(), true), true).unwrap();
+        assert_eq!(assertion.prf.as_ref(), Some(&at_creation));
+        let (_, without_uv) = plan_assertion(&vault, &use_with(eval, false), false).unwrap();
+        assert_eq!(without_uv.prf, None);
+
+        // `evalByCredential` (identifiant avec remplissage `=` : même octets).
+        let mut by_credential = PrfRequest {
+            eval: Some(values(b"sel-a", None)),
+            ..PrfRequest::default()
+        };
+        by_credential.eval_by_credential.insert(
+            format!("{}==", registration.credential),
+            values(b"sel-c", None),
+        );
+        let (_, chosen) = plan_assertion(&vault, &use_with(by_credential, true), true).unwrap();
+        let chosen = chosen.prf.unwrap();
+        assert_ne!(chosen.first, at_creation.first);
+        assert_eq!(chosen.second, None);
+        let mut garbled = use_with(PrfRequest::default(), true);
+        garbled.prf = Some(PrfRequest {
+            eval: Some(PrfValues {
+                first: "@@".to_owned(),
+                second: None,
+            }),
+            ..PrfRequest::default()
+        });
+        assert!(plan_assertion(&vault, &garbled, true).is_err());
     }
 
     #[test]

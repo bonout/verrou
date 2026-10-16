@@ -54,7 +54,7 @@ test("les options de la page deviennent une requête pour Verrou", () => {
   assert.deepEqual({ ...create, algorithms: [...create.algorithms], exclude: [...create.exclude] }, {
     rp_id: "github.com", rp_name: "GitHub", user_id: "AQID", user_name: "camille",
     user_display_name: "Camille", challenge: codec.encode(new Uint8Array(32).fill(7)),
-    algorithms: [-8, -7], exclude: ["BAU"], uv: false, attestation: "direct",
+    algorithms: [-8, -7], exclude: ["BAU"], uv: false, attestation: "direct", prf: null,
   });
   // Valeurs par défaut de WebAuthn : rpId absent, vérification « preferred ».
   const get = codec.getRequest({ challenge: new Uint8Array(16) });
@@ -62,6 +62,47 @@ test("les options de la page deviennent une requête pour Verrou", () => {
   assert.equal(get.uv, true);
   assert.equal(get.allow.length, 0);
   assert.throws(() => codec.createRequest({ rp: {}, user: { id: "pas un tampon" }, challenge: new Uint8Array(16) }));
+});
+
+test("extension PRF : entrées en base64url, vérification de l'utilisateur exigée", () => {
+  const create = codec.createRequest({
+    rp: { id: "github.com" }, user: { id: new Uint8Array([1]) }, challenge: new Uint8Array(16),
+    authenticatorSelection: { userVerification: "discouraged" },
+    extensions: { prf: { eval: { first: new Uint8Array([1, 2, 3]) }, evalByCredential: { AQ: { first: new Uint8Array([9]) } } } },
+  });
+  assert.equal(create.uv, true);
+  // `evalByCredential` n'a pas de sens à la création : ignoré.
+  assert.deepEqual(JSON.parse(JSON.stringify(create.prf)), { eval: { first: "AQID", second: null }, eval_by_credential: {} });
+  const get = codec.getRequest({
+    challenge: new Uint8Array(16), userVerification: "discouraged",
+    extensions: { prf: { evalByCredential: { "AQ": { first: new Uint8Array([4]), second: new Uint8Array([5]) } } } },
+  });
+  assert.equal(get.uv, true);
+  assert.deepEqual(JSON.parse(JSON.stringify(get.prf)), { eval: null, eval_by_credential: { AQ: { first: "BA", second: "BQ" } } });
+  assert.equal(codec.getRequest({ challenge: new Uint8Array(16) }).prf, null);
+
+  // Sorties de Verrou → `getClientExtensionResults().prf` (ArrayBuffer) et JSON.
+  const registration = codec.registrationCredential({
+    credential: "AQ", client_data: "e30", attestation_object: "oA", authenticator_data: "AA",
+    public_key: "AA", algorithm: -7, prf: { enabled: true, results: { first: "AQID" } },
+  }, { prf: true });
+  const created = registration.getClientExtensionResults().prf;
+  assert.equal(created.enabled, true);
+  assert.deepEqual(bytes(created.results.first), [1, 2, 3]);
+  assert.equal(created.results.second, undefined);
+  assert.deepEqual(JSON.parse(JSON.stringify(registration.toJSON().clientExtensionResults)), { prf: { enabled: true, results: { first: "AQID" } } });
+  const assertion = codec.assertionCredential({
+    credential: "AQ", client_data: "e30", authenticator_data: "AA", signature: "AA", user_handle: null,
+    prf: { first: "AQ", second: "Ag" },
+  });
+  const results = assertion.getClientExtensionResults().prf.results;
+  assert.deepEqual([bytes(results.first), bytes(results.second)], [[1], [2]]);
+  // Une copie à chaque appel : la page ne modifie pas la suivante.
+  new Uint8Array(results.first)[0] = 42;
+  assert.deepEqual(bytes(assertion.getClientExtensionResults().prf.results.first), [1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(assertion.toJSON().clientExtensionResults)), { prf: { results: { first: "AQ", second: "Ag" } } });
+  assert.deepEqual(Object.keys(codec.assertionCredential({ credential: "AQ", client_data: "e30", authenticator_data: "AA", signature: "AA" })
+    .getClientExtensionResults()), []);
 });
 
 test("les réponses de Verrou deviennent des PublicKeyCredential", () => {
@@ -246,6 +287,32 @@ test("création, puis connexions signées par Verrou", async () => {
   });
   assert.equal(fresh.result, "registration", JSON.stringify(fresh));
   assert.match(fresh.item, /^nouveau-/);
+
+  // PRF : sorties à la création, les mêmes à la connexion pour la même
+  // entrée, d'autres pour une autre entrée.
+  const salt = (text) => codec.encode(new TextEncoder().encode(text));
+  const withPrf = await channel.request({
+    cmd: "passkey_create", url: "https://prf.example/inscription", user_id: "Ag", user_name: "prf",
+    challenge, algorithms: [-7], uv: true, prf: { eval: { first: salt("sel-1"), second: salt("sel-2") } },
+  });
+  assert.equal(withPrf.result, "registration", JSON.stringify(withPrf));
+  assert.equal(withPrf.prf.enabled, true);
+  assert.equal(codec.decode(withPrf.prf.results.first).byteLength, 32);
+  assert.notEqual(withPrf.prf.results.first, withPrf.prf.results.second);
+  const prfGet = (prf) => channel.request({
+    cmd: "passkey_get", url: "https://prf.example/connexion", item: withPrf.item,
+    credential: withPrf.credential, challenge, uv: true, prf,
+  });
+  const same = await prfGet({ eval: { first: salt("sel-1") } });
+  assert.equal(same.result, "assertion", JSON.stringify(same));
+  assert.equal(same.prf.first, withPrf.prf.results.first, "même entrée, même sortie");
+  assert.equal(same.prf.second, undefined);
+  const byCredential = await prfGet({
+    eval: { first: salt("sel-1") }, eval_by_credential: { [withPrf.credential]: { first: salt("sel-3") } },
+  });
+  assert.notEqual(byCredential.prf.first, withPrf.prf.results.first, "evalByCredential prioritaire");
+  const plain = await prfGet(undefined);
+  assert.equal(plain.prf, undefined);
   const local = await channel.request({ cmd: "passkey_list", url: "http://localhost:8000/connexion", allow: [fresh.credential] });
   assert.deepEqual(local.items.map((p) => p.item), [fresh.item]);
   channel.disconnect();
