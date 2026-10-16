@@ -172,9 +172,10 @@ PR qui touche à l'un de ces points le dit dans sa description.
   dans un brouillon de modification ; seul le remplissage par l'extension
   reste permis, comme dans les apps Bitwarden. Les doublons ne comparent que
   des éléments d'un même coffre, et jamais un élément en lecture seule. Les
-  membres se gèrent dans Verrou (voir « Membres des organisations ») ; la
-  création des collections et les règles de l'organisation, dans le coffre
-  web.
+  membres, les organisations, les collections et les groupes se gèrent dans
+  Verrou (voir « Partage avec d'autres comptes » et « Membres des
+  organisations ») ; les règles (politiques) de l'organisation, dans le
+  coffre web.
 - **Modifications hors ligne, et écritures sans attente** (`outbox.rs`) :
   en ligne comme hors ligne, une création, une modification, un favori, un
   changement de dossier, la corbeille, la restauration, les archives (seules
@@ -382,6 +383,53 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   disparaît.
 - **Prise de contrôle** (nouveau mot de passe principal du concédant) : pas
   dans Verrou, seulement dans le coffre web.
+
+## Partage avec d'autres comptes
+
+- **D'où viennent les clés d'organisation** : seulement du profil renvoyé
+  par le serveur, où chaque clé est chiffrée pour la clé publique du compte
+  (RSA-OAEP) ; le SDK la déchiffre avec la clé privée du compte et la garde
+  dans son magasin de clés. Swift ne voit jamais une clé, ni de compte ni
+  d'organisation : seulement des noms, des identifiants et des droits.
+- **Créer une organisation** : la clé de l'organisation (AES-256-CBC-HMAC)
+  et sa paire de clés RSA sont tirées dans le magasin de clés du SDK ; le
+  serveur reçoit la clé chiffrée pour ma clé publique, la clé privée de
+  l'organisation chiffrée par la clé de l'organisation, et le nom de la
+  première collection chiffré, comme avec le coffre web. Rien ne sort en
+  clair, et les clés de travail sont effacées à la fin de l'opération. Le
+  serveur peut refuser (`ORG_CREATION_USERS`).
+- **Partager un ou plusieurs éléments** : chacun est déchiffré puis
+  rechiffré par le SDK sous la clé de l'organisation, clés des pièces
+  jointes comprises (leur contenu n'est ni retéléchargé ni renvoyé). Le
+  partage groupé envoie le lot en une requête (`PUT /api/ciphers/share`) ;
+  les éléments déjà partagés, en lecture seule ou à la corbeille sont
+  écartés avant tout envoi, les éléments protégés demandent confirmation
+  (Touch ID ou mot de passe principal). Une fois partagé, un élément est lisible
+  par tous ceux qui ont la clé de l'organisation et accès à sa collection :
+  le partage ne se défait pas en retirant la clé (un membre a pu le copier).
+- **Collections et groupes** : les noms des collections sont chiffrés par
+  la clé de l'organisation ; les noms des groupes sont en clair sur le
+  serveur (format de Bitwarden), comme les adresses des membres. Les droits
+  (lecture seule, mots de passe masqués, gérer) sont vérifiés dans Rust
+  avant tout envoi, puis par le serveur ; « masquer les mots de passe » est
+  une restriction d'affichage appliquée par le client, comme dans les apps
+  Bitwarden : l'élément est chiffré pour le membre, qui pourrait le lire
+  avec un autre client. Pour un vrai secret, ne pas ouvrir la collection.
+- **Rejoindre une organisation** : le lien d'invitation collé est lu dans
+  Rust (jeton signé par le serveur, adresse, organisation) et n'est jamais
+  enregistré ; l'invitation doit viser l'adresse du compte ouvert. Accepter
+  ne donne aucun accès : tant qu'un administrateur ne m'a pas confirmé en
+  comparant ma phrase d'empreinte (affichée à côté de l'invitation en
+  attente), je n'ai pas la clé de l'organisation. Côté administrateur, une
+  clé de membre n'est jamais utilisée sans cette vérification (voir
+  ci-dessous).
+- **Hors ligne** : tout ce qui touche au partage exige le serveur et
+  s'arrête avec un message clair ; rien ne part dans la file des
+  modifications hors ligne, qui ne sait pas rechiffrer pour une
+  organisation.
+- **Journaux** : aucune clé, aucun nom d'élément ou de collection déchiffré,
+  aucun jeton d'invitation n'est écrit dans les journaux ; les messages
+  d'erreur ne citent que le titre d'un élément refusé, à l'écran.
 
 ## Membres des organisations
 

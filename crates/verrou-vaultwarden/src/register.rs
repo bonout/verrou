@@ -29,7 +29,7 @@ use serde_json::{Value, json};
 use verrou_core::SecretString;
 
 use crate::api::{Api, error_message};
-use crate::{Connection, Error};
+use crate::{Connection, Decrypted, Error};
 
 /// Longueur minimale du mot de passe principal (celle des apps Bitwarden).
 pub const MIN_PASSWORD_LENGTH: usize = 12;
@@ -368,6 +368,32 @@ pub fn password_strength(password: &str, email: &str, name: Option<&str>) -> u8 
 }
 
 impl Connection {
+    /// « Rejoindre une organisation » avec un compte existant : le lien
+    /// d'invitation collé (il porte le jeton signé par le serveur) est
+    /// accepté, puis le coffre resynchronisé. Rend le nom de l'organisation.
+    /// Un administrateur doit encore confirmer le membre (empreinte) avant
+    /// qu'il reçoive la clé de l'organisation.
+    pub async fn join_organization(&mut self, link: &str) -> Result<(String, Decrypted), Error> {
+        let SignupLink::Invite(invite) = parse_link(link)? else {
+            return Err(Error::Invalid(
+                "ce lien n'est pas une invitation à une organisation".to_owned(),
+            ));
+        };
+        if invite.is_server_invite() {
+            return Err(Error::Invalid(
+                "ce lien invite à créer un compte sur le serveur, pas à rejoindre une organisation"
+                    .to_owned(),
+            ));
+        }
+        let access = self.require_online("Rejoindre une organisation").await?;
+        self.accept_invitation(&invite).await?;
+        let vault = self.sync_with(&access).await?;
+        let name = invite
+            .organization_name
+            .unwrap_or_else(|| "l'organisation".to_owned());
+        Ok((name, vault))
+    }
+
     /// Accepte l'invitation d'une organisation (lien reçu par courriel),
     /// une fois connecté avec le compte invité. Il faudra ensuite qu'un
     /// administrateur confirme le membre.

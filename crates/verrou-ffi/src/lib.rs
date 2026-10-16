@@ -58,6 +58,7 @@ mod import;
 mod members;
 mod passphrase;
 mod send;
+mod sharing;
 mod ssh;
 mod templates;
 mod watchtower;
@@ -78,6 +79,10 @@ pub use passphrase::{
     generate_passphrase,
 };
 pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
+pub use sharing::{
+    AccessGrant, CollectionAccessList, InvitationInfo, OrganizationGroup, PendingConfirmations,
+    PendingMembershipView, ShareResult,
+};
 
 pub use attachments::{AttachmentContent, AttachmentEntry};
 pub use autofill::{
@@ -1973,9 +1978,20 @@ pub struct OrganizationView {
     pub can_manage_members: bool,
     /// Propriétaire : rôles au-dessus d'« utilisateur » aussi.
     pub is_owner: bool,
+    /// Créer des collections.
+    pub can_create_collections: bool,
+    /// Une collection au moins à gérer, ou le droit d'en créer.
+    pub manages_collections: bool,
+    /// Renommer l'organisation (propriétaire).
+    pub can_rename: bool,
+    /// Groupes activés sur le serveur.
+    pub use_groups: bool,
+    /// Créer et modifier les groupes (propriétaire, administrateur).
+    pub can_manage_groups: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+#[allow(clippy::struct_excessive_bools)] // des droits, lus tels quels par Swift
 pub struct CollectionView {
     pub id: String,
     pub name: String,
@@ -1983,6 +1999,8 @@ pub struct CollectionView {
     pub read_only: bool,
     pub hide_passwords: bool,
     pub manage: bool,
+    /// Le compte peut renommer, supprimer et ouvrir cette collection.
+    pub can_manage: bool,
 }
 
 fn hidden_by_organization() -> VerrouError {
@@ -2005,6 +2023,8 @@ fn mock_organization() -> Organization {
             hide_passwords: false,
             manage: true,
         }],
+        use_groups: false,
+        can_create_collections: true,
     }
 }
 
@@ -2038,6 +2058,11 @@ impl VaultSession {
                 manage_url: server
                     .as_ref()
                     .map(|s| format!("{s}/#/organizations/{}/members", org.id)),
+                can_create_collections: org.can_create_collections,
+                manages_collections: org.manages_collections(),
+                can_rename: org.can_rename(),
+                use_groups: org.use_groups,
+                can_manage_groups: org.can_manage_groups(),
                 collections: org
                     .collections
                     .iter()
@@ -2048,6 +2073,7 @@ impl VaultSession {
                         read_only: c.read_only,
                         hide_passwords: c.hide_passwords,
                         manage: c.manage,
+                        can_manage: org.can_manage_collection(c),
                     })
                     .collect(),
                 id: org.id,

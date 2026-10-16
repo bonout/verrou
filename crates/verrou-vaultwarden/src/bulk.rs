@@ -48,6 +48,8 @@ pub enum Skipped {
     InTrash,
     /// Plus dans le coffre (supprimé ailleurs entre-temps).
     NotFound,
+    /// Déjà dans une organisation (partage seulement).
+    AlreadyShared,
 }
 
 /// Bilan d'une action groupée.
