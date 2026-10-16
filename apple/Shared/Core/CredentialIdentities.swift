@@ -1,4 +1,4 @@
-#if os(iOS)
+#if os(iOS) || os(macOS)
 import AuthenticationServices
 import CryptoKit
 import Foundation

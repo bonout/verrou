@@ -44,6 +44,8 @@ final class AutoFillModel {
         let rpID: String
         let clientDataHash: Data
         let allowed: [Data]
+        /// Extension PRF demandée par le site (iOS 18, macOS 15).
+        var prf: PasskeyPrfAssertion?
     }
 
     /// La réponse rendue au système.
@@ -256,8 +258,9 @@ final class AutoFillModel {
     func choose(_ passkey: AutofillPasskey) {
         guard case .list(_, let query?) = request else { return }
         guarded(passkey.itemId, title: passkey.title) { [weak self] in
-            await self?.sign(rpID: query.rpID, credentialID: Data(passkey.credentialId),
-                             clientDataHash: query.clientDataHash)
+            let credentialID = Data(passkey.credentialId)
+            await self?.sign(rpID: query.rpID, credentialID: credentialID,
+                             clientDataHash: query.clientDataHash, prf: query.prf?.inputs(for: credentialID))
         }
     }
 
@@ -289,9 +292,13 @@ final class AutoFillModel {
                 return finish(.failed("le site n'accepte pas les clés ES256"))
             }
             let id = identity.recordIdentifier ?? ""
+            var prf: PrfInputs?
+            if #available(iOS 18.0, *) {
+                prf = PasskeyPrfAssertion(request: request)?.inputs(for: identity.credentialID)
+            }
             guarded(id, title: identity.userName) { [weak self] in
                 await self?.sign(rpID: identity.relyingPartyIdentifier, credentialID: identity.credentialID,
-                                 clientDataHash: request.clientDataHash)
+                                 clientDataHash: request.clientDataHash, prf: prf)
             }
         default:
             if #available(iOS 18.0, *), request.type == .oneTimeCode,
@@ -372,7 +379,7 @@ final class AutoFillModel {
         }
     }
 
-    private func sign(rpID: String, credentialID: Data, clientDataHash: Data) async {
+    private func sign(rpID: String, credentialID: Data, clientDataHash: Data, prf: PrfInputs? = nil) async {
         guard let session = vault?.session else { return }
         phase = .working
         do {
@@ -383,6 +390,16 @@ final class AutoFillModel {
                 userHandle: Data(result.userHandle), relyingParty: rpID, signature: Data(result.signature),
                 clientDataHash: clientDataHash, authenticatorData: Data(result.authenticatorData),
                 credentialID: Data(result.credentialId))
+            // PRF : sorties à côté de l'assertion (rien dans authenticatorData).
+            if #available(iOS 18.0, *), let prf {
+                do {
+                    let output = try session.passkeyPrf(rpId: rpID, credentialId: credentialID, first: prf.first,
+                                                        second: prf.second, userVerified: userVerified)
+                    credential.extensionOutput = PasskeyPrfOutputs.assertion(output)
+                } catch {
+                    log.error("PRF non évaluée : \(String(describing: error), privacy: .public)")
+                }
+            }
             finish(.assertion(credential))
         } catch {
             phase = .ready
@@ -410,6 +427,17 @@ final class AutoFillModel {
             let credential = ASPasskeyRegistrationCredential(
                 relyingParty: identity.relyingPartyIdentifier, clientDataHash: request.clientDataHash,
                 credentialID: Data(result.credentialId), attestationObject: Data(result.attestationObject))
+            // PRF demandée : la passkey la prend en charge, et donne déjà ses
+            // sorties si le site a fourni des entrées.
+            if #available(iOS 18.0, *), let prf = PasskeyPrfRegistration(request: request) {
+                var output: PasskeyPrfOutput?
+                if let eval = prf.eval {
+                    output = try? session.passkeyPrf(
+                        rpId: identity.relyingPartyIdentifier, credentialId: Data(result.credentialId),
+                        first: eval.first, second: eval.second, userVerified: userVerified)
+                }
+                credential.extensionOutput = PasskeyPrfOutputs.registration(output)
+            }
             // Le système ne propose une passkey (`allowCredentials`) que si
             // elle est dans son magasin d'identités : on le met à jour ici,
             // sans attendre que l'app se synchronise.

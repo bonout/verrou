@@ -689,8 +689,12 @@ page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont c
   un identifiant qui en a déjà une la remplace (la fenêtre le dit). Une
   passkey que le site exclut (`excludeCredentials`) et que le coffre contient
   déjà n'est pas recréée (`InvalidStateError`).
+- **Extension PRF** (`extensions.prf`) : évaluée par Verrou après Touch ID
+  (une demande avec `prf` exige la vérification de l'utilisateur), sorties
+  rendues par `getClientExtensionResults()` ; voir « Extension PRF des
+  passkeys ».
 - **Limites connues** : clés ES256 seulement (un site qui n'accepte pas ES256
-  passe par le navigateur) ; pas d'extensions WebAuthn (PRF, `largeBlob`) ;
+  passe par le navigateur) ; pas d'autre extension WebAuthn (`largeBlob`) ;
   pas de passkey dans les cadres ; pendant
   une demande de Touch ID, les autres requêtes de l'extension attendent.
 
@@ -1192,6 +1196,86 @@ garde en mémoire et la réécrit en entier. Choix retenu :
 - **Mémoire** : l'extension reste loin de la limite d'environ 120 Mo (pic
   mesuré à 56 Mo dans le simulateur, coffre de test) : le déchiffrement, la
   recherche et la correspondance des sites restent dans le cœur Rust.
+
+## Remplissage automatique sur Mac
+
+L'extension `VerrouAutoFillMac` (`app.verrou.mac.autofill`) est le
+fournisseur d'identifiants du système sur le Mac (Réglages Système → Général
+→ Remplissage automatique et mots de passe) : identifiants, codes à usage
+unique et passkeys dans Safari et les apps. Elle reprend le modèle et le
+contrôleur de l'iPhone (`apple/VerrouAutoFill`) ; tout ce qui est dit plus
+haut du magasin d'identités, d'« une demande, un déverrouillage », des
+éléments protégés, des passkeys et des écritures en invitée vaut ici, avec
+Touch ID à la place de Face ID.
+
+- **Signature** : macOS tue un processus signé ad hoc qui porte le droit
+  `com.apple.developer.authentication-services.autofill-credential-provider`
+  (droit réservé, autorisé par un profil d'approvisionnement), et ne valide
+  un groupe d'apps que pour une app signée par l'équipe qui le préfixe
+  (`<équipe>.app.verrou`) ; sans validation, macOS 15 demande à chaque accès
+  l'autorisation de lire « les données d'autres apps ». L'extension n'est
+  donc livrée que dans un build signé par l'équipe (`VERROU_MAC_TEAM`) ; le
+  build ad hoc, par défaut, la retire du paquet avant la signature et garde
+  le coffre dans le conteneur de l'app, comme avant.
+- **Coffre partagé** : dans un build signé, le dossier du compte est dans le
+  conteneur du groupe d'apps (`~/Library/Group Containers/<équipe>.app.verrou`),
+  protégé par la sandbox : seules l'app et son extension, signées par
+  l'équipe, y accèdent. Rien n'y est en clair (cache chiffré par le
+  serveur, file chiffrée avec la clé de l'utilisateur, scellement Touch ID
+  lié au Secure Enclave de ce Mac).
+- **Migration** : au premier lancement d'un build signé, l'app **copie** son
+  dossier du conteneur de l'app vers le groupe (dossier temporaire, puis
+  vérification fichier par fichier, taille et SHA-256, puis renommage
+  atomique), écrit une note `migration.json`, et renomme l'ancien dossier en
+  `Verrou-avant-groupe-<date>` sans l'effacer : l'app ne le relit plus (une
+  file hors ligne périmée ne repartirait pas vers le serveur). Un dossier du
+  groupe qui contient autre chose qu'un compte arrête la migration : l'app
+  garde alors son dossier privé. Testé sur des copies jetables
+  (`apple/VerrouMacTests`), jamais sur le vrai conteneur.
+- **Touch ID dans l'extension** : comme sur l'iPhone, d'abord le scellement
+  de l'app, sinon le mot de passe principal puis un scellement propre à
+  l'extension (`touchid-autofill.json`).
+- **Avec l'extension de navigateur** : les deux coexistent. Dans Brave et
+  Firefox, `passkey-page.js` prend les demandes de passkey avant le
+  navigateur ; le système (et donc `VerrouAutoFillMac`) n'est sollicité que
+  si l'utilisateur choisit « Utiliser le navigateur » ou si Verrou n'a rien
+  pour ce site : jamais deux demandes de Touch ID pour une même opération.
+  Safari et les apps n'ont que le fournisseur du système.
+
+## Extension PRF des passkeys
+
+Un site peut demander à une passkey une valeur pseudo-aléatoire liée à un
+sel de son choix (`extensions.prf`, WebAuthn niveau 3) ; il s'en sert comme
+clé de chiffrement. Verrou l'évalue dans le fournisseur de l'iPhone (iOS 18),
+du Mac (macOS 15) et dans l'extension de navigateur.
+
+- **Calcul** (`verrou-core/src/passkey_prf.rs`), comme l'extension CTAP2
+  `hmac-secret` et `passkey-rs` (SDK de Bitwarden) :
+  `sel = SHA-256("WebAuthn PRF" ‖ 0x00 ‖ entrée)`, puis
+  `sortie = HMAC-SHA256(secret, sel)`. Le système transmet au fournisseur les
+  entrées brutes ; Verrou les hache, comme le fournisseur de Chrome sur
+  iPhone.
+- **Le secret** : le format des passkeys de Bitwarden n'a pas de champ pour
+  un secret `hmac-secret`, et le SDK de Bitwarden n'évalue pas la PRF pour les
+  passkeys du coffre (PM-30510). Verrou n'invente pas de champ (les apps
+  officielles l'effaceraient en réécrivant l'élément) : il **dérive** le
+  secret de la clé privée, `HKDF-SHA256(scalaire P-256, sel
+  "verrou.passkey.prf.v1", info = identifiant de l'accréditation)`. La
+  sortie est donc stable sur tous les appareils où Verrou tourne, pour toute
+  passkey du coffre (y compris celles créées par Bitwarden). Qui détient la
+  clé privée peut la recalculer, comme pour un secret rangé à côté. Si
+  Bitwarden ajoute un jour un champ, ses sorties différeront de celles de
+  Verrou : les données qu'un site aurait chiffrées avec la PRF de Verrou ne
+  s'ouvriraient pas avec les apps officielles (qui aujourd'hui n'ont pas de
+  PRF du tout). Vecteurs de test figés dans le code.
+- **Vérification de l'utilisateur** : la PRF n'est rendue qu'après Face ID,
+  Touch ID ou le mot de passe principal (dans le navigateur, une demande avec
+  `prf` exige Touch ID) ; sans vérification, aucune sortie. Les sorties sont
+  des clés : elles ne sont ni gardées ni écrites, vont de Rust au système (ou
+  à la page), et la PRF ne touche pas au compteur.
+- **`evalByCredential`** l'emporte sur `eval` pour la passkey choisie ; à la
+  création, Verrou annonce la prise en charge (`enabled`) et donne déjà les
+  sorties si le site a fourni des entrées.
 
 ## Clé de sécurité (YubiKey, `hmac-secret`)
 

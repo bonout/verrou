@@ -17,6 +17,15 @@ settings:
     # groupe est unique chez Apple : pour un iPhone, passer le sien, par
     # exemple VERROU_APP_GROUP=group.<équipe>.verrou (scripts/install-ios.sh).
     VERROU_APP_GROUP: group.app.verrou
+    # Mac : signé ad hoc par défaut, sans groupe d'apps ni extension de
+    # remplissage du système. Un build signé par l'équipe
+    # (VERROU_MAC_TEAM=<équipe> scripts/install-macos.sh) passe
+    # VERROU_MAC_APP_GROUP=<équipe>.app.verrou et
+    # VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements : macOS ne valide
+    # un groupe d'apps, et ne lance un fournisseur d'identifiants, que pour une
+    # app signée par une équipe (voir docs/GUIDE.md).
+    VERROU_MAC_APP_GROUP: ""
+    VERROU_MAC_ENTITLEMENTS: Verrou/Verrou.entitlements
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
 targets:
@@ -41,6 +50,13 @@ targets:
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
+      # Fournisseur d'identifiants du système (Safari, apps du Mac) : retiré
+      # du paquet d'un build ad hoc (phase « Fournisseur d'identifiants »).
+      - target: VerrouAutoFillMac
+    info:
+      path: Verrou/Info.plist
+      properties:
+        VerrouAppGroup: $(VERROU_MAC_APP_GROUP)
     # L'extension copiée donne celle de Firefox (même code, autre manifeste),
     # puis les deux reçoivent une version propre à leur contenu : Brave la
     # recharge d'elle-même quand l'app est mise à jour (extension/update.js).
@@ -51,6 +67,15 @@ targets:
           EXTENSION="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/extension"
           "$SRCROOT/../scripts/firefox-extension.sh" "$EXTENSION" "$EXTENSION-firefox"
           "$SRCROOT/../scripts/stamp-extension.sh" "$EXTENSION" "$EXTENSION-firefox"
+      # Signé ad hoc (pas de groupe d'apps) : macOS tuerait l'extension (droit
+      # de fournisseur réservé aux apps signées par une équipe), on ne la livre
+      # pas. Le paquet est signé après cette phase.
+      - name: Fournisseur d'identifiants
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ -z "$VERROU_MAC_APP_GROUP" ]; then
+            rm -rf "$TARGET_BUILD_DIR/$PLUGINS_FOLDER_PATH/VerrouAutoFillMac.appex"
+          fi
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac
@@ -61,11 +86,79 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        CODE_SIGN_ENTITLEMENTS: Verrou/Verrou.entitlements
+        CODE_SIGN_ENTITLEMENTS: $(VERROU_MAC_ENTITLEMENTS)
         OTHER_LDFLAGS: ["-lc++"]
         # La phase « Version de l'extension » réécrit le manifeste copié dans le
         # paquet et y ajoute l'extension de Firefox.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  # Fournisseur d'identifiants du Mac (Réglages Système → Général →
+  # Remplissage automatique et mots de passe) : identifiants, codes et
+  # passkeys pour Safari et les apps. Le modèle et le contrôleur sont ceux de
+  # l'iPhone (VerrouAutoFill) ; seule l'interface est propre au Mac. Ouvre le
+  # coffre du groupe d'apps en invitée, comme sur l'iPhone.
+  VerrouAutoFillMac:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: VerrouAutoFillMac
+      - path: VerrouAutoFill/AutoFillModel.swift
+      - path: VerrouAutoFill/CredentialProviderViewController.swift
+      - path: VerrouAutoFill/Memory.swift
+      - path: VerrouAutoFill/PasskeyPrf.swift
+      - path: VerrouAutoFill/PasskeyPrfSystem.swift
+      - path: Shared
+      - path: Verrou/Resources/Assets.xcassets
+    dependencies:
+      - framework: Frameworks/VerrouFFI.xcframework
+        embed: false
+      - sdk: AuthenticationServices.framework
+    info:
+      path: VerrouAutoFillMac/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: "GPL-3.0-or-later"
+        VerrouAppGroup: $(VERROU_MAC_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).CredentialProviderViewController
+          NSExtensionAttributes:
+            ASCredentialProviderExtensionCapabilities:
+              ProvidesPasswords: true
+              ProvidesPasskeys: true
+              ProvidesOneTimeCodes: true
+              ProvidesTextToInsert: false
+            ASCredentialProviderExtensionShowsConfigurationUI: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.autofill
+        PRODUCT_NAME: VerrouAutoFillMac
+        CODE_SIGN_ENTITLEMENTS: VerrouAutoFillMac/VerrouAutoFillMac.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        OTHER_LDFLAGS: ["-lc++"]
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
+
+  # Tests unitaires du Mac sans app hôte (rien ne s'affiche) : migration du
+  # compte vers le groupe d'apps, sélection des entrées PRF.
+  #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
+  VerrouMacTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: VerrouMacTests
+      - path: Shared/Core/VerrouStorage.swift
+      - path: VerrouAutoFill/PasskeyPrf.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+        ENABLE_HARDENED_RUNTIME: NO
 
   # App iPhone et son extension de remplissage automatique. Simulateur sans
   # compte Apple : signé ad hoc (« - », jamais une équipe de développeur).
@@ -212,3 +305,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         TEST_TARGET_NAME: VerrouiOS
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+
+schemes:
+  VerrouMacTests:
+    build:
+      targets:
+        VerrouMacTests: [test]
+    test:
+      targets: [VerrouMacTests]
