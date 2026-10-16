@@ -16,6 +16,7 @@ pub mod mock;
 pub mod model;
 pub mod otp_scan;
 pub mod passkey;
+pub mod passkey_upgrade;
 pub mod passphrase;
 pub mod search;
 pub mod secret;

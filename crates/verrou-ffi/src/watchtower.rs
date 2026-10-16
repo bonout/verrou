@@ -7,8 +7,10 @@ use std::sync::{Arc, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest as _, Sha256};
-use verrou_core::{SecretString, watchtower};
+use verrou_core::passkey_upgrade::{self, PasskeyDirectory, Support};
+use verrou_core::{SecretString, Vault, mock, watchtower};
 use verrou_vaultwarden::change_password::{self, Source};
+use verrou_vaultwarden::passkey_setup;
 use verrou_vaultwarden::{Connection, Decrypted};
 
 use crate::{BreachedPassword, ItemSummary, VaultSession, VerrouError, summary};
@@ -68,6 +70,79 @@ pub struct MissingTwoFactor {
     pub methods: Vec<String>,
     /// Page d'aide du site pour l'activer (HTTPS).
     pub documentation: Option<String>,
+}
+
+/// Identifiants dont le site accepte les passkeys, sans passkey dans
+/// Verrou (« Passkey possible »).
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct PasskeyReport {
+    pub candidates: Vec<PasskeyCandidate>,
+    /// Horodatage Unix de la copie de l'annuaire utilisée.
+    pub fetched_at: i64,
+    /// Copie de plus de 7 jours, faute de réseau.
+    pub stale: bool,
+}
+
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct PasskeyCandidate {
+    pub item: ItemSummary,
+    /// Domaine du site dans l'annuaire (passkeys.2fa.directory).
+    pub domain: String,
+    /// La passkey peut remplacer le mot de passe à la connexion ; sinon,
+    /// elle sert de second facteur, après le mot de passe.
+    pub passwordless: bool,
+    /// Le site impose la passkey (rare).
+    pub required: bool,
+    /// Page d'aide du site sur les passkeys (HTTPS).
+    pub documentation: Option<String>,
+    /// Remarque de l'annuaire, en anglais.
+    pub notes: Option<String>,
+}
+
+/// D'où vient la page proposée par « Créer une passkey ».
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum PasskeySetupSource {
+    /// Le site publie sa page de création (`/.well-known/passkey-endpoints`).
+    WellKnown,
+    /// Grand site connu d'avance, sans requête.
+    Known,
+    /// Le site n'indique pas sa page : son accueil (ou l'adresse de
+    /// l'annuaire).
+    Home,
+}
+
+impl From<passkey_setup::Source> for PasskeySetupSource {
+    fn from(source: passkey_setup::Source) -> Self {
+        match source {
+            passkey_setup::Source::WellKnown => Self::WellKnown,
+            passkey_setup::Source::Known => Self::Known,
+            passkey_setup::Source::Home => Self::Home,
+        }
+    }
+}
+
+/// Page à ouvrir pour créer une passkey (HTTPS).
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct PasskeySetupPage {
+    pub url: String,
+    pub source: PasskeySetupSource,
+}
+
+fn passkey_candidates(v: &Vault, directory: &PasskeyDirectory) -> Vec<PasskeyCandidate> {
+    passkey_upgrade::passkey_candidates(v, directory)
+        .into_iter()
+        .filter_map(|(id, site)| {
+            v.get(&id).map(|i| PasskeyCandidate {
+                item: summary(i),
+                domain: site.domain.clone(),
+                passwordless: site.passwordless(),
+                required: site.passwordless == Some(Support::Required)
+                    || site.mfa == Some(Support::Required),
+                documentation: site.documentation.clone(),
+                notes: site.notes.clone(),
+            })
+        })
+        .collect()
 }
 
 /// D'où vient la page proposée par « Changer le mot de passe ».
@@ -240,6 +315,63 @@ impl VaultSession {
         })
     }
 
+    /// Identifiants dont le site accepte les passkeys mais qui n'en ont pas
+    /// encore (« Passkey possible »). Télécharge l'annuaire complet de
+    /// passkeys.2fa.directory (rien du coffre ne part, aucune requête par
+    /// site), gardé 7 jours dans le dossier du compte ; hors ligne, la
+    /// dernière copie. Coffre fictif : un extrait embarqué, sans réseau.
+    pub async fn passkey_audit(&self) -> Result<PasskeyReport, VerrouError> {
+        let Ok(store) = self.store() else {
+            let directory =
+                PasskeyDirectory::parse(mock::PASSKEY_DIRECTORY.as_bytes()).map_err(|e| {
+                    VerrouError::Invalid {
+                        message: e.to_string(),
+                    }
+                })?;
+            return self.with_vault(|v| {
+                Ok(PasskeyReport {
+                    candidates: passkey_candidates(v, &directory),
+                    fetched_at: now(),
+                    stale: false,
+                })
+            });
+        };
+        let dir = store.dir().to_path_buf();
+        let loaded = verrou_vaultwarden::passkey_directory::load(&dir).await?;
+        self.with_vault(|v| {
+            Ok(PasskeyReport {
+                candidates: passkey_candidates(v, &loaded.directory),
+                fetched_at: loaded.fetched_at,
+                stale: loaded.stale,
+            })
+        })
+    }
+
+    /// Page où créer une passkey pour un identifiant : celle que le site
+    /// publie (`/.well-known/passkey-endpoints`, vérifiée sur son hôte puis
+    /// son domaine), sinon une page connue d'avance, sinon l'adresse de
+    /// l'annuaire ou l'accueil du site. Seulement sur demande de
+    /// l'utilisateur, pour cet élément seul : les requêtes ne partent que
+    /// vers le site qu'il s'apprête à ouvrir.
+    pub async fn passkey_setup_page(&self, id: String) -> Result<PasskeySetupPage, VerrouError> {
+        let host = self
+            .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
+            .ok_or_else(|| VerrouError::Invalid {
+                message: "cet élément n'a pas de site".to_owned(),
+            })?;
+        // Adresse du site selon l'annuaire en cache (jamais téléchargé ici).
+        let site_url = match self.store() {
+            Ok(store) => verrou_vaultwarden::passkey_directory::cached(store.dir())
+                .and_then(|d| d.lookup(&host).and_then(|s| s.url.clone())),
+            Err(_) => None,
+        };
+        let page = passkey_setup::find(&host, site_url.as_deref()).await?;
+        Ok(PasskeySetupPage {
+            url: page.url,
+            source: page.source.into(),
+        })
+    }
+
     /// Vérifie dans Have I Been Pwned (k-anonymat : 5 caractères du SHA-1)
     /// les mots de passe enregistrés depuis Verrou depuis le dernier appel,
     /// et rend ceux qui figurent dans des fuites connues. Les mots de passe
@@ -366,6 +498,45 @@ mod tests {
         // Verrouillé : plus rien.
         session.lock();
         assert!(session.still_breached(found).is_empty());
+    }
+
+    #[tokio::test]
+    async fn passkey_audit_of_the_mock_vault_needs_no_network() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42);
+        let report = session.passkey_audit().await.unwrap();
+        assert!(!report.stale);
+        let domains: Vec<&str> = report
+            .candidates
+            .iter()
+            .map(|c| c.domain.as_str())
+            .collect();
+        assert!(domains.contains(&"github.com"), "{domains:?}");
+        // Google, listé par sous-domaine (`mail.google.com`), vaut pour
+        // `accounts.google.com`.
+        assert!(report.candidates.iter().any(|c| c.item.title == "Google"));
+        // npm : second facteur seulement.
+        assert!(
+            report
+                .candidates
+                .iter()
+                .filter(|c| c.domain == "npmjs.com")
+                .all(|c| !c.passwordless)
+        );
+        // Trié par titre.
+        let titles: Vec<String> = report
+            .candidates
+            .iter()
+            .map(|c| c.item.title.to_lowercase())
+            .collect();
+        let mut sorted = titles.clone();
+        sorted.sort();
+        assert_eq!(titles, sorted);
+        session.lock();
+        assert!(matches!(
+            session.passkey_audit().await,
+            Err(VerrouError::Locked)
+        ));
     }
 
     #[tokio::test]

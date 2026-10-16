@@ -115,21 +115,29 @@ impl TwoFactorDirectory {
     /// `github.com`), jamais au-delà (`co.uk` n'est pas un site).
     /// `amazon.com` ne relève pas d'une entrée `aws.amazon.com`.
     pub fn lookup(&self, url: &str) -> Option<&TwoFactorSite> {
-        let host = host_of(url)?;
-        if host.parse::<std::net::IpAddr>().is_ok() {
+        lookup_domain(&self.by_domain, url).map(|index| &self.sites[index])
+    }
+}
+
+/// Recherche d'un site dans un index par domaine (2fa.directory, annuaire
+/// des passkeys) : l'hôte de `url` lui-même, puis ses domaines parents
+/// jusqu'au domaine enregistrable, jamais au-delà. Une adresse IP ne relève
+/// d'aucun site.
+pub(crate) fn lookup_domain(by_domain: &HashMap<String, usize>, url: &str) -> Option<usize> {
+    let host = host_of(url)?;
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return None;
+    }
+    let floor = registrable_domain(&host)?;
+    let mut candidate = host.as_str();
+    loop {
+        if let Some(&index) = by_domain.get(candidate) {
+            return Some(index);
+        }
+        if candidate == floor {
             return None;
         }
-        let floor = registrable_domain(&host)?;
-        let mut candidate = host.as_str();
-        loop {
-            if let Some(&index) = self.by_domain.get(candidate) {
-                return Some(&self.sites[index]);
-            }
-            if candidate == floor {
-                return None;
-            }
-            candidate = candidate.split_once('.')?.1;
-        }
+        candidate = candidate.split_once('.')?.1;
     }
 }
 
