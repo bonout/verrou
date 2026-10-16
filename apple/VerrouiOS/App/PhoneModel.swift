@@ -118,7 +118,13 @@ final class PhoneModel {
     private(set) var reloginRequired = false
 
     // Navigation et feuilles
-    var tab: Tab = .vault
+    var tab: Tab = .vault {
+        didSet {
+            if tab == .search, oldValue != .search { searchChosenAt = .now }
+        }
+    }
+    /// Choix de l'onglet Rechercher : mesure du délai jusqu'au clavier.
+    @ObservationIgnored var searchChosenAt: ContinuousClock.Instant?
     var vaultPath: [Route] = [] {
         didSet { forgetClosedItems() }
     }
