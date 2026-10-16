@@ -193,6 +193,11 @@ struct ItemDetailView: View {
                         Button("Déplacer vers un dossier…", systemImage: "folder") {
                             model.moveRequest = PhoneModel.MoveRequest(itemIDs: [itemID])
                         }
+                        if summary.sharing != nil {
+                            Button("Collections…", systemImage: "tray.2") { model.openSharing(itemID) }
+                        } else if !model.writableOrganizations.isEmpty {
+                            Button("Partager…", systemImage: "person.2") { model.openSharing(itemID) }
+                        }
                         Button("Ajouter une pièce jointe…", systemImage: "paperclip") { importingFile = true }
                         Button("Archiver", systemImage: "archivebox") { Task { await model.setArchived(itemID, true) } }
                         Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = true }

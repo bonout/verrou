@@ -64,68 +64,6 @@ enum OrganizationSheet: Identifiable {
     }
 }
 
-/// Création ou modification d'une collection : son nom, et qui y accède.
-struct CollectionDraft {
-    let organizationID: String
-    /// `nil` : nouvelle collection.
-    let collectionID: String?
-    var name: String
-    /// Membres de l'organisation (si le compte peut les voir).
-    var members: [OrganizationMember] = []
-    /// Groupes de l'organisation (si le serveur les active).
-    var groups: [OrganizationGroup] = []
-    /// Accès accordés : identifiant d'adhésion → droit.
-    var memberAccess: [String: CollectionPermission] = [:]
-    /// Accès accordés : identifiant de groupe → droit.
-    var groupAccess: [String: CollectionPermission] = [:]
-    var loading = true
-    /// Les membres n'ont pas pu être lus : seul le nom est modifiable, les
-    /// accès restent comme ils sont.
-    var accessUnavailable: String?
-
-    var isNew: Bool { collectionID == nil }
-
-    var accessList: CollectionAccessList {
-        CollectionAccessList(
-            members: memberAccess.map { $1.grant($0) }.sorted { $0.id < $1.id },
-            groups: groupAccess.map { $1.grant($0) }.sorted { $0.id < $1.id })
-    }
-}
-
-/// Les groupes d'une organisation, et celui en cours de modification.
-struct GroupsDraft {
-    let organizationID: String
-    var groups: [OrganizationGroup] = []
-    var members: [OrganizationMember] = []
-    var editing: GroupDraft?
-    var loading = true
-}
-
-struct GroupDraft {
-    /// `nil` : nouveau groupe.
-    let id: String?
-    var name: String
-    var members: Set<String>
-    var access: [String: CollectionPermission]
-
-    var collections: [MemberCollectionAccess] {
-        access.map { $1.access($0) }.sorted { $0.collectionId < $1.collectionId }
-    }
-}
-
-extension CollectionPermission {
-    init(_ grant: AccessGrant) {
-        self.init(MemberCollectionAccess(collectionId: grant.id, readOnly: grant.readOnly,
-                                         hidePasswords: grant.hidePasswords, manage: grant.manage))
-    }
-
-    func grant(_ id: String) -> AccessGrant {
-        let access = access(id)
-        return AccessGrant(id: id, readOnly: access.readOnly, hidePasswords: access.hidePasswords,
-                           manage: access.manage)
-    }
-}
-
 extension AppModel {
     // MARK: État des invitations
 
@@ -134,11 +72,20 @@ extension AppModel {
     /// synchronisation.
     func refreshSharingStatus() async {
         guard mode == .vaultwarden, lockState == .unlocked, !organizationAdmin.preview else { return }
-        organizationAdmin.pending = await session.pendingMemberships()
+        // Assignés seulement s'ils changent : l'accueil ne se redessine pas
+        // à chaque synchronisation pour rien.
+        let pending = await session.pendingMemberships()
+        if organizationAdmin.pending != pending { organizationAdmin.pending = pending }
+        // Rien à compter sans organisation administrée (aucune requête).
+        guard organizations.contains(where: \.canManageMembers) else {
+            if !organizationAdmin.toConfirm.isEmpty { organizationAdmin.toConfirm = [:] }
+            return
+        }
         let counts = await session.membersToConfirm()
         guard lockState == .unlocked else { return }
-        organizationAdmin.toConfirm = Dictionary(counts.map { ($0.organizationId, Int($0.count)) },
-                                                 uniquingKeysWith: { first, _ in first })
+        let toConfirm = Dictionary(counts.map { ($0.organizationId, Int($0.count)) },
+                                   uniquingKeysWith: { first, _ in first })
+        if organizationAdmin.toConfirm != toConfirm { organizationAdmin.toConfirm = toConfirm }
     }
 
     /// « N membres à confirmer » : le volet des membres de la première
@@ -197,47 +144,15 @@ extension AppModel {
 
     // MARK: Collections
 
-    /// Ouvre l'éditeur d'une collection (`nil` : nouvelle), puis lit les
-    /// membres, les groupes et les accès actuels.
-    func openCollectionEditor(_ organization: OrganizationView, collection: CollectionView?) async {
+    /// Ouvre l'éditeur d'une collection (`nil` : nouvelle) ; la feuille lit
+    /// elle-même membres, groupes et accès (`loadCollectionDraft`).
+    func openCollectionEditor(_ organization: OrganizationView, collection: CollectionView?) {
         organizationAdmin.error = nil
         var draft = CollectionDraft(organizationID: organization.id, collectionID: collection?.id,
                                     name: collection?.name ?? "")
+        // Revue visuelle : rien à lire.
+        if organizationAdmin.preview { draft.loading = false }
         organizationAdmin.sheet = .collection(draft)
-        guard !organizationAdmin.preview else { return }
-        do {
-            if organization.canViewMembers {
-                draft.members = try await session.organizationMembers(organizationId: organization.id)
-            } else {
-                draft.accessUnavailable = "Votre rôle ne permet pas de voir les membres : seul le nom se modifie ici."
-            }
-            if organization.useGroups {
-                draft.groups = try await session.organizationGroups(organizationId: organization.id)
-            }
-            if let collection, draft.accessUnavailable == nil {
-                let access = try await session.collectionAccess(organizationId: organization.id,
-                                                                collectionId: collection.id)
-                // Seuls les membres listés ici comptent ; propriétaires et
-                // administrateurs voient tout de toute façon.
-                let seesAll = Set(draft.members.filter(\.accessAll).map(\.id))
-                for grant in access.members where !seesAll.contains(grant.id) {
-                    draft.memberAccess[grant.id] = CollectionPermission(grant)
-                }
-                for grant in access.groups { draft.groupAccess[grant.id] = CollectionPermission(grant) }
-            } else if collection == nil {
-                // Nouvelle collection : celui qui la crée y a accès (sauf s'il voit déjà tout).
-                if let me = draft.members.first(where: { $0.email.caseInsensitiveCompare(account?.email ?? "") == .orderedSame }),
-                   !me.accessAll {
-                    draft.memberAccess[me.id] = .manage
-                }
-            }
-        } catch {
-            draft.accessUnavailable = Self.describe(error)
-        }
-        draft.loading = false
-        if case .collection(let open) = organizationAdmin.sheet, open.collectionID == draft.collectionID {
-            organizationAdmin.sheet = .collection(draft)
-        }
     }
 
     func saveCollection(_ draft: CollectionDraft) async {

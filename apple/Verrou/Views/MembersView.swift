@@ -479,10 +479,7 @@ struct OwnFingerprintRow: View {
     var body: some View {
         LabeledContent("Phrase d'empreinte") {
             if let phrase {
-                Text(phrase)
-                    .font(.body.monospaced())
-                    .textSelection(.enabled)
-                    .multilineTextAlignment(.trailing)
+                FingerprintText(phrase: phrase, font: .body.monospaced(), alignment: .trailing)
             } else if model.lockState != .unlocked {
                 Text("coffre verrouillé").foregroundStyle(.secondary)
             } else if failed {

@@ -70,7 +70,7 @@ struct SharedVaultsSection: View {
     private func organizationMenu(_ org: OrganizationView) -> some View {
         if model.canEdit {
             if org.canCreateCollections {
-                Button("Nouvelle collection…") { Task { await model.openCollectionEditor(org, collection: nil) } }
+                Button("Nouvelle collection…") { model.openCollectionEditor(org, collection: nil) }
             }
             if org.canManageGroups {
                 Button("Groupes…") { Task { await model.openGroups(org) } }
@@ -93,7 +93,7 @@ struct SharedVaultsSection: View {
     @ViewBuilder
     private func collectionMenu(_ org: OrganizationView, _ collection: CollectionView) -> some View {
         if model.canEdit && collection.canManage {
-            Button("Modifier la collection…") { Task { await model.openCollectionEditor(org, collection: collection) } }
+            Button("Modifier la collection…") { model.openCollectionEditor(org, collection: collection) }
             Button("Supprimer la collection…", role: .destructive) {
                 model.organizationAdmin.confirmDelete = CollectionTarget(organization: org, collection: collection)
             }

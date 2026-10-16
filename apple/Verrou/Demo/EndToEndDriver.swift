@@ -356,7 +356,7 @@ final class EndToEndDriver {
         if let flow = model.sharingFlow { await model.applySharing(flow) }
         check(model.sharingFlow == nil && model.summaries.first { $0.id == itemID }?.sharing?.organizationId == org.id,
               "élément partagé dans l'organisation")
-        await model.openCollectionEditor(org, collection: nil)
+        model.openCollectionEditor(org, collection: nil)
         await checkLayout("feuille « Nouvelle collection »", [], sheet: ["sheet-title", "sheet-primary"])
         if case .collection(var draft) = model.organizationAdmin.sheet {
             draft.name = "Banque E2E"

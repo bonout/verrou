@@ -694,31 +694,11 @@ impl Connection {
     /// acceptée, clé pas encore reçue), d'après la dernière synchronisation.
     /// Vaultwarden les liste dans `profile.organizationsNew`.
     pub fn pending_memberships(&self) -> Vec<PendingMembership> {
-        let Some(json) = self.account.sync.as_deref() else {
-            return Vec::new();
-        };
-        let Ok(sync) = serde_json::from_str::<serde_json::Value>(json) else {
-            return Vec::new();
-        };
-        let mut pending: Vec<PendingMembership> = sync
-            .pointer("/profile/organizationsNew")
-            .and_then(serde_json::Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter(|org| org.get("status").and_then(serde_json::Value::as_i64) == Some(1))
-            .filter_map(|org| {
-                Some(PendingMembership {
-                    organization_id: org.get("id")?.as_str()?.to_owned(),
-                    name: org
-                        .get("name")
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or("Organisation")
-                        .to_owned(),
-                })
-            })
-            .collect();
-        pending.sort_by_key(|p| p.name.to_lowercase());
-        pending
+        self.account
+            .sync
+            .as_deref()
+            .map(parse_pending_memberships)
+            .unwrap_or_default()
     }
 
     /// Vérifie la destination d'après le cache : organisation connue, au
@@ -761,6 +741,47 @@ impl Connection {
     }
 }
 
+/// Les adhésions acceptées mais pas encore confirmées d'une synchronisation
+/// (`profile.organizationsNew`, état 1), triées par nom. Seul le profil est
+/// lu : le reste du document (les éléments, des mégaoctets dans un grand
+/// coffre) est sauté sans être construit.
+fn parse_pending_memberships(json: &str) -> Vec<PendingMembership> {
+    #[derive(serde::Deserialize)]
+    struct Sync {
+        profile: Option<Profile>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Profile {
+        #[serde(default)]
+        organizations_new: Vec<Membership>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Membership {
+        id: Option<String>,
+        name: Option<String>,
+        status: Option<i64>,
+    }
+    let Ok(sync) = serde_json::from_str::<Sync>(json) else {
+        return Vec::new();
+    };
+    let mut pending: Vec<PendingMembership> = sync
+        .profile
+        .map(|p| p.organizations_new)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|m| m.status == Some(1))
+        .filter_map(|m| {
+            Some(PendingMembership {
+                organization_id: m.id?,
+                name: m.name.unwrap_or_else(|| "Organisation".to_owned()),
+            })
+        })
+        .collect();
+    pending.sort_by_key(|p| p.name.to_lowercase());
+    pending
+}
+
 /// Le message d'un refus du SDK au moment de partager.
 fn share_error(error: CipherError) -> Error {
     match error {
@@ -781,4 +802,24 @@ fn without_id(with_id: &CipherWithIdRequestModel) -> Result<serde_json::Value, E
         object.remove("id");
     }
     Ok(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_memberships_come_from_organizations_new() {
+        let json = r#"{"ciphers":[{"id":"c","name":"2.x"}],"profile":{"organizations":[],
+            "organizationsNew":[
+              {"id":"o2","name":"Zèbres","status":1,"key":null},
+              {"id":"o1","name":"Famille","status":2,"key":"4.k"},
+              {"id":"o3","name":"Atelier","status":1}
+            ]}}"#;
+        let pending = parse_pending_memberships(json);
+        let names: Vec<&str> = pending.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["Atelier", "Zèbres"], "confirmées écartées, triées");
+        assert_eq!(parse_pending_memberships(r#"{"profile":{}}"#).len(), 0);
+        assert_eq!(parse_pending_memberships("pas du json").len(), 0);
+    }
 }

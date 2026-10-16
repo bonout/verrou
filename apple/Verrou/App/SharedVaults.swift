@@ -9,36 +9,6 @@ struct SharedDestination: Equatable, Hashable {
     var collectionIDs: [String]
 }
 
-/// « Partager… » (un ou plusieurs éléments personnels) ou « Collections… »
-/// (élément déjà partagé) : la feuille garde son état, le modèle l'exécute.
-@MainActor
-@Observable
-final class SharingFlow: Identifiable {
-    let id = UUID()
-    /// Éléments à partager (un seul pour « Collections… »).
-    let itemIDs: [String]
-    let title: String
-    /// Déjà dans une organisation : on ne change que ses collections.
-    let current: ItemSharing?
-    var organizationID: String
-    var collectionIDs: Set<String>
-    var busy = false
-    var error: String?
-    /// Avancement d'un partage groupé.
-    var progress: (done: Int, total: Int)?
-
-    var itemID: String { itemIDs.first ?? "" }
-    var isBulk: Bool { itemIDs.count > 1 }
-
-    init(itemIDs: [String], title: String, current: ItemSharing?, organizationID: String, collectionIDs: Set<String>) {
-        self.itemIDs = itemIDs
-        self.title = title
-        self.current = current
-        self.organizationID = organizationID
-        self.collectionIDs = collectionIDs
-    }
-}
-
 extension AppModel {
     /// L'élément peut-il être modifié (coffre Vaultwarden ouvert, et pas une
     /// collection en lecture seule) ?
@@ -148,7 +118,7 @@ extension AppModel {
                                                           progress: ShareProgressRelay(flow: flow))
                 afterWrite(select: nil)
                 pruneSelection()
-                toast = shareToast(result, organization: name)
+                toast = result.toast(organization: name)
             }
             sharingFlow = nil
         } catch {
@@ -156,47 +126,10 @@ extension AppModel {
         }
     }
 
-    /// « 12 éléments partagés dans Famille, 2 ignorés (déjà partagés) ».
-    func shareToast(_ result: ShareResult, organization: String?) -> Toast {
-        let n = Int(result.shared)
-        var message = "\(n) élément\(n > 1 ? "s" : "") partagé\(n > 1 ? "s" : "")"
-        if let organization { message += " dans \(organization)" }
-        var ignored: [String] = []
-        let plural = { (count: UInt32) in count > 1 ? "s" : "" }
-        if result.alreadyShared > 0 { ignored.append("\(result.alreadyShared) ignoré\(plural(result.alreadyShared)) (déjà partagé\(plural(result.alreadyShared)))") }
-        if result.readOnly > 0 { ignored.append("\(result.readOnly) ignoré\(plural(result.readOnly)) (lecture seule)") }
-        if result.inTrash > 0 { ignored.append("\(result.inTrash) ignoré\(plural(result.inTrash)) (dans la corbeille)") }
-        if result.notFound > 0 { ignored.append("\(result.notFound) introuvable\(plural(result.notFound))") }
-        if !ignored.isEmpty { message += ", " + ignored.joined(separator: ", ") }
-        if !result.failures.isEmpty {
-            return Toast(message: message + ", \(result.failures.count) refusé\(result.failures.count > 1 ? "s" : "")",
-                         detail: result.failures.joined(separator: "\n"), failure: true, seconds: 6)
-        }
-        return Toast(message: message, detail: nil, seconds: ignored.isEmpty ? 2.5 : 4)
-    }
-
     /// Page de l'organisation dans le coffre web (membres, collections, droits).
     func openWebVault(organizationID: String?) {
         let org = organizations.first { $0.id == organizationID } ?? organizations.first
         guard let link = org?.manageUrl, let url = URL(string: link) else { return }
         NSWorkspace.shared.open(url)
-    }
-}
-
-/// Avancement d'un partage groupé, envoyé par Rust depuis son fil.
-private final class ShareProgressRelay: BulkProgress, @unchecked Sendable {
-    private weak var flow: SharingFlow?
-
-    init(flow: SharingFlow) {
-        self.flow = flow
-    }
-
-    func progress(done: UInt32, total: UInt32) {
-        DispatchQueue.main.async { [weak flow] in
-            MainActor.assumeIsolated {
-                guard let flow, flow.busy else { return }
-                flow.progress = (Int(done), Int(total))
-            }
-        }
     }
 }

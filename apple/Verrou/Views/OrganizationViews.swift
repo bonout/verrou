@@ -231,6 +231,15 @@ struct CollectionEditorView: View {
         .frame(width: 560)
         .frame(minHeight: 420, maxHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
+        .task {
+            // Membres, groupes et accès lus ici, une fois la feuille ouverte ;
+            // le nom déjà saisi est gardé.
+            guard draft.loading, let org = organization else { return }
+            var loaded = await model.session.loadCollectionDraft(draft, organization: org,
+                                                                 accountEmail: model.account?.email)
+            loaded.name = draft.name
+            draft = loaded
+        }
     }
 
     @ViewBuilder
@@ -370,14 +379,6 @@ struct GroupsView: View {
         .frame(width: 560)
         .frame(minHeight: 400, maxHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
-    }
-}
-
-extension GroupDraft {
-    init(_ group: OrganizationGroup) {
-        var access: [String: CollectionPermission] = [:]
-        for collection in group.collections { access[collection.collectionId] = CollectionPermission(collection) }
-        self.init(id: group.id, name: group.name, members: Set(group.members), access: access)
     }
 }
 
@@ -532,9 +533,7 @@ struct PendingFingerprintView: View {
             Text("Lisez cette phrase d'empreinte à l'administrateur qui vous confirme : il doit voir la même. Elle garantit que la clé de l'organisation sera chiffrée pour vous, et pour personne d'autre.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(fingerprint ?? "…")
-                .font(.system(.title3, design: .monospaced).weight(.semibold))
-                .textSelection(.enabled)
+            FingerprintText(phrase: fingerprint, alignment: .leading)
         }
         .padding(16)
         .frame(width: 340)

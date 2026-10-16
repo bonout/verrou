@@ -366,6 +366,28 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   sent on the next sync (when the app comes back to the foreground, every
   5 minutes while it is open, every 30 s while changes are waiting, or by
   pulling down).
+- **Shared vaults** (home → *Coffres partagés*, **+** to create or join):
+  each organization opens a screen with its items, its collections (swipe
+  to edit or delete the ones you manage; *Nouvelle collection…*), its
+  *Membres* and *Groupes* when your role allows, *Renommer…* (owners) and
+  *Quitter l'organisation…*. *Partager…* moves one item (detail menu, swipe
+  right in a list) or a multi-selection into an organization, re-encrypted
+  with its key; *Collections…* changes where a shared item sits. Members:
+  invite (role, rights per collection), resend, change role and
+  collections, revoke, restore, remove, and confirm after comparing the
+  5-word fingerprint phrase. A collection's editor sets view, view without
+  passwords, edit, edit without passwords or manage for each member and
+  group. *Rejoindre une organisation* (home **+** or Settings → *Compte*)
+  accepts an invitation by pasting its e-mail link; Settings → *Compte* →
+  *Phrase d'empreinte* shows your own phrase. Banners at the top of the home
+  page show *N membres à confirmer* and invitations waiting for an admin.
+  Read-only items can't be edited, hidden passwords can't be shown or
+  copied, and management actions only appear where Vaultwarden would allow
+  them. Everything here needs the server; offline, it says so.
+- **Envois** (home → *Rangement* → *Envois*): Bitwarden Send for a text or a
+  file, with a lifetime, an access limit and an optional password; the link
+  (which carries the key) is copied with the clipboard rules and can be
+  shared.
 - **Generator tab**: passwords and passphrases (same settings as the Mac),
   copied with the same clipboard rules.
 - **Audit**: reused, weak and plain-HTTP passwords, and known breaches on

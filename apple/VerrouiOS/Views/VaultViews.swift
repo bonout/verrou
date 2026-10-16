@@ -42,6 +42,10 @@ private struct RouteDestination: View {
         case .list(let filter): ItemListView(filter: filter)
         case .item(let id): ItemDetailView(itemID: id).zoomDestination(id: id, in: zoom)
         case .audit: AuditView()
+        case .organization(let id): OrganizationScreen(organizationID: id)
+        case .members(let id): MembersScreen(organizationID: id)
+        case .groups(let id): GroupsScreen(organizationID: id)
+        case .sends: SendsScreen()
         }
     }
 }
@@ -71,7 +75,7 @@ struct VaultHomeView: View {
                 .accessibilityLabel("Verrouiller")
             }
             ToolbarSpacerIfAvailable()
-            ToolbarItem(placement: .topBarTrailing) { NewItemMenu() }
+            ToolbarItem(placement: .topBarTrailing) { NewItemMenu(showsSharing: true) }
         }
         .onAppear { if model.lockState == .unlocked { Perf.homeAppeared() } }
         // Construit d'avance sous l'écran verrouillé : affiché au déverrouillage.
@@ -94,6 +98,7 @@ struct VaultHomeView: View {
                 Text("Modifiées hors ligne : envoyées dès que le serveur répondra.")
             }
         }
+        SharingBanners()
         // Sans favori, la tuile n'est pas affichée : les deux autres se
         // partagent la largeur ; elle apparaît au premier favori.
         let hasFavorites = (counts?.favorites ?? 0) > 0
@@ -144,21 +149,7 @@ struct VaultHomeView: View {
                 SectionHeader("Dossiers")
             }
         }
-        if !model.organizations.isEmpty {
-            Section {
-                ForEach(model.organizations, id: \.id) { org in
-                    FilterLink(title: org.name, symbol: "person.2.fill", tint: .indigo, count: org.count,
-                               filter: .organization(id: org.id))
-                    ForEach(org.collections, id: \.id) { collection in
-                        FilterLink(title: collection.name, symbol: "tray.full.fill", tint: .indigo.opacity(0.7),
-                                   count: collection.count, filter: .collection(id: collection.id))
-                            .padding(.leading, 18)
-                    }
-                }
-            } header: {
-                SectionHeader("Coffres partagés")
-            }
-        }
+        SharedVaultsHomeSection()
         if let tags = counts?.tags, !tags.isEmpty {
             Section {
                 ForEach(tags, id: \.name) { tag in
@@ -172,6 +163,12 @@ struct VaultHomeView: View {
         Section {
             NavigationLink(value: PhoneModel.Route.audit) {
                 HomeRow(title: "Audit de sécurité", symbol: "checkmark.shield.fill", tint: .green, count: nil)
+            }
+            if model.mode == .vaultwarden {
+                NavigationLink(value: PhoneModel.Route.sends) {
+                    HomeRow(title: "Envois", symbol: "paperplane.fill", tint: .indigo, count: nil)
+                }
+                .accessibilityIdentifier("home-sends")
             }
             FilterLink(title: "Archives", symbol: "archivebox.fill", tint: .brown, count: counts?.archived, filter: .archived)
             FilterLink(title: "Corbeille", symbol: "trash.fill", tint: .gray, count: counts?.trashed, filter: .trash)
@@ -482,6 +479,8 @@ struct NewItemMenu: View {
     @Environment(PhoneModel.self) private var model
     var folderID: String?
     var destination: SharedDestination?
+    /// Accueil : créer ou rejoindre un coffre partagé, dans le même menu.
+    var showsSharing = false
 
     var body: some View {
         Menu {
@@ -492,6 +491,15 @@ struct NewItemMenu: View {
             Menu("Autres modèles") {
                 ForEach(ItemTemplate.menuOrder, id: \.self) { template in
                     Button(template.menuTitle, systemImage: template.symbol) { new(.template(template)) }
+                }
+            }
+            if showsSharing {
+                Divider()
+                Button("Nouvelle organisation…", systemImage: "person.2.badge.plus") {
+                    model.sharing.sheet = .newOrganization
+                }
+                Button("Rejoindre une organisation…", systemImage: "envelope.open") {
+                    model.sharing.sheet = .join("")
                 }
             }
         } label: {
@@ -700,6 +708,9 @@ private struct BulkActionsBar: View {
                 Button("Déplacer vers un dossier…", systemImage: "folder") {
                     model.moveRequest = PhoneModel.MoveRequest(itemIDs: ids)
                 }
+                if !model.writableOrganizations.isEmpty, !model.shareableIDs(ids).isEmpty {
+                    Button("Partager…", systemImage: "person.2") { model.openSharing(items: ids) }
+                }
                 Button("Archiver", systemImage: "archivebox") { run(.archive) }
                 Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = ids }
             }
@@ -742,6 +753,14 @@ struct ItemRowLink: View {
                           systemImage: summary.favorite ? "star.slash.fill" : "star.fill")
                 }
                 .tint(.yellow)
+                if !model.writableOrganizations.isEmpty, summary.sharing == nil {
+                    Button {
+                        model.openSharing(summary.id)
+                    } label: {
+                        Label("Partager", systemImage: "person.2.fill")
+                    }
+                    .tint(.indigo)
+                }
             }
         }
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {

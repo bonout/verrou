@@ -222,6 +222,7 @@ struct MainTabs: View {
             ShareSheet(url: file.url)
         }
         .quickLookPreview($model.preview)
+        .modifier(SharingPresentations())
     }
 
     @available(iOS 18, *)
