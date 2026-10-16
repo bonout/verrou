@@ -1724,7 +1724,8 @@ impl VaultSession {
         *self
             .match_settings
             .write()
-            .unwrap_or_else(PoisonError::into_inner) = verrou_core::matching::DeviceMatchSettings::default();
+            .unwrap_or_else(PoisonError::into_inner) =
+            verrou_core::matching::DeviceMatchSettings::default();
         Ok(())
     }
 }
