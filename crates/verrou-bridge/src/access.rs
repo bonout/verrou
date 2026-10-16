@@ -700,7 +700,12 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
             );
             set(&mut item, FieldKind::Totp, "totp", "Code", expose(totp));
             items.push(item);
-            (Vault::new(items).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()), new_id.to_owned())
+            (
+                Vault::new(items)
+                    .with_passkeys(passkeys)
+                    .with_match_rules(vault.match_rules().clone()),
+                new_id.to_owned(),
+            )
         }
         Write::Update {
             item: id,
@@ -727,7 +732,12 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 );
                 set(item, FieldKind::Totp, "totp", "Code", expose(totp));
             }
-            (Vault::new(items).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()), id)
+            (
+                Vault::new(items)
+                    .with_passkeys(passkeys)
+                    .with_match_rules(vault.match_rules().clone()),
+                id,
+            )
         }
         write @ (Write::Passkey { .. } | Write::PasskeyCounter { .. }) => {
             crate::passkeys::apply_in_memory(vault, write, new_id)
@@ -803,7 +813,6 @@ mod tests {
         never.url_matches = vec![Some(UriMatch::Never)];
         let rules = MatchRules {
             default: UriMatch::Host,
-            equivalent_domains: vec![vec!["github.com".into(), "github.io".into()]],
             ..MatchRules::default()
         };
         let v = Vault::new(vec![item("github", "https://github.com"), exact, never])
@@ -819,19 +828,19 @@ mod tests {
         assert!(credentials(&v, "jamais", "https://banque.fr", 0).is_err());
         assert!(credentials(&v, "exact", "https://banque.fr/connexion", 0).is_ok());
         // Domaines équivalents : seulement pour la règle « domaine ».
-        let mut domain = item("domaine", "https://github.com");
+        let mut domain = item("domaine", "https://compte.exemple.fr");
         domain.url_matches = vec![Some(UriMatch::Domain)];
-        let v = v.with_match_rules(MatchRules {
-            equivalent_domains: vec![vec!["github.com".into(), "github.io".into()]],
+        let mut host = item("hote", "https://compte.exemple.fr");
+        host.url_matches = vec![Some(UriMatch::Host)];
+        let v = Vault::new(vec![domain, host]).with_match_rules(MatchRules {
+            equivalent_domains: vec![vec!["exemple.fr".into(), "exemple-banque.com".into()]],
             ..MatchRules::default()
         });
-        let v = Vault::new(vec![domain])
-            .with_match_rules(v.match_rules().clone());
-        assert_eq!(
-            suggestions(&v, "https://camille.github.io").len(),
-            1,
-            "github.io équivaut à github.com"
-        );
+        let found: Vec<String> = suggestions(&v, "https://www.exemple-banque.com/login")
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        assert_eq!(found, ["domaine"]);
     }
 
     #[test]

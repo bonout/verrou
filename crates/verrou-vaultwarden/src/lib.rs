@@ -286,7 +286,9 @@ impl PendingLogin {
             refresh_token: String::new(),
             synced_at: Some(now()),
             sync: Some(sync_json),
-            equivalent_domains: None,
+            // Lus dès la connexion : la première synchronisation n'a pas à
+            // tout redéchiffrer pour eux.
+            equivalent_domains: domains::fetch(&self.api, &tokens.access).await?,
         };
         let sdk = sdk_client(&account.server);
         init_with_password(&sdk, &account, &self.password).await?;

@@ -288,7 +288,9 @@ pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vau
             id.clone_into(&mut passkey.item);
             passkeys.push(*passkey);
             (
-                Vault::new(vault.items().to_vec()).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()),
+                Vault::new(vault.items().to_vec())
+                    .with_passkeys(passkeys)
+                    .with_match_rules(vault.match_rules().clone()),
                 id,
             )
         }
@@ -303,7 +305,9 @@ pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vau
                 }
             }
             (
-                Vault::new(vault.items().to_vec()).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()),
+                Vault::new(vault.items().to_vec())
+                    .with_passkeys(passkeys)
+                    .with_match_rules(vault.match_rules().clone()),
                 item,
             )
         }

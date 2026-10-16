@@ -1756,7 +1756,33 @@ impl VaultSession {
     pub fn unlock_mock(&self, size: u32, seed: u64) {
         let items = mock::vault_items(size as usize, seed);
         let passkeys = mock::passkeys(&items);
-        let vault = Vault::new(items).with_passkeys(passkeys);
+        // Dossiers fictifs, par nom (pour les règles de correspondance).
+        let mut folders: Vec<(String, String)> = items
+            .iter()
+            .filter_map(|i| i.folder.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .map(|name| {
+                (
+                    format!("dossier-{}", verrou_core::search::fold(&name)),
+                    name,
+                )
+            })
+            .collect();
+        folders.sort_by_key(|(_, name)| verrou_core::search::fold(name));
+        let settings = self
+            .match_settings
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let rules = Self::match_rules(&settings, &folders, Vec::new());
+        *self.folders.write().unwrap_or_else(PoisonError::into_inner) = folders
+            .into_iter()
+            .map(|(id, name)| FolderOption { id, name })
+            .collect();
+        let vault = Vault::new(items)
+            .with_passkeys(passkeys)
+            .with_match_rules(rules);
         *self
             .organizations
             .write()
