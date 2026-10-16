@@ -22,9 +22,11 @@ pub mod secret;
 pub mod selection;
 pub mod template;
 pub mod totp;
+pub mod usage;
 pub mod vault;
 pub mod watchtower;
 
+pub use matching::{MatchRules, UriMatch};
 pub use model::{Field, FieldKind, Item, ItemKind, ItemState, Sharing};
 pub use passkey::Passkey;
 pub use search::{Filter, Hit, Sort};

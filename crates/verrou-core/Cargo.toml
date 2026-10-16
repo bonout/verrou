@@ -19,6 +19,7 @@ rand.workspace = true
 rand_chacha.workspace = true
 url.workspace = true
 psl.workspace = true
+regex.workspace = true
 unicode-normalization.workspace = true
 serde_json.workspace = true
 csv.workspace = true

@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use crate::matching::{SiteMatch, site_match};
+use crate::matching::{MatchRules, matching_items};
 use crate::model::{Item, ItemKind, ItemState};
 use crate::passkey::Passkey;
 use crate::search::{Filter, Hit, SearchIndex, Sort, fold};
@@ -14,6 +14,8 @@ pub struct Vault {
     by_id: HashMap<String, usize>,
     /// Passkeys des identifiants ([`Vault::with_passkeys`]).
     passkeys: Vec<Passkey>,
+    /// Règles de correspondance de l'appareil ([`Vault::with_match_rules`]).
+    match_rules: MatchRules,
 }
 
 /// Effectifs affichés dans la barre latérale.
@@ -25,6 +27,8 @@ pub struct Counts {
     pub trashed: usize,
     pub favorites: usize,
     pub with_totp: usize,
+    /// Identifiants actifs qui portent au moins une passkey.
+    pub passkeys: usize,
     pub kinds: Vec<(ItemKind, usize)>,
     /// Modèles présents dans le coffre (les autres ne sont pas listés).
     pub templates: Vec<(Template, usize)>,
@@ -48,6 +52,7 @@ impl Vault {
             index,
             by_id,
             passkeys: Vec::new(),
+            match_rules: MatchRules::default(),
         }
     }
 
@@ -68,18 +73,49 @@ impl Vault {
     }
 
     pub fn search(&self, query: &str, filter: &Filter, sort: Sort) -> Vec<Hit> {
-        self.index.search(&self.items, query, filter, sort)
+        self.search_with_usage(query, filter, sort, &HashMap::new())
+    }
+
+    /// Comme [`Vault::search`], avec les dates de dernière utilisation sur
+    /// l'appareil (identifiant → horodatage Unix) pour [`Sort::LastUsed`].
+    pub fn search_with_usage(
+        &self,
+        query: &str,
+        filter: &Filter,
+        sort: Sort,
+        last_used: &HashMap<String, i64>,
+    ) -> Vec<Hit> {
+        self.index
+            .search(&self.items, query, filter, sort, last_used)
+    }
+
+    /// Règles de correspondance de l'appareil (défaut, dossiers, domaines
+    /// équivalents du compte).
+    #[must_use]
+    pub fn with_match_rules(mut self, rules: MatchRules) -> Self {
+        self.match_rules = rules;
+        self
+    }
+
+    /// Change les règles de correspondance (réglages de l'appareil modifiés).
+    pub fn set_match_rules(&mut self, rules: MatchRules) {
+        self.match_rules = rules;
+    }
+
+    pub fn match_rules(&self) -> &MatchRules {
+        &self.match_rules
     }
 
     /// Identifiants proposés pour une page, du plus précis au moins précis.
+    /// Chaque site suit sa règle de correspondance (voir `matching`).
     pub fn suggestions_for(&self, page_url: &str) -> Vec<&Item> {
-        let mut found: Vec<(SiteMatch, &Item)> = self
-            .items
-            .iter()
-            .filter(|item| item.kind == ItemKind::Login && item.is_active())
-            .map(|item| (site_match(&item.urls, page_url), item))
-            .filter(|(m, _)| *m != SiteMatch::None)
-            .collect();
+        let mut found = matching_items(
+            self.items
+                .iter()
+                .filter(|item| item.kind == ItemKind::Login && item.is_active()),
+            page_url,
+            &self.match_rules,
+        );
         found.sort_by(|(ma, a), (mb, b)| {
             mb.cmp(ma)
                 .then(b.favorite.cmp(&a.favorite))
@@ -113,7 +149,7 @@ impl Vault {
         let mut organizations: BTreeMap<String, usize> = BTreeMap::new();
         let mut collections: BTreeMap<String, usize> = BTreeMap::new();
         let mut counts = Counts::default();
-        for item in &self.items {
+        for (index, item) in self.items.iter().enumerate() {
             match item.state {
                 ItemState::Archived => counts.archived += 1,
                 ItemState::Trashed => counts.trashed += 1,
@@ -143,6 +179,7 @@ impl Vault {
             }
             counts.favorites += usize::from(item.favorite);
             counts.with_totp += usize::from(item.has_totp());
+            counts.passkeys += usize::from(self.index.has_passkey(index));
         }
         counts.kinds = ItemKind::ALL
             .iter()
@@ -164,6 +201,7 @@ impl Vault {
     /// à la libération).
     #[must_use]
     pub fn with_passkeys(mut self, passkeys: Vec<Passkey>) -> Self {
+        self.index.mark_passkeys(&self.by_id, &passkeys);
         self.passkeys = passkeys;
         self
     }

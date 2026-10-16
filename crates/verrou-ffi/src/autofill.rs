@@ -286,6 +286,7 @@ impl VaultSession {
                 });
             }
             self.require_authorized(item)?;
+            self.record_use(&item.id);
             Ok(AutofillPassword {
                 username: username_of(item),
                 password: item
@@ -383,6 +384,7 @@ impl VaultSession {
         })?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         self.perform_write(&connection, write).await?;
+        self.record_use(&result.item_id);
         Ok(result)
     }
 
@@ -475,6 +477,7 @@ mod tests {
             title: format!("Titre {id}"),
             subtitle: user.to_owned(),
             urls: urls.iter().map(|u| (*u).to_owned()).collect(),
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,

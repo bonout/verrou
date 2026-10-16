@@ -288,7 +288,7 @@ pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vau
             id.clone_into(&mut passkey.item);
             passkeys.push(*passkey);
             (
-                Vault::new(vault.items().to_vec()).with_passkeys(passkeys),
+                Vault::new(vault.items().to_vec()).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()),
                 id,
             )
         }
@@ -303,7 +303,7 @@ pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vau
                 }
             }
             (
-                Vault::new(vault.items().to_vec()).with_passkeys(passkeys),
+                Vault::new(vault.items().to_vec()).with_passkeys(passkeys).with_match_rules(vault.match_rules().clone()),
                 item,
             )
         }
@@ -324,6 +324,7 @@ mod tests {
             title: id.to_owned(),
             subtitle: username.to_owned(),
             urls: vec![url.to_owned()],
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,

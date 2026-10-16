@@ -13,7 +13,27 @@ use verrou_vaultwarden::register::{self, SignupLink};
 
 use crate::bulk::BulkProgress;
 use crate::members::MemberCollectionAccess;
-use crate::{VaultSession, VerrouError};
+use crate::{IdMapping, VaultSession, VerrouError};
+
+/// Bilan d'un retrait du partage.
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct UnshareResult {
+    /// Éléments ramenés dans le coffre personnel : identifiant
+    /// d'organisation (`temporary`) → nouvel identifiant (`server`).
+    pub moved: Vec<IdMapping>,
+    /// Écartés : pas dans une organisation.
+    pub not_shared: u32,
+    /// Écartés : en lecture seule (il faut pouvoir modifier et supprimer).
+    pub read_only: u32,
+    /// Écartés : l'organisation masque leurs mots de passe à ce compte.
+    pub passwords_hidden: u32,
+    /// Écartés : dans la corbeille.
+    pub in_trash: u32,
+    /// Écartés : plus dans le coffre.
+    pub not_found: u32,
+    /// Refusés : titres et raisons.
+    pub failures: Vec<String>,
+}
 
 /// Bilan d'un partage de plusieurs éléments.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
@@ -194,6 +214,58 @@ impl VaultSession {
             shared: outcome.shared as u32,
             already_shared: count(Skipped::AlreadyShared),
             read_only: count(Skipped::ReadOnly),
+            in_trash: count(Skipped::InTrash),
+            not_found: count(Skipped::NotFound),
+            failures: outcome
+                .failed
+                .iter()
+                .map(|(title, reason)| format!("{title} : {reason}"))
+                .collect(),
+        };
+        self.install_if_current(&connection, outcome.vault)?;
+        Ok(result)
+    }
+
+    /// « Retirer du partage » : ramène des éléments d'organisation dans le
+    /// coffre personnel (copie chiffrée sous la clé de l'utilisateur, avec
+    /// une nouvelle clé d'élément et ses pièces jointes, puis suppression
+    /// définitive de l'élément de l'organisation). Demande le serveur ; les
+    /// éléments protégés doivent avoir été confirmés (`authorize_item`).
+    pub async fn unshare_items(
+        &self,
+        ids: Vec<String>,
+        progress: Box<dyn BulkProgress>,
+    ) -> Result<UnshareResult, VerrouError> {
+        let connection = self.sharing_connection()?;
+        self.with_vault(|v| {
+            for id in &ids {
+                if let Ok(item) = Self::item(v, id) {
+                    self.require_authorized(item)?;
+                }
+            }
+            Ok(())
+        })?;
+        let report = |done: usize, total: usize| {
+            progress.progress(done as u32, total as u32);
+        };
+        let outcome = connection.lock().await.unshare(&ids, &report).await?;
+        let count =
+            |reason: Skipped| outcome.skipped.iter().filter(|(_, r)| *r == reason).count() as u32;
+        for (from, to) in &outcome.moved {
+            self.rename_use(from, to);
+        }
+        let result = UnshareResult {
+            moved: outcome
+                .moved
+                .iter()
+                .map(|(from, to)| IdMapping {
+                    temporary: from.clone(),
+                    server: to.clone(),
+                })
+                .collect(),
+            not_shared: count(Skipped::NotShared),
+            read_only: count(Skipped::ReadOnly),
+            passwords_hidden: count(Skipped::PasswordsHidden),
             in_trash: count(Skipped::InTrash),
             not_found: count(Skipped::NotFound),
             failures: outcome

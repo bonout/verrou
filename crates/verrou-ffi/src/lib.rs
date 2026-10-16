@@ -41,6 +41,8 @@ use verrou_core::apps;
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
+
+pub use preferences::{FolderMatchRule, MatchSettingsView, UriMatchRule};
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
 use verrou_vaultwarden::{
@@ -59,6 +61,7 @@ mod import;
 mod members;
 mod otp_scan;
 mod passphrase;
+mod preferences;
 mod send;
 mod sharing;
 mod ssh;
@@ -341,6 +344,8 @@ pub enum SidebarFilter {
     Collection {
         id: String,
     },
+    /// Identifiants qui portent une passkey.
+    Passkeys,
 }
 
 impl From<SidebarFilter> for Filter {
@@ -357,6 +362,7 @@ impl From<SidebarFilter> for Filter {
             SidebarFilter::Trash => Self::Trash,
             SidebarFilter::Organization { id } => Self::Organization(id),
             SidebarFilter::Collection { id } => Self::Collection(id),
+            SidebarFilter::Passkeys => Self::Passkeys,
         }
     }
 }
@@ -366,6 +372,10 @@ pub enum ResultOrder {
     Relevance,
     Title,
     RecentlyModified,
+    /// Création, du plus récent au plus ancien.
+    Created,
+    /// Dernière utilisation sur cet appareil.
+    LastUsed,
 }
 
 impl From<ResultOrder> for Sort {
@@ -374,6 +384,8 @@ impl From<ResultOrder> for Sort {
             ResultOrder::Relevance => Self::Relevance,
             ResultOrder::Title => Self::Title,
             ResultOrder::RecentlyModified => Self::RecentlyModified,
+            ResultOrder::Created => Self::Created,
+            ResultOrder::LastUsed => Self::LastUsed,
         }
     }
 }
@@ -441,6 +453,15 @@ pub struct ItemSummary {
     pub template: Option<ItemTemplate>,
     /// Modifié hors ligne : la modification attend le serveur.
     pub pending_sync: bool,
+    /// Création (horodatage Unix).
+    pub created: i64,
+    /// Dernière utilisation sur cet appareil (remplissage, copie, secret
+    /// affiché), si connue.
+    pub last_used: Option<i64>,
+    /// Première passkey de l'identifiant : son site (`rpId`)…
+    pub passkey_rp_id: Option<String>,
+    /// … et le nom d'utilisateur qu'elle porte.
+    pub passkey_user_name: Option<String>,
 }
 
 /// Où se trouve l'élément (voir `verrou_core::ItemState`).
@@ -490,6 +511,8 @@ pub struct FieldView {
 pub struct ItemDetail {
     pub summary: ItemSummary,
     pub urls: Vec<String>,
+    /// Règle de correspondance de chaque site (`None` : règle par défaut).
+    pub url_matches: Vec<Option<UriMatchRule>>,
     pub fields: Vec<FieldView>,
     pub has_notes: bool,
     pub created: i64,
@@ -522,6 +545,8 @@ pub struct SidebarCounts {
     pub trashed: u32,
     pub favorites: u32,
     pub with_totp: u32,
+    /// Identifiants qui portent une passkey.
+    pub passkeys: u32,
     pub categories: Vec<ItemCategoryCount>,
     /// Modèles présents dans le coffre, dans l'ordre de `ItemTemplate`.
     pub templates: Vec<ItemTemplateCount>,
@@ -685,6 +710,10 @@ pub struct LoginFields {
     /// Graine TOTP (`otpauth://…` ou base32).
     pub totp: Option<String>,
     pub urls: Vec<String>,
+    /// Règle de chaque site, dans l'ordre de `urls` (`None` dans la liste :
+    /// règle par défaut). `None` : chaque site gardé garde la sienne.
+    #[uniffi(default = None)]
+    pub url_matches: Option<Vec<Option<UriMatchRule>>>,
 }
 
 impl From<ItemDraft> for Draft {
@@ -699,6 +728,9 @@ impl From<ItemDraft> for Draft {
                 password: login.password.map(SecretString::new),
                 totp: login.totp.map(SecretString::new),
                 uris: login.urls,
+                uri_matches: login
+                    .url_matches
+                    .map(|list| list.into_iter().map(|m| m.map(Into::into)).collect()),
             }),
             fields: Some(draft.fields.into_iter().map(Into::into).collect()),
             template: draft.template.map(Into::into),
@@ -720,6 +752,9 @@ impl From<Draft> for ItemDraft {
                 password: login.password.map(|p| p.expose().to_owned()),
                 totp: login.totp.map(|t| t.expose().to_owned()),
                 urls: login.uris,
+                url_matches: login
+                    .uri_matches
+                    .map(|list| list.into_iter().map(|m| m.map(Into::into)).collect()),
             }),
             fields: draft
                 .fields
@@ -758,6 +793,10 @@ fn summary(item: &Item) -> ItemSummary {
         }),
         template: item.template().map(Into::into),
         pending_sync: false,
+        created: item.created,
+        last_used: None,
+        passkey_rp_id: None,
+        passkey_user_name: None,
     }
 }
 
@@ -784,6 +823,9 @@ fn detail(item: &Item) -> ItemDetail {
     ItemDetail {
         summary: summary(item),
         urls: item.urls.clone(),
+        url_matches: (0..item.urls.len())
+            .map(|i| item.url_matches.get(i).copied().flatten().map(Into::into))
+            .collect(),
         fields,
         has_notes: item.notes.is_some(),
         created: item.created,
@@ -893,6 +935,12 @@ pub struct VaultSession {
     hub: tokio::sync::Mutex<Option<verrou_vaultwarden::hub::Hub>>,
     /// Incrémenté au verrouillage : l'attente en cours du canal s'arrête.
     hub_epoch: tokio::sync::watch::Sender<u64>,
+    /// Dernière utilisation des éléments sur l'appareil (`preferences`).
+    usage: Mutex<verrou_core::usage::UsageLog>,
+    /// Règles de correspondance de l'appareil (`preferences`).
+    match_settings: RwLock<verrou_core::matching::DeviceMatchSettings>,
+    /// Domaines équivalents du compte, de la dernière synchronisation.
+    equivalent_domains: RwLock<Vec<Vec<String>>>,
 }
 
 /// Demandes d'accord en cours : l'app répond par
@@ -957,6 +1005,9 @@ impl VaultSession {
             closer: Mutex::new(None),
             hub: tokio::sync::Mutex::new(None),
             hub_epoch: tokio::sync::watch::Sender::new(0),
+            usage: Mutex::new(verrou_core::usage::UsageLog::default()),
+            match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
+            equivalent_domains: RwLock::new(Vec::new()),
         })
     }
 
@@ -993,6 +1044,26 @@ impl VaultSession {
             return failures;
         }
         *installed = decrypted.version;
+        // Réglages de l'appareil relus à chaque fois : l'app et l'extension
+        // de remplissage de l'iPhone partagent le dossier.
+        let settings = self.load_match_settings();
+        let rules = Self::match_rules(
+            &settings,
+            &decrypted.folders,
+            decrypted.equivalent_domains.clone(),
+        );
+        *self
+            .match_settings
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = settings;
+        *self
+            .equivalent_domains
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = decrypted.equivalent_domains;
+        self.reload_usage();
+        for (from, to) in &decrypted.remapped {
+            self.rename_use(from, to);
+        }
         *self.folders.write().unwrap_or_else(PoisonError::into_inner) = decrypted
             .folders
             .into_iter()
@@ -1011,8 +1082,11 @@ impl VaultSession {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .extend(decrypted.remapped);
-        *self.vault.write().unwrap_or_else(PoisonError::into_inner) =
-            Some(Vault::new(decrypted.items).with_passkeys(decrypted.passkeys));
+        *self.vault.write().unwrap_or_else(PoisonError::into_inner) = Some(
+            Vault::new(decrypted.items)
+                .with_passkeys(decrypted.passkeys)
+                .with_match_rules(rules),
+        );
         failures
     }
 
@@ -1086,6 +1160,7 @@ impl VaultSession {
                 open.create(Draft {
                     name: title,
                     login: Some(LoginDraft {
+                        uri_matches: None,
                         username,
                         password,
                         totp,
@@ -1163,7 +1238,19 @@ impl VaultSession {
                 .read()
                 .unwrap_or_else(PoisonError::into_inner)
                 .contains(&item.id),
+            last_used: self.last_used(&item.id),
             ..summary(item)
+        }
+    }
+
+    /// Comme `summary_of`, avec la première passkey de l'identifiant.
+    fn summary_in(&self, vault: &Vault, item: &Item) -> ItemSummary {
+        let passkey = vault.passkeys_of(&item.id).into_iter().next();
+        ItemSummary {
+            passkey_rp_id: passkey.map(|p| p.rp_id.clone()),
+            passkey_user_name: passkey
+                .and_then(|p| p.user_name.clone().or_else(|| p.user_display_name.clone())),
+            ..self.summary_of(item)
         }
     }
 
@@ -1659,12 +1746,17 @@ impl VaultSession {
             closer: Mutex::new(None),
             hub: tokio::sync::Mutex::new(None),
             hub_epoch: tokio::sync::watch::Sender::new(0),
+            usage: Mutex::new(verrou_core::usage::UsageLog::default()),
+            match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
+            equivalent_domains: RwLock::new(Vec::new()),
         })
     }
 
     /// Ouvre le coffre fictif (`size` = 0 : seulement les éléments soignés).
     pub fn unlock_mock(&self, size: u32, seed: u64) {
-        let vault = Vault::new(mock::vault_items(size as usize, seed));
+        let items = mock::vault_items(size as usize, seed);
+        let passkeys = mock::passkeys(&items);
+        let vault = Vault::new(items).with_passkeys(passkeys);
         *self
             .organizations
             .write()
@@ -1732,6 +1824,9 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
+        // Relu du disque à la prochaine ouverture (autre compte possible).
+        *self.usage.lock().unwrap_or_else(PoisonError::into_inner) =
+            verrou_core::usage::UsageLog::default();
     }
 
     /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets
@@ -1760,7 +1855,7 @@ impl VaultSession {
     /// Tous les résumés, dans l'ordre du coffre. Appelé une fois après le
     /// déverrouillage ; la recherche renvoie ensuite des positions.
     pub fn summaries(&self) -> Result<Vec<ItemSummary>, VerrouError> {
-        self.with_vault(|v| Ok(v.items().iter().map(|i| self.summary_of(i)).collect()))
+        self.with_vault(|v| Ok(v.items().iter().map(|i| self.summary_in(v, i)).collect()))
     }
 
     pub fn search(
@@ -1769,15 +1864,22 @@ impl VaultSession {
         filter: SidebarFilter,
         order: ResultOrder,
     ) -> Result<Vec<SearchHit>, VerrouError> {
+        let last_used = if order == ResultOrder::LastUsed {
+            self.last_used_map()
+        } else {
+            HashMap::new()
+        };
         self.with_vault(|v| {
-            Ok(v.search(&query, &filter.into(), order.into())
-                .into_iter()
-                .map(|hit| SearchHit {
-                    position: hit.index as u32,
-                    id: v.items()[hit.index].id.clone(),
-                    highlights: hit.title_indices,
-                })
-                .collect())
+            Ok(
+                v.search_with_usage(&query, &filter.into(), order.into(), &last_used)
+                    .into_iter()
+                    .map(|hit| SearchHit {
+                        position: hit.index as u32,
+                        id: v.items()[hit.index].id.clone(),
+                        highlights: hit.title_indices,
+                    })
+                    .collect(),
+            )
         })
     }
 
@@ -1785,7 +1887,7 @@ impl VaultSession {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
             Ok(ItemDetail {
-                summary: self.summary_of(item),
+                summary: self.summary_in(v, item),
                 ..detail(item)
             })
         })
@@ -1807,6 +1909,7 @@ impl VaultSession {
             if item.hides(field) {
                 return Err(hidden_by_organization());
             }
+            self.record_use(&item.id);
             Ok(field.value.expose().to_owned())
         })
     }
@@ -1847,6 +1950,7 @@ impl VaultSession {
                 trashed: c.trashed as u32,
                 favorites: c.favorites as u32,
                 with_totp: c.with_totp as u32,
+                passkeys: c.passkeys as u32,
                 categories: c
                     .kinds
                     .into_iter()
@@ -1946,6 +2050,7 @@ impl VaultSession {
             let keys = apps::item_keystrokes(item, submit).ok_or_else(|| VerrouError::Invalid {
                 message: "seul un identifiant se remplit dans une app".to_owned(),
             })?;
+            self.record_use(&item.id);
             Ok(keys.into_iter().map(Into::into).collect())
         })
     }
@@ -2305,12 +2410,14 @@ impl Backend for SessionBackend {
                             // Élément protégé : la vérification du site passe
                             // d'abord, puis Verrou demande la confirmation ;
                             // l'extension réessaie.
-                            match v.get(item).filter(|i| !session.is_authorized(i)) {
-                                Some(protected) => {
-                                    confirm = Some(protected.title.clone());
-                                    Err(CONFIRM_IN_APP.to_owned())
-                                }
-                                None => Ok(credentials),
+                            if let Some(protected) =
+                                v.get(item).filter(|i| !session.is_authorized(i))
+                            {
+                                confirm = Some(protected.title.clone());
+                                Err(CONFIRM_IN_APP.to_owned())
+                            } else {
+                                session.record_use(item);
+                                Ok(credentials)
                             }
                         },
                     ),
@@ -2355,7 +2462,11 @@ impl Backend for SessionBackend {
             // annoncer à l'utilisateur.
             let quiet = matches!(write, Write::PasskeyCounter { .. });
             match session.perform_write(&connection, write).await {
-                Ok(id) if quiet => Some(Ok(id)),
+                Ok(id) if quiet => {
+                    // Une passkey vient de servir.
+                    session.record_use(&id);
+                    Some(Ok(id))
+                }
                 Ok(id) => {
                     let title = session
                         .with_vault(|v| Ok(v.get(&id).map(|i| i.title.clone())))
@@ -2400,6 +2511,8 @@ impl Backend for SessionBackend {
             return false;
         };
         if session.is_authorized(item) {
+            // Ses secrets partent vers le navigateur (formulaire, passkey).
+            session.record_use(&item.id);
             return true;
         }
         self.delegate
@@ -2892,6 +3005,7 @@ mod optimistic_tests {
             folders: Vec::new(),
             passkeys: Vec::new(),
             organizations: Vec::new(),
+            equivalent_domains: Vec::new(),
             pending_items: Vec::new(),
             pending_changes: 0,
             remapped: Vec::new(),

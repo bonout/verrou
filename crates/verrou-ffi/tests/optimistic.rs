@@ -22,6 +22,7 @@ fn draft(name: &str) -> ItemDraft {
         favorite: false,
         notes: None,
         login: Some(LoginFields {
+            url_matches: None,
             username: Some("camille".to_owned()),
             password: Some("x".to_owned()),
             totp: None,

@@ -160,3 +160,69 @@ fn search_is_fast_on_10k_items() {
     let per_query = start.elapsed() / queries.len() as u32;
     assert!(per_query.as_millis() < 16, "{per_query:?} par requête");
 }
+
+fn vault_with_passkeys() -> Vault {
+    let items = mock::vault_items(0, 42);
+    let passkeys = mock::passkeys(&items);
+    Vault::new(items).with_passkeys(passkeys)
+}
+
+#[test]
+fn passkey_keyword_and_filter() {
+    let v = vault_with_passkeys();
+    let mut expected = vec![
+        "Apple ID".to_owned(),
+        "GitHub".to_owned(),
+        "Google".to_owned(),
+    ];
+    expected.sort();
+    for query in ["passkey:", "has:passkey", "PASSKEY:", "avec:passkey"] {
+        let mut found = titles(&v, query, &Filter::All);
+        found.sort();
+        assert_eq!(found, expected, "{query}");
+    }
+    let mut filtered = titles(&v, "", &Filter::Passkeys);
+    filtered.sort();
+    assert_eq!(filtered, expected);
+    assert_eq!(v.counts().passkeys, 3);
+    // Par site de la passkey, et combiné à un mot.
+    assert_eq!(titles(&v, "passkey:github", &Filter::All), vec!["GitHub"]);
+    assert_eq!(titles(&v, "passkey:google", &Filter::All), vec!["Google"]);
+    assert_eq!(titles(&v, "passkey: apple", &Filter::All), vec!["Apple ID"]);
+    assert!(titles(&v, "passkey:netflix", &Filter::All).is_empty());
+    // Sans passkeys connues : rien.
+    assert!(titles(&vault(), "has:passkey", &Filter::All).is_empty());
+    // `has:totp` et un `has:` inconnu (cherché comme un mot).
+    assert!(titles(&v, "has:totp github", &Filter::All).contains(&"GitHub".to_owned()));
+    assert!(titles(&v, "has:inconnu", &Filter::All).is_empty());
+}
+
+#[test]
+fn sort_by_creation_and_last_use() {
+    let v = vault();
+    let hits = v.search("", &Filter::All, Sort::Created);
+    let created: Vec<i64> = hits.iter().map(|h| v.items()[h.index].created).collect();
+    assert!(created.windows(2).all(|w| w[0] >= w[1]));
+
+    let netflix = v.items().iter().find(|i| i.title == "Netflix").unwrap();
+    let github = v.items().iter().find(|i| i.title == "GitHub").unwrap();
+    let usage =
+        std::collections::HashMap::from([(github.id.clone(), 100), (netflix.id.clone(), 200)]);
+    let hits = v.search_with_usage("", &Filter::All, Sort::LastUsed, &usage);
+    let order: Vec<&str> = hits
+        .iter()
+        .map(|h| v.items()[h.index].title.as_str())
+        .collect();
+    assert_eq!(&order[..2], &["Netflix", "GitHub"]);
+    // Les autres suivent, dans l'ordre alphabétique.
+    let by_title: Vec<&str> = v
+        .search("", &Filter::All, Sort::Title)
+        .iter()
+        .map(|h| v.items()[h.index].title.as_str())
+        .filter(|t| !["Netflix", "GitHub"].contains(t))
+        .collect();
+    assert_eq!(&order[2..], &by_title[..]);
+    // Avec une recherche : seulement les résultats, dans le même ordre.
+    let hits = v.search_with_usage("git", &Filter::All, Sort::LastUsed, &usage);
+    assert_eq!(v.items()[hits[0].index].title, "GitHub");
+}

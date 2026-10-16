@@ -360,6 +360,7 @@ async fn invite_register_confirm_and_manage_members() {
             Draft {
                 name: "Netflix".to_owned(),
                 login: Some(LoginDraft {
+                    uri_matches: None,
                     username: Some("famille@exemple.fr".to_owned()),
                     password: Some(SecretString::new("mot-de-passe-partagé")),
                     totp: None,

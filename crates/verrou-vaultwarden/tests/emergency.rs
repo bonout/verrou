@@ -83,6 +83,7 @@ async fn fill(camille: &mut Connection) {
             name: "Banque".to_owned(),
             notes: Some(SecretString::new("code agence 0042")),
             login: Some(LoginDraft {
+                uri_matches: None,
                 username: Some("camille".to_owned()),
                 password: Some(SecretString::new("mot-de-passe-banque")),
                 totp: None,

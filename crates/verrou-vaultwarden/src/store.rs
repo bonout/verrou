@@ -81,6 +81,10 @@ pub struct Account {
     pub synced_at: Option<i64>,
     /// Réponse brute de `/api/sync`, chiffrée par Bitwarden.
     pub sync: Option<String>,
+    /// Domaines équivalents du compte (`/api/settings/domains`, en clair
+    /// sur le serveur aussi) ; `None` : pas encore lus.
+    #[serde(default)]
+    pub equivalent_domains: Option<Vec<Vec<String>>>,
 }
 
 impl Account {
@@ -130,6 +134,19 @@ impl Store {
 
     pub fn dir(&self) -> &Path {
         &self.dir
+    }
+
+    /// Un petit fichier de l'appareil (réglages, registre d'utilisation),
+    /// tel quel ; `None` s'il n'existe pas ou ne se lit pas.
+    pub fn read_file(&self, name: &str) -> Option<Vec<u8>> {
+        fs::read(self.dir.join(name)).ok()
+    }
+
+    /// Écrit un petit fichier de l'appareil, atomiquement et lisible par le
+    /// seul utilisateur. Permis à l'invité (extension de remplissage) : ce
+    /// n'est pas la file des modifications.
+    pub fn write_file(&self, name: &str, data: &[u8]) -> Result<(), Error> {
+        self.write_private(name, data)
     }
 
     pub fn load_account(&self) -> Result<Option<Account>, Error> {
@@ -358,6 +375,7 @@ mod tests {
             private_key: "2.d|e|f".into(),
             refresh_token: "2.g|h|i".into(),
             synced_at: Some(1),
+            equivalent_domains: None,
             sync: None,
         };
         store.save_account(&account).unwrap();

@@ -63,6 +63,7 @@ impl Connection {
                 Draft {
                     name: title,
                     login: Some(LoginDraft {
+                        uri_matches: None,
                         username,
                         password: None,
                         totp: None,

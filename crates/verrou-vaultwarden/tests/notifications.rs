@@ -498,6 +498,7 @@ async fn invitations_hub_and_activity() {
             Draft {
                 name: "Netflix".to_owned(),
                 login: Some(LoginDraft {
+                    uri_matches: None,
                     username: Some("famille@exemple.fr".to_owned()),
                     password: Some(SecretString::new("secret-partagé")),
                     totp: None,

@@ -814,6 +814,7 @@ async fn create_login_and_note(
             favorite: true,
             notes: Some(SecretString::new("rdv annuel")),
             login: Some(LoginDraft {
+                uri_matches: None,
                 username: Some("camille@exemple.fr".to_owned()),
                 password: Some(SecretString::new("premier-mot-de-passe")),
                 totp: None,

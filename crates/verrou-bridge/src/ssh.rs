@@ -147,6 +147,7 @@ mod tests {
             title: format!("Clé {id}"),
             subtitle: String::new(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,
