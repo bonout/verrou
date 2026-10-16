@@ -142,6 +142,10 @@ final class EndToEndDriver {
         await model.syncNow()
         check(model.syncState == .idle, "synchronisation")
         await snap("03-coffre")
+        if ProcessInfo.processInfo.environment["VERROU_E2E_ONLY"] == "otp" {
+            await scanQRCodes()
+            return
+        }
 
         // Recherche (cœur Rust), sans accents ni majuscules, dans l'onglet Rechercher
         model.tab = .search
@@ -236,6 +240,9 @@ final class EndToEndDriver {
         check(model.detail(id: created)?.fields.contains { $0.label == "PIN" } == true, "champ personnalisé ajouté")
         model.vaultPath = []
         await pause(1.2)
+
+        // QR codes de double authentification (photo, aperçu, enregistrement)
+        await scanQRCodes()
 
         // Carte bancaire créée sur l'iPhone
         model.newItem(.card)
@@ -347,6 +354,143 @@ final class EndToEndDriver {
         if let shared, let member = config.member {
             await sharingWithMember(shared, member: member)
         }
+    }
+
+    // MARK: QR codes
+
+    /// Graines des images de `scripts/ios-e2e.sh` (`VERROU_E2E_QR_DIR`).
+    static let qrNewSecret = "KRUGKIDROVUWG2ZAMJZG653OEBTG66BA"
+    static let qrAmazonSecret = "MFWWC6TPNYQGG33EMUQGC5DUMFRWQZLE"
+
+    /// Le chemin « photo ou capture d'écran » de la feuille « Scanner un QR
+    /// code » : la même lecture que le sélecteur de Photos (Vision), sur
+    /// les images que le script a aussi ajoutées à la photothèque du
+    /// simulateur (`simctl addmedia`). Le simulateur n'a pas de caméra.
+    private func scanQRCodes() async {
+        guard let dir = ProcessInfo.processInfo.environment["VERROU_E2E_QR_DIR"] else {
+            return log("E2E_OK QR codes : pas d'images, étape sautée")
+        }
+        func image(_ name: String) -> Data {
+            (try? Data(contentsOf: URL(fileURLWithPath: dir).appending(path: name))) ?? Data()
+        }
+        func sameCode(_ itemID: String, secret: String) -> Bool {
+            let now = Date()
+            return model.totpCode(of: itemID, at: now)?.code == Self.totp(secret, at: now.timeIntervalSince1970)
+        }
+        func appearance(_ mode: String) async {
+            log("E2E_APPEARANCE \(mode)")
+            await pause(1.5)
+        }
+        model.vaultPath = []
+        model.tab = .vault
+
+        // 1. Nouvel identifiant, bouton « Scanner un QR code »
+        model.newItem(.login)
+        await pause(1.2)
+        model.startOTPScan(.editor(isNew: true))
+        guard let flow = model.otpScan else { return check(false, "feuille « Scanner un QR code » ouverte") }
+        check(await wait(5) { flow.camera != .checking }, "caméra examinée (\(flow.camera))")
+        check(flow.camera == .unavailable, "simulateur : caméra indisponible, photo proposée")
+        await snap("40-qr-sources")
+        await appearance("dark")
+        await snap("40b-qr-sources-sombre")
+        flow.camera = .denied
+        await snap("41b-qr-camera-refusee-sombre")
+        await appearance("light")
+        await snap("41-qr-camera-refusee")
+        flow.camera = .unavailable
+        await flow.handle(imageData: image("qr-wifi.png"), session: model.session)
+        check(flow.result == nil && flow.error?.contains("pas de code à usage unique") == true,
+              "QR code Wi-Fi refusé (\(flow.error ?? "aucune erreur"))")
+        await flow.handle(imageData: image("qr-nouveau.png"), session: model.session)
+        guard let account = flow.result?.accounts.first else {
+            return check(false, "QR code lu dans la capture d'écran (\(flow.error ?? "rien"))")
+        }
+        check(account.issuer == "Exemple Cloud" && account.account == "camille@exemple.fr",
+              "service et compte lus (\(account.issuer ?? "-") / \(account.account ?? "-"))")
+        let t = Date().timeIntervalSince1970
+        check((try? totpPreview(value: account.uri, unixTime: UInt64(t)))?.code == Self.totp(Self.qrNewSecret, at: t),
+              "premier code juste")
+        check(account.matches.isEmpty, "aucun identifiant existant pour ce service")
+        await snap("42-qr-apercu")
+        await appearance("dark")
+        await snap("42b-qr-apercu-sombre")
+        await appearance("light")
+        _ = await flow.apply([(account, .form)], model: model)
+        check(model.otpScan == nil, "feuille fermée")
+        check(await wait(3) { model.otpFormFill == nil }, "formulaire rempli")
+        // Sans clavier sur la capture : le formulaire entier.
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        await snap("43-qr-formulaire")
+        model.e2eSaveEditor += 1
+        check(await wait(10) { model.editor == nil }, "identifiant créé avec son code")
+        guard let created = id(of: "Exemple Cloud") else { return check(false, "« Exemple Cloud » dans le coffre") }
+        check(model.summary(id: created)?.hasTotp == true && sameCode(created, secret: Self.qrNewSecret),
+              "le code apparaît sur la fiche")
+        check(UIPasteboard.general.string?.contains(Self.qrNewSecret) != true, "graine jamais copiée")
+        await snap("44-qr-fiche")
+        model.vaultPath = []
+        await pause(1.0)
+
+        // 2. Le QR code d'un service déjà dans le coffre, sans code : « Ajouter à Amazon »
+        guard let amazon = id(of: "Amazon") else { return check(false, "Amazon présent") }
+        check(model.summary(id: amazon)?.hasTotp == false, "Amazon sans code")
+        model.newItem(.login)
+        await pause(1.2)
+        model.startOTPScan(.editor(isNew: true))
+        guard let matching = model.otpScan else { return check(false, "feuille ouverte (identifiant existant)") }
+        await matching.handle(imageData: image("qr-amazon.png"), session: model.session)
+        check(matching.result?.accounts.first?.matches.first?.id == amazon, "« Ajouter à Amazon » proposé")
+        await snap("45-qr-ajouter-a-existant")
+        model.otpScan = nil
+        await pause(0.8)
+        model.editor = nil
+        await pause(1.0)
+
+        // 3. Fiche sans code : « Ajouter un code (QR) »
+        model.open(amazon)
+        await pause(1.0)
+        model.startOTPScan(.item(id: amazon, title: "Amazon"))
+        guard let itemFlow = model.otpScan else { return check(false, "feuille ouverte depuis la fiche") }
+        await itemFlow.handle(imageData: image("qr-amazon.png"), session: model.session)
+        check(itemFlow.result?.accounts.first?.matches.first?.id == amazon, "QR code d'Amazon rattaché à la fiche")
+        await snap("46-qr-ajouter-a")
+        _ = await itemFlow.apply(itemFlow.plan, model: model)
+        check(await wait(10) { model.summary(id: amazon)?.hasTotp == true } && sameCode(amazon, secret: Self.qrAmazonSecret),
+              "code ajouté à Amazon (\(itemFlow.error ?? "ok"))")
+        await snap("47-qr-fiche-amazon")
+        model.vaultPath = []
+        await pause(1.0)
+
+        // 4. Export Google Authenticator (plusieurs comptes), depuis un nouvel identifiant
+        model.newItem(.login)
+        await pause(1.2)
+        model.startOTPScan(.editor(isNew: true))
+        guard let export = model.otpScan else { return check(false, "feuille ouverte pour l'export") }
+        await export.handle(imageData: image("qr-export.png"), session: model.session)
+        guard let result = export.result else { return check(false, "export lu (\(export.error ?? "rien"))") }
+        check(result.accounts.count == 2 && result.skipped == 1 && result.batchCount == 2,
+              "export : 2 comptes TOTP, 1 HOTP écarté, lot 1 sur 2")
+        await snap("48-qr-export")
+        await appearance("dark")
+        await snap("48b-qr-export-sombre")
+        await appearance("light")
+        let plan = export.plan.map { ($0.0, OTPScanFlow.Destination.newLogin) }
+        _ = await export.apply(plan, model: model)
+        check(model.otpScan == nil && model.editor == nil, "comptes importés, écran de création fermé")
+        guard let rfc = id(of: "RFC 6238"), let team = id(of: "Équipe") else {
+            return check(false, "deux identifiants créés")
+        }
+        check(model.totpCode(of: rfc)?.code.count == 8 && model.totpCode(of: team)?.code.count == 6,
+              "codes de l'export (8 et 6 chiffres)")
+        model.vaultPath = []
+        await pause(1.0)
+
+        // Le reste du parcours compte les éléments actifs : retour à la corbeille.
+        for itemID in [created, rfc, team] {
+            await model.trash(itemID)
+        }
+        _ = await wait(20) { model.pendingChanges == 0 && model.syncState == .idle }
     }
 
     // MARK: Partage

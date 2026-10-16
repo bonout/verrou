@@ -57,6 +57,7 @@ mod bulk;
 mod emergency;
 mod import;
 mod members;
+mod otp_scan;
 mod passphrase;
 mod send;
 mod sharing;
@@ -75,6 +76,7 @@ pub use members::{
     OrganizationMemberRole, OrganizationMemberStatus, SignupLinkInfo, master_password_strength,
     parse_signup_link,
 };
+pub use otp_scan::{OtpScanResult, OtpTarget, ScannedOtp, totp_preview};
 pub use passphrase::{
     GeneratedPassphrase, PassphraseLanguage, PassphraseSeparator, PassphraseSettings,
     generate_passphrase,

@@ -198,7 +198,8 @@ the Rust core and a Swift layer with the Mac app: sign in to Vaultwarden
 search as you type, tap to copy (local-only clipboard that iOS clears after
 90 s), reveal with the same protected-item rules, one-time codes, cards,
 identities, Wi-Fi QR codes, attachments (Quick Look, share), passkeys listed,
-create and edit logins, notes, cards, identities and templates, a password
+scan a two-factor QR code (camera, screenshot or clipboard, including Google
+Authenticator exports) into a new or existing login, create and edit logins, notes, cards, identities and templates, a password
 and passphrase generator, swipe actions and multi-select, offline edits, an
 audit, auto-lock in the background and a privacy screen in the app switcher.
 Sharing works as on the Mac: share one item or a selection into a shared

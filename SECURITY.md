@@ -930,6 +930,43 @@ ci-dessus ; ce qui change :
   se rabat sur son dossier privé, et l'extension ne voit pas le coffre. Le
   groupe de trousseau `app.verrou.shared` n'est pas utilisé.
 
+### Scanner un QR code (codes à usage unique)
+
+Dans l'écran de modification (« Scanner un QR code ») et depuis la fiche
+d'un identifiant sans code (« Ajouter un code (QR) »), l'app lit le QR code
+de double authentification d'un site : `otpauth://totp`, graine Base32, ou
+export de Google Authenticator (`otpauth-migration://`, protobuf, plusieurs
+comptes). La lecture et la validation de la graine (Base32, algorithme,
+chiffres, période) sont dans le cœur Rust (`verrou_core::otp_scan`) ; les
+codes HOTP (à compteur) sont refusés, Bitwarden ne stockant que des TOTP.
+
+- **Caméra** : VisionKit (`DataScannerViewController`, QR codes
+  seulement), sinon AVFoundation (`AVCaptureMetadataOutput`). Les deux ne
+  rendent que le texte du QR code : aucune image n'est enregistrée, ni sur
+  le disque ni en mémoire au-delà de l'image en cours. L'autorisation n'est
+  demandée qu'au premier usage, et seulement si l'appareil a une caméra ; un
+  refus est expliqué, avec un lien vers Réglages.
+- **Photo ou capture d'écran** : `PhotosPicker` tourne hors de l'app ; Verrou
+  ne reçoit que l'image choisie, sans accès à la photothèque (aucune
+  autorisation demandée). L'image n'existe qu'en mémoire, le temps que
+  Vision (`VNDetectBarcodesRequest`) y lise le QR code, puis elle est
+  relâchée. Verrou ne l'efface pas de Photos : la capture d'écran du QR code
+  reste dans la photothèque, à supprimer soi-même (elle contient la graine).
+- **Presse-papiers** : lu seulement au toucher de `PasteButton` (pas
+  d'alerte de collage, rien n'est lu à l'ouverture de la feuille ; savoir
+  s'il contient du texte ou une image ne le lit pas).
+- **Graine** : le cœur la réécrit en un lien `otpauth://totp` canonique, qui
+  part directement dans le brouillon de l'élément puis est chiffré à
+  l'enregistrement comme les autres champs. Elle n'est jamais journalisée ni
+  copiée dans le presse-papiers ; l'aperçu n'affiche que le service, le
+  compte et le code du moment. Le lien traverse la frontière Rust → Swift
+  (exception documentée dans `verrou-ffi`, comme `edit_draft`), le temps de
+  l'aperçu ; fermer la feuille ou verrouiller le coffre l'oublie.
+- **Identifiant existant** : un compte scanné peut rejoindre un identifiant
+  sans code du même service (titre, ou domaine enregistrable d'un site) ;
+  un élément protégé demande d'abord Face ID ou le mot de passe principal,
+  et un élément en lecture seule n'est jamais proposé.
+
 ## Remplissage automatique sur iPhone
 
 L'extension `VerrouAutoFill` (`apple/VerrouAutoFill`, fournisseur

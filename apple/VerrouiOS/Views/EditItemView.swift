@@ -100,6 +100,17 @@ struct EditItemView: View {
             } message: {
                 Text("L'élément reste restaurable depuis la corbeille pendant 30 jours.")
             }
+            .sheet(item: scanBinding) { flow in
+                OTPScanSheet(flow: flow)
+            }
+            .onChange(of: model.otpFormFill) { _, fill in
+                guard let fill else { return }
+                applyScanned(fill.account)
+                model.otpFormFill = nil
+            }
+            #if DEBUG
+            .onChange(of: model.e2eSaveEditor) { save() }
+            #endif
             .onAppear { titleFocused = isNew }
         }
     }
@@ -145,6 +156,24 @@ struct EditItemView: View {
             TextField("Code à usage unique", text: loginText(\.totp), prompt: Text("graine ou lien otpauth://"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .accessibilityIdentifier("edit-totp")
+            // Aperçu du code : la graine saisie ou scannée est lisible.
+            if let value = draft.login?.totp, !value.isEmpty {
+                if (try? totpPreview(value: value, unixTime: 0)) != nil {
+                    LabeledContent("Code actuel") {
+                        LiveCode(value: value, size: 17)
+                    }
+                    .font(.callout)
+                } else {
+                    Label("Graine illisible (Base32 ou lien otpauth:// attendu)", systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+            Button("Scanner un QR code", systemImage: "qrcode.viewfinder") {
+                model.startOTPScan(.editor(isNew: isNew))
+            }
+            .accessibilityIdentifier("edit-scan-qr")
         } header: {
             SectionHeader("Identifiant")
         }
@@ -286,6 +315,25 @@ struct EditItemView: View {
         if draft.card != nil { return "Nouvelle carte" }
         if draft.identity != nil { return "Nouvelle identité" }
         return "Nouvelle note"
+    }
+
+    /// Feuille du QR code ouverte depuis cet écran.
+    private var scanBinding: Binding<OTPScanFlow?> {
+        Binding(get: { model.otpScan?.purpose.isEditor == true ? model.otpScan : nil },
+                set: { if $0 == nil { model.otpScan = nil } })
+    }
+
+    /// Compte scanné : le lien canonique (graine comprise) va dans le
+    /// brouillon ; titre et identifiant complètent les champs vides.
+    private func applyScanned(_ account: ScannedOtp) {
+        guard draft.login != nil else { return }
+        draft.login?.totp = account.uri
+        if draft.name.trimmingCharacters(in: .whitespaces).isEmpty, account.issuer != nil || account.account != nil {
+            draft.name = account.title
+        }
+        if (draft.login?.username ?? "").isEmpty, let user = account.account {
+            draft.login?.username = user
+        }
     }
 
     private func save() {
