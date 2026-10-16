@@ -102,8 +102,8 @@ final class VaultAccess: @unchecked Sendable {
     /// Demande Face ID / Touch ID, descelle la clé de l'utilisateur et ouvre
     /// le coffre avec. Les erreurs sont celles de `BiometricVault`
     /// (annulé, indisponible, invalidé) ou du cœur Rust.
-    func unlockWithBiometrics(reason: String) async throws -> UInt32 {
-        let key = try await BiometricVault.open(in: directory, reason: reason)
+    func unlockWithBiometrics(reason: String, accepted: (@MainActor () -> Void)? = nil) async throws -> UInt32 {
+        let key = try await BiometricVault.open(in: directory, reason: reason, accepted: accepted)
         return try await session.unlockWithUserKey(userKey: key)
     }
 

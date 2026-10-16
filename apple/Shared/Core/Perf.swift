@@ -38,7 +38,40 @@ enum Perf {
             fflush(stdout)
         }
         #endif
+        #if os(iOS) && !AUTOFILL_EXTENSION
+        journal(message)
+        #endif
     }
+
+    #if os(iOS) && !AUTOFILL_EXTENSION
+    /// Les mêmes étapes, horodatées, dans `Library/Caches/perf.log` (64 Ko au
+    /// plus) : lisibles sur un iPhone sans les droits root qu'exige son
+    /// journal système, par
+    /// `xcrun devicectl device copy from --domain-type appDataContainer
+    ///  --domain-identifier app.verrou.ios --source Library/Caches/perf.log`.
+    /// Des durées seulement, jamais une donnée du coffre.
+    private static let journalQueue = DispatchQueue(label: "verrou.perf.journal", qos: .utility)
+    private static let journalURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appending(path: "perf.log")
+
+    private static func journal(_ message: String) {
+        let line = "\(Date().formatted(.iso8601.time(includingFractionalSeconds: true))) [\(getpid())] \(message)\n"
+        journalQueue.async {
+            guard let data = line.data(using: .utf8) else { return }
+            let url = journalURL
+            if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 64 * 1024 {
+                try? FileManager.default.removeItem(at: url)
+            }
+            if let handle = try? FileHandle(forWritingTo: url) {
+                handle.seekToEndOfFile()
+                handle.write(data)
+                try? handle.close()
+            } else {
+                try? data.write(to: url)
+            }
+        }
+    }
+    #endif
 
     #if DEBUG
     private static let echo = ProcessInfo.processInfo.environment["VERROU_BENCH"] != nil

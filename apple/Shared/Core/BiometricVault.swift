@@ -101,8 +101,11 @@ enum BiometricVault {
         #endif
     }
 
-    /// Demande Touch ID et rend la clé de l'utilisateur.
-    static func open(in directory: URL, reason: String, file name: String = appFile) async throws -> String {
+    /// Demande Touch ID et rend la clé de l'utilisateur. `accepted` est appelé
+    /// dès que le visage ou le doigt est reconnu, avant le Secure Enclave et
+    /// le déchiffrement : l'écran verrouillé peut commencer à s'ouvrir.
+    static func open(in directory: URL, reason: String, file name: String = appFile,
+                     accepted: (@MainActor () -> Void)? = nil) async throws -> String {
         guard let data = try? Data(contentsOf: file(in: directory, name: name)),
               let sealed = try? JSONDecoder().decode(Sealed.self, from: data) else { throw Failure.invalidated }
         let context = LAContext()
@@ -114,6 +117,7 @@ enum BiometricVault {
             Perf.unlockSucceeded()
             Perf.mark("\(Biometrics.name) réussi à +\(Perf.msSinceLaunch) ms du lancement "
                       + "(attente du visage ou du doigt : \(Perf.ms(since: prompted)) ms)")
+            if let accepted { await MainActor.run { accepted() } }
         } catch let error as LAError where [.userCancel, .userFallback].contains(error.code) {
             throw Failure.cancelled
         } catch let error as LAError where [.appCancel, .systemCancel, .notInteractive].contains(error.code) {

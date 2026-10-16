@@ -66,7 +66,12 @@ struct RootView: View {
 
     /// Hors du premier plan (sélecteur d'apps, centre de contrôle) : le
     /// contenu est flouté et recouvert, l'aperçu du sélecteur ne montre rien.
-    private var shielded: Bool { scenePhase != .active }
+    /// Pas pendant la demande de Face ID que l'app a faite elle-même : iOS
+    /// la laisse inactive jusqu'à deux secondes après la réussite, et
+    /// l'écran de confidentialité recouvrait alors le coffre déjà ouvert.
+    private var shielded: Bool {
+        scenePhase == .background || (scenePhase == .inactive && !model.biometricPrompt)
+    }
 
     private var showsLock: Bool {
         !model.needsLogin && (model.lockState != .unlocked || lockOnScreen)
@@ -96,7 +101,7 @@ struct RootView: View {
                         .zIndex(0)
                 }
                 if showsLock {
-                    LockView(departing: model.lockState == .unlocked) { lockOnScreen = false }
+                    LockView(departing: model.lockState == .unlocked || model.opening) { lockOnScreen = false }
                         .onAppear { lockOnScreen = true }
                         .transition(.opacity)
                         // Toujours au-dessus du coffre qui s'insère dessous.
