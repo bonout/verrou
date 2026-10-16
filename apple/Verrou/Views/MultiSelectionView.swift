@@ -83,6 +83,9 @@ struct BulkActions: View {
                 if !model.writableOrganizations.isEmpty, !model.shareableIDs(ids).isEmpty {
                     item("Partager…", "person.2") { model.openSharing(items: ids) }
                 }
+                if !model.unshareableIDs(ids).isEmpty {
+                    item("Retirer du partage…", "person.2.slash") { model.requestUnshare(ids) }
+                }
                 action("Mettre à la corbeille", "trash", .trash, destructive: true)
             }
         } else if style == .menu {

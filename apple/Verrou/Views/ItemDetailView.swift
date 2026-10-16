@@ -44,7 +44,8 @@ struct ItemDetailView: View {
                     FieldCard {
                         ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
                             if index > 0 { Divider().padding(.leading, 14) }
-                            WebsiteRow(url: url, primary: index == 0)
+                            WebsiteRow(url: url, primary: index == 0,
+                                       rule: detail.urlMatches.indices.contains(index) ? detail.urlMatches[index] : nil)
                         }
                     }
                 }
@@ -111,6 +112,9 @@ struct ItemDetailView: View {
                                 Button("Gérer dans le coffre web") {
                                     model.openWebVault(organizationID: sharing.organizationId)
                                 }
+                                if model.canEdit, detail.summary.canUnshare {
+                                    Button("Retirer du partage…") { model.requestUnshare([detail.summary.id]) }
+                                }
                             }
                         if sharing.readOnly {
                             Chip(text: "Lecture seule", symbol: "eye", tint: .secondary)
@@ -174,6 +178,10 @@ struct ItemDetailView: View {
         return VStack(alignment: .leading, spacing: 3) {
             Text("Modifié le \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
             Text("Créé le \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
+            if let used = detail.summary.lastUsedLabel {
+                Text("Utilisé sur ce Mac \(used)")
+                    .help("Remplissage, copie ou secret affiché : noté sur ce Mac seulement")
+            }
         }
         .font(.caption)
         .foregroundStyle(.tertiary)
@@ -312,6 +320,8 @@ struct IconButton: View {
 struct WebsiteRow: View {
     let url: String
     let primary: Bool
+    /// Règle de correspondance propre au site (`nil` : celle par défaut).
+    var rule: UriMatchRule?
     @State private var hovering = false
 
     var body: some View {
@@ -321,6 +331,10 @@ struct WebsiteRow: View {
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
+            if let rule {
+                Chip(text: rule.label, symbol: "scope", tint: rule == .never ? .orange : .secondary)
+                    .help("Correspondance : \(rule.explanation)")
+            }
             if let link = URL(string: url) {
                 Button("Ouvrir") { NSWorkspace.shared.open(link) }
                     .controlSize(.small)

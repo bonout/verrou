@@ -135,6 +135,12 @@ final class PhoneModel {
     var vaultPath: [Route] = [] {
         didSet { forgetClosedItems() }
     }
+    /// Écrans empilés dans l'onglet Réglages.
+    var settingsPath: [SettingsRoute] = []
+    enum SettingsRoute: Hashable {
+        /// Tri, liste au déverrouillage, règles de correspondance.
+        case filling
+    }
     /// Écrans empilés dans l'onglet Rechercher.
     var searchPath: [Route] = [] {
         didSet { forgetClosedItems() }
@@ -159,6 +165,20 @@ final class PhoneModel {
     var e2eSaveEditor = 0
     #endif
     var moveRequest: MoveRequest?
+    /// « Retirer du partage… » en attente de confirmation.
+    var unshareRequest: UnshareRequest?
+    /// Retrait du partage en cours.
+    var unshareBusy = false
+    /// Ordre des listes, gardé sur cet iPhone.
+    var sortOrder: ResultOrder = DevicePreferences.sort {
+        didSet { DevicePreferences.sort = sortOrder }
+    }
+    /// Liste ouverte au déverrouillage, gardée sur cet iPhone.
+    var defaultFilter: DefaultFilter = DevicePreferences.defaultFilter {
+        didSet { DevicePreferences.defaultFilter = defaultFilter }
+    }
+    /// Règles de correspondance de cet iPhone et domaines équivalents du compte.
+    var matchSettings: MatchSettingsView?
     /// Pièce jointe déchiffrée montrée par Quick Look (fichier temporaire).
     var preview: URL? {
         didSet { if let oldValue, oldValue != preview { Attachments.discard(oldValue) } }
@@ -518,6 +538,10 @@ final class PhoneModel {
 
     private func didUnlock(failures: UInt32) {
         reloadVault()
+        // La liste choisie dans les réglages s'ouvre d'elle-même.
+        if defaultFilter != .all, vaultPath.isEmpty, !showcase {
+            vaultPath = [.list(defaultFilter.filter)]
+        }
         lockState = .unlocked
         updateSiteIcons()
         if failures > 0 {
@@ -813,6 +837,7 @@ final class PhoneModel {
         counts = loaded.map(\.counts) ?? (try? session.counts())
         organizations = loaded?.organizations ?? session.organizations()
         folders = loaded?.folders ?? session.folders()
+        matchSettings = session.matchSettings()
         if let known = breaches { breaches = session.stillBreached(breaches: known) }
         if audit != nil { audit = try? session.audit() }
         refreshPending()
@@ -1025,6 +1050,7 @@ final class PhoneModel {
     func copyCode(of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyCode(of: itemID) }) { return }
         guard let code = totpCode(of: itemID) else { return }
+        session.recordItemUse(id: itemID)
         copy(code.code, label: "Code", secret: true)
     }
 
@@ -1053,6 +1079,8 @@ final class PhoneModel {
         guard let value else { return }
         // Le numéro de carte se copie sans espaces : c'est ce qu'attendent les formulaires.
         let copied = field.fieldType == .cardNumber ? value.replacingOccurrences(of: " ", with: "") : value
+        // Un secret révélé est déjà noté par le cœur ; un champ en clair, ici.
+        if !field.secret { session.recordItemUse(id: itemID) }
         copy(copied, label: field.label, secret: field.secret)
     }
 
@@ -1395,6 +1423,6 @@ struct SharedDestination: Equatable, Hashable {
 
 /// Les actions groupées de l'iPhone n'affichent pas d'avancement : une
 /// requête par lot de 500, l'attente est courte.
-private final class NoBulkProgress: BulkProgress, @unchecked Sendable {
+final class NoBulkProgress: BulkProgress, @unchecked Sendable {
     func progress(done: UInt32, total: UInt32) {}
 }

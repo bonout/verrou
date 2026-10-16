@@ -60,7 +60,9 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
 - **Share**: shared vaults with family or a team (Vaultwarden organizations):
   create an organization, its collections and groups, share one item or a
   whole selection into it, and choose who sees what (view, hide passwords,
-  edit, manage). Also encrypted links that expire for a text or a file
+  edit, manage). *Retirer du partage* moves items back to your personal
+  vault, re-encrypted under your key with their history, passkeys, codes,
+  fields and attachments. Also encrypted links that expire for a text or a file
   (Send), and emergency access for trusted contacts.
 - **Bring people in**: invite them to a shared vault, choose their role and
   collections, and confirm them after checking their key's fingerprint
@@ -78,6 +80,15 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   any item.
 - **Act on many items at once**: select them like in Finder, then archive,
   trash, restore, favorite or move them to a folder in one go.
+- **Find your passkeys**: a *Passkeys* list with a count (site and user name
+  on each row), and `passkey:github` or `has:passkey` in the search.
+- **Sort your way**: by relevance, title, modification, creation or last use
+  (what you filled, copied or revealed on this device, kept only there), and
+  open the list you want at unlock.
+- **Choose where a login is offered**: Bitwarden's per-site match rule
+  (base domain, host, starts with, exact, regular expression, never), a
+  default for the device and one per folder, and your account's equivalent
+  domains, honoured by the extension, ⌘\ and iPhone AutoFill alike.
 - **Save without waiting**: edits show at once and are sent to the server
   in the background, so a slow link never holds up the window.
 - **Work offline**: edit, create, trash or archive items without network;

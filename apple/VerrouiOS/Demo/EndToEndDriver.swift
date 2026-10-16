@@ -313,6 +313,9 @@ final class EndToEndDriver {
         await snap("16-reglages")
         model.tab = .vault
 
+        // Passkeys, tri, règles de correspondance
+        await vaultTweaks(github: github)
+
         // Coffres partagés, côté propriétaire
         let shared = await sharingAsOwner()
 
@@ -493,6 +496,124 @@ final class EndToEndDriver {
         _ = await wait(20) { model.pendingChanges == 0 && model.syncState == .idle }
     }
 
+    // MARK: Passkeys, tri, correspondance
+
+    /// Une passkey créée comme par le remplissage automatique (sur Amazon),
+    /// le filtre « Passkeys » et le mot-clé `passkey:`, le tri par création
+    /// et par dernière utilisation (gardé sur l'iPhone), une règle par site
+    /// suivie par le remplissage automatique, la règle de l'iPhone et celle
+    /// d'un dossier.
+    private func vaultTweaks(github: String) async {
+        guard let amazon = id(of: "Amazon"), let netflix = id(of: "Netflix") else {
+            return check(false, "Amazon et Netflix présents")
+        }
+        let registered = try? await model.session.passkeyRegistration(request: PasskeyCreationRequest(
+            rpId: "amazon.fr", userName: "camille@exemple.fr", userHandle: Data((0..<16).map { _ in UInt8.random(in: 0...255) }),
+            clientDataHash: Data(repeating: 7, count: 32), userVerified: true, itemId: amazon, excludedCredentials: []))
+        check(registered != nil, "passkey créée sur Amazon")
+        model.afterWrite()
+        check(model.counts?.passkeys == 1, "1 identifiant avec passkey (\(model.counts?.passkeys ?? 0))")
+        check(model.rows(query: "", filter: .passkeys).map(\.summary.title) == ["Amazon"], "filtre « Passkeys »")
+        check(model.rows(query: "passkey:", filter: .all).map(\.summary.title) == ["Amazon"]
+              && model.rows(query: "has:passkey", filter: .all).count == 1
+              && model.rows(query: "passkey:amaz", filter: .all).count == 1
+              && model.rows(query: "passkey:netflix", filter: .all).isEmpty, "mots-clés passkey: et has:passkey")
+        let summary = model.summary(id: amazon)
+        check(summary?.passkeyRpId == "amazon.fr" && summary?.passkeyUserName == "camille@exemple.fr",
+              "site et utilisateur de la passkey sur la ligne")
+        model.vaultPath = []
+        await snap("37-accueil-passkeys")
+        model.vaultPath = [.list(.passkeys)]
+        await snap("38-passkeys")
+
+        // Tri : création, puis dernière utilisation (copie, secret affiché)
+        let dates = model.rows(query: "", filter: .all, order: .created).map(\.summary.created)
+        check(dates.count == 9 && dates == dates.sorted(by: >), "tri par création, du plus récent au plus ancien")
+        model.copyUsername(of: amazon)
+        await pause(1.2)
+        model.copyPassword(of: netflix)
+        model.afterWrite()
+        model.sortOrder = .lastUsed
+        check(DevicePreferences.sort == .lastUsed, "tri gardé sur l'iPhone")
+        let used = model.rows(query: "", filter: .all, order: model.sortOrder).map(\.summary.title)
+        check(Array(used.prefix(2)) == ["Netflix", "Amazon"], "tri par dernière utilisation (\(used.prefix(3)))")
+        check(model.summary(id: netflix)?.lastUsed != nil, "date de dernière utilisation connue")
+        model.vaultPath = [.list(.all)]
+        await snap("39-tri-derniere-utilisation")
+        model.vaultPath = []
+        model.sortOrder = .relevance
+
+        // Règle par site : hôte pour github.com, jamais pour une ancienne adresse
+        let services = { (host: String) in
+            ((try? self.model.session.autofillMatches(services: [host])) ?? []).map(\.title)
+        }
+        check(services("gist.github.com").contains("GitHub"), "domaine de base : sous-domaine proposé")
+        await model.edit(github)
+        if var draft = model.editor?.draft {
+            draft.login?.setMatchRule(.host, at: 0)
+            draft.login?.appendURL("https://old-github.example")
+            let last = (draft.login?.urls.count ?? 1) - 1
+            draft.login?.setMatchRule(.never, at: last)
+            model.editor = PhoneModel.Editor(itemID: github, draft: draft)
+            await snap("40-correspondance")
+            await model.saveEditor(draft)
+        }
+        check(await wait(20) { model.pendingChanges == 0 && model.syncState == .idle }, "règles envoyées au serveur")
+        check(model.detail(id: github)?.urlMatches == [.host, .never], "règles relues (\(model.detail(id: github)?.urlMatches ?? []))")
+        check(!services("gist.github.com").contains("GitHub") && services("github.com").contains("GitHub"),
+              "remplissage automatique : règle « hôte » suivie")
+        check(!services("old-github.example").contains("GitHub"), "remplissage automatique : règle « jamais » suivie")
+        // Règle de l'iPhone, puis celle du dossier « Personnel » (Amazon)
+        check(services("amazon.fr").contains("Amazon"), "Amazon proposé sur amazon.fr (domaine)")
+        model.setDefaultMatchRule(.host)
+        check(!services("amazon.fr").contains("Amazon"), "règle de l'iPhone « hôte » : www.amazon.fr seulement")
+        if let personnel = model.folders.first(where: { $0.name == "Personnel" }) {
+            model.setFolderMatchRule(personnel.id, .domain)
+            check(services("amazon.fr").contains("Amazon"), "règle du dossier Personnel : domaine de base")
+            model.tab = .settings
+            model.settingsPath = [.filling]
+            await snap("41-reglages-remplissage")
+            model.settingsPath = []
+            model.tab = .vault
+            model.setFolderMatchRule(personnel.id, nil)
+        } else {
+            check(false, "dossier Personnel présent")
+        }
+        model.setDefaultMatchRule(.domain)
+        check(model.matchSettings?.defaultRule == .domain && model.matchSettings?.folderRules.isEmpty == true,
+              "règles de l'iPhone remises par défaut")
+        check((model.matchSettings?.equivalentDomains.count ?? 0) > 10, "domaines équivalents du compte lus")
+    }
+
+    /// « Retirer du partage » sur l'élément partagé plus haut : confirmation,
+    /// puis copie personnelle (mot de passe, champ PIN, archive) et
+    /// l'élément de l'organisation supprimé.
+    private func unshare() async {
+        guard let shared = model.summaries.first(where: { $0.title == "Modifié sur iPhone" && $0.sharing != nil }) else {
+            return check(false, "élément partagé à retirer du partage")
+        }
+        let before = model.counts
+        model.vaultPath = [.item(shared.id)]
+        await pause(0.8)
+        model.requestUnshare([shared.id])
+        check(model.unshareRequest?.itemIDs == [shared.id], "confirmation du retrait demandée")
+        await snap("22b-retirer-du-partage")
+        guard let request = model.unshareRequest else { return }
+        await model.performUnshare(request)
+        check(model.summary(id: shared.id) == nil, "élément de l'organisation supprimé (\(model.toast?.message ?? ""))")
+        guard let personal = model.summaries.first(where: { $0.title == "Modifié sur iPhone" }) else {
+            return check(false, "copie personnelle présente")
+        }
+        check(personal.sharing == nil && personal.state == shared.state, "copie personnelle, archivée comme l'original")
+        check(model.vaultPath.last == .item(personal.id), "la fiche suit la copie")
+        model.toggleReveal("password", of: personal.id)
+        check(model.revealedValue("password", of: personal.id) == "nouveau-mot-de-passe", "mot de passe gardé")
+        check(model.detail(id: personal.id)?.fields.contains { $0.label == "PIN" } == true, "champ personnalisé gardé")
+        check(model.counts?.all == before?.all && model.counts?.archived == before?.archived, "effectifs inchangés")
+        await snap("22c-retire-du-partage")
+        model.vaultPath = []
+    }
+
     // MARK: Partage
 
     struct SharedFixture {
@@ -589,6 +710,7 @@ final class EndToEndDriver {
                 check(model.summary(id: card)?.sharing?.collectionIds.count == 2, "carte dans deux collections")
             }
         }
+        await unshare()
         model.vaultPath = [.organization(org.id)]
         await pause(1.0)
 

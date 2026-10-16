@@ -102,7 +102,20 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             await screen(name, root: RootView(), expect: vault)
         }
         model.query = ""
+        // Passkeys : la vue filtrée, site et utilisateur de chaque passkey.
+        model.filter = .passkeys
+        select("GitHub")
+        await screen("17-passkeys", root: RootView(), expect: vault)
+        // Tri par dernière utilisation (registre de ce Mac).
         model.filter = .all
+        for title in ["Netflix", "GitHub", "Impôts"] {
+            if let id = id(of: title) { model.session.recordItemUse(id: id) }
+        }
+        model.afterWrite(select: id(of: "Netflix"))
+        model.sort = .lastUsed
+        select("Netflix")
+        await screen("18-tri-derniere-utilisation", root: RootView(), expect: vault)
+        model.sort = .relevance
         select("GitHub")
 
         // Volets de la barre latérale.
@@ -153,6 +166,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await screen("40-acces-rapide", root: QuickAccessView(autofill: nil, close: {}), size: nil,
                      expect: .init(), chrome: false)
         model.quickQuery = ""
+        // Préférences de l'appareil remises à leur valeur de départ.
+        model.sort = .relevance
+        model.defaultFilter = .all
         model.lock()
     }
 
@@ -180,11 +196,27 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         } else {
             fail("30-modification-identifiant", "GitHub introuvable dans le coffre fictif")
         }
+        if let github = id(of: "GitHub") {
+            // Une règle par site : hôte pour le site, jamais pour l'ancienne adresse.
+            let draft = ItemDraft(name: "GitHub", folderId: "dossier-travail", favorite: true, notes: nil,
+                                  login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
+                                                     totp: nil,
+                                                     urls: ["https://github.com/login", "https://old.github.com",
+                                                            "^https://([a-z]+\\.)?github\\.com/sso"],
+                                                     urlMatches: [.host, .never, .regularExpression]),
+                                  fields: [], template: nil)
+            await screen("30b-modification-correspondance",
+                         root: EditItemView(editor: .init(itemID: github, draft: draft)),
+                         size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
+        }
         await screen("32-generateur", root: GeneratorView(use: { _, _ in }), size: nil, expect: .init(), chrome: false)
 
+        // Règle par dossier (Travail : hôte), pour l'onglet du remplissage.
+        model.setFolderMatchRule("dossier-travail", .host)
         let tabs: [(String, SettingsTab)] = [
             ("33-reglages-general", .general), ("34-reglages-securite", .security),
             ("35-reglages-compte", .account), ("36-reglages-navigateurs", .integrations),
+            ("36b-reglages-remplissage", .filling),
         ]
         for (name, tab) in tabs {
             defaults.set(tab.rawValue, forKey: "settingsTab")
@@ -209,6 +241,15 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         }
 
         await sharingSheets(sheet)
+
+        // Retirer du partage : la confirmation, avec ce qui va se passer.
+        if let family = id(of: "Google — famille") {
+            let request = UnshareRequest(itemIDs: [family], title: "Google — famille", organizations: ["Famille Martin"])
+            await screen("47-retirer-du-partage", root: UnshareView(request: request), size: nil,
+                         expect: withTitle(sheet, "sheet-title"), chrome: false)
+        } else {
+            fail("47-retirer-du-partage", "élément partagé introuvable dans le coffre fictif")
+        }
 
         // Doublons fictifs (imports d'Apple, de 1Password, de Proton Pass) :
         // le coffre fictif n'en a pas.

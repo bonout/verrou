@@ -127,6 +127,9 @@ struct VaultHomeView: View {
         .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
         if let categories = counts?.categories.filter({ $0.count > 0 }), !categories.isEmpty {
             Section {
+                FilterLink(title: "Passkeys", symbol: "person.badge.key.fill", tint: .purple,
+                           count: counts?.passkeys, filter: .passkeys)
+                    .accessibilityIdentifier("home-passkeys")
                 ForEach(categories, id: \.category) { entry in
                     FilterLink(title: entry.category.label, symbol: entry.category.symbol, tint: entry.category.tint,
                                count: entry.count, filter: .category(category: entry.category))
@@ -522,12 +525,14 @@ struct ItemListView: View {
     @Environment(PhoneModel.self) private var model
     let filter: SidebarFilter
     @State private var query = ""
-    @State private var order = ResultOrder.relevance
+    /// Ordre choisi, gardé sur l'iPhone (`PhoneModel.sortOrder`).
+    private var order: ResultOrder { model.sortOrder }
     @State private var selection = Set<String>()
     @State private var editMode = EditMode.inactive
     @State private var confirmTrash: [String]?
 
     var body: some View {
+        @Bindable var model = model
         let rows = model.rows(query: query, filter: filter, order: order)
         List(selection: $selection) {
             if rows.isEmpty {
@@ -535,7 +540,7 @@ struct ItemListView: View {
                     .listRowBackground(Color.clear)
             }
             ForEach(rows) { row in
-                ItemRowLink(row: row)
+                ItemRowLink(row: row, showsPasskey: showsPasskey)
                     .tag(row.id)
             }
         }
@@ -552,15 +557,16 @@ struct ItemListView: View {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 if !editMode.isEditing {
                     Menu {
-                        Picker("Trier", selection: $order) {
-                            Text("Pertinence").tag(ResultOrder.relevance)
-                            Text("Titre").tag(ResultOrder.title)
-                            Text("Modifiés récemment").tag(ResultOrder.recentlyModified)
+                        Picker("Trier", selection: $model.sortOrder) {
+                            ForEach(ResultOrder.menu, id: \.self) { order in
+                                Text(order.label).tag(order)
+                            }
                         }
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
                     }
                     .accessibilityLabel("Trier")
+                    .accessibilityIdentifier("sort-menu")
                     NewItemMenu(folderID: folderID, destination: destination)
                 }
             }
@@ -604,6 +610,13 @@ struct ItemListView: View {
         #if DEBUG
         .onAppear { PhoneBenchDriver.listShown = true }
         #endif
+    }
+
+    /// Vue des passkeys : site et utilisateur de chaque passkey.
+    private var showsPasskey: Bool {
+        if filter == .passkeys { return true }
+        let words = query.lowercased().split(separator: " ")
+        return words.contains { $0.hasPrefix("passkey:") || $0 == "has:passkey" }
     }
 
     private var trashTitle: String {
@@ -663,6 +676,7 @@ struct ItemListView: View {
         case .all: "Tous les éléments"
         case .favorites: "Favoris"
         case .withTotp: "Codes à usage unique"
+        case .passkeys: "Passkeys"
         case .category(let category): category.label
         case .template(let template): template.label
         case .folder(let name): name
@@ -711,6 +725,9 @@ private struct BulkActionsBar: View {
                 if !model.writableOrganizations.isEmpty, !model.shareableIDs(ids).isEmpty {
                     Button("Partager…", systemImage: "person.2") { model.openSharing(items: ids) }
                 }
+                if !model.unshareableIDs(ids).isEmpty {
+                    Button("Retirer du partage…", systemImage: "person.2.slash") { model.requestUnshare(ids) }
+                }
                 Button("Archiver", systemImage: "archivebox") { run(.archive) }
                 Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = ids }
             }
@@ -736,11 +753,13 @@ struct ItemRowLink: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.zoomNamespace) private var zoom
     let row: ResultRow
+    /// Vue des passkeys : site et utilisateur de la passkey.
+    var showsPasskey = false
 
     var body: some View {
         let summary = row.summary
         NavigationLink(value: PhoneModel.Route.item(summary.id)) {
-            ItemRow(row: row)
+            ItemRow(row: row, showsPasskey: showsPasskey)
                 .equatable()
                 .zoomSource(id: summary.id, in: zoom)
         }
@@ -813,9 +832,11 @@ struct ItemRowLink: View {
 /// une ligne inchangée n'est pas reconstruite pendant la frappe.
 struct ItemRow: View, Equatable {
     let row: ResultRow
+    var showsPasskey = false
 
     static func == (lhs: ItemRow, rhs: ItemRow) -> Bool {
         lhs.row.summary == rhs.row.summary && lhs.row.highlights == rhs.row.highlights
+            && lhs.showsPasskey == rhs.showsPasskey
     }
 
     var body: some View {
@@ -823,7 +844,7 @@ struct ItemRow: View, Equatable {
         let _ = PhoneBenchDriver.rowsBuilt += 1
         #endif
         ItemRowContent(summary: row.summary, highlights: row.highlights, spacing: 12,
-                       subtitleFont: .subheadline, showsProtection: true) {
+                       subtitleFont: .subheadline, showsProtection: true, showsPasskey: showsPasskey) {
             ItemIcon(summary: row.summary, size: 40)
         }
         .padding(.vertical, 2)

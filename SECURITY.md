@@ -423,10 +423,26 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   attente), je n'ai pas la clé de l'organisation. Côté administrateur, une
   clé de membre n'est jamais utilisée sans cette vérification (voir
   ci-dessous).
+- **Retirer du partage** : Bitwarden n'a pas de chemin inverse (le serveur
+  refuse de changer l'organisation d'un élément existant), et ses apps ne
+  proposent que de cloner vers « Mon coffre » puis de supprimer l'original.
+  Verrou fait de même en une action : l'élément est déchiffré, ses pièces
+  jointes sont téléchargées et déchiffrées en mémoire, puis une copie est
+  chiffrée par le SDK sous la clé du compte avec une **nouvelle** clé
+  d'élément (l'organisation ne connaît pas la clé de la copie ; historique,
+  passkeys, graine TOTP, champs et règles de correspondance suivent) et les
+  pièces jointes sont rechiffrées sous de nouvelles clés et renvoyées.
+  Ensuite seulement, l'élément de l'organisation est supprimé définitivement ;
+  si la suppression échoue, la copie est retirée (pas de doublon). Il faut
+  pouvoir modifier et supprimer l'élément, et en voir les mots de passe : la
+  copie révélerait sinon ce que l'organisation masque. Une confirmation est
+  demandée (et Touch ID ou le mot de passe principal pour un élément
+  protégé). Ce qui a été partagé l'a été : un membre a pu copier l'élément
+  avant son retrait.
 - **Hors ligne** : tout ce qui touche au partage exige le serveur et
   s'arrête avec un message clair ; rien ne part dans la file des
   modifications hors ligne, qui ne sait pas rechiffrer pour une
-  organisation.
+  organisation (ni, pour un retrait, renvoyer des pièces jointes).
 - **iPhone** : mêmes règles, même cœur Rust. Le lien d'invitation collé
   passe par le bouton « Coller » du système (aucune lecture silencieuse du
   presse-papiers). Pas de lien universel vers l'app : il faudrait un fichier
@@ -677,6 +693,48 @@ page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont c
   passe par le navigateur) ; pas d'extensions WebAuthn (PRF, `largeBlob`) ;
   pas de passkey dans les cadres ; pendant
   une demande de Touch ID, les autres requêtes de l'extension attendent.
+
+## Correspondance des sites
+
+- **Règle par site** : celle de Bitwarden (`match` de chaque adresse :
+  domaine de base, hôte, commence par, exacte, expression régulière,
+  jamais), enregistrée chiffrée dans l'élément et respectée par tous les
+  chemins de remplissage (extension de navigateur, ⌘\ et accès rapide sur
+  le Mac, remplissage automatique de l'iPhone), qui passent tous par la
+  même fonction du cœur Rust. Une adresse d'application (`macapp://`…) ne
+  correspond jamais à une page, quelle que soit sa règle.
+- **Expressions régulières** : évaluées par le moteur `regex` de Rust, en
+  temps linéaire et avec une taille bornée : une expression piégée ne peut
+  pas bloquer le remplissage. Une expression invalide ne correspond à rien.
+- **Règle par défaut et règle par dossier** : réglages de l'appareil
+  (`match-rules.json` dans le dossier du compte, en clair : des règles et
+  des identifiants de dossiers, aucun nom ni secret), jamais envoyés au
+  serveur. Bitwarden n'a pas de règle par dossier ; elle ne vaut que sur cet
+  appareil et seulement pour les sites sans règle propre.
+- **Domaines équivalents** : lus sur le serveur (`/api/settings/domains`, en
+  clair côté serveur comme dans Bitwarden), à la connexion et à chaque
+  synchronisation ; ils n'élargissent que la règle « domaine de base ». Un
+  serveur malveillant pourrait y déclarer un domaine équivalent à un autre :
+  c'est déjà le cas avec les apps Bitwarden, et le remplissage reste un
+  choix de l'utilisateur.
+
+## Dernière utilisation (tri)
+
+- Bitwarden n'a aucun champ « dernière utilisation » d'un élément (seulement
+  la date d'un ancien mot de passe et le compteur d'une passkey) : Verrou
+  tient son propre registre, **sur l'appareil seulement**, jamais envoyé au
+  serveur ni synchronisé entre appareils.
+- Il ne contient que des **identifiants d'éléments et des horodatages**
+  (`usage.json` dans le dossier du compte, lisible par le seul utilisateur,
+  5 000 éléments au plus) : ni titre, ni site, ni identifiant de connexion,
+  ni secret. Il est mis à jour quand un élément est rempli (extension, ⌘\,
+  remplissage automatique de l'iPhone, passkey), copié ou qu'un secret est
+  affiché. L'identifiant d'un élément est celui du serveur : quelqu'un qui
+  lit ce fichier et a accès au serveur peut relier les deux, il apprend
+  alors quand un élément a servi, pas ce qu'il contient.
+- Il est effacé avec les fichiers du compte à la déconnexion ; le tri choisi
+  et la liste ouverte au déverrouillage sont des préférences de l'app sur
+  l'appareil.
 
 ## Éléments protégés et audit
 

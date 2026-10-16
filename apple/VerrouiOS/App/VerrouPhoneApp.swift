@@ -242,6 +242,7 @@ struct MainTabs: View {
         }
         .quickLookPreview($model.preview)
         .modifier(SharingPresentations())
+        .modifier(UnsharePresentation())
     }
 
     /// Feuille du QR code ouverte depuis une fiche (l'écran de modification

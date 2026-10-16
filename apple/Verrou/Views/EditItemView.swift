@@ -48,13 +48,25 @@ struct EditItemView: View {
                 }
 
                 if isLogin {
-                    Section("Sites") {
+                    Section {
                         ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
                             HStack {
                                 TextField("Site", text: urlBinding(index), prompt: Text("https://exemple.fr"))
                                     .labelsHidden()
+                                Picker("Correspondance", selection: matchBinding(index)) {
+                                    Text("Par défaut (\(fallbackRule.label))").tag(UriMatchRule?.none)
+                                    Divider()
+                                    ForEach(UriMatchRule.all) { rule in
+                                        Text(rule.label).tag(Optional(rule))
+                                    }
+                                }
+                                .labelsHidden()
+                                .fixedSize()
+                                .help(draft.login?.matchRule(at: index)?.explanation
+                                      ?? "Règle de ce Mac : \(fallbackRule.explanation)")
+                                .layoutMark("match-picker-\(index)")
                                 Button {
-                                    draft.login?.urls.remove(at: index)
+                                    draft.login?.removeURL(at: index)
                                 } label: {
                                     Image(systemName: "minus.circle.fill").foregroundStyle(.red)
                                 }
@@ -63,11 +75,17 @@ struct EditItemView: View {
                             }
                         }
                         Button {
-                            draft.login?.urls.append("")
+                            draft.login?.appendURL()
                         } label: {
                             Label("Ajouter un site", systemImage: "plus.circle.fill")
                         }
                         .buttonStyle(.borderless)
+                    } header: {
+                        Text("Sites")
+                    } footer: {
+                        Text("La correspondance décide des pages où Verrou propose l'identifiant ; elle est enregistrée avec l'élément, comme dans Bitwarden.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -209,7 +227,7 @@ struct EditItemView: View {
 
     private func save() {
         // Les sites laissés vides ne partent pas.
-        draft.login?.urls.removeAll { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+        draft.login?.dropEmptyURLs()
         // Un champ ajouté puis laissé sans nom ni valeur ne part pas.
         draft.fields.removeAll { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.value ?? "").isEmpty
             && $0.fieldType != .linked }
@@ -226,6 +244,18 @@ struct EditItemView: View {
         Binding(
             get: { draft.login?.urls.indices.contains(index) == true ? draft.login!.urls[index] : "" },
             set: { if draft.login?.urls.indices.contains(index) == true { draft.login?.urls[index] = $0 } })
+    }
+
+    /// Règle des sites sans règle propre : celle du dossier choisi, sinon
+    /// celle de ce Mac.
+    private var fallbackRule: UriMatchRule {
+        model.matchSettings?.fallback(folderID: draft.folderId) ?? .domain
+    }
+
+    private func matchBinding(_ index: Int) -> Binding<UriMatchRule?> {
+        Binding(
+            get: { draft.login?.matchRule(at: index) },
+            set: { draft.login?.setMatchRule($0, at: index) })
     }
 
     private var notesBinding: Binding<String> {

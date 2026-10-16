@@ -1715,7 +1715,16 @@ impl VaultSession {
             closer.close();
         }
         self.lock();
-        verrou_vaultwarden::logout(self.store()?)?;
+        let store = self.store()?;
+        verrou_vaultwarden::logout(store)?;
+        // Réglages et registre de l'appareil : propres à ce compte.
+        for name in [preferences::USAGE_FILE, preferences::MATCH_RULES_FILE] {
+            let _ = std::fs::remove_file(store.dir().join(name));
+        }
+        *self
+            .match_settings
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = verrou_core::matching::DeviceMatchSettings::default();
         Ok(())
     }
 }

@@ -71,7 +71,8 @@ struct ItemDetailView: View {
             if !detail.urls.isEmpty {
                 Section {
                     ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
-                        WebsiteRow(url: url, primary: index == 0)
+                        WebsiteRow(url: url, primary: index == 0,
+                                   rule: detail.urlMatches.indices.contains(index) ? detail.urlMatches[index] : nil)
                     }
                 } header: {
                     SectionHeader("Sites")
@@ -195,6 +196,11 @@ struct ItemDetailView: View {
                         }
                         if summary.sharing != nil {
                             Button("Collections…", systemImage: "tray.2") { model.openSharing(itemID) }
+                            if summary.canUnshare {
+                                Button("Retirer du partage…", systemImage: "person.2.slash") {
+                                    model.requestUnshare([itemID])
+                                }
+                            }
                         } else if !model.writableOrganizations.isEmpty {
                             Button("Partager…", systemImage: "person.2") { model.openSharing(itemID) }
                         }
@@ -306,6 +312,9 @@ struct ItemDetailView: View {
         return VStack(alignment: .leading, spacing: 3) {
             Text("Modifié le \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
             Text("Créé le \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
+            if let used = detail.summary.lastUsedLabel {
+                Text("Utilisé sur cet iPhone \(used)")
+            }
         }
         .font(.caption)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -607,11 +616,24 @@ private struct WebsiteRow: View {
     @Environment(\.openURL) private var openURL
     let url: String
     let primary: Bool
+    /// Règle de correspondance propre au site (`nil` : celle par défaut).
+    var rule: UriMatchRule?
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
-                Text(primary ? "Site principal" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text(primary ? "Site principal" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    if let rule {
+                        Text(rule.label)
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background((rule == .never ? Color.orange : Color.secondary).opacity(0.15), in: Capsule())
+                            .foregroundStyle(rule == .never ? Color.orange : Color.secondary)
+                            .accessibilityLabel("Correspondance : \(rule.label)")
+                    }
+                }
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
