@@ -37,6 +37,44 @@ globalThis.__verrouPasskeyCodec = (() => {
     .slice(0, MAX_IDS)
     .map((c) => encode(c.id));
 
+  // Entrées `AuthenticationExtensionsPRFValues` (BufferSource) → base64url.
+  function prfValues(values) {
+    if (!values || values.first === undefined) return null;
+    return { first: encode(values.first), second: values.second === undefined ? null : encode(values.second) };
+  }
+
+  // `extensions.prf` → requête PRF pour Verrou (`evalByCredential` : les
+  // identifiants sont déjà en base64url dans les options), ou null.
+  function prfRequest(extensions, withByCredential) {
+    const prf = extensions?.prf;
+    if (!prf || typeof prf !== "object") return null;
+    const byCredential = {};
+    if (withByCredential && prf.evalByCredential && typeof prf.evalByCredential === "object") {
+      for (const [id, values] of Object.entries(prf.evalByCredential).slice(0, MAX_IDS)) {
+        const parsed = prfValues(values);
+        if (parsed) byCredential[id] = parsed;
+      }
+    }
+    return { eval: prfValues(prf.eval), eval_by_credential: byCredential };
+  }
+
+  // Sorties de Verrou (base64url) → `{ first, second? }` en ArrayBuffer.
+  function prfOutputs(results) {
+    if (!results?.first) return null;
+    const out = { first: decode(results.first) };
+    if (results.second) out.second = decode(results.second);
+    return out;
+  }
+
+  // Résultats d'extension rendus à la page, et leur forme JSON.
+  function extensionResults(results) {
+    const json = structuredClone(results);
+    if (json.prf?.results) {
+      json.prf.results = Object.fromEntries(Object.entries(json.prf.results).map(([k, v]) => [k, encode(v)]));
+    }
+    return json;
+  }
+
   // `PublicKeyCredentialCreationOptions` → requête `passkey_create` (sans
   // l'adresse : le service worker y met celle de l'onglet).
   function createRequest(publicKey) {
@@ -52,9 +90,11 @@ globalThis.__verrouPasskeyCodec = (() => {
         .filter((p) => p?.type === "public-key")
         .map((p) => Number(p.alg)),
       exclude: ids(publicKey.excludeCredentials),
-      // « preferred » par défaut : Verrou demande Touch ID.
-      uv: authenticatorSelection.userVerification !== "discouraged",
+      // « preferred » par défaut : Verrou demande Touch ID. La PRF l'exige.
+      uv: authenticatorSelection.userVerification !== "discouraged" || Boolean(publicKey.extensions?.prf),
       attestation: text(publicKey.attestation) ?? "none",
+      // `evalByCredential` est refusé à la création (WebAuthn §10.1.4).
+      prf: prfRequest(publicKey.extensions, false),
     };
   }
 
@@ -64,7 +104,8 @@ globalThis.__verrouPasskeyCodec = (() => {
       rp_id: text(publicKey.rpId),
       challenge: encode(publicKey.challenge),
       allow: ids(publicKey.allowCredentials),
-      uv: publicKey.userVerification !== "discouraged",
+      uv: publicKey.userVerification !== "discouraged" || Boolean(publicKey.extensions?.prf),
+      prf: prfRequest(publicKey.extensions, true),
     };
   }
 
@@ -87,6 +128,10 @@ globalThis.__verrouPasskeyCodec = (() => {
     const publicKey = decode(reply.public_key);
     const transports = ["hybrid", "internal"];
     const results = extensions.credProps ? { credProps: { rk: true } } : {};
+    if (extensions.prf) {
+      const outputs = prfOutputs(reply.prf?.results);
+      results.prf = { enabled: Boolean(reply.prf?.enabled), ...(outputs ? { results: outputs } : {}) };
+    }
     const response = {
       clientDataJSON,
       attestationObject,
@@ -107,7 +152,7 @@ globalThis.__verrouPasskeyCodec = (() => {
         rawId: reply.credential,
         type: "public-key",
         authenticatorAttachment: "platform",
-        clientExtensionResults: structuredClone(results),
+        clientExtensionResults: extensionResults(results),
         response: {
           clientDataJSON: reply.client_data,
           attestationObject: reply.attestation_object,
@@ -122,6 +167,8 @@ globalThis.__verrouPasskeyCodec = (() => {
 
   // Réponse `assertion` de Verrou → credential de `navigator.credentials.get`.
   function assertionCredential(reply) {
+    const outputs = prfOutputs(reply.prf);
+    const results = outputs ? { prf: { results: outputs } } : {};
     const response = {
       clientDataJSON: decode(reply.client_data),
       authenticatorData: decode(reply.authenticator_data),
@@ -134,13 +181,13 @@ globalThis.__verrouPasskeyCodec = (() => {
       type: "public-key",
       authenticatorAttachment: "platform",
       response,
-      getClientExtensionResults: () => ({}),
+      getClientExtensionResults: () => structuredClone(results),
       toJSON: () => ({
         id: reply.credential,
         rawId: reply.credential,
         type: "public-key",
         authenticatorAttachment: "platform",
-        clientExtensionResults: {},
+        clientExtensionResults: extensionResults(results),
         response: {
           clientDataJSON: reply.client_data,
           authenticatorData: reply.authenticator_data,

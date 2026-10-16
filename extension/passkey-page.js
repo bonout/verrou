@@ -82,7 +82,10 @@
     }
     const reply = await ask("create", request, options.signal);
     return outcome(reply, () => nativeCreate(options),
-      (credential) => codec.registrationCredential(credential, { credProps: Boolean(publicKey.extensions?.credProps) }));
+      (credential) => codec.registrationCredential(credential, {
+        credProps: Boolean(publicKey.extensions?.credProps),
+        prf: Boolean(publicKey.extensions?.prf),
+      }));
   }
 
   async function get(options) {

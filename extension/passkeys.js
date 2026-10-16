@@ -350,8 +350,8 @@
       panel.owner = request;
       panel.show(head("Connexion…", `${item.user_name || item.title} · ${siteOf(request)}`));
     }
-    const { rp_id, challenge, uv } = request.request;
-    const reply = await send({ kind: "passkeyGet", rp_id, item: item.item, credential: item.credential, challenge, uv });
+    const { rp_id, challenge, uv, prf } = request.request;
+    const reply = await send({ kind: "passkeyGet", rp_id, item: item.item, credential: item.credential, challenge, uv, prf });
     if (request.done) return;
     if (reply.ok) {
       panel.close();

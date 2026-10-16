@@ -9,6 +9,25 @@
 const str = (value, max = 4096) => (typeof value === "string" && value ? value.slice(0, max) : null);
 const strings = (list) => (Array.isArray(list) ? list.filter((v) => typeof v === "string").slice(0, 64) : []);
 
+// Entrées de l'extension PRF (base64url), ou null.
+function prfValues(values) {
+  const first = str(values?.first, 2048);
+  return first ? { first, second: str(values?.second, 2048) } : null;
+}
+
+// `extensions.prf` de la page (passkey-codec.js), réduit à sa forme.
+export function prfRequest(prf) {
+  if (!prf || typeof prf !== "object") return null;
+  const byCredential = {};
+  const entries = prf.eval_by_credential && typeof prf.eval_by_credential === "object"
+    ? Object.entries(prf.eval_by_credential).slice(0, 64) : [];
+  for (const [id, values] of entries) {
+    const parsed = prfValues(values);
+    if (parsed && /^[A-Za-z0-9_-]{1,1024}$/.test(id)) byCredential[id] = parsed;
+  }
+  return { eval: prfValues(prf.eval), eval_by_credential: byCredential };
+}
+
 // La commande pour Verrou, ou null pour une demande inconnue.
 export function passkeyCommand(message, url) {
   const rp_id = str(message.rp_id, 253);
@@ -20,7 +39,7 @@ export function passkeyCommand(message, url) {
     case "passkeyGet":
       return {
         cmd: "passkey_get", url, rp_id, item: str(message.item), credential: str(message.credential),
-        challenge: str(message.challenge), uv: Boolean(message.uv),
+        challenge: str(message.challenge), uv: Boolean(message.uv), prf: prfRequest(message.prf),
       };
     case "passkeyCreate":
       return {
@@ -29,7 +48,7 @@ export function passkeyCommand(message, url) {
         user_display_name: str(message.user_display_name, 256), challenge: str(message.challenge),
         algorithms: Array.isArray(message.algorithms) ? message.algorithms.filter(Number.isInteger).slice(0, 16) : [],
         exclude: strings(message.exclude), uv: Boolean(message.uv), attestation: str(message.attestation, 32),
-        item: str(message.item),
+        item: str(message.item), prf: prfRequest(message.prf),
       };
     default:
       return null;

@@ -425,6 +425,9 @@ pub struct PasskeyUse {
     pub challenge: String,
     #[serde(default)]
     pub uv: bool,
+    /// Extension PRF demandée par la page (`extensions.prf`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prf: Option<PrfRequest>,
 }
 
 /// Où enregistrer une nouvelle passkey : les identifiants du site, et si
@@ -465,6 +468,38 @@ pub struct PasskeyCreation {
     pub attestation: Option<String>,
     #[serde(default)]
     pub item: Option<String>,
+    /// Extension PRF demandée à la création (`eval` seulement).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prf: Option<PrfRequest>,
+}
+
+/// Entrées de l'extension PRF (`AuthenticationExtensionsPRFValues`), brutes,
+/// en base64url : Verrou les hache (`"WebAuthn PRF" ‖ 0 ‖ entrée`) comme un
+/// navigateur avant la clé (voir `verrou_core::passkey_prf`).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PrfValues {
+    pub first: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub second: Option<String>,
+}
+
+/// `extensions.prf` de la page : `eval`, et pour une connexion,
+/// `evalByCredential` (identifiant en base64url → entrées).
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PrfRequest {
+    #[serde(default)]
+    pub eval: Option<PrfValues>,
+    #[serde(default)]
+    pub eval_by_credential: std::collections::BTreeMap<String, PrfValues>,
+}
+
+/// Résultat de création : la passkey sait évaluer la PRF (`enabled`), et
+/// les sorties si la page a donné `eval`.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PrfCreated {
+    pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub results: Option<PrfValues>,
 }
 
 /// Une passkey proposée dans la page. Aucun secret.
@@ -493,6 +528,9 @@ pub struct PasskeyAssertion {
     pub authenticator_data: String,
     pub signature: String,
     pub user_handle: Option<String>,
+    /// Sorties de la PRF (base64url), si la page l'a demandée.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prf: Option<PrfValues>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -505,4 +543,6 @@ pub struct PasskeyRegistration {
     /// `SubjectPublicKeyInfo` (DER) de la clé publique.
     pub public_key: String,
     pub algorithm: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prf: Option<PrfCreated>,
 }
