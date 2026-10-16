@@ -17,7 +17,6 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -27,6 +26,7 @@ use verrou_core::{FieldKind, Item, ItemKind, Vault};
 
 use crate::autofill::{AutofillIdentity, AutofillIdentityKind};
 use crate::{ItemSummary, VaultSession, VerrouError, summary};
+use verrou_vaultwarden::Store;
 
 const FILE: &str = "credential-signals.json";
 /// Garde-fous : signaux gardés au plus, et longueur des textes reçus.
@@ -188,21 +188,26 @@ fn read(dir: &Path) -> Vec<Stored> {
         .unwrap_or_default()
 }
 
+/// Réécrit la liste sous le verrou du dossier (`Store::update_file`) :
+/// l'app et l'extension la partagent.
+fn update(dir: &Path, change: impl FnOnce(Vec<Stored>) -> Vec<Stored>) -> Result<(), VerrouError> {
+    Store::new(dir).update_file(FILE, |data| {
+        let list = data
+            .and_then(|d| serde_json::from_slice(&d).ok())
+            .unwrap_or_default();
+        let list = change(list);
+        let bytes = (!list.is_empty())
+            .then(|| serde_json::to_vec(&list).ok())
+            .flatten();
+        (bytes, ())
+    })?;
+    Ok(())
+}
+
+#[cfg(test)]
 fn save(dir: &Path, list: &[Stored]) -> Result<(), VerrouError> {
-    let storage = |e: &dyn std::fmt::Display| VerrouError::Storage {
-        message: e.to_string(),
-    };
-    if list.is_empty() {
-        let _ = fs::remove_file(dir.join(FILE));
-        return Ok(());
-    }
-    fs::create_dir_all(dir).map_err(|e| storage(&e))?;
-    let temp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));
-    let data = serde_json::to_vec(list).map_err(|e| storage(&e))?;
-    let mut handle = fs::File::create(&temp).map_err(|e| storage(&e))?;
-    handle.write_all(&data).map_err(|e| storage(&e))?;
-    handle.sync_all().map_err(|e| storage(&e))?;
-    fs::rename(&temp, dir.join(FILE)).map_err(|e| storage(&e))
+    let list = list.to_vec();
+    update(dir, |_| list)
 }
 
 fn user_of(item: &Item) -> Option<String> {
@@ -366,12 +371,13 @@ impl VaultSession {
         })?;
         let subject = signal.subject();
         let at = now();
-        let mut list = read(&dir);
-        list.retain(|s| s.signal.subject() != subject && at - s.at < MAX_AGE);
-        list.push(Stored { signal, at });
-        let overflow = list.len().saturating_sub(MAX_SIGNALS);
-        list.drain(..overflow);
-        save(&dir, &list)
+        update(&dir, |mut list| {
+            list.retain(|s| s.signal.subject() != subject && at - s.at < MAX_AGE);
+            list.push(Stored { signal, at });
+            let overflow = list.len().saturating_sub(MAX_SIGNALS);
+            list.drain(..overflow);
+            list
+        })
     }
 
     /// Audit de l'iPhone : ce que les sites ont signalé et qui concerne
@@ -386,16 +392,16 @@ impl VaultSession {
         if stored.is_empty() {
             return Ok(Vec::new());
         }
-        let (findings, kept) = self.with_vault(|v| {
+        let (findings, stale) = self.with_vault(|v| {
             let mut findings = Vec::new();
-            let mut kept = Vec::new();
+            let mut stale = Vec::new();
             let mut seen = HashSet::new();
             for entry in &stored {
                 let found = findings_of(v, entry);
                 if found.is_empty() {
+                    stale.push((entry.signal.subject(), entry.at));
                     continue;
                 }
-                kept.push(entry.clone());
                 for (kind, item, site, detail) in found {
                     if seen.insert((kind as u8, item.id.clone())) {
                         findings.push(SignalFinding {
@@ -408,10 +414,16 @@ impl VaultSession {
                     }
                 }
             }
-            Ok((findings, kept))
+            Ok((findings, stale))
         })?;
-        if kept.len() != stored.len() {
-            let _ = save(&dir, &kept);
+        if !stale.is_empty() {
+            // Seuls les signaux lus ici et sans objet : un signal arrivé
+            // entre-temps reste.
+            let _ = update(&dir, |list| {
+                list.into_iter()
+                    .filter(|s| !stale.contains(&(s.signal.subject(), s.at)))
+                    .collect()
+            });
         }
         let mut findings = findings;
         findings.sort_by_key(|f| std::cmp::Reverse(f.at));

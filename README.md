@@ -112,11 +112,13 @@ Verrou talks to your own server, with two exceptions:
   hash to Have I Been Pwned. The whole vault is checked when you ask; new
   passwords are checked automatically, which you can turn off in Settings.
 - **The audit** downloads the public [2fa.directory](https://2fa.directory)
-  list, at most once a week, as a whole file: it never asks about your sites
-  one by one.
+  list and its [passkeys directory](https://passkeys.2fa.directory), at most
+  once a week each, as whole files: it never asks about your sites one by one.
 - **Changer le mot de passe** asks only the site you are about to open
   whether it has a [change-password page](https://w3c.github.io/webappsec-change-password-url/),
-  and only when you click.
+  and only when you click. **Créer une passkey** does the same for the site's
+  [passkey page](https://w3c.github.io/webappsec-passkey-endpoints/)
+  (`/.well-known/passkey-endpoints`).
 
 The browser extension only receives the logins of the site in front of it, over
 an end-to-end encrypted channel. Copied secrets are hidden from clipboard

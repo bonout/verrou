@@ -9,6 +9,9 @@
   servie par le Mac sur http://localhost (WebAuthn y est permis sans HTTPS).
   - Formulaire de connexion : le résultat de l'envoi s'affiche (#login-result).
   - Code à usage unique : champ autocomplete="one-time-code" (#otp-result).
+  - Après l'envoi du formulaire, passkey demandée en arrière-plan
+    (création conditionnelle, `mediation: "conditional"`) : résultat dans
+    #upgrade-result, attestation vérifiée (ni présence ni vérification).
   - Passkeys : création puis connexion, vérifiées ici même (WebCrypto) :
     clientDataJSON (type, défi, origine), authenticatorData (rpIdHash,
     indicateurs, compteur croissant), signature ES256 avec la clé publique
@@ -32,6 +35,7 @@
   <button id="login-submit" type="submit">Se connecter</button>
 </form>
 <p class="result" id="login-result">-</p>
+<p class="result" id="upgrade-result">-</p>
 
 <h2>Code à usage unique</h2>
 <form id="otp-form">
@@ -61,7 +65,36 @@ const store = {
 $("login").addEventListener("submit", (e) => {
   e.preventDefault();
   $("login-result").textContent = `user=${$("username").value} pass=${$("password").value}`;
+  upgrade($("username").value);
 });
+
+// Création conditionnelle juste après la connexion par mot de passe : le
+// fournisseur qui vient de remplir le mot de passe crée la passkey sans
+// interface, ou refuse.
+async function upgrade(name) {
+  const out = $("upgrade-result");
+  try {
+    const capabilities = await PublicKeyCredential.getClientCapabilities?.();
+    if (!capabilities?.conditionalCreate) throw new Error("conditionalCreate non pris en charge");
+    out.textContent = "passkey conditionnelle…";
+    const challenge = crypto.getRandomValues(new Uint8Array(32));
+    const credential = await navigator.credentials.create({ mediation: "conditional", publicKey: {
+      challenge, rp: { id: location.hostname, name: "Banc d'essai" },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name, displayName: name },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+      attestation: "none", timeout: 60000,
+    } });
+    checkClientData(new Uint8Array(credential.response.clientDataJSON), "webauthn.create", challenge);
+    const attestation = cbor(new Uint8Array(credential.response.attestationObject)).value;
+    const auth = parseAuthData(attestation.get("authData"));
+    if (!equal(auth.rpIdHash, await sha256(enc.encode(location.hostname)))) throw new Error("rpIdHash");
+    if (!(auth.flags & 0x40)) throw new Error("indicateurs " + auth.flags);
+    out.textContent = `UPGRADE ok flags=0x${auth.flags.toString(16)}`;
+  } catch (e) {
+    out.textContent = "UPGRADE_ERROR " + e.name + ": " + e.message;
+  }
+}
 $("otp-form").addEventListener("submit", (e) => {
   e.preventDefault();
   $("otp-result").textContent = `otp=${$("otp").value}`;

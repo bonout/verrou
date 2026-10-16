@@ -20,10 +20,15 @@ final class PhonePasskeyAudit {
     /// Parcours de bout en bout : montrer la section en haut de l'audit.
     var focus = false
 
+    /// Ce que les sites ont signalé à l'extension (iOS 26) et qui concerne
+    /// encore le coffre.
+    private(set) var signals: [SignalFinding] = []
+
     var count: Int { report?.candidates.count ?? 0 }
 
     func load(_ session: VaultSession) async {
         guard !loading else { return }
+        signals = (try? session.credentialSignalFindings()) ?? []
         loading = true
         defer { loading = false }
         do {
@@ -38,6 +43,7 @@ final class PhonePasskeyAudit {
     func reset() {
         report = nil
         error = nil
+        signals = []
         opening = nil
         focus = false
     }

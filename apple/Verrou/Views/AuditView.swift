@@ -232,7 +232,13 @@ private struct WatchtowerSections<Row: View>: View {
                     .id("passkeys")
                 ForEach(report.candidates, id: \.item.id) { candidate in
                     HStack(spacing: 4) {
-                        row(candidate.item, candidate.passwordless ? nil : "second facteur", false)
+                        row(candidate.item, nil, false)
+                        if !candidate.passwordless {
+                            Image(systemName: "2.circle")
+                                .foregroundStyle(.secondary)
+                                .help("Second facteur seulement : la passkey s'ajoute au mot de passe")
+                                .accessibilityLabel("Second facteur seulement")
+                        }
                         if let doc = candidate.documentation, let url = URL(string: doc) {
                             Link(destination: url) {
                                 Image(systemName: "questionmark.circle")
@@ -240,7 +246,7 @@ private struct WatchtowerSections<Row: View>: View {
                             .buttonStyle(.borderless)
                             .help("Aide de \(candidate.domain) sur les passkeys")
                         }
-                        CreatePasskeyButton(candidate: candidate, selected: candidate.item.id == model.selection,
+                        CreatePasskeyButton(candidate: candidate,
                                             mark: candidate.item.id == report.candidates.first?.item.id)
                     }
                     .id("passkey-\(candidate.item.id)")
@@ -327,8 +333,6 @@ private struct WatchtowerSections<Row: View>: View {
 struct CreatePasskeyButton: View {
     @Environment(AppModel.self) private var model
     let candidate: PasskeyCandidate
-    /// Ligne sélectionnée (fond d'accent) : texte blanc.
-    var selected = false
     /// Repère de la revue visuelle (le premier bouton seulement).
     var mark = false
 
@@ -358,7 +362,7 @@ struct CreatePasskeyButton: View {
         .help("Ouvrir la page de \(candidate.domain) où créer une passkey")
         .buttonStyle(.borderless)
         .font(.caption.weight(.medium))
-        .foregroundStyle(selected ? Color.white : Theme.accent)
+        .foregroundStyle(Theme.accent)
     }
 }
 

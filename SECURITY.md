@@ -767,6 +767,29 @@ page ──postMessage──▶ passkeys.js ──▶ arrière-plan ──pont c
   aucune requête ne dépend du coffre, la comparaison avec les sites des
   identifiants se fait sur le Mac. Hors ligne, la dernière copie sert. Seuls
   les liens d'aide en HTTPS sont proposés.
+- **Passkey possible** : l'annuaire complet des sites qui acceptent les
+  passkeys, [passkeys.2fa.directory](https://passkeys.2fa.directory)
+  (`passkeys-api.2fa.directory/v1/supported.json`, environ 75 Ko, du même
+  projet que 2fa.directory), est téléchargé à l'ouverture de l'audit, au
+  plus une fois par semaine, et gardé dans le dossier du compte
+  (`passkeys-directory.json`) ; aucune requête ne dépend du coffre, la
+  comparaison avec les sites des identifiants (hôte, puis domaine
+  enregistrable) se fait sur l'appareil. Hors ligne, la dernière copie sert.
+  Seuls les liens en HTTPS sont proposés. Un identifiant qui a déjà une
+  passkey (la sienne, ou celle du même compte rangée ailleurs) n'y figure
+  pas. Le coffre fictif utilise un extrait embarqué, sans réseau.
+- **« Créer une passkey »** : comme « Changer le mot de passe », seulement au
+  clic, pour cet élément seul. Le cœur Rust lit
+  `/.well-known/passkey-endpoints` (norme du W3C « Passkey Endpoints ») sur
+  l'hôte de l'élément puis son domaine enregistrable : HTTPS seulement, sans
+  redirection, sans cookie ni `Referer`, délai de 5 s, corps limité à
+  16 Ko ; seules les adresses `enroll` ou `manage` en HTTPS **du même
+  domaine enregistrable** sont gardées (le fichier ne peut pas envoyer
+  ailleurs). Sinon une page connue d'avance (Google, GitHub, Microsoft,
+  PayPal), sinon l'adresse donnée par l'annuaire, sinon l'accueil du site.
+  La passkey est ensuite créée sur le site et enregistrée par l'extension
+  (Brave, Firefox) ou l'extension de remplissage (iPhone), comme
+  d'habitude. Verrou ne supprime jamais le mot de passe.
 - **Cartes et mots de passe anciens** : calculés localement (échéance des
   cartes, date de modification des éléments).
 - **« Changer le mot de passe »** : pour une poignée de grands sites (Google,
@@ -1076,6 +1099,59 @@ unique (iOS 18) et passkeys dans Safari et les apps.
   exclues par le site (`excludedCredentials`, iOS 18) ne sont pas recréées.
   Une création ou une connexion n'aboutit qu'une fois écrite sur le serveur
   (passkey, ou nouveau compteur) ; hors ligne, l'extension refuse.
+
+### Création conditionnelle de passkey (iOS 18)
+
+Après un mot de passe rempli par Verrou, Safari peut demander en
+arrière-plan une passkey pour le même compte (`mediation: "conditional"`,
+`performWithoutUserInteractionIfPossible(passkeyRegistration:)`, déclaré par
+`SupportsConditionalPasskeyRegistration`). Cette demande n'a pas
+d'interface : le coffre est fermé et Face ID impossible. Choix retenu
+(`crates/verrou-ffi/src/conditional.rs`) :
+
+- **Pendant le remplissage** (coffre ouvert, Face ID ou mot de passe
+  principal passé), si l'identifiant n'a pas de passkey, a un site et un nom
+  d'utilisateur, le cœur Rust prépare une clé P-256. Le ticket
+  (`passkey-upgrade.json`, dossier du compte, 0600) garde la clé publique,
+  l'identifiant de l'accréditation, les domaines enregistrables et le nom
+  d'utilisateur de l'élément (comme le magasin d'identités), et la clé
+  privée **scellée** par la clé locale du compte (`EncString`, celle de la
+  file hors ligne) : illisible coffre fermé.
+- **La demande d'arrière-plan** consomme le ticket (une seule fois, qu'elle
+  aboutisse ou non) et n'aboutit que si : le ticket a moins de 5 minutes, le
+  `rpId` a le même domaine enregistrable qu'un site de l'élément, et le nom
+  d'utilisateur demandé est celui de l'élément. Attestation `none`, AAGUID
+  nul, compteur 0, **sans les indicateurs UP ni UV** (aucune interface n'a
+  été montrée), BE/BS. Sinon refus silencieux : le site garde le mot de
+  passe.
+- **La passkey attend** dans `passkeys-pending.json` (clé toujours scellée)
+  jusqu'à la synchronisation suivante de l'app, coffre ouvert : le cœur Rust
+  descelle la clé et écrit la passkey dans l'identifiant, sur le serveur (un
+  nouvel identifiant si l'élément a disparu). Jusque-là, la connexion se fait
+  encore par mot de passe. Le mot de passe n'est jamais retiré.
+- **Limites** : si l'app n'est jamais rouverte, la passkey reste chez le site
+  sans être utilisable par Verrou ; une clé scellée par un autre compte
+  (déconnexion entre-temps) est abandonnée.
+
+### Signaux des sites (iOS 26)
+
+Un site peut informer le fournisseur par `ASCredentialUpdater` (déclaré par
+`SupportsCredentialUpdate`) ; le système appelle l'extension en
+arrière-plan, sans interface, coffre fermé :
+`reportUnknownPublicKeyCredential(forRelyingParty:credentialID:)`,
+`reportAllAcceptedPublicKeyCredentials(forRelyingParty:userHandle:acceptedCredentialIDs:)`,
+`reportPublicKeyCredentialUpdate(forRelyingParty:userHandle:newName:)` et
+`reportUnusedPasswordCredential(forDomain:userName:)`.
+
+- L'extension note le signal (`credential-signals.json`, dossier du compte,
+  0600) : site, identifiants d'accréditation et d'utilisateur, nom
+  d'utilisateur, **jamais un secret**. Textes bornés, 200 signaux au plus,
+  oubliés après 180 jours ou dès qu'ils ne correspondent plus au coffre.
+- Les suggestions du système cachent, à la publication suivante, les
+  passkeys que le site ne reconnaît plus et les mots de passe qu'il dit
+  inutiles, et prennent le nouveau nom d'utilisateur.
+- **Rien n'est supprimé du coffre** automatiquement : un signal peut venir
+  d'une erreur du site, et les apps Bitwarden partagent le coffre.
 
 ### Écritures depuis l'extension
 

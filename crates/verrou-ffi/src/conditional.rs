@@ -22,7 +22,6 @@
 //!    serveur. Le mot de passe reste : jamais rien n'est supprimé.
 
 use std::fs;
-use std::io::Write as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,7 @@ use verrou_core::{FieldKind, ItemKind};
 
 use crate::autofill::{PasskeyCreationRequest, PasskeyRegistrationResult};
 use crate::{VaultSession, VerrouError};
+use verrou_vaultwarden::Store;
 
 const TICKET_FILE: &str = "passkey-upgrade.json";
 const PENDING_FILE: &str = "passkeys-pending.json";
@@ -93,40 +93,74 @@ fn read<T: for<'de> Deserialize<'de>>(dir: &Path, file: &str) -> Option<T> {
     serde_json::from_slice(&fs::read(dir.join(file)).ok()?).ok()
 }
 
-/// Écriture atomique (fichier temporaire puis renommage) : l'app et son
-/// extension partagent le dossier.
-fn write<T: Serialize>(dir: &Path, file: &str, value: &T) -> Result<(), VerrouError> {
-    fs::create_dir_all(dir).map_err(storage)?;
-    let temp = dir.join(format!(".{file}.{}.tmp", std::process::id()));
-    let data = serde_json::to_vec(value).map_err(storage)?;
-    let mut handle = fs::File::create(&temp).map_err(storage)?;
-    handle.write_all(&data).map_err(storage)?;
-    handle.sync_all().map_err(storage)?;
-    fs::rename(&temp, dir.join(file)).map_err(storage)
+/// Lit, transforme et réécrit un fichier du dossier sous son verrou
+/// (`Store::update_file`) : l'app et son extension le partagent.
+fn update<T: Serialize + for<'de> Deserialize<'de>, R>(
+    dir: &Path,
+    file: &str,
+    change: impl FnOnce(Option<T>) -> (Option<T>, R),
+) -> Result<R, VerrouError> {
+    let mut failure = None;
+    let result = Store::new(dir).update_file(file, |data| {
+        let current = data.and_then(|d| serde_json::from_slice(&d).ok());
+        let (next, result) = change(current);
+        let bytes = next.and_then(|v| match serde_json::to_vec(&v) {
+            Ok(bytes) => Some(bytes),
+            Err(error) => {
+                failure = Some(storage(error));
+                None
+            }
+        });
+        (bytes, result)
+    })?;
+    failure.map_or(Ok(result), Err)
+}
+
+fn write<T: Serialize + for<'de> Deserialize<'de>>(
+    dir: &Path,
+    file: &str,
+    value: T,
+) -> Result<(), VerrouError> {
+    update(dir, file, |_: Option<T>| (Some(value), ()))
 }
 
 fn remove(dir: &Path, file: &str) {
-    let _ = fs::remove_file(dir.join(file));
+    let _ = Store::new(dir).update_file(file, |_| (None, ()));
 }
 
 /// Le ticket, retiré du disque (une seule utilisation, valide ou non).
 fn take_ticket(dir: &Path) -> Option<Ticket> {
-    let ticket = read(dir, TICKET_FILE);
-    remove(dir, TICKET_FILE);
-    ticket
+    update(dir, TICKET_FILE, |ticket: Option<Ticket>| (None, ticket))
+        .ok()
+        .flatten()
 }
 
 fn pending(dir: &Path) -> Vec<Pending> {
     read(dir, PENDING_FILE).unwrap_or_default()
 }
 
-fn save_pending(dir: &Path, list: &[Pending]) -> Result<(), VerrouError> {
-    if list.is_empty() {
-        remove(dir, PENDING_FILE);
-        Ok(())
-    } else {
-        write(dir, PENDING_FILE, &list)
-    }
+/// Ajoute une passkey en attente (les plus anciennes partent au-delà de
+/// `MAX_PENDING`).
+fn push_pending(dir: &Path, entry: Pending) -> Result<(), VerrouError> {
+    update(dir, PENDING_FILE, |list: Option<Vec<Pending>>| {
+        let mut list = list.unwrap_or_default();
+        list.push(entry);
+        let overflow = list.len().saturating_sub(MAX_PENDING);
+        list.drain(..overflow);
+        (Some(list), ())
+    })
+}
+
+/// Retire les passkeys traitées ; celles ajoutées entre-temps restent.
+fn forget_pending(dir: &Path, done: &[String]) -> Result<(), VerrouError> {
+    update(dir, PENDING_FILE, |list: Option<Vec<Pending>>| {
+        let list: Vec<Pending> = list
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|p| !done.contains(&p.credential_id))
+            .collect();
+        ((!list.is_empty()).then_some(list), ())
+    })
 }
 
 /// La demande du site convient-elle au ticket : récent, même site (domaine
@@ -194,7 +228,7 @@ impl VaultSession {
         write(
             &dir,
             TICKET_FILE,
-            &Ticket {
+            Ticket {
                 item_id: id,
                 domains,
                 user,
@@ -239,20 +273,19 @@ impl VaultSession {
         .map_err(|e| VerrouError::Invalid {
             message: e.to_string(),
         })?;
-        let mut list = pending(&dir);
-        list.push(Pending {
-            item_id: ticket.item_id.clone(),
-            rp_id,
-            user_handle: passkey::b64url(&request.user_handle),
-            user_name: Some(request.user_name.trim().chars().take(256).collect())
-                .filter(|n: &String| !n.is_empty()),
-            credential_id: ticket.credential_id,
-            sealed_key: ticket.sealed_key,
-            created: now(),
-        });
-        let overflow = list.len().saturating_sub(MAX_PENDING);
-        list.drain(..overflow);
-        save_pending(&dir, &list)?;
+        push_pending(
+            &dir,
+            Pending {
+                item_id: ticket.item_id.clone(),
+                rp_id,
+                user_handle: passkey::b64url(&request.user_handle),
+                user_name: Some(request.user_name.trim().chars().take(256).collect())
+                    .filter(|n: &String| !n.is_empty()),
+                credential_id: ticket.credential_id,
+                sealed_key: ticket.sealed_key,
+                created: now(),
+            },
+        )?;
         Ok(PasskeyRegistrationResult {
             item_id: ticket.item_id,
             credential_id: registration.credential_id,
@@ -277,6 +310,7 @@ impl VaultSession {
             return Ok(Vec::new());
         }
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let handled: Vec<String> = list.iter().map(|p| p.credential_id.clone()).collect();
         let mut done = Vec::new();
         let mut left = Vec::new();
         let mut failure = None;
@@ -346,7 +380,12 @@ impl VaultSession {
                 }
             }
         }
-        save_pending(&dir, &left)?;
+        let kept: Vec<&String> = left.iter().map(|p| &p.credential_id).collect();
+        let processed: Vec<String> = handled
+            .into_iter()
+            .filter(|id| !kept.contains(&id))
+            .collect();
+        forget_pending(&dir, &processed)?;
         match failure {
             Some(error) if done.is_empty() => Err(error),
             _ => Ok(done),
@@ -408,7 +447,7 @@ mod tests {
         t.credential_id = passkey::b64url(&prepared.credential_id);
         t.public_key = passkey::b64url(&prepared.public_key);
         t.sealed_key = "scellée".to_owned();
-        write(&dir, TICKET_FILE, &t).unwrap();
+        write(&dir, TICKET_FILE, t.clone()).unwrap();
         let request = |user: &str| PasskeyCreationRequest {
             rp_id: "github.com".to_owned(),
             user_name: user.to_owned(),
@@ -435,7 +474,7 @@ mod tests {
                 .is_err()
         );
         // Un ticket pour un autre compte est consommé sans rien créer.
-        write(&dir, TICKET_FILE, &t).unwrap();
+        write(&dir, TICKET_FILE, t.clone()).unwrap();
         assert!(
             session
                 .conditional_passkey_registration(request("dominique"))
