@@ -149,6 +149,15 @@ final class PhoneModel {
     var toast: Toast?
     var reprompt: RepromptRequest?
     var qrSheet: QRSheet?
+    /// Lecture d'un QR code de double authentification (feuille ouverte).
+    var otpScan: OTPScanFlow?
+    /// Compte scanné à reporter dans l'écran de modification ouvert.
+    var otpFormFill: OTPFormFill?
+    #if DEBUG
+    /// Pilote de bout en bout : enregistre l'écran de modification ouvert,
+    /// comme le bouton « Créer » (brouillon de la vue compris).
+    var e2eSaveEditor = 0
+    #endif
     var moveRequest: MoveRequest?
     /// Pièce jointe déchiffrée montrée par Quick Look (fichier temporaire).
     var preview: URL? {
@@ -541,6 +550,8 @@ final class PhoneModel {
         editor = nil
         editorError = nil
         qrSheet = nil
+        otpScan = nil
+        otpFormFill = nil
         moveRequest = nil
         sharing.clear()
         preview = nil

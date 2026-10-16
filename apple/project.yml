@@ -114,6 +114,7 @@ targets:
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: "GPL-3.0-or-later"
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Face ID déverrouille votre coffre et confirme l'accès aux éléments protégés."
+        INFOPLIST_KEY_NSCameraUsageDescription: "La caméra sert à scanner le QR code d'un code à usage unique (double authentification). Aucune image n'est enregistrée."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait

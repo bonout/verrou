@@ -22,9 +22,17 @@
 #      puis efface simulateur, relais et conteneur.
 #
 # Le pilote peut aussi demander une taille de texte (`E2E_TEXT <taille>`,
-# `simctl ui content_size`), pour vérifier les grandes tailles.
+# `simctl ui content_size`), pour vérifier les grandes tailles, et
+# l'apparence (`E2E_APPEARANCE light|dark`), pour les captures en mode sombre.
 #
-# Variables : OUT (captures, défaut target/ios-e2e), SKIP_BUILD=1,
+# QR codes : scripts/ios-qr-fixtures.swift génère des captures d'écran de
+# QR codes de double authentification, ajoutées à la photothèque du
+# simulateur (`simctl addmedia`) ; le pilote les lit par le chemin du
+# sélecteur de Photos (le simulateur n'a pas de caméra), vérifie l'aperçu,
+# l'enregistrement et le code affiché. `E2E_ONLY=otp` : connexion puis
+# cette étape seulement.
+#
+# Variables : OUT (captures, défaut target/ios-e2e), SKIP_BUILD=1, E2E_ONLY=otp,
 # KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, VW_CONTAINER
 # et VW_PORT (autre conteneur, pour deux exécutions en parallèle),
 # VERROU_E2E_SERVER (+ _EMAIL, _PASSWORD, _TOTP : un compte déjà prêt).
@@ -167,6 +175,12 @@ xcrun simctl status_bar "$DEV" override --time "9:41" --dataNetwork wifi --wifiB
 xcrun simctl spawn "$DEV" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
 xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit.enrollmentChanged
 xcrun simctl install "$DEV" "$APP"
+# QR codes de double authentification : captures d'écran générées, ajoutées
+# à la photothèque (choix dans Photos sur le simulateur, ou sur l'appareil)
+# et lues par le pilote par le même chemin que le sélecteur de Photos.
+QR_DIR="$WORK/qr"
+xcrun swift "$ROOT/scripts/ios-qr-fixtures.swift" "$QR_DIR" >/dev/null
+xcrun simctl addmedia "$DEV" "$QR_DIR"/qr-*.png
 # Laisse passer les notifications du premier démarrage avant les captures.
 sleep 8
 
@@ -185,6 +199,8 @@ SIMCTL_CHILD_VERROU_E2E_MEMBER_EMAIL="${VERROU_E2E_MEMBER_EMAIL:-}" \
 SIMCTL_CHILD_VERROU_E2E_MEMBER_PASSWORD="${VERROU_E2E_MEMBER_PASSWORD:-}" \
 SIMCTL_CHILD_VERROU_E2E_MEMBER_TOTP="${VERROU_E2E_MEMBER_TOTP:-}" \
 SIMCTL_CHILD_VERROU_E2E_ACK="$WORK/ack" \
+SIMCTL_CHILD_VERROU_E2E_QR_DIR="$QR_DIR" \
+SIMCTL_CHILD_VERROU_E2E_ONLY="${E2E_ONLY:-}" \
   xcrun simctl launch --console --terminate-running-process "$DEV" app.verrou.ios > "$LOG" 2>&1 &
 LAUNCH_PID=$!
 
@@ -210,6 +226,8 @@ while (( SECONDS < deadline )) && [[ $status == 2 ]]; do
         done ;;
       "E2E_TEXT "*)
         xcrun simctl ui "$DEV" content_size "${line#E2E_TEXT }" >/dev/null 2>&1 || true ;;
+      "E2E_APPEARANCE "*)
+        xcrun simctl ui "$DEV" appearance "${line#E2E_APPEARANCE }" >/dev/null 2>&1 || true ;;
       "E2E_NET off") stop_relay ;;
       "E2E_NET on") start_relay ;;
       E2E_DONE) status=0; break ;;

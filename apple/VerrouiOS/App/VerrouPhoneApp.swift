@@ -231,6 +231,9 @@ struct MainTabs: View {
         .sheet(item: $model.qrSheet) { sheet in
             WifiQRSheet(sheet: sheet)
         }
+        .sheet(item: itemScan) { flow in
+            OTPScanSheet(flow: flow)
+        }
         .sheet(item: $model.moveRequest) { request in
             MoveToFolderSheet(request: request)
         }
@@ -239,6 +242,13 @@ struct MainTabs: View {
         }
         .quickLookPreview($model.preview)
         .modifier(SharingPresentations())
+    }
+
+    /// Feuille du QR code ouverte depuis une fiche (l'écran de modification
+    /// présente la sienne).
+    private var itemScan: Binding<OTPScanFlow?> {
+        Binding(get: { model.otpScan?.purpose.isEditor == false ? model.otpScan : nil },
+                set: { if $0 == nil { model.otpScan = nil } })
     }
 
     @available(iOS 18, *)

@@ -31,6 +31,12 @@ pub enum TotpError {
     InvalidUri,
     #[error("paramètre TOTP non pris en charge : {0}")]
     Unsupported(String),
+    #[error("les codes HOTP (à compteur) ne sont pas pris en charge, seulement les codes TOTP")]
+    Hotp,
+    #[error("ce QR code ne contient pas de code à usage unique")]
+    NotOtp,
+    #[error("export Google Authenticator illisible")]
+    InvalidMigration,
 }
 
 /// Paramètres d'un générateur TOTP. La graine décodée est effacée à la
@@ -71,7 +77,10 @@ impl Totp {
 
     fn parse_uri(input: &str) -> Result<Self, TotpError> {
         let uri = Url::parse(input).map_err(|_| TotpError::InvalidUri)?;
-        if uri.host_str() != Some("totp") {
+        if !uri
+            .host_str()
+            .is_some_and(|h| h.eq_ignore_ascii_case("totp"))
+        {
             return Err(TotpError::Unsupported(
                 uri.host_str().unwrap_or("").to_owned(),
             ));
@@ -119,6 +128,11 @@ impl Totp {
         } else {
             Err(TotpError::InvalidUri)
         }
+    }
+
+    /// Graine décodée (lecture des QR codes).
+    pub(crate) fn secret(&self) -> &[u8] {
+        &self.secret
     }
 
     /// Code valable à l'instant `unix_time` (secondes).

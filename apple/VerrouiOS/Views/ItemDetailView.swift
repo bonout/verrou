@@ -198,6 +198,11 @@ struct ItemDetailView: View {
                         } else if !model.writableOrganizations.isEmpty {
                             Button("Partager…", systemImage: "person.2") { model.openSharing(itemID) }
                         }
+                        if summary.category == .login, !summary.hasTotp {
+                            Button("Ajouter un code (QR)", systemImage: "qrcode.viewfinder") {
+                                model.startOTPScan(.item(id: itemID, title: summary.title))
+                            }
+                        }
                         Button("Ajouter une pièce jointe…", systemImage: "paperclip") { importingFile = true }
                         Button("Archiver", systemImage: "archivebox") { Task { await model.setArchived(itemID, true) } }
                         Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = true }
