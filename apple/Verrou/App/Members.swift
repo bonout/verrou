@@ -78,60 +78,6 @@ final class MembersModel {
     }
 }
 
-/// Droits sur une collection, comme dans le coffre web.
-enum CollectionPermission: String, CaseIterable, Identifiable {
-    case view, viewExceptPasswords, edit, editExceptPasswords, manage
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .view: "Voir"
-        case .viewExceptPasswords: "Voir, sans les mots de passe"
-        case .edit: "Modifier"
-        case .editExceptPasswords: "Modifier, sans les mots de passe"
-        case .manage: "Gérer"
-        }
-    }
-
-    init(_ access: MemberCollectionAccess) {
-        switch (access.manage, access.readOnly, access.hidePasswords) {
-        case (true, _, _): self = .manage
-        case (false, true, true): self = .viewExceptPasswords
-        case (false, true, false): self = .view
-        case (false, false, true): self = .editExceptPasswords
-        case (false, false, false): self = .edit
-        }
-    }
-
-    func access(_ collectionID: String) -> MemberCollectionAccess {
-        MemberCollectionAccess(collectionId: collectionID,
-                               readOnly: self == .view || self == .viewExceptPasswords,
-                               hidePasswords: self == .viewExceptPasswords || self == .editExceptPasswords,
-                               manage: self == .manage)
-    }
-}
-
-/// Invitation (une ou plusieurs adresses) ou modification d'un membre.
-struct MemberDraft: Identifiable {
-    let id = UUID()
-    /// `nil` : nouvelle invitation.
-    let member: OrganizationMember?
-    var emails: String
-    var role: OrganizationMemberRole
-    /// Collections accordées, et le droit sur chacune.
-    var access: [String: CollectionPermission]
-
-    var isNew: Bool { member == nil }
-
-    /// Propriétaires et administrateurs voient toutes les collections.
-    var seesAll: Bool { role == .owner || role == .admin }
-
-    var collections: [MemberCollectionAccess] {
-        seesAll ? [] : access.map { $1.access($0) }.sorted { $0.collectionId < $1.collectionId }
-    }
-}
-
 extension AppModel {
     /// L'organisation du volet « Membres ».
     var membersOrganization: OrganizationView? {
@@ -272,59 +218,6 @@ extension AppModel {
             await reloadMembers()
         } catch {
             members.error = Self.describe(error)
-        }
-    }
-}
-
-extension OrganizationMember {
-    var displayName: String { name ?? email }
-}
-
-extension OrganizationMemberRole {
-    var label: String {
-        switch self {
-        case .owner: "Propriétaire"
-        case .admin: "Administrateur"
-        case .user: "Utilisateur"
-        case .manager: "Gestionnaire"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .owner: "crown"
-        case .admin: "person.badge.key"
-        case .user: "person"
-        case .manager: "person.badge.shield.checkmark"
-        }
-    }
-
-    var explanation: String {
-        switch self {
-        case .owner: "Tous les droits, y compris sur les autres propriétaires et administrateurs."
-        case .admin: "Voit toutes les collections, invite, confirme et gère les utilisateurs."
-        case .user: "Accède aux collections qui lui sont attribuées."
-        case .manager: "Gère les collections qui lui sont attribuées (et leurs accès)."
-        }
-    }
-}
-
-extension OrganizationMemberStatus {
-    var label: String {
-        switch self {
-        case .invited: "Invité"
-        case .accepted: "Accepté — à confirmer"
-        case .confirmed: "Confirmé"
-        case .revoked: "Révoqué"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .invited: .secondary
-        case .accepted: .orange
-        case .confirmed: .green
-        case .revoked: .red
         }
     }
 }

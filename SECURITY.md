@@ -427,6 +427,12 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   s'arrête avec un message clair ; rien ne part dans la file des
   modifications hors ligne, qui ne sait pas rechiffrer pour une
   organisation.
+- **iPhone** : mêmes règles, même cœur Rust. Le lien d'invitation collé
+  passe par le bouton « Coller » du système (aucune lecture silencieuse du
+  presse-papiers). Pas de lien universel vers l'app : il faudrait un fichier
+  `apple-app-site-association` sur le serveur de chacun et un domaine
+  associé signé par une équipe Apple. Le lien d'un envoi, qui porte sa clé,
+  est copié en local seulement et expire comme les autres secrets.
 - **Journaux** : aucune clé, aucun nom d'élément ou de collection déchiffré,
   aucun jeton d'invitation n'est écrit dans les journaux ; les messages
   d'erreur ne citent que le titre d'un élément refusé, à l'écran.

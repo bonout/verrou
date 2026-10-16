@@ -32,6 +32,19 @@ struct SettingsTab: View {
                             }
                         }
                         .disabled(model.syncState == .syncing)
+                        Button {
+                            model.sharing.sheet = .fingerprint(nil)
+                        } label: {
+                            SettingsLabel("Phrase d'empreinte", symbol: "person.badge.key.fill", tint: .indigo)
+                        }
+                        .foregroundStyle(.primary)
+                        .accessibilityIdentifier("settings-fingerprint")
+                        Button {
+                            model.sharing.sheet = .join("")
+                        } label: {
+                            SettingsLabel("Rejoindre une organisation", symbol: "envelope.open.fill", tint: .teal)
+                        }
+                        .foregroundStyle(.primary)
                     } header: {
                         SectionHeader("Compte")
                     } footer: {

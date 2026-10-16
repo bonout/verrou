@@ -10,7 +10,8 @@
 #   2. lance un Vaultwarden jetable dans Docker (conteneur verrou-vw-ios,
 #      port 8118), sauf si VERROU_E2E_SERVER désigne déjà un serveur, et y
 #      crée le compte du parcours (crates/verrou-vaultwarden/tests/server.rs,
-#      seed_walkthrough_account) ;
+#      seed_walkthrough_account), plus un second compte, invité dans le coffre
+#      partagé que le parcours crée ;
 #   3. intercale un relais TCP (port libre) que le script coupe pour simuler la
 #      perte du réseau ;
 #   4. crée un simulateur « Verrou E2E » (iPhone 17 Pro), le démarre sans
@@ -19,6 +20,9 @@
 #      (apple/VerrouiOS/Demo/EndToEndDriver.swift) ;
 #   5. répond au pilote (captures, Face ID reconnu, réseau coupé ou rétabli)
 #      puis efface simulateur, relais et conteneur.
+#
+# Le pilote peut aussi demander une taille de texte (`E2E_TEXT <taille>`,
+# `simctl ui content_size`), pour vérifier les grandes tailles.
 #
 # Variables : OUT (captures, défaut target/ios-e2e), SKIP_BUILD=1,
 # KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, VW_CONTAINER
@@ -95,6 +99,13 @@ if [[ -z "${VERROU_E2E_SERVER:-}" ]]; then
   VERROU_E2E_PASSWORD="$(sed -n 's/^SEED_PASSWORD=//p' <<< "$SEED")"
   VERROU_E2E_TOTP="$(sed -n 's/^SEED_TOTP=//p' <<< "$SEED")"
   [[ -n "$VERROU_E2E_TOTP" ]] || { echo "compte du parcours impossible à créer" >&2; exit 1; }
+  # Second compte : le membre invité dans le coffre partagé.
+  MEMBER_SEED="$(VERROU_TEST_SERVER="http://localhost:$VW_PORT" VERROU_SEED_EMAIL="membre-$EMAIL" \
+    cargo test -q -p verrou-vaultwarden --test server -- --ignored --nocapture seed_walkthrough_account 2>/dev/null)"
+  VERROU_E2E_MEMBER_EMAIL="$(sed -n 's/^SEED_EMAIL=//p' <<< "$MEMBER_SEED")"
+  VERROU_E2E_MEMBER_PASSWORD="$(sed -n 's/^SEED_PASSWORD=//p' <<< "$MEMBER_SEED")"
+  VERROU_E2E_MEMBER_TOTP="$(sed -n 's/^SEED_TOTP=//p' <<< "$MEMBER_SEED")"
+  [[ -n "$VERROU_E2E_MEMBER_TOTP" ]] || { echo "compte du membre impossible à créer" >&2; exit 1; }
   UPSTREAM_PORT=$VW_PORT
 else
   UPSTREAM_PORT="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port or 80)' "$VERROU_E2E_SERVER")"
@@ -170,6 +181,9 @@ SIMCTL_CHILD_VERROU_E2E_SERVER="$APP_SERVER" \
 SIMCTL_CHILD_VERROU_E2E_EMAIL="$VERROU_E2E_EMAIL" \
 SIMCTL_CHILD_VERROU_E2E_PASSWORD="$VERROU_E2E_PASSWORD" \
 SIMCTL_CHILD_VERROU_E2E_TOTP="$VERROU_E2E_TOTP" \
+SIMCTL_CHILD_VERROU_E2E_MEMBER_EMAIL="${VERROU_E2E_MEMBER_EMAIL:-}" \
+SIMCTL_CHILD_VERROU_E2E_MEMBER_PASSWORD="${VERROU_E2E_MEMBER_PASSWORD:-}" \
+SIMCTL_CHILD_VERROU_E2E_MEMBER_TOTP="${VERROU_E2E_MEMBER_TOTP:-}" \
 SIMCTL_CHILD_VERROU_E2E_ACK="$WORK/ack" \
   xcrun simctl launch --console --terminate-running-process "$DEV" app.verrou.ios > "$LOG" 2>&1 &
 LAUNCH_PID=$!
@@ -177,7 +191,7 @@ LAUNCH_PID=$!
 # 5. Réponses au pilote
 handled=0
 status=2
-deadline=$((SECONDS + 600))
+deadline=$((SECONDS + 900))
 while (( SECONDS < deadline )) && [[ $status == 2 ]]; do
   # Les lignes du pilote pas encore traitées (bash 3 : pas de mapfile).
   new_lines="$(grep '^E2E_' "$LOG" 2>/dev/null | sed -n "$((handled + 1)),\$p" || true)"
@@ -194,6 +208,8 @@ while (( SECONDS < deadline )) && [[ $status == 2 ]]; do
           xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit_Sim.pearl.match
           sleep 1
         done ;;
+      "E2E_TEXT "*)
+        xcrun simctl ui "$DEV" content_size "${line#E2E_TEXT }" >/dev/null 2>&1 || true ;;
       "E2E_NET off") stop_relay ;;
       "E2E_NET on") start_relay ;;
       E2E_DONE) status=0; break ;;

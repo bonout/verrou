@@ -19,7 +19,8 @@ import UIKit
 ///   (`xcrun simctl io … screenshot`) ;
 /// - `E2E_FACEID` : une demande Face ID attend, le script présente un visage
 ///   reconnu (`notifyutil … pearl.match`) ;
-/// - `E2E_NET off|on` : le script coupe ou rétablit le relais vers le serveur.
+/// - `E2E_NET off|on` : le script coupe ou rétablit le relais vers le serveur ;
+/// - `E2E_TEXT <taille>` : le script change la taille du texte du simulateur.
 @MainActor
 final class EndToEndDriver {
     struct Config {
@@ -27,6 +28,9 @@ final class EndToEndDriver {
         let email: String
         let password: String
         let totpSecret: String
+        /// Second compte (membre invité), pour le partage : adresse, mot de
+        /// passe, graine du second facteur.
+        let member: (email: String, password: String, totp: String)?
 
         init?(_ environment: [String: String]) {
             guard let server = environment["VERROU_E2E_SERVER"], let email = environment["VERROU_E2E_EMAIL"],
@@ -36,6 +40,13 @@ final class EndToEndDriver {
             self.email = email
             self.password = password
             totpSecret = secret
+            if let memberEmail = environment["VERROU_E2E_MEMBER_EMAIL"],
+               let memberPassword = environment["VERROU_E2E_MEMBER_PASSWORD"],
+               let memberTotp = environment["VERROU_E2E_MEMBER_TOTP"], !memberEmail.isEmpty {
+                member = (memberEmail, memberPassword, memberTotp)
+            } else {
+                member = nil
+            }
         }
     }
 
@@ -295,6 +306,9 @@ final class EndToEndDriver {
         await snap("16-reglages")
         model.tab = .vault
 
+        // Coffres partagés, côté propriétaire
+        let shared = await sharingAsOwner()
+
         // Verrouillage, mot de passe, Face ID
         // Un secret copié juste avant : le verrouillage l'efface.
         model.copyPassword(of: github)
@@ -328,6 +342,273 @@ final class EndToEndDriver {
         check(!FileManager.default.fileExists(atPath: model.vault.directory.appending(path: "account.json").path),
               "fichiers du compte effacés")
         await snap("18-deconnecte")
+
+        // Le membre invité, puis la confirmation, puis ses droits
+        if let shared, let member = config.member {
+            await sharingWithMember(shared, member: member)
+        }
+    }
+
+    // MARK: Partage
+
+    struct SharedFixture {
+        let organizationID: String
+        let communs: String
+        let banque: String
+        let memberID: String?
+    }
+
+    /// Se connecte (second facteur TOTP compris) avec ce compte.
+    private func signIn(_ email: String, _ password: String, totp: String, step: String) async {
+        model.loginServer = config.server
+        model.loginEmail = email
+        await model.signIn(password: password)
+        let now = Date().timeIntervalSince1970
+        for offset in [0.0, 30.0, 60.0] where model.lockState != .unlocked {
+            await model.answerTwoFactor(.authenticator, token: Self.totp(totp, at: now + offset))
+        }
+        check(model.lockState == .unlocked, step)
+        _ = await wait(30) { model.syncState != .syncing }
+    }
+
+    /// Le propriétaire crée l'organisation et ses collections, partage
+    /// (plusieurs éléments, puis un seul), change des collections, invite le
+    /// membre ; la dernière propriétaire ne peut pas partir.
+    private func sharingAsOwner() async -> SharedFixture? {
+        check(await model.createOrganization(name: "Famille iPhone", collection: "Comptes communs"),
+              "organisation créée sur l'iPhone (\(model.sharing.error ?? "ok"))")
+        guard let org = model.organizations.first(where: { $0.name == "Famille iPhone" }),
+              let communs = org.collections.first?.id else {
+            check(false, "organisation et collection lues après la création")
+            return nil
+        }
+        check(org.isOwner && org.canCreateCollections && org.canRename, "propriétaire, avec tous les droits")
+        model.tab = .vault
+        model.vaultPath = [.organization(org.id)]
+        await snap("19-organisation")
+
+        // Nouvelle collection : la feuille lit les membres de l'organisation
+        model.openCollectionEditor(org, collection: nil)
+        guard case .collection(let opened) = model.sharing.sheet else {
+            check(false, "éditeur de collection ouvert")
+            return nil
+        }
+        var draft = await model.session.loadCollectionDraft(opened, organization: org, accountEmail: model.account?.email)
+        check(!draft.loading && draft.accessUnavailable == nil && !draft.members.isEmpty,
+              "membres de l'organisation lus pour la collection (\(draft.accessUnavailable ?? "ok"))")
+        draft.name = "Banque iPhone"
+        // Rouverte avec le brouillon lu et le nom saisi.
+        model.sharing.sheet = nil
+        await pause(1.5)
+        model.sharing.sheet = .collection(draft)
+        await snap("20-nouvelle-collection")
+        model.sharing.sheet = nil
+        await pause(0.6)
+        check(await model.saveCollection(draft), "collection créée (\(model.sharing.error ?? "ok"))")
+        guard let banque = model.organization(org.id)?.collections.first(where: { $0.name == "Banque iPhone" })?.id else {
+            check(false, "nom de la collection chiffré puis relu")
+            return nil
+        }
+        check(model.organization(org.id)?.collections.first { $0.id == banque }?.canManage == true,
+              "collection gérée par la propriétaire")
+
+        // Partage groupé : les deux éléments créés plus haut
+        let pair = ["Modifié sur iPhone", "Carte du test"].compactMap { id(of: $0) }
+        model.vaultPath = [.list(.archived)]
+        model.openSharing(items: pair)
+        guard let flow = model.sharing.shareFlow, flow.isBulk else {
+            check(false, "feuille « Partager » pour deux éléments")
+            return nil
+        }
+        flow.collectionIDs = [communs]
+        await snap("21-partager-plusieurs")
+        check(await model.applySharing(flow), "deux éléments partagés (\(flow.error ?? "ok"))")
+        check(pair.allSatisfy { model.summary(id: $0)?.sharing?.organizationId == org.id },
+              "rechiffrés pour l'organisation (\(model.toast?.message ?? ""))")
+        await pause(1.0)
+
+        // Un seul élément, dans la collection de la banque seulement
+        if let netflix = id(of: "Netflix") {
+            model.openSharing(netflix)
+            if let single = model.sharing.shareFlow {
+                single.collectionIDs = [banque]
+                check(await model.applySharing(single), "Netflix partagé dans « Banque iPhone » (\(single.error ?? "ok"))")
+            }
+        }
+        // Changer les collections d'un élément partagé
+        if let card = id(of: "Carte du test") {
+            model.openSharing(card)
+            if let collections = model.sharing.shareFlow, collections.current != nil {
+                collections.collectionIDs = [communs, banque]
+                await snap("22-collections")
+                check(await model.applySharing(collections), "collections de la carte changées")
+                check(model.summary(id: card)?.sharing?.collectionIds.count == 2, "carte dans deux collections")
+            }
+        }
+        model.vaultPath = [.organization(org.id)]
+        await pause(1.0)
+
+        // Inviter le membre (sans courriel, le serveur accepte d'office)
+        var memberID: String?
+        if let member = config.member {
+            model.vaultPath = [.organization(org.id), .members(org.id)]
+            await model.loadMembers(org.id)
+            let invite = MemberDraft(member: nil, emails: member.email, role: .user,
+                                     access: [communs: .edit, banque: .edit])
+            model.sharing.sheet = .member(invite, organizationID: org.id)
+            await snap("23-inviter")
+            model.sharing.sheet = nil
+            await pause(0.6)
+            check(await model.saveMember(invite, in: org.id), "membre invité (\(model.sharing.error ?? "ok"))")
+            let invited = model.sharing.members[org.id]?.first { $0.email == member.email }
+            check(invited?.status == .accepted, "invitation acceptée d'office : à confirmer")
+            memberID = invited?.id
+            await snap("24-membres")
+            await model.refreshSharingStatus()
+            check(model.sharing.totalToConfirm == 1, "« 1 membre à confirmer »")
+            model.vaultPath = []
+            await snap("25-membres-a-confirmer")
+            // L'éditeur d'une collection ouvert comme par un toucher : il lit
+            // lui-même membres et droits (capture vérifiée à l'œil).
+            if let banqueView = model.organization(org.id)?.collections.first(where: { $0.id == banque }) {
+                model.vaultPath = [.organization(org.id)]
+                model.openCollectionEditor(model.organization(org.id) ?? org, collection: banqueView)
+                await pause(3)
+                await snap("25b-collection-ouverte")
+                model.sharing.sheet = nil
+                await pause(0.8)
+                model.vaultPath = []
+            }
+        }
+
+        // Ma phrase d'empreinte, l'écran « Rejoindre », renommer, quitter
+        model.sharing.sheet = .fingerprint(nil)
+        await snap("26-empreinte")
+        // Aux plus grandes tailles de texte : la phrase reste entière.
+        log("E2E_TEXT accessibility-extra-extra-extra-large")
+        await pause(2)
+        await snap("26b-empreinte-grand-texte")
+        log("E2E_TEXT large")
+        await pause(1.5)
+        model.sharing.sheet = nil
+        await pause(0.6)
+        let link = "\(config.server)/#/accept-organization/?email=\(config.email.replacingOccurrences(of: "@", with: "%40"))"
+            + "&organizationName=Club%20d%27escalade&organizationId=8e2d4f1a-0000-4000-8000-000000000001"
+            + "&organizationUserId=8e2d4f1a-0000-4000-8000-000000000002&token=eyJ0eXAiOiJKV1QifQ.e30.c2ln"
+        check((try? model.session.invitationInfo(link: link))?.forThisAccount == true, "lien d'invitation lu")
+        model.sharing.sheet = .join(link)
+        await snap("27-rejoindre")
+        model.sharing.sheet = nil
+        await pause(0.6)
+        check(await model.renameOrganization(org, to: "Famille Martin"), "organisation renommée")
+        check(model.organization(org.id)?.name == "Famille Martin", "nouveau nom relu")
+        await model.leaveOrganization(model.organization(org.id) ?? org)
+        check(model.organization(org.id) != nil && model.toast?.failure == true, "la dernière propriétaire ne part pas")
+
+        // Envoi de texte (Bitwarden Send) : créé, lien copié, listé, supprimé
+        model.vaultPath = [.sends]
+        await model.reloadSends()
+        var fields = model.session.newSendFields()
+        fields.name = "Code du portail"
+        fields.text = "4589B"
+        let composer = SendComposer(fields: fields, file: nil)
+        model.sharing.sendComposer = composer
+        await snap("34-nouvel-envoi")
+        check(await model.createSend(composer), "envoi créé (\(model.sharing.error ?? "ok"))")
+        check(UIPasteboard.general.string?.contains("/#/send/") == true, "lien de l'envoi copié")
+        await snap("35-envoi-cree")
+        model.sharing.sendComposer = nil
+        await pause(0.8)
+        check(model.sharing.sends?.contains { $0.name == "Code du portail" } == true, "envoi listé")
+        await snap("36-envois")
+        if let send = model.sharing.sends?.first(where: { $0.name == "Code du portail" }) {
+            await model.deleteSend(send)
+            check(model.sharing.sends?.contains { $0.id == send.id } == false, "envoi supprimé")
+        }
+        model.vaultPath = []
+        return SharedFixture(organizationID: org.id, communs: communs, banque: banque, memberID: memberID)
+    }
+
+    /// Le membre attend sa confirmation, la propriétaire la lui donne après
+    /// avoir comparé l'empreinte, puis il lit ce qui lui est partagé, avec
+    /// ses droits.
+    private func sharingWithMember(_ shared: SharedFixture, member: (email: String, password: String, totp: String)) async {
+        await signIn(member.email, member.password, totp: member.totp, step: "membre connecté")
+        await model.refreshSharingStatus()
+        guard let pending = model.sharing.pending.first(where: { $0.organizationId == shared.organizationID }) else {
+            return check(false, "invitation en attente de confirmation visible")
+        }
+        check(model.organization(shared.organizationID) == nil, "pas de clé avant la confirmation")
+        await snap("28-invitation-en-attente")
+        model.sharing.sheet = .fingerprint(pending)
+        await snap("29-empreinte-membre")
+        model.sharing.sheet = nil
+        let memberFingerprint = (try? await model.session.ownFingerprint()) ?? ""
+        await pause(0.6)
+        model.logout()
+
+        await signIn(config.email, config.password, totp: config.totpSecret, step: "propriétaire reconnectée")
+        await model.loadMembers(shared.organizationID)
+        guard let accepted = model.sharing.members[shared.organizationID]?.first(where: { $0.email == member.email })
+        else { return check(false, "membre listé") }
+        model.vaultPath = [.organization(shared.organizationID), .members(shared.organizationID)]
+        await model.prepareConfirmation(accepted, in: shared.organizationID)
+        check(model.sharing.confirmation?.fingerprint == memberFingerprint, "empreinte identique des deux côtés")
+        await snap("30-verifier-empreinte")
+        if let confirmation = model.sharing.confirmation {
+            await model.confirmMember(confirmation)
+        }
+        check(model.sharing.members[shared.organizationID]?.first { $0.email == member.email }?.status == .confirmed,
+              "membre confirmé")
+        // « Banque iPhone » : lecture seule, mots de passe masqués pour lui
+        if let org = model.organization(shared.organizationID),
+           let banque = org.collections.first(where: { $0.id == shared.banque }) {
+            var draft = await model.session.loadCollectionDraft(
+                CollectionDraft(organizationID: org.id, collectionID: banque.id, name: banque.name),
+                organization: org, accountEmail: model.account?.email)
+            check(draft.accessUnavailable == nil && draft.members.contains { $0.id == accepted.id }
+                  && draft.memberAccess[accepted.id] == .edit,
+                  "accès de la collection lus : le membre et son droit (\(draft.accessUnavailable ?? "ok"))")
+            do {
+                draft.memberAccess[accepted.id] = .viewExceptPasswords
+                model.sharing.sheet = nil
+                await pause(1.5)
+                model.sharing.sheet = .collection(draft)
+                await snap("31-acces-collection")
+                model.sharing.sheet = nil
+                await pause(0.6)
+                check(await model.saveCollection(draft), "droits de la collection enregistrés")
+            }
+            let access = try? await model.session.collectionAccess(organizationId: org.id, collectionId: banque.id)
+            check(access?.members.contains { $0.id == accepted.id && $0.readOnly && $0.hidePasswords } == true,
+                  "lecture seule et mots de passe masqués relus")
+        }
+        model.vaultPath = []
+        model.logout()
+
+        await signIn(member.email, member.password, totp: member.totp, step: "membre reconnecté")
+        guard let org = model.organization(shared.organizationID) else {
+            return check(false, "organisation déchiffrée par le membre")
+        }
+        check(!org.canRename && !org.canCreateCollections && !org.collections.contains(where: \.canManage),
+              "membre sans droits de gestion")
+        guard let netflix = model.summaries.first(where: { $0.title == "Netflix" && $0.sharing != nil }) else {
+            return check(false, "élément partagé lisible par le membre")
+        }
+        check(netflix.sharing?.readOnly == true && netflix.sharing?.hidePasswords == true && !model.canModify(netflix),
+              "lecture seule, mots de passe masqués")
+        model.open(netflix.id)
+        model.toggleReveal("password", of: netflix.id)
+        check(model.revealedValue("password", of: netflix.id) == nil, "mot de passe masqué par l'organisation")
+        await snap("32-lecture-seule")
+        model.vaultPath = [.organization(org.id)]
+        await snap("33-organisation-membre")
+        model.vaultPath = []
+        if let card = model.summaries.first(where: { $0.title == "Carte du test" }) {
+            check(model.canModify(card), "élément d'une collection modifiable : modifiable")
+        }
+        model.logout()
+        check(model.needsLogin, "membre déconnecté")
     }
 
     /// RFC 6238 (SHA-1, 6 chiffres, 30 s), pour répondre au second facteur.

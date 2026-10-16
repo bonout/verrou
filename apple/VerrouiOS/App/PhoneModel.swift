@@ -48,6 +48,12 @@ final class PhoneModel {
         case list(SidebarFilter)
         case item(String)
         case audit
+        /// Un coffre partagé : ses collections, ses membres, ses groupes.
+        case organization(String)
+        case members(String)
+        case groups(String)
+        /// Envois (Bitwarden Send).
+        case sends
     }
 
     struct Editor: Identifiable {
@@ -165,6 +171,8 @@ final class PhoneModel {
 
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
+    /// Partage avec d'autres comptes (organisations, collections, membres).
+    let sharing = PhoneSharingModel()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
     /// La prochaine synchronisation est la première après le déverrouillage :
@@ -524,6 +532,7 @@ final class PhoneModel {
         editorError = nil
         qrSheet = nil
         moveRequest = nil
+        sharing.clear()
         preview = nil
         sharedFile = nil
         reprompt?.answer(false)
@@ -632,6 +641,9 @@ final class PhoneModel {
             }
             guard lockState == .unlocked else { return }
             account = session.account()
+            // Invitations en attente et membres à confirmer : à chaque
+            // synchronisation périodique (pas après chaque écriture).
+            if !afterWrite { Task { await self.refreshSharingStatus() } }
             guard outcome.changed else { return }
             await reloadVaultAfterSync()
             if outcome.failures > 0 { result = .failed("\(outcome.failures) élément(s) illisible(s)") }
@@ -1133,7 +1145,7 @@ final class PhoneModel {
     /// Écriture appliquée au coffre local (l'envoi suit, `pushChanges`) :
     /// la liste se met à jour tout de suite, les éléments en attente portent
     /// leur marque.
-    private func afterWrite() {
+    func afterWrite() {
         guard lockState == .unlocked else { return }
         revealed = [:]
         reloadVault()

@@ -196,6 +196,10 @@ identities, Wi-Fi QR codes, attachments (Quick Look, share), passkeys listed,
 create and edit logins, notes, cards, identities and templates, a password
 and passphrase generator, swipe actions and multi-select, offline edits, an
 audit, auto-lock in the background and a privacy screen in the app switcher.
+Sharing works as on the Mac: share one item or a selection into a shared
+vault, create and manage organizations, collections, members (confirmed by
+fingerprint phrase) and groups, join with an invitation link, and send a
+text or a file with Send.
 
 It looks like the Mac app: the same padlock mark, accent color, item icons,
 detail header chips and list rows, all shared from `apple/Shared/UI`. On
