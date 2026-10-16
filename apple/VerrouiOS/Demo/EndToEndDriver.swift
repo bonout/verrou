@@ -306,6 +306,18 @@ final class EndToEndDriver {
         model.openAudit()
         check((model.audit?.checked ?? 0) >= 4, "audit du coffre (\(model.audit?.checked ?? 0) mots de passe)")
         await snap("14-audit")
+        // « Passkey possible » : annuaire passkeys.2fa.directory téléchargé
+        // en entier par le cœur Rust ; Amazon (amazon.fr) y figure.
+        check(await wait(30) { model.passkeyAudit.report != nil || model.passkeyAudit.error != nil },
+              "annuaire des passkeys chargé (\(model.passkeyAudit.error ?? "ok"))")
+        let candidates = model.passkeyAudit.report?.candidates ?? []
+        check(candidates.contains { $0.item.title == "Amazon" && $0.domain == "amazon.fr" && $0.passwordless },
+              "« Passkey possible » : Amazon (\(candidates.map(\.item.title).joined(separator: ", ")))")
+        check(!candidates.contains { $0.item.title == "Netflix" }, "« Passkey possible » : Netflix absent de l'annuaire")
+        model.passkeyAudit.focus = true
+        await pause(0.8)
+        await snap("14b-audit-passkeys")
+        model.passkeyAudit.focus = false
         model.vaultPath = []
         model.tab = .generator
         await snap("15-generateur")

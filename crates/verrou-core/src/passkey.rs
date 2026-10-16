@@ -17,7 +17,7 @@ use std::fmt::Write as _;
 
 use data_encoding::BASE64URL_NOPAD;
 use p256::ecdsa::signature::Signer as _;
-use p256::ecdsa::{Signature, SigningKey};
+use p256::ecdsa::{Signature, SigningKey, VerifyingKey};
 use p256::pkcs8::{DecodePrivateKey as _, EncodePrivateKey as _, EncodePublicKey as _};
 use rand::{CryptoRng, RngCore};
 use serde::Serialize;
@@ -236,8 +236,8 @@ fn cbor_text(out: &mut Vec<u8>, text: &str) {
 }
 
 /// Clé publique COSE EC2 (P-256, ES256), clés dans l'ordre canonique.
-fn cose_public_key(key: &SigningKey) -> Vec<u8> {
-    let point = key.verifying_key().to_encoded_point(false);
+fn cose_public_key(key: &VerifyingKey) -> Vec<u8> {
+    let point = key.to_encoded_point(false);
     let mut out = Vec::with_capacity(77);
     cbor_head(&mut out, 5, 5);
     cbor_int(&mut out, 1); // kty
@@ -300,7 +300,7 @@ fn new_credential(
     let key = SigningKey::random(rng);
     let mut credential_id = [0u8; 16];
     rng.fill_bytes(&mut credential_id);
-    let cose = cose_public_key(&key);
+    let cose = cose_public_key(key.verifying_key());
     let mut attested = Vec::with_capacity(18 + credential_id.len() + cose.len());
     attested.extend_from_slice(&AAGUID);
     attested.extend_from_slice(&(credential_id.len() as u16).to_be_bytes());
@@ -652,6 +652,113 @@ pub fn assert_for_system(
         user_handle: passkey.user_handle.as_deref().and_then(b64url_decode),
         counter,
     })
+}
+
+// MARK: Création conditionnelle (iOS 18)
+//
+// Après un mot de passe rempli par Verrou, Safari peut demander en arrière-
+// plan une passkey pour le même compte (`mediation: "conditional"`), sans
+// interface. Le coffre est alors fermé (nouveau processus, sans Face ID) :
+// la clé est préparée **pendant** le remplissage, coffre ouvert, et sa partie
+// privée scellée avec la clé locale du compte ; la demande d'arrière-plan
+// n'a besoin que de la clé publique. La passkey rejoint l'élément à la
+// prochaine ouverture du coffre.
+
+/// Clé préparée pour une création conditionnelle.
+pub struct PreparedCredential {
+    pub credential_id: [u8; 16],
+    /// Clé publique SEC1 non compressée (65 octets).
+    pub public_key: Vec<u8>,
+    /// Clé privée PKCS#8 en base64url, comme Bitwarden la garde.
+    pub private_key: SecretString,
+}
+
+/// Nouvelle clé et identifiant aléatoire, sans site ni utilisateur.
+pub fn prepare_credential(
+    rng: &mut (impl RngCore + CryptoRng),
+) -> Result<PreparedCredential, PasskeyError> {
+    let key = SigningKey::random(rng);
+    let mut credential_id = [0u8; 16];
+    rng.fill_bytes(&mut credential_id);
+    let pkcs8 = key.to_pkcs8_der().map_err(|_| PasskeyError::BadKey)?;
+    Ok(PreparedCredential {
+        credential_id,
+        public_key: key
+            .verifying_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .to_vec(),
+        private_key: SecretString::new(b64url(pkcs8.as_bytes())),
+    })
+}
+
+/// Réponse à une création conditionnelle, avec la clé préparée : attestation
+/// `none`, sans présence ni vérification de l'utilisateur (aucune interface
+/// n'a été montrée), compteur 0. Aucun secret.
+pub fn conditional_registration(
+    rp_id: &str,
+    credential_id: &[u8],
+    public_key: &[u8],
+    client_data_hash: &[u8],
+) -> Result<SystemRegistration, PasskeyError> {
+    let rp_id = system_rp_id(rp_id)?;
+    check_client_data_hash(client_data_hash)?;
+    if credential_id.is_empty() || credential_id.len() > 64 {
+        return Err(PasskeyError::BadKey);
+    }
+    let key = VerifyingKey::from_sec1_bytes(public_key).map_err(|_| PasskeyError::BadKey)?;
+    let cose = cose_public_key(&key);
+    let mut attested = Vec::with_capacity(18 + credential_id.len() + cose.len());
+    attested.extend_from_slice(&AAGUID);
+    attested.extend_from_slice(&(credential_id.len() as u16).to_be_bytes());
+    attested.extend_from_slice(credential_id);
+    attested.extend_from_slice(&cose);
+    let authenticator_data =
+        authenticator_data(&rp_id, BACKUP_ELIGIBLE | BACKED_UP, 0, Some(&attested));
+    Ok(SystemRegistration {
+        credential_id: credential_id.to_vec(),
+        attestation_object: none_attestation(&authenticator_data),
+        public_key: key
+            .to_public_key_der()
+            .map_err(|_| PasskeyError::BadKey)?
+            .into_vec(),
+        authenticator_data,
+    })
+}
+
+/// Ce qu'une création conditionnelle a enregistré chez le site, pour en
+/// faire la passkey du coffre.
+pub struct ConditionalPasskey<'a> {
+    pub item: &'a str,
+    pub rp_id: &'a str,
+    pub user_id: &'a [u8],
+    pub user_name: Option<&'a str>,
+    pub credential_id: &'a [u8],
+    /// Clé privée PKCS#8 en base64url (descellée, coffre ouvert).
+    pub private_key: &'a str,
+    pub created: i64,
+}
+
+/// La passkey du coffre (format de Bitwarden) d'une création conditionnelle.
+/// La clé privée doit être une clé P-256 valide.
+pub fn conditional_passkey(created: &ConditionalPasskey<'_>) -> Result<Passkey, PasskeyError> {
+    let rp_id = system_rp_id(created.rp_id)?;
+    let mut der = b64url_decode(created.private_key).ok_or(PasskeyError::BadKey)?;
+    let key = SigningKey::from_pkcs8_der(&der).map_err(|_| PasskeyError::BadKey);
+    der.zeroize();
+    stored_passkey(
+        &key?,
+        created.credential_id,
+        &PasskeyOwner {
+            item: created.item,
+            rp_id,
+            rp_name: None,
+            user_id: created.user_id,
+            user_name: created.user_name,
+            user_display_name: None,
+            created: created.created,
+        },
+    )
 }
 
 #[cfg(test)]
@@ -1054,5 +1161,96 @@ mod tests {
         // Sans vérification de l'utilisateur : UP|BE|BS seulement.
         let assertion = assert_for_system(&passkey, "localhost", &hash, false).unwrap();
         assert_eq!(assertion.authenticator_data[32], 0x01 | 0x08 | 0x10);
+    }
+
+    #[test]
+    fn conditional_creation_uses_the_prepared_key() {
+        let prepared = prepare_credential(&mut rng()).unwrap();
+        let hash = [5u8; 32];
+        let registration = conditional_registration(
+            "github.com",
+            &prepared.credential_id,
+            &prepared.public_key,
+            &hash,
+        )
+        .unwrap();
+        let data = &registration.authenticator_data;
+        assert_eq!(&data[..32], Sha256::digest(b"github.com").as_slice());
+        // Ni présence ni vérification : aucune interface montrée.
+        assert_eq!(data[32] & (USER_PRESENT | USER_VERIFIED), 0);
+        assert_eq!(data[32] & ATTESTED_DATA, ATTESTED_DATA);
+        assert_eq!(&data[33..37], &[0, 0, 0, 0]);
+        assert_eq!(
+            &data[37 + 16 + 2..37 + 16 + 2 + 16],
+            &prepared.credential_id
+        );
+        assert!(
+            registration
+                .attestation_object
+                .windows(4)
+                .any(|w| w == b"none")
+        );
+        // La passkey du coffre signe avec la clé dont la page a reçu la
+        // partie publique.
+        let passkey = conditional_passkey(&ConditionalPasskey {
+            item: "github",
+            rp_id: "GitHub.com",
+            user_id: b"u-42",
+            user_name: Some("camille"),
+            credential_id: &prepared.credential_id,
+            private_key: prepared.private_key.expose(),
+            created: 1_700_000_000,
+        })
+        .unwrap();
+        assert_eq!(passkey.rp_id, "github.com");
+        assert_eq!(passkey.raw_id().unwrap(), prepared.credential_id);
+        assert_eq!(passkey.counter, 0);
+        let assertion = assert_for_system(&passkey, "github.com", &hash, true).unwrap();
+        let mut message = assertion.authenticator_data.clone();
+        message.extend_from_slice(&hash);
+        let key = VerifyingKey::from_public_key_der(&registration.public_key).unwrap();
+        key.verify(
+            &message,
+            &DerSignature::try_from(assertion.signature.as_slice()).unwrap(),
+        )
+        .expect("signature de la clé préparée");
+        // Entrées refusées.
+        assert!(
+            conditional_registration(
+                "co.uk",
+                &prepared.credential_id,
+                &prepared.public_key,
+                &hash
+            )
+            .is_err()
+        );
+        assert!(
+            conditional_registration("github.com", &prepared.credential_id, &[4; 65], &hash)
+                .is_err()
+        );
+        assert!(
+            conditional_registration(
+                "github.com",
+                &prepared.credential_id,
+                &prepared.public_key,
+                &[1; 8]
+            )
+            .is_err()
+        );
+        assert!(
+            conditional_passkey(&ConditionalPasskey {
+                private_key: "pas une clé",
+                ..ConditionalPasskey {
+                    item: "x",
+                    rp_id: "github.com",
+                    user_id: b"u",
+                    user_name: None,
+                    credential_id: &prepared.credential_id,
+                    private_key: "",
+                    created: 0,
+                }
+            })
+            .is_err()
+        );
     }
 }

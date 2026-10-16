@@ -24,6 +24,7 @@ struct AuditView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 4) {
                 header
@@ -64,6 +65,13 @@ struct AuditView: View {
             .padding(.vertical, 10)
         }
         .background(Color(nsColor: .controlBackgroundColor))
+        .task(id: model.watchtower.focus) {
+            // Revue visuelle : une section précise en haut du volet.
+            guard let focus = model.watchtower.focus else { return }
+            try? await Task.sleep(for: .milliseconds(100))
+            proxy.scrollTo(focus, anchor: .top)
+        }
+        }
     }
 
     private var header: some View {
@@ -71,12 +79,20 @@ struct AuditView: View {
             Text("Audit de sécurité").font(.title3.weight(.semibold))
                 .layoutMark("pane-title")
             if let audit = model.audit {
-                Text("\(audit.checked) mots de passe examinés, sur ce Mac")
+                Text(summaryLine(audit))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, 8)
         .padding(.bottom, 6)
+    }
+
+    private func summaryLine(_ audit: AuditReport) -> String {
+        var line = "\(audit.checked) mots de passe examinés, sur ce Mac"
+        if let count = model.watchtower.passkeys?.candidates.count, count > 0 {
+            line += " · \(count) passkey\(count > 1 ? "s" : "") possible\(count > 1 ? "s" : "")"
+        }
+        return line
     }
 
     @ViewBuilder private var breachSection: some View {
@@ -156,6 +172,7 @@ private struct WatchtowerSections<Row: View>: View {
     var body: some View {
         let watchtower = model.watchtower
         twoFactorSection(watchtower)
+        passkeySection(watchtower)
         if let report = watchtower.report {
             if !report.cards.isEmpty {
                 title("Cartes expirées ou bientôt expirées", count: report.cards.count,
@@ -208,6 +225,53 @@ private struct WatchtowerSections<Row: View>: View {
         }
     }
 
+    @ViewBuilder private func passkeySection(_ watchtower: Watchtower) -> some View {
+        if let report = watchtower.passkeys {
+            if !report.candidates.isEmpty {
+                title("Passkey possible", count: report.candidates.count, detail: passkeyDetail(report))
+                    .id("passkeys")
+                ForEach(report.candidates, id: \.item.id) { candidate in
+                    HStack(spacing: 4) {
+                        row(candidate.item, candidate.passwordless ? nil : "second facteur", false)
+                        if let doc = candidate.documentation, let url = URL(string: doc) {
+                            Link(destination: url) {
+                                Image(systemName: "questionmark.circle")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Aide de \(candidate.domain) sur les passkeys")
+                        }
+                        CreatePasskeyButton(candidate: candidate, selected: candidate.item.id == model.selection,
+                                            mark: candidate.item.id == report.candidates.first?.item.id)
+                    }
+                    .id("passkey-\(candidate.item.id)")
+                }
+                Text("Une fois la passkey enregistrée, l'élément quitte cette liste à la synchronisation suivante. Gardez le mot de passe en secours ; si le site permet la connexion sans mot de passe, vous pourrez le retirer chez lui, puis ici.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8).padding(.top, 4)
+            }
+        } else if watchtower.loadingPasskeys {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Recherche des sites qui acceptent les passkeys…")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 8).padding(.top, 14)
+        } else if let error = watchtower.passkeysError, model.mode == .vaultwarden {
+            title("Passkey possible", count: 0,
+                  detail: "Catégorie ignorée : l'annuaire passkeys.2fa.directory n'a pas pu être téléchargé (\(error)).")
+        }
+    }
+
+    private func passkeyDetail(_ report: PasskeyReport) -> String {
+        var text = "Ces sites acceptent les passkeys : rien à retenir, rien à hameçonner. « Créer une passkey » ouvre la page du site ; l'extension Verrou de Brave ou Firefox propose ensuite de l'enregistrer dans l'élément. D'après passkeys.2fa.directory"
+        if report.stale {
+            let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
+            text += " (annuaire du \(date.formatted(date: .abbreviated, time: .omitted)), hors ligne)"
+        }
+        return text + "."
+    }
+
     private func twoFactorDetail(_ report: TwoFactorReport) -> String {
         var text = "Ces sites proposent la double authentification, mais aucun code à usage unique n'est enregistré dans Verrou. D'après 2fa.directory"
         if report.stale {
@@ -255,6 +319,46 @@ private struct WatchtowerSections<Row: View>: View {
         .padding(.horizontal, 8)
         .padding(.top, 14)
         .padding(.bottom, 2)
+    }
+}
+
+/// « Créer une passkey » : ouvre la page du site où la créer
+/// (`AppModel.createPasskey`). Un indicateur le temps de la recherche.
+struct CreatePasskeyButton: View {
+    @Environment(AppModel.self) private var model
+    let candidate: PasskeyCandidate
+    /// Ligne sélectionnée (fond d'accent) : texte blanc.
+    var selected = false
+    /// Repère de la revue visuelle (le premier bouton seulement).
+    var mark = false
+
+    var body: some View {
+        if mark {
+            button.layoutMark("create-passkey")
+        } else {
+            button
+        }
+    }
+
+    private var button: some View {
+        let busy = model.watchtower.creatingPasskey == candidate.item.id
+        return Button {
+            Task { await model.createPasskey(for: candidate) }
+        } label: {
+            HStack(spacing: 4) {
+                if busy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: "person.badge.key")
+                }
+                Text("Créer une passkey")
+            }
+        }
+        .disabled(model.watchtower.creatingPasskey != nil || model.lockState != .unlocked)
+        .help("Ouvrir la page de \(candidate.domain) où créer une passkey")
+        .buttonStyle(.borderless)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(selected ? Color.white : Theme.accent)
     }
 }
 

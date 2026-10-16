@@ -26,7 +26,9 @@ sha2.workspace = true
 tokio.workspace = true
 # Clés des passkeys créées pour le remplissage automatique d'iOS.
 rand.workspace = true
-# Réglages de l'appareil (`match-rules.json`, `usage.json`).
+# Fichiers de l'extension iOS (création conditionnelle, signaux des sites)
+# et réglages de l'appareil (`match-rules.json`, `usage.json`).
+serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]

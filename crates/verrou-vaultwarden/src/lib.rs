@@ -546,6 +546,25 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
+    /// Chiffre `text` avec la clé locale du compte (celle de la file des
+    /// modifications) : le résultat ne se relit que coffre ouvert
+    /// (`open_local`). Sert aux clés des passkeys créées en arrière-plan.
+    pub fn seal_local(&self, text: String) -> Result<String, Error> {
+        self.sdk
+            .crypto()
+            .encrypt_with_local_user_data_key(text)
+            .map_err(Error::crypto)
+    }
+
+    /// Déchiffre un texte scellé par `seal_local`.
+    pub fn open_local(&self, sealed: String) -> Result<SecretString, Error> {
+        self.sdk
+            .crypto()
+            .decrypt_with_local_user_data_key(sealed)
+            .map(SecretString::new)
+            .map_err(Error::crypto)
+    }
+
     /// Enregistre le jeton de renouvellement que le serveur vient de donner,
     /// s'il a changé.
     fn keep_refresh_token(&mut self, previous: &SecretString, fresh: String) -> Result<(), Error> {

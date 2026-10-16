@@ -1,4 +1,5 @@
 import AuthenticationServices
+import os
 import SwiftUI
 
 /// Point d'entrée de l'extension de remplissage automatique : le système
@@ -68,6 +69,77 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func prepareInterfaceForExtensionConfiguration() {
         model.start(.none)
     }
+
+    // MARK: Création conditionnelle (iOS 18)
+
+    /// Safari demande une passkey en arrière-plan, juste après un mot de
+    /// passe rempli par Verrou (`mediation: "conditional"`). Aucune
+    /// interface : la clé préparée au remplissage sert, si le site et le
+    /// compte sont les mêmes ; sinon refus silencieux. La passkey rejoint
+    /// l'élément à la prochaine ouverture de l'app (`conditional.rs`).
+    @available(iOS 18.0, *)
+    override func performWithoutUserInteractionIfPossible(passkeyRegistration registrationRequest: ASPasskeyCredentialRequest) {
+        guard let identity = registrationRequest.credentialIdentity as? ASPasskeyCredentialIdentity,
+              registrationRequest.supportedAlgorithms.isEmpty || registrationRequest.supportedAlgorithms.contains(.ES256),
+              let session = Self.backgroundSession() else { return cancel(.failed) }
+        do {
+            let result = try session.conditionalPasskeyRegistration(request: PasskeyCreationRequest(
+                rpId: identity.relyingPartyIdentifier, userName: identity.userName,
+                userHandle: identity.userHandle, clientDataHash: registrationRequest.clientDataHash,
+                userVerified: false, itemId: nil, excludedCredentials: []))
+            Self.log.notice("passkey conditionnelle créée pour \(identity.relyingPartyIdentifier, privacy: .public)")
+            extensionContext.completeRegistrationRequest(using: ASPasskeyRegistrationCredential(
+                relyingParty: identity.relyingPartyIdentifier, clientDataHash: registrationRequest.clientDataHash,
+                credentialID: Data(result.credentialId), attestationObject: Data(result.attestationObject)))
+        } catch {
+            Self.log.notice("passkey conditionnelle refusée : \(String(describing: error), privacy: .public)")
+            cancel(.failed)
+        }
+    }
+
+    // MARK: Signaux des sites (iOS 26)
+
+    // Un site informe le fournisseur (`ASCredentialUpdater`) : l'extension,
+    // lancée en arrière-plan, note le signal sans interface ni coffre ouvert
+    // (`signals.rs`). Les suggestions du système en tiennent compte à la
+    // prochaine publication, et l'audit de l'app les montre ; rien n'est
+    // supprimé du coffre automatiquement.
+
+    override func reportPublicKeyCredentialUpdate(forRelyingParty relyingParty: String, userHandle: Data, newName: String) {
+        record(.passkeyRenamed(rpId: relyingParty, userHandle: userHandle, name: newName))
+    }
+
+    override func reportUnknownPublicKeyCredential(forRelyingParty relyingParty: String, credentialID: Data) {
+        record(.unknownPasskey(rpId: relyingParty, credentialId: credentialID))
+    }
+
+    override func reportAllAcceptedPublicKeyCredentials(forRelyingParty relyingParty: String, userHandle: Data,
+                                                        acceptedCredentialIDs: [Data]) {
+        record(.acceptedPasskeys(rpId: relyingParty, userHandle: userHandle, accepted: acceptedCredentialIDs))
+    }
+
+    override func reportUnusedPasswordCredential(forDomain domain: String, userName: String) {
+        record(.unusedPassword(domain: domain, userName: userName))
+    }
+
+    private func record(_ signal: CredentialSignal) {
+        do {
+            guard let session = Self.backgroundSession() else { return }
+            try session.recordCredentialSignal(signal: signal)
+            Self.log.notice("signal du site noté")
+        } catch {
+            Self.log.error("signal du site non noté : \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Le dossier du compte, sans ouvrir le coffre (demandes d'arrière-plan).
+    private static func backgroundSession() -> VaultSession? {
+        let location = VerrouStorage.accountLocation()
+        guard location.shared else { return nil }
+        return VaultSession.forAutofill(dataDir: location.directory.path)
+    }
+
+    private static let log = Logger(subsystem: "app.verrou.autofill", category: "extension")
 
     // MARK: Réponse
 

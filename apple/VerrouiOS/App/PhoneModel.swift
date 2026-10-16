@@ -198,6 +198,8 @@ final class PhoneModel {
     private(set) var breaches: [BreachedPassword]?
     private(set) var checkingBreaches = false
     var breachError: String?
+    /// « Passkey possible » (`PasskeyUpgrade.swift`).
+    let passkeyAudit = PhonePasskeyAudit()
 
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
@@ -571,6 +573,7 @@ final class PhoneModel {
         audit = nil
         breaches = nil
         breachError = nil
+        passkeyAudit.reset()
         editor = nil
         editorError = nil
         qrSheet = nil
@@ -745,6 +748,7 @@ final class PhoneModel {
                 await refreshSharingStatus()
             } else if !afterWrite {
                 Task { await self.refreshSharingStatus() }
+                Task { await self.finishPendingPasskeys() }
             }
             guard outcome.changed else { return }
             await reloadVaultAfterSync()
@@ -839,7 +843,10 @@ final class PhoneModel {
         folders = loaded?.folders ?? session.folders()
         matchSettings = session.matchSettings()
         if let known = breaches { breaches = session.stillBreached(breaches: known) }
-        if audit != nil { audit = try? session.audit() }
+        if audit != nil {
+            audit = try? session.audit()
+            refreshPasskeyAudit()
+        }
         refreshPending()
         // Un élément créé a reçu son identifiant du serveur : la fiche ouverte
         // suit ; un élément disparu (écriture refusée, annulée) la ferme.
@@ -1393,12 +1400,14 @@ final class PhoneModel {
 
     func openAudit() {
         audit = try? session.audit()
+        refreshPasskeyAudit()
         tab = .vault
         vaultPath = [.audit]
     }
 
     func refreshAudit() {
         audit = try? session.audit()
+        refreshPasskeyAudit()
     }
 
     /// Have I Been Pwned, par k-anonymat (5 caractères d'empreinte par mot de passe).
