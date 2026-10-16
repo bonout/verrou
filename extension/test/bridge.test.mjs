@@ -93,6 +93,15 @@ test("appairage, suggestions et remplissage depuis l'extension", async () => {
   const denied = await channel.request({ cmd: "fill", url: "https://evil.example/", item: "github" });
   assert.equal(denied.result, "denied");
 
+  // Règle de correspondance du site (« commence par ») : l'extension envoie
+  // l'adresse complète de la page, le pont décide.
+  const sso = await channel.request({ cmd: "suggest", url: "https://banque.exemple.fr/connexion/etape-2" });
+  assert.deepEqual(sso.items.map((i) => i.id), ["banque-sso"]);
+  const elsewhere = await channel.request({ cmd: "suggest", url: "https://banque.exemple.fr/aide" });
+  assert.deepEqual(elsewhere.items, []);
+  const refused = await channel.request({ cmd: "fill", url: "https://banque.exemple.fr/aide", item: "banque-sso" });
+  assert.equal(refused.result, "denied");
+
   // Après l'envoi d'un formulaire : nouveau compte, puis enregistré.
   const page = "http://localhost:8000/inscription";
   const fresh = await channel.request({ cmd: "check", url: page, username: "dominique", password: "Nouveau-42!" });
