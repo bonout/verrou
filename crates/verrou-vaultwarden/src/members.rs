@@ -386,7 +386,7 @@ fn access_list(role: MemberRole, collections: &[CollectionAccess]) -> Vec<Value>
 
 impl Connection {
     /// L'organisation, d'après le cache (le compte doit en être membre confirmé).
-    fn organization(&self, organization_id: &str) -> Result<Organization, Error> {
+    pub(crate) fn organization(&self, organization_id: &str) -> Result<Organization, Error> {
         let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
         let sync = serde_json::from_str(json)
             .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;

@@ -10,6 +10,12 @@ struct MembersSidebarRow: View {
         model.pane == .members && model.members.organizationID == organization.id
     }
 
+    /// Membres à confirmer : la liste ouverte, sinon le dernier décompte.
+    private var pending: Int {
+        active && model.members.loaded ? model.members.pendingConfirmation
+                                       : model.organizationAdmin.toConfirm[organization.id] ?? 0
+    }
+
     var body: some View {
         Button {
             model.openMembers(organization.id)
@@ -18,8 +24,8 @@ struct MembersSidebarRow: View {
                 HStack {
                     Text("Membres").lineLimit(1)
                     Spacer()
-                    if active, model.members.pendingConfirmation > 0 {
-                        Text("\(model.members.pendingConfirmation)")
+                    if pending > 0 {
+                        Text("\(pending)")
                             .monospacedDigit().foregroundStyle(.orange).font(.callout)
                             .help("Membres à confirmer")
                     }
@@ -222,7 +228,6 @@ struct MemberDetailView: View {
             .frame(maxWidth: 720, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     @ViewBuilder
@@ -436,6 +441,7 @@ struct MemberEditorView: View {
         }
         .frame(width: 520)
         .frame(minHeight: 420, maxHeight: 640)
+        .background(Color(nsColor: .windowBackgroundColor))
         .onAppear { model.members.error = nil }
     }
 

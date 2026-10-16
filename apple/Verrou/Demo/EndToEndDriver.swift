@@ -248,7 +248,9 @@ final class EndToEndDriver {
         let created = model.summaries.first { $0.title == "Créé par Verrou" }
         check(model.editor == nil && created != nil && model.selection == created?.id, "élément créé sur le serveur")
         if let created {
-            await model.edit(created.id)
+            // Créé hors ligne puis envoyé : l'identifiant provisoire devient celui du serveur.
+            let id = { [model] in model.session.resolveItemId(id: created.id) }
+            await model.edit(id())
             check(model.editor?.draft.login?.password == generated, "brouillon prérempli, secrets compris")
             await checkLayout("feuille de modification", [], sheet: ["edit-title", "sheet-primary"])
             await snap("24-modification")
@@ -257,28 +259,30 @@ final class EndToEndDriver {
                 draft.login?.password = "nouveau-mot-de-passe"
                 await model.saveEditor(draft)
             }
-            check(model.reveal("password", of: created.id) == "nouveau-mot-de-passe"
-                  && model.summaries.contains { $0.title == "Modifié par Verrou" }, "modification enregistrée")
-            await model.trash(created.id)
-            let state = { [model] in model.summaries.first { $0.id == created.id }?.state }
+            check(model.reveal("password", of: id()) == "nouveau-mot-de-passe"
+                  && model.summaries.contains { $0.title == "Modifié par Verrou" },
+                  "modification enregistrée")
+            await model.trash(id())
+            let state = { [model] in model.summaries.first { $0.id == id() }?.state }
             check(state() == .trashed && model.counts?.all == 9, "mis à la corbeille")
             model.filter = .trash
-            check(model.rows.contains { $0.id == created.id }, "visible dans la corbeille")
-            await model.restore(created.id)
+            check(model.rows.contains { $0.id == id() }, "visible dans la corbeille")
+            await model.restore(id())
             check(state() == .active, "restauré")
             // Vaultwarden refuse une modification datée de la même seconde.
             try? await Task.sleep(for: .seconds(1.5))
-            await model.setArchived(created.id, true)
+            await model.setArchived(id(), true)
             model.filter = .all
-            check(state() == .archived && !model.rows.contains { $0.id == created.id }, "archivé, hors de la liste")
-            await model.setArchived(created.id, false)
+            check(state() == .archived && !model.rows.contains { $0.id == id() }, "archivé, hors de la liste")
+            await model.setArchived(id(), false)
             try? await Task.sleep(for: .seconds(1.5))
-            await model.setFavorite(created.id, true)
-            check(state() == .active && model.summaries.first { $0.id == created.id }?.favorite == true,
+            await model.setFavorite(id(), true)
+            check(state() == .active && model.summaries.first { $0.id == id() }?.favorite == true,
                   "sorti des archives, mis en favori")
             check(model.selectedDetail?.fields.contains { $0.id.hasPrefix("history-") } ?? false
-                  || model.selection != created.id, "historique des mots de passe")
-            await model.trash(created.id)
+                  || model.selection != id(), "historique des mots de passe")
+            await sharing(id())
+            await model.trash(id())
         }
 
         // Feuilles des doublons et de l'import, puis les réglages.
@@ -330,6 +334,47 @@ final class EndToEndDriver {
             exit(1)
         }
         log("E2E_DONE")
+    }
+
+    /// Coffres partagés : créer une organisation, y partager l'élément,
+    /// créer puis supprimer une collection, ouvrir « Rejoindre ».
+    private func sharing(_ itemID: String) async {
+        if model.organizations.isEmpty {
+            model.openNewOrganization()
+            await checkLayout("feuille « Nouvelle organisation »", [], sheet: ["sheet-title", "sheet-primary"])
+            await model.createOrganization(name: "Famille E2E", collection: "Général")
+        }
+        check(model.organizationAdmin.error == nil && model.organizationAdmin.sheet == nil
+              && model.organizations.first?.isOwner == true,
+              "organisation créée, propriétaire (\(model.organizationAdmin.error ?? "ok"))")
+        guard let org = model.organizations.first else { return }
+        await snap("27-organisation")
+        model.selection = itemID
+        model.openSharing(itemID)
+        check(model.sharingFlow != nil, "feuille « Partager »")
+        await checkLayout("feuille « Partager »", [], sheet: ["sheet-title", "sheet-primary"])
+        if let flow = model.sharingFlow { await model.applySharing(flow) }
+        check(model.sharingFlow == nil && model.summaries.first { $0.id == itemID }?.sharing?.organizationId == org.id,
+              "élément partagé dans l'organisation")
+        await model.openCollectionEditor(org, collection: nil)
+        await checkLayout("feuille « Nouvelle collection »", [], sheet: ["sheet-title", "sheet-primary"])
+        if case .collection(var draft) = model.organizationAdmin.sheet {
+            draft.name = "Banque E2E"
+            await model.saveCollection(draft)
+        }
+        let banque = model.organizations.first?.collections.first { $0.name == "Banque E2E" }
+        check(banque != nil && model.organizationAdmin.sheet == nil, "collection créée, nom chiffré relu")
+        if let banque, let org = model.organizations.first {
+            await model.deleteCollection(CollectionTarget(organization: org, collection: banque))
+            check(model.organizations.first?.collections.contains { $0.name == "Banque E2E" } == false,
+                  "collection supprimée")
+        }
+        model.openJoin()
+        await checkLayout("feuille « Rejoindre une organisation »", [], sheet: ["sheet-title", "sheet-primary"])
+        model.organizationAdmin.sheet = nil
+        model.filter = .all
+        model.selection = itemID
+        try? await Task.sleep(for: .seconds(1.5))
     }
 
     /// RFC 6238 (SHA-1, 6 chiffres, 30 s), pour répondre au second facteur.

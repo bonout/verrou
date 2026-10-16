@@ -191,6 +191,9 @@ final class AppModel {
     let sends = SendsModel()
     /// Membres des organisations, voir `Members.swift`.
     let members = MembersModel()
+    /// Gestion des coffres partagés (organisations, collections, groupes,
+    /// invitations reçues).
+    let organizationAdmin = OrganizationAdminModel()
     /// Génération d'une clé SSH ouverte (voir `SshKeys.swift`).
     var sshKeyGenerator: SshKeyGenerator?
     /// Pièces jointes de l'élément affiché (voir `Attachments.swift`).
@@ -664,6 +667,7 @@ final class AppModel {
         duplicatesFlow = nil
         emergency.clear()
         members.clear()
+        organizationAdmin.clear()
         sends.clear()
         attachments.clear()
         autoLock = nil
@@ -704,6 +708,9 @@ final class AppModel {
             }
             guard lockState == .unlocked else { return }
             account = session.account()
+            // Invitations en attente et membres à confirmer : à chaque
+            // synchronisation périodique (pas après chaque écriture).
+            if !afterWrite { Task { await self.refreshSharingStatus() } }
             // Rien de nouveau : la liste affichée est à jour, on n'y touche pas.
             guard outcome.changed else { return }
             await reloadVaultAfterSync()

@@ -1,42 +1,104 @@
 import SwiftUI
 
 /// Section « Coffres partagés » de la barre latérale : chaque organisation,
-/// puis ses collections, avec leurs effectifs.
+/// puis ses collections, avec leurs effectifs ; les invitations en attente
+/// et les membres à confirmer ; de quoi créer ou rejoindre une organisation.
 struct SharedVaultsSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if !model.organizations.isEmpty {
-            Section("Coffres partagés") {
+        let admin = model.organizationAdmin
+        if !model.organizations.isEmpty || model.showsAccountPanes {
+            Section {
+                if admin.totalToConfirm > 0 {
+                    MembersToConfirmRow()
+                }
+                ForEach(admin.pending, id: \.organizationId) { pending in
+                    PendingMembershipRow(pending: pending)
+                }
                 ForEach(model.organizations, id: \.id) { org in
                     row(.organization(id: org.id), org.name, "person.2.fill", count: org.count, tint: .indigo)
-                        .contextMenu {
-                            if org.manageUrl != nil {
-                                Button("Gérer dans le coffre web") { model.openWebVault(organizationID: org.id) }
-                            }
-                        }
+                        .contextMenu { organizationMenu(org) }
                     ForEach(org.collections, id: \.id) { collection in
                         row(.collection(id: collection.id), collection.name,
                             collection.readOnly ? "eye" : "square.stack",
                             count: collection.count, tint: .secondary)
                             .padding(.leading, 14)
                             .help(help(for: collection))
+                            .contextMenu { collectionMenu(org, collection) }
                     }
                     if org.canViewMembers && model.showsAccountPanes {
                         MembersSidebarRow(organization: org)
                     }
                 }
-                if model.organizations.contains(where: { $0.manageUrl != nil }) {
+                if model.organizations.isEmpty && admin.pending.isEmpty && model.canEdit {
                     Button {
-                        model.openWebVault(organizationID: currentOrganization)
+                        model.openNewOrganization()
                     } label: {
-                        Label("Gérer dans le coffre web", systemImage: "arrow.up.forward.square")
+                        Label("Nouvelle organisation…", systemImage: "plus")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Membres, collections et droits : dans le coffre web de Vaultwarden")
+                    .help("Créez un coffre partagé, puis invitez-y d'autres comptes de votre serveur")
+                }
+            } header: {
+                HStack {
+                    Text("Coffres partagés")
+                    Spacer()
+                    if model.canEdit || admin.preview {
+                        Menu {
+                            Button("Nouvelle organisation…") { model.openNewOrganization() }
+                            Button("Rejoindre une organisation…") { model.openJoin() }
+                            if model.organizations.contains(where: { $0.manageUrl != nil }) {
+                                Divider()
+                                Button("Ouvrir le coffre web") { model.openWebVault(organizationID: currentOrganization) }
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        .fixedSize()
+                        .help("Nouvelle organisation, ou rejoindre une organisation avec un lien d'invitation")
+                    }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func organizationMenu(_ org: OrganizationView) -> some View {
+        if model.canEdit {
+            if org.canCreateCollections {
+                Button("Nouvelle collection…") { Task { await model.openCollectionEditor(org, collection: nil) } }
+            }
+            if org.canManageGroups {
+                Button("Groupes…") { Task { await model.openGroups(org) } }
+            }
+            if org.canViewMembers {
+                Button("Membres") { model.openMembers(org.id) }
+            }
+            if org.canRename {
+                Button("Renommer…") { model.openRename(org) }
+            }
+            Divider()
+            Button("Quitter l'organisation…", role: .destructive) { model.organizationAdmin.confirmLeave = org }
+        }
+        if org.manageUrl != nil {
+            Divider()
+            Button("Gérer dans le coffre web") { model.openWebVault(organizationID: org.id) }
+        }
+    }
+
+    @ViewBuilder
+    private func collectionMenu(_ org: OrganizationView, _ collection: CollectionView) -> some View {
+        if model.canEdit && collection.canManage {
+            Button("Modifier la collection…") { Task { await model.openCollectionEditor(org, collection: collection) } }
+            Button("Supprimer la collection…", role: .destructive) {
+                model.organizationAdmin.confirmDelete = CollectionTarget(organization: org, collection: collection)
+            }
+        } else {
+            Text(collection.readOnly ? "Lecture seule" : "Vous ne gérez pas cette collection")
         }
     }
 
@@ -87,11 +149,14 @@ struct SharingView: View {
                     .font(.system(size: 24))
                     .foregroundStyle(.indigo)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(flow.current == nil ? "Partager « \(flow.title) »" : "Collections de « \(flow.title) »")
+                    Text(heading)
                         .font(.title3.weight(.semibold))
-                    Text(flow.current == nil
-                         ? "L'élément quitte votre coffre personnel : il est rechiffré avec la clé de l'organisation, et ses membres le voient selon leurs droits."
-                         : "Les membres de chaque collection cochée voient l'élément.")
+                        .layoutMark("sheet-title")
+                    Text(flow.current != nil
+                         ? "Les membres de chaque collection cochée voient l'élément."
+                         : flow.isBulk
+                         ? "Ces éléments quittent votre coffre personnel : chacun est rechiffré avec la clé de l'organisation (pièces jointes comprises), et ses membres les voient selon leurs droits."
+                         : "L'élément quitte votre coffre personnel : il est rechiffré avec la clé de l'organisation, et ses membres le voient selon leurs droits.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -143,20 +208,33 @@ struct SharingView: View {
                         .buttonStyle(.link)
                 }
                 Spacer()
-                if flow.busy { ProgressView().controlSize(.small) }
+                if let progress = flow.progress {
+                    ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
+                        .frame(width: 120)
+                    Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                } else if flow.busy {
+                    ProgressView().controlSize(.small)
+                }
                 Button("Annuler") { model.sharingFlow = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(flow.current == nil ? "Partager" : "Enregistrer") {
+                Button(flow.current == nil ? (flow.isBulk ? "Partager \(flow.itemIDs.count) éléments" : "Partager") : "Enregistrer") {
                     Task { await model.applySharing(flow) }
                 }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
+                .layoutMark("sheet-primary")
                 .disabled(flow.collectionIDs.isEmpty || flow.busy)
             }
             .padding(16)
         }
         .frame(width: 480)
         .frame(minHeight: 380)
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var heading: String {
+        if flow.current != nil { return "Collections de « \(flow.title) »" }
+        return flow.isBulk ? "Partager \(flow.itemIDs.count) éléments" : "Partager « \(flow.title) »"
     }
 
     private func binding(_ id: String) -> Binding<Bool> {

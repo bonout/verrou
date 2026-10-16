@@ -80,6 +80,9 @@ struct BulkActions: View {
                 item("Déplacer vers un dossier…", "folder") {
                     model.moveRequest = MoveRequest(itemIDs: ids)
                 }
+                if !model.writableOrganizations.isEmpty, !model.shareableIDs(ids).isEmpty {
+                    item("Partager…", "person.2") { model.openSharing(items: ids) }
+                }
                 action("Mettre à la corbeille", "trash", .trash, destructive: true)
             }
         } else if style == .menu {

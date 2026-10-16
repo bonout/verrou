@@ -125,6 +125,17 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         } else {
             fail("23-membres-a-confirmer", "pas d'organisation dans le coffre fictif")
         }
+        // Coffres partagés : une invitation acceptée en attente de
+        // confirmation, et des membres à confirmer dans l'organisation.
+        if let organization = model.organizations.first {
+            model.organizationAdmin.preview = true
+            model.organizationAdmin.pending = [PendingMembershipView(organizationId: "org-escalade", name: "Club d'escalade")]
+            model.organizationAdmin.toConfirm = [organization.id: 1]
+            model.filter = .organization(id: organization.id)
+            select("")
+            // Fenêtre plus haute : la section est sous les dossiers.
+            await screen("16-coffres-partages", root: RootView(), size: NSSize(width: 1280, height: 1400), expect: vault)
+        }
         model.filter = .all
 
         // Feuilles, rendues seules à leur taille (comme posées sur la fenêtre).
@@ -190,6 +201,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             }
         }
 
+        await sharingSheets(sheet)
+
         // Doublons fictifs (imports d'Apple, de 1Password, de Proton Pass) :
         // le coffre fictif n'en a pas.
         let duplicates = DuplicatesFlow(defaults: defaults)
@@ -244,6 +257,44 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             fail("38-import", "l'export fictif n'a pas été lu")
         }
         model.session.cancelImport()
+    }
+
+    /// Partage : plusieurs éléments, nouvelle organisation, collection et
+    /// ses accès, groupes, invitation collée.
+    private func sharingSheets(_ sheet: LayoutAudit.Expectation) async {
+        guard let organization = model.organizations.first,
+              let collection = organization.collections.first else {
+            fail("41-partager-plusieurs", "pas d'organisation dans le coffre fictif")
+            return
+        }
+        let titled = withTitle(sheet, "sheet-title")
+        let personal = model.summaries.filter { $0.sharing == nil && $0.state == .active }.prefix(3).map(\.id)
+        let flow = SharingFlow(itemIDs: Array(personal), title: "\(personal.count) éléments", current: nil,
+                               organizationID: organization.id, collectionIDs: [collection.id])
+        await screen("41-partager-plusieurs", root: SharingView(flow: flow), size: nil, expect: titled, chrome: false)
+        await screen("42-nouvelle-organisation", root: NewOrganizationView(), size: nil, expect: titled, chrome: false)
+        let members = Self.mockMembers(collection: collection.id)
+        var draft = CollectionDraft(organizationID: organization.id, collectionID: collection.id, name: collection.name)
+        draft.members = members
+        draft.memberAccess = ["mb-alex": .edit, "mb-lea": .viewExceptPasswords, "mb-tom": .view]
+        draft.loading = false
+        await screen("43-collection", root: CollectionEditorView(draft: draft), size: nil, expect: titled, chrome: false)
+        let groups = [
+            OrganizationGroup(id: "gr-parents", name: "Parents", members: ["mb-camille", "mb-alex"],
+                              collections: [MemberCollectionAccess(collectionId: collection.id, readOnly: false,
+                                                                   hidePasswords: false, manage: true)]),
+            OrganizationGroup(id: "gr-enfants", name: "Enfants", members: ["mb-lea"],
+                              collections: [MemberCollectionAccess(collectionId: collection.id, readOnly: true,
+                                                                   hidePasswords: true, manage: false)]),
+        ]
+        let groupsDraft = GroupsDraft(organizationID: organization.id, groups: groups, members: members, loading: false)
+        await screen("44-groupes", root: GroupsView(draft: groupsDraft), size: nil, expect: titled, chrome: false)
+        await screen("44b-groupe", root: GroupsView(draft: groupsDraft, editing: GroupDraft(groups[1])), size: nil,
+                     expect: titled, chrome: false)
+        await screen("45-rejoindre", root: JoinOrganizationView(link: Self.mockInviteLink), size: nil,
+                     expect: titled, chrome: false)
+        await screen("46-renommer", root: RenameOrganizationView(organization: organization), size: nil,
+                     expect: titled, chrome: false)
     }
 
     private func withTitle(_ base: LayoutAudit.Expectation, _ identifier: String) -> LayoutAudit.Expectation {

@@ -57,13 +57,16 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   two-factor authentication you haven't turned on. *Changer le mot de passe*
   opens the site's change-password page in one click, and the extension then
   suggests a strong password and saves it.
-- **Share**: shared vaults with family or a team (Vaultwarden organizations),
-  encrypted links that expire for a text or a file (Send), and emergency
-  access for trusted contacts.
+- **Share**: shared vaults with family or a team (Vaultwarden organizations):
+  create an organization, its collections and groups, share one item or a
+  whole selection into it, and choose who sees what (view, hide passwords,
+  edit, manage). Also encrypted links that expire for a text or a file
+  (Send), and emergency access for trusted contacts.
 - **Bring people in**: invite them to a shared vault, choose their role and
   collections, and confirm them after checking their key's fingerprint
   phrase. Invited people create their account from Verrou's sign-in screen,
-  even on a server with sign-ups closed, with no admin token.
+  even on a server with sign-ups closed, with no admin token; people who
+  already have an account join by pasting the invitation link.
 - **Store more than passwords**: cards, identities, secure notes, SSH keys,
   attachments and documents, Wi-Fi networks (with a QR code to join),
   passports, licenses, bank accounts, servers, API keys, and custom fields on

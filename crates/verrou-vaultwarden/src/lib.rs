@@ -32,6 +32,7 @@ mod attachments;
 pub mod breach;
 mod bulk;
 pub mod change_password;
+pub mod collections;
 mod convert;
 mod edit;
 pub mod emergency;
@@ -72,7 +73,7 @@ pub use edit::{CardDraft, CustomFieldDraft, CustomFieldKind, Draft, IdentityDraf
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
 pub use merge::{MergeOutcome, MergeSummary};
-pub use organizations::{Collection, Organization};
+pub use organizations::{Collection, Organization, PendingMembership, ShareOutcome};
 pub use outbox::{CONFLICT_SUFFIX, Closer, SyncReport, Synced, sync_shared};
 pub use store::{Account, KdfSettings, Store};
 
@@ -533,7 +534,7 @@ impl Connection {
         self.store.save_account(&self.account)
     }
 
-    async fn sync_with(&mut self, access: &str) -> Result<Decrypted, Error> {
+    pub(crate) async fn sync_with(&mut self, access: &str) -> Result<Decrypted, Error> {
         let sync_json = self.api.sync(access).await?;
         self.store_sync(sync_json)?;
         self.decrypt_cache().await

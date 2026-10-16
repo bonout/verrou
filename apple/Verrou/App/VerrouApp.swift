@@ -78,6 +78,17 @@ struct VerrouApp: App {
                     .disabled(!delegate.model.sendsAvailable)
                     Button("Accès d'urgence") { delegate.model.openEmergency() }
                         .disabled(!delegate.model.emergencyAvailable)
+                    Divider()
+                    Button("Nouvelle organisation…") {
+                        delegate.model.showMainWindow()
+                        delegate.model.openNewOrganization()
+                    }
+                    .disabled(!delegate.model.canEdit)
+                    Button("Rejoindre une organisation…") {
+                        delegate.model.showMainWindow()
+                        delegate.model.openJoin()
+                    }
+                    .disabled(!delegate.model.canEdit)
                 }
                 Divider()
                 Button("Verrouiller") { delegate.model.lock() }

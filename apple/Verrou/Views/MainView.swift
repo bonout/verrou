@@ -128,6 +128,7 @@ struct MainView: View {
         .modifier(SendsPresentations())
         .modifier(EmergencyPresentations())
         .modifier(MembersPresentations())
+        .modifier(OrganizationPresentations())
         .sheet(item: $model.editor) { editor in
             EditItemView(editor: editor)
                 .environment(model)
