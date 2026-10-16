@@ -63,6 +63,7 @@ mod members;
 mod otp_scan;
 mod passphrase;
 mod preferences;
+mod prf;
 mod send;
 mod sharing;
 mod signals;
@@ -86,6 +87,7 @@ pub use passphrase::{
     GeneratedPassphrase, PassphraseLanguage, PassphraseSeparator, PassphraseSettings,
     generate_passphrase,
 };
+pub use prf::PasskeyPrfOutput;
 pub use send::{CreatedSend, SendContent, SendFields, SendSummary};
 pub use sharing::{
     AccessGrant, CollectionAccessList, InvitationInfo, OrganizationGroup, PendingConfirmations,

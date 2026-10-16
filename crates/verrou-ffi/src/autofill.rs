@@ -228,7 +228,7 @@ pub(crate) fn site_uri(rp_id: &str) -> String {
 }
 
 impl VaultSession {
-    fn find_passkey<'v>(
+    pub(crate) fn find_passkey<'v>(
         vault: &'v Vault,
         rp_id: &str,
         credential_id: &[u8],
