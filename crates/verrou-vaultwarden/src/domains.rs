@@ -9,6 +9,7 @@
 
 use serde_json::Value;
 
+use crate::api::Api;
 use crate::{Connection, Error};
 
 /// Groupes actifs : ceux de l'utilisateur, puis les groupes globaux non
@@ -62,20 +63,27 @@ fn capitalised(name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Les groupes du compte ; `None` si le serveur ne les donne pas (ancien
+/// serveur, refus). Une erreur de réseau remonte.
+pub(crate) async fn fetch(api: &Api, access: &str) -> Result<Option<Vec<Vec<String>>>, Error> {
+    match api
+        .call(reqwest::Method::GET, access, "settings/domains", None)
+        .await
+    {
+        Ok(settings) => Ok(Some(parse(&settings))),
+        Err(Error::Network(message)) => Err(Error::Network(message)),
+        Err(_) => Ok(None),
+    }
+}
+
 impl Connection {
     /// Relit les domaines équivalents du compte. Rend `true` s'ils ont
     /// changé. Une erreur (serveur ancien, réseau) garde les précédents.
     pub(crate) async fn refresh_domains(&mut self, access: &str) -> Result<bool, Error> {
-        let settings = match self
-            .api
-            .call(reqwest::Method::GET, access, "settings/domains", None)
-            .await
-        {
-            Ok(settings) => settings,
-            Err(Error::Network(message)) => return Err(Error::Network(message)),
-            Err(_) => return Ok(false),
+        let Some(domains) = fetch(&self.api, access).await? else {
+            return Ok(false);
         };
-        let domains = Some(parse(&settings));
+        let domains = Some(domains);
         if domains == self.account.equivalent_domains {
             return Ok(false);
         }

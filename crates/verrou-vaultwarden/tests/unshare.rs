@@ -531,7 +531,15 @@ async fn equivalent_domains_are_read_and_honoured() {
         })
         .await
         .unwrap();
-    assert!(vault.equivalent_domains.is_empty(), "pas encore lus");
+    // Lus à la connexion (groupes globaux), relus à la synchronisation.
+    assert!(
+        vault
+            .equivalent_domains
+            .iter()
+            .all(|g| !g.contains(&"exemple.fr".to_owned())),
+        "pas encore relus"
+    );
+    assert!(!vault.equivalent_domains.is_empty(), "lus à la connexion");
     let vault = connection.sync().await.unwrap().expect("domaines changés");
     let groups = &vault.equivalent_domains;
     assert_eq!(groups[0], ["exemple.fr", "exemple-banque.com"]);
