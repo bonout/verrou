@@ -239,10 +239,11 @@ struct AuditView: View {
     @State private var appeared = false
 
     var body: some View {
+        ScrollViewReader { proxy in
         List {
             if let audit = model.audit {
                 Section {
-                    AuditSummary(audit: audit, breaches: model.breaches)
+                    AuditSummary(audit: audit, breaches: model.breaches, passkeys: model.passkeyAudit.count)
                         .staggered(0, shown: appeared)
                     breachesRow
                         .staggered(1, shown: appeared)
@@ -299,6 +300,7 @@ struct AuditView: View {
                             .staggered(5, shown: appeared)
                     }
                 }
+                passkeySection
             } else {
                 ProgressView()
             }
@@ -313,6 +315,55 @@ struct AuditView: View {
         }
         .onAppear { model.refreshAudit() }
         .refreshable { model.refreshAudit() }
+        .onChange(of: model.passkeyAudit.focus) { _, focus in
+            // Parcours de bout en bout : la section en haut de l'écran.
+            guard focus else { return }
+            withAnimation { proxy.scrollTo("passkeys", anchor: .top) }
+        }
+        }
+    }
+
+    /// « Passkey possible » : sites qui acceptent les passkeys, d'après
+    /// passkeys.2fa.directory. Pas un problème, une amélioration : hors du
+    /// score.
+    @ViewBuilder private var passkeySection: some View {
+        let passkeys = model.passkeyAudit
+        if let report = passkeys.report, !report.candidates.isEmpty {
+            Section {
+                ForEach(report.candidates, id: \.item.id) { candidate in
+                    PasskeyCandidateRow(candidate: candidate)
+                        .staggered(6, shown: appeared)
+                }
+            } header: {
+                AuditHeader(title: "Passkey possible", count: report.candidates.count, tint: .teal)
+                    .staggered(6, shown: appeared)
+                    .accessibilityIdentifier("audit-passkeys")
+            } footer: {
+                Text(passkeyFooter(report))
+            }
+            .id("passkeys")
+        } else if passkeys.loading && passkeys.report == nil {
+            Section {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text("Recherche des sites qui acceptent les passkeys…")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+        } else if let error = passkeys.error, model.mode == .vaultwarden {
+            Section {
+                ErrorLabel(text: "Passkey possible : l'annuaire n'a pas pu être téléchargé (\(error)).")
+            }
+        }
+    }
+
+    private func passkeyFooter(_ report: PasskeyReport) -> String {
+        var text = "Ces sites acceptent les passkeys : rien à retenir, rien à hameçonner. « Créer » ouvre la page du site dans Safari ; choisissez Verrou pour enregistrer la passkey. L'élément quitte la liste à la synchronisation suivante ; gardez le mot de passe en secours, ou retirez-le chez le site s'il permet la connexion sans mot de passe. D'après passkeys.2fa.directory"
+        if report.stale {
+            let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
+            text += " (annuaire du \(date.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "fr_FR")))), hors ligne)"
+        }
+        return text + "."
     }
 
     @ViewBuilder private var breachesRow: some View {
@@ -343,6 +394,8 @@ struct AuditView: View {
 private struct AuditSummary: View {
     let audit: AuditReport
     let breaches: [BreachedPassword]?
+    /// « Passkey possible » : une amélioration, hors du score.
+    var passkeys = 0
 
     var body: some View {
         let issues = (breaches?.count ?? 0) + audit.reused.count + audit.weak.count + audit.insecure.count
@@ -359,7 +412,7 @@ private struct AuditSummary: View {
                         .monospacedDigit()
                 }
             }
-            if issues > 0 {
+            if issues > 0 || passkeys > 0 {
                 FlowLayout(spacing: 6, lineSpacing: 6) {
                     if let count = breaches?.count, count > 0 { CountCapsule(text: "\(count) compromis", tint: .red) }
                     if !audit.reused.isEmpty {
@@ -369,6 +422,10 @@ private struct AuditSummary: View {
                         CountCapsule(text: "\(audit.weak.count) faible\(audit.weak.count > 1 ? "s" : "")", tint: .yellow)
                     }
                     if !audit.insecure.isEmpty { CountCapsule(text: "\(audit.insecure.count) en HTTP", tint: .blue) }
+                    if passkeys > 0 {
+                        CountCapsule(text: "\(passkeys) passkey\(passkeys > 1 ? "s" : "") possible\(passkeys > 1 ? "s" : "")",
+                                     tint: .teal)
+                    }
                 }
             }
         }
@@ -470,6 +527,62 @@ private struct AuditRow: View {
                 }
             }
         }
+    }
+}
+
+/// Un identifiant qui pourrait passer à la passkey : la ligne mène à la
+/// fiche, « Créer » ouvre la page du site dans Safari.
+private struct PasskeyCandidateRow: View {
+    @Environment(PhoneModel.self) private var model
+    @Environment(\.openURL) private var openURL
+    let candidate: PasskeyCandidate
+
+    var body: some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 12) {
+                ItemIcon(summary: candidate.item, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(candidate.item.title).lineLimit(1)
+                    Text(detail).font(.caption.weight(.medium)).foregroundStyle(.teal)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { model.vaultPath.append(.item(candidate.item.id)) }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            if let doc = candidate.documentation, let url = URL(string: doc) {
+                Button {
+                    openURL(url)
+                } label: {
+                    Image(systemName: "questionmark.circle")
+                        .imageScale(.large)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Aide de \(candidate.domain) sur les passkeys")
+            }
+            Button {
+                model.createPasskey(for: candidate)
+            } label: {
+                if model.passkeyAudit.opening == candidate.item.id {
+                    ProgressView()
+                } else {
+                    Label("Créer", systemImage: "person.badge.key.fill")
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .tint(.teal)
+            .disabled(model.passkeyAudit.opening != nil)
+            .accessibilityLabel("Créer une passkey pour \(candidate.item.title)")
+            .accessibilityIdentifier("create-passkey-\(candidate.item.title)")
+        }
+    }
+
+    private var detail: String {
+        candidate.passwordless ? "Sans mot de passe · \(candidate.domain)" : "Second facteur · \(candidate.domain)"
     }
 }
 

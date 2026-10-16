@@ -345,6 +345,16 @@ final class AutoFillModel {
         guard let session = vault?.session else { return }
         do {
             let credential = try session.autofillPassword(id: id)
+            // Création conditionnelle (iOS 18) : Safari peut demander, juste
+            // après, une passkey pour ce compte, en arrière-plan et coffre
+            // fermé. La clé est préparée maintenant (voir conditional.rs).
+            if #available(iOS 18.0, *) {
+                do {
+                    _ = try await session.preparePasskeyUpgrade(id: id)
+                } catch {
+                    log.notice("clé de passkey non préparée : \(String(describing: error), privacy: .public)")
+                }
+            }
             finish(.password(user: credential.username, password: credential.password))
         } catch {
             actionError = ErrorText.describe(error)

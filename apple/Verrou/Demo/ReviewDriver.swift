@@ -121,7 +121,16 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         // Volets de la barre latérale.
         let pane = LayoutAudit.Expectation(identifiers: ["pane-title", "sidebar-footer", "detail-title"], columns: 3)
         model.openAudit()
+        await model.watchtower.loadPasskeys(model.session)
         await screen("20-audit", root: RootView(), expect: pane)
+        // « Passkey possible » : la section en haut du volet.
+        if model.watchtower.passkeys?.candidates.isEmpty ?? true {
+            fail("20b-audit-passkeys", "aucune passkey possible dans le coffre fictif")
+        }
+        model.watchtower.focus = "passkeys"
+        await screen("20b-audit-passkeys", root: RootView(),
+                     expect: .init(identifiers: ["create-passkey", "sidebar-footer", "detail-title"], columns: 3))
+        model.watchtower.focus = nil
         model.sends.set(Self.mockSends())
         model.pane = .sends
         await screen("21-envois", root: RootView(), expect: pane)

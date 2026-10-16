@@ -156,6 +156,11 @@ targets:
               ProvidesPasskeys: true
               ProvidesOneTimeCodes: true
               ProvidesTextToInsert: false
+              # Création conditionnelle (iOS 18) : passkey proposée par
+              # Safari en arrière-plan après un mot de passe rempli.
+              SupportsConditionalPasskeyRegistration: true
+              # Signaux des sites (iOS 26, ASCredentialUpdater).
+              SupportsCredentialUpdate: true
             ASCredentialProviderExtensionShowsConfigurationUI: false
     settings:
       base:

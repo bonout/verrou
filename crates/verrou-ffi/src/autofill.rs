@@ -128,7 +128,7 @@ fn hosts(item: &Item) -> Vec<String> {
 /// des éléments qui ont une graine TOTP, passkeys. Les éléments protégés
 /// en font partie (seul le nom d'utilisateur est montré ; le secret
 /// attendra la confirmation).
-fn identities(vault: &Vault) -> Vec<AutofillIdentity> {
+pub(crate) fn identities(vault: &Vault) -> Vec<AutofillIdentity> {
     let mut out = Vec::new();
     for item in vault.items() {
         if item.kind != ItemKind::Login || !item.is_active() {
@@ -219,7 +219,7 @@ fn page_of(service: &str) -> String {
 }
 
 /// Adresse enregistrée dans un nouvel identifiant créé pour une passkey.
-fn site_uri(rp_id: &str) -> String {
+pub(crate) fn site_uri(rp_id: &str) -> String {
     if rp_id == "localhost" {
         "http://localhost".to_owned()
     } else {
@@ -254,8 +254,16 @@ impl VaultSession {
 
     /// Ce que l'app publie pour les suggestions du système (`QuickType`) :
     /// sites, noms d'utilisateur, passkeys. Aucun secret.
+    /// Les signaux des sites (passkeys refusées, mots de passe inutiles,
+    /// noms changés) corrigent la liste : voir `signals`.
     pub fn autofill_identities(&self) -> Result<Vec<AutofillIdentity>, VerrouError> {
-        self.with_vault(|v| Ok(identities(v)))
+        self.with_vault(|v| {
+            let mut list = identities(v);
+            if let Ok(store) = self.store() {
+                crate::signals::apply_to_identities(v, store.dir(), &mut list);
+            }
+            Ok(list)
+        })
     }
 
     /// Identifiants correspondant aux services demandés par le système
