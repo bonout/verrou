@@ -67,7 +67,7 @@ private struct CredentialsStep: View {
                     .layoutMark("login-title")
                 Text(model.reloginRequired
                      ? "Reconnectez-vous pour reprendre la synchronisation."
-                     : "Verrou lit votre coffre ; il n'y modifie rien.")
+                     : "Votre coffre est déchiffré sur ce Mac ; le mot de passe principal n'est jamais envoyé au serveur.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
