@@ -22,11 +22,15 @@
 //! vérifiée), rôles et collections. Création d'un compte sur invitation
 //! (`register`).
 //!
+//! Nouveautés à notifier (`activity`, sans clé ni secret) et mises à jour
+//! en direct du serveur (`hub`, le canal `WebSocket` de Vaultwarden).
+//!
 //! Envois (`send`) : Bitwarden Send, partage d'un texte par un lien chiffré.
 //!
 //! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
 //! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
 
+pub mod activity;
 mod api;
 mod attachments;
 pub mod breach;
@@ -37,6 +41,7 @@ mod convert;
 mod edit;
 pub mod emergency;
 mod error;
+pub mod hub;
 mod import;
 pub mod members;
 mod merge;
@@ -367,6 +372,7 @@ async fn init_with_user_key(
 /// Oublie le compte : jetons, cache, clés chiffrées, clés de sécurité
 /// enrôlées et modifications hors ligne pas encore envoyées.
 pub fn logout(store: &Store) -> Result<(), Error> {
+    activity::forget(store)?;
     store.delete_security_keys()?;
     store.delete_outbox()?;
     store.delete_account()

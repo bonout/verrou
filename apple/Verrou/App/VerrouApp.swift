@@ -245,6 +245,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         launchedAtLogin = LaunchAtLogin.launchedAtLogin
+        // Notifications du partage : avant la fin du lancement, pour
+        // recevoir le toucher qui a lancé l'app. Rien de réel en
+        // démonstration ni pendant un parcours de test.
+        let environment = ProcessInfo.processInfo.environment
+        let notifier = ActivityNotifier.shared
+        notifier.silent = model.mode != .vaultwarden || environment["VERROU_E2E_SERVER"] != nil
+        notifier.install()
+        notifier.setHandler { [weak model] route in model?.openActivity(route) }
         // Infobulles des boutons (barre d'outils, icônes) au bout de 0,3 s
         // au lieu d'environ une seconde : le survol répond tout de suite.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 300])

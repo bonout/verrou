@@ -41,6 +41,13 @@ getrandom = { version = "0.4", features = ["sys_rng"] }
 # Verrou entre processus du dossier du compte (`flock`) : l'app iPhone et son
 # extension de remplissage le partagent.
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
+# Mises à jour en direct (`hub`) : le canal WebSocket de Vaultwarden
+# (SignalR, messages MessagePack), en TLS par rustls avec ring, comme
+# reqwest (pas d'aws-lc à compiler pour iOS), et les racines de webpki.
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "__rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+rmpv = "1"
 
 # Dialogue USB avec les clés de sécurité (bibliothèque de Firefox), avec la
 # cryptographie de RustCrypto plutôt que NSS. Seulement sur macOS : la CI

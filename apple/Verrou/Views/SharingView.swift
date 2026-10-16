@@ -40,6 +40,14 @@ struct SharedVaultsSection: View {
                     }
                     .buttonStyle(.plain)
                     .help("Créez un coffre partagé, puis invitez-y d'autres comptes de votre serveur")
+                    Button {
+                        model.openJoin()
+                    } label: {
+                        Label("Rejoindre avec un lien…", systemImage: "envelope.open")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Invité par e-mail ? Collez le lien de l'invitation")
                 }
             } header: {
                 HStack {

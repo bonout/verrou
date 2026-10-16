@@ -261,7 +261,16 @@ struct MembersScreen: View {
             if let members {
                 section("À confirmer", members.filter { $0.status == .accepted },
                         footer: "Ils ont accepté l'invitation : vérifiez leur phrase d'empreinte avec eux pour leur donner la clé de l'organisation.")
-                section("Invitations en attente", members.filter { $0.status == .invited })
+                let invited = members.filter { $0.status == .invited }
+                section("Invitations en attente", invited)
+                if !invited.isEmpty, org?.canManageMembers == true {
+                    Section {
+                        InvitationNextSteps(email: invited.count == 1 ? invited[0].email : nil,
+                                            server: model.account?.server,
+                                            hasAccount: invited.count == 1 ? invited[0].hasAccount : nil)
+                            .accessibilityIdentifier("invitation-next-steps")
+                    }
+                }
                 section("Membres", members.filter { $0.status == .confirmed })
                 section("Révoqués", members.filter { $0.status == .revoked })
             } else {
@@ -991,7 +1000,10 @@ struct JoinOrganizationSheet: View {
                     }
                     .labelStyle(.titleAndIcon)
                 } footer: {
-                    Text("Le lien « Rejoindre l'organisation » du courriel d'invitation. Sans courriel, le serveur accepte d'office l'invitation d'un compte existant : rien à coller.")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(InvitationHelp.join(server: model.account?.server))
+                        if info == nil { Text(InvitationHelp.notListed) }
+                    }
                 }
                 if let info {
                     Section {

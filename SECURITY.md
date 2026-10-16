@@ -481,6 +481,86 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   session. Limite connue : le mot de passe saisi passe par une `String`
   Swift (comme à la connexion).
 
+## Notifications du partage
+
+Verrou prévient d'une invitation acceptée en attente de confirmation, d'un
+accès confirmé (« Vous avez maintenant accès à … »), de membres à confirmer
+(administrateurs), de nouveaux éléments dans une organisation et, sur Mac,
+des demandes et accords d'accès d'urgence. Réglage : « Notifications du
+partage » (Mac : Réglages → Général ; iPhone : Réglages → Notifications).
+
+- **Locales seulement** : les notifications sont calculées et postées sur
+  l'appareil (`UserNotifications`, sans déclencheur distant). Aucun service
+  de notification poussée : le relais de Vaultwarden (`PUSH_ENABLED`) passe
+  par les serveurs de Bitwarden et ne sert que les apps officielles
+  (identifiants d'app et certificats APNs de Bitwarden) ; Verrou ne
+  l'utilise pas et n'enregistre aucun jeton d'appareil.
+- **Contenu** : le nom de l'organisation (que le serveur envoie déjà en
+  clair dans la synchronisation), l'adresse de l'autre personne pour
+  l'accès d'urgence, et des nombres. Jamais un mot de passe, un identifiant
+  de connexion, un titre d'élément ni un nom de collection (ils sont
+  chiffrés, et le calcul ne les déchiffre pas). Selon les réglages du
+  système, ce texte peut s'afficher sur l'écran verrouillé.
+- **Ce qui est calculé, et avec quoi** (cœur Rust, `activity`) : la réponse
+  de synchronisation déjà téléchargée, sans clé (organisations confirmées,
+  adhésions acceptées `organizationsNew`, identifiants des éléments et leur
+  organisation) ; coffre ouvert, le serveur avec le jeton d'accès (membres
+  à confirmer, accès d'urgence). Une invitation pas encore acceptée
+  n'existe nulle part pour l'invité : Vaultwarden 1.37.4 ne la met pas dans
+  sa synchronisation et ne la rend par aucune route ; seul l'e-mail la
+  porte. Le lien d'invitation n'est donné à personne d'autre (« renvoyer »
+  renvoie l'e-mail) : Verrou ne propose donc pas de le copier.
+- **Pas de répétition** : `activity.json`, dans le dossier du compte, garde
+  ce qui a déjà été vu, sous forme d'identifiants seulement (organisation,
+  élément, adhésion, accès d'urgence), jamais un nom. Il survit aux
+  relances, est effacé à la déconnexion, et n'est jamais écrit par
+  l'extension de remplissage. La première observation d'un compte ne
+  notifie rien. Un élément créé dans une organisation depuis cet appareil
+  y est marqué vu aussitôt ; une organisation dont on est propriétaire
+  n'est pas annoncée.
+- **Autorisation** : demandée quand le partage concerne le compte (une
+  organisation après une synchronisation, ou l'ouverture des écrans du
+  partage), jamais au premier lancement.
+
+### Mises à jour en direct (Mac, et iPhone au premier plan)
+
+Coffre ouvert, Verrou ouvre le canal de notifications de Vaultwarden
+(`/notifications/hub`, `SignalR` sur `WebSocket`, celui du coffre web). Le
+serveur n'y pousse que le genre d'un changement (élément, clés des
+organisations, réglages…) et l'appareil qui l'a fait, jamais un contenu :
+Verrou resynchronise, puis examine les nouveautés. Le jeton d'accès reste
+dans Rust et part dans l'en-tête `Authorization` (pas dans l'adresse, qu'un
+mandataire peut journaliser) ; le serveur ne le vérifie qu'à l'ouverture du
+canal. TLS par rustls et les racines de webpki, comme les autres requêtes. Le canal
+est fermé au verrouillage, perdu il est rouvert avec un délai croissant
+(2 s à 5 min). Vaultwarden ne pousse rien quand un membre accepte une
+invitation ni pour l'accès d'urgence : ceux-là arrivent avec la
+synchronisation périodique (5 minutes, 2 sans canal).
+
+### iPhone en arrière-plan
+
+iOS réveille parfois l'app (`BGAppRefreshTask`, au plus tôt 30 minutes
+après la mise en arrière-plan, au moment qu'il choisit, ou jamais). Ce
+réveil ne déverrouille jamais le coffre et ne déchiffre rien :
+
+- **délai de verrouillage dépassé** : le coffre est verrouillé d'abord, la
+  clé de l'utilisateur quitte la mémoire ;
+- **coffre encore ouvert** (dans le délai choisi) : synchronisation et
+  examen comme au premier plan, avec la clé déjà en mémoire ; rien n'est
+  gardé plus longtemps que le délai ne le prévoyait ;
+- **coffre verrouillé** : seulement le cache déjà sur l'appareil, sans clé
+  ni réseau. Le jeton de renouvellement est chiffré par la clé de
+  l'utilisateur : sans elle, pas de jeton d'accès, donc rien de neuf du
+  serveur. Ce cas ne voit que ce qui est arrivé dans le cache sans être
+  examiné (resynchronisation par l'extension de remplissage, app
+  interrompue avant l'examen).
+
+Conséquence assumée : coffre verrouillé, une invitation acceptée ou un
+élément partagé est notifié à la prochaine ouverture du coffre, pas avant.
+Garder un jeton de renouvellement lisible sans la clé (pour interroger le
+serveur verrouillé) donnerait à quiconque lit le conteneur de l'app un
+accès au compte sur le serveur : refusé.
+
 ## Envois (Bitwarden Send)
 
 - **Cryptographie** : celle du SDK (`bitwarden-send`), comme le coffre web.

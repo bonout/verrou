@@ -104,6 +104,18 @@ struct SettingsTab: View {
                     SectionHeader("Affichage")
                 }
 
+                if model.mode == .vaultwarden {
+                    Section {
+                        ActivityNotificationsToggle {
+                            SettingsLabel("Notifications du partage", symbol: "bell.badge.fill", tint: .red)
+                        }
+                    } header: {
+                        SectionHeader("Notifications")
+                    } footer: {
+                        Text(ActivityNotificationsText.explanation + " " + ActivityNotificationsText.background)
+                    }
+                }
+
                 Section {
                     Button {
                         model.openAudit()

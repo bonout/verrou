@@ -91,6 +91,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         VerrouAppGroup: $(VERROU_APP_GROUP)
+        # Réveil d'arrière-plan : nouveautés du partage, notifiées localement
+        # (PhoneModel.backgroundActivityCheck, voir SECURITY.md).
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
     scheme:
       testTargets:
         - VerrouAutoFillUITests

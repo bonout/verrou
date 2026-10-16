@@ -449,13 +449,19 @@ struct JoinOrganizationView: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(symbol: "envelope.open", title: "Rejoindre une organisation",
-                        subtitle: "Collez le lien « Rejoindre l'organisation » du courriel d'invitation. Sans courriel, le serveur accepte d'office l'invitation d'un compte existant : rien à coller.")
+                        subtitle: InvitationHelp.join(server: model.account?.server))
             Divider()
             Form {
                 Section {
                     TextField("Lien d'invitation", text: $link,
                               prompt: Text("https://…/#/accept-organization/?…"), axis: .vertical)
                         .lineLimit(2...4)
+                } footer: {
+                    if info == nil {
+                        Text(InvitationHelp.notListed)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 if let info {
                     Section {

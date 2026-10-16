@@ -463,6 +463,15 @@ final class EndToEndDriver {
             let invited = model.sharing.members[org.id]?.first { $0.email == member.email }
             check(invited?.status == .accepted, "invitation acceptée d'office : à confirmer")
             memberID = invited?.id
+            check(!ActivityNotifier.shared.posted.contains { $0.key.hasPrefix("confirm-") },
+                  "pas de notification pour le membre qu'on vient d'inviter")
+            // Une adresse sans compte : invitation envoyée, « Et ensuite ? ».
+            let stranger = "nouvelle-\(Int(Date().timeIntervalSince1970))@verrou.test"
+            check(await model.saveMember(MemberDraft(member: nil, emails: stranger, role: .user, access: [communs: .view]),
+                                         in: org.id),
+                  "adresse sans compte invitée (\(model.sharing.error ?? "ok"))")
+            check(model.sharing.members[org.id]?.first { $0.email == stranger }?.status == .invited,
+                  "invitation en attente : la personne n'a pas de compte")
             await snap("24-membres")
             await model.refreshSharingStatus()
             check(model.sharing.totalToConfirm == 1, "« 1 membre à confirmer »")
@@ -498,6 +507,11 @@ final class EndToEndDriver {
         check((try? model.session.invitationInfo(link: link))?.forThisAccount == true, "lien d'invitation lu")
         model.sharing.sheet = .join(link)
         await snap("27-rejoindre")
+        model.sharing.sheet = nil
+        await pause(0.6)
+        // Rien de collé : où trouver le lien de l'e-mail.
+        model.sharing.sheet = .join("")
+        await snap("27b-rejoindre-vide")
         model.sharing.sheet = nil
         await pause(0.6)
         check(await model.renameOrganization(org, to: "Famille Martin"), "organisation renommée")
@@ -607,8 +621,87 @@ final class EndToEndDriver {
         if let card = model.summaries.first(where: { $0.title == "Carte du test" }) {
             check(model.canModify(card), "élément d'une collection modifiable : modifiable")
         }
+        await notifications(shared)
         model.logout()
         check(model.needsLogin, "membre déconnecté")
+    }
+
+    // MARK: Notifications du partage
+
+    /// Le membre a l'app ouverte ; la propriétaire agit depuis une autre
+    /// session (dans ce processus, dossier jetable) : élément partagé (canal
+    /// en direct), accès révoqué puis rendu, puis un élément arrivé dans le
+    /// cache pendant que le coffre est verrouillé (tâche d'arrière-plan).
+    /// Les notifications sont lues dans le crochet de test (`posted`), pas
+    /// sur l'écran.
+    private func notifications(_ shared: SharedFixture) async {
+        let org = shared.organizationID
+        let posted = { (prefix: String) in ActivityNotifier.shared.posted.filter { $0.key == prefix } }
+        check(await wait(20) { model.live.connected }, "canal des mises à jour ouvert")
+
+        let directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-proprietaire-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let owner = VaultSession.withStorage(dataDir: directory.path)
+        var result = try? await owner.login(server: config.server, email: config.email, password: config.password)
+        let now = Date().timeIntervalSince1970
+        for offset in [0.0, 30.0, 60.0] {
+            guard case .twoFactorRequired = result else { break }
+            result = try? await owner.answerTwoFactor(option: .authenticator,
+                                                      token: Self.totp(config.totpSecret, at: now + offset))
+        }
+        guard case .unlocked = result else { return check(false, "seconde session de la propriétaire") }
+        _ = try? await owner.sync()
+        let draft = { (name: String) in
+            ItemDraft(name: name, folderId: nil, favorite: false, notes: nil,
+                      login: LoginFields(username: "famille@exemple.fr", password: "secret-partage-direct",
+                                         totp: nil, urls: []),
+                      fields: [], template: nil)
+        }
+
+        // Un élément partagé : en direct, en quelques secondes.
+        let before = posted("items-\(org)").count
+        check((try? await owner.createSharedItem(draft: draft("Partagé en direct"), organizationId: org,
+                                                  collectionIds: [shared.communs])) != nil,
+              "élément partagé par la propriétaire")
+        check(await wait(20) { posted("items-\(org)").count > before }, "notification « nouvel élément », en direct")
+        if let notice = posted("items-\(org)").last {
+            log("E2E_NOTIFY \(notice.title) | \(notice.body)")
+            check(notice.body == "1 nouvel élément dans « Famille Martin ».", "texte : organisation et nombre")
+            check(!notice.body.contains("secret") && !notice.body.contains("famille@") && !notice.body.contains("Partagé"),
+                  "ni secret, ni identifiant, ni titre")
+        }
+        check(await wait(10) { model.summaries.contains { $0.title == "Partagé en direct" } },
+              "élément lisible sans rien toucher")
+
+        // Accès révoqué puis rendu : « Vous avez maintenant accès à … ».
+        if let memberID = shared.memberID {
+            check((try? await owner.revokeOrganizationMember(organizationId: org, memberId: memberID)) != nil,
+                  "accès révoqué")
+            await model.syncNow()
+            _ = await wait(10) { model.organization(org) == nil }
+            await model.refreshSharingStatus()
+            check((try? await owner.restoreOrganizationMember(organizationId: org, memberId: memberID)) != nil,
+                  "accès rendu")
+            await model.syncNow()
+            await model.refreshSharingStatus()
+            check(posted("confirmed-\(org)").last?.body == "Vous avez maintenant accès à « Famille Martin ».",
+                  "notification « accès confirmé »")
+        }
+
+        // Coffre verrouillé : la tâche d'arrière-plan ne lit que le cache.
+        model.live.stop(session: model.session)
+        let cached = posted("items-\(org)").count
+        _ = try? await owner.createSharedItem(draft: draft("Partagé coffre fermé"), organizationId: org,
+                                              collectionIds: [shared.communs])
+        // Le cache rafraîchi sans examen (comme par l'extension).
+        _ = try? await model.session.sync()
+        model.lock()
+        await model.backgroundActivityCheck()
+        check(model.lockState == .locked, "la tâche d'arrière-plan ne déverrouille pas")
+        check(posted("items-\(org)").count == cached + 1, "notification depuis le cache, coffre verrouillé")
+        await model.backgroundActivityCheck()
+        check(posted("items-\(org)").count == cached + 1, "pas de répétition")
+        owner.lock()
     }
 
     /// RFC 6238 (SHA-1, 6 chiffres, 30 s), pour répondre au second facteur.

@@ -175,6 +175,13 @@ struct MemberDetailView: View {
                 Text(statusText)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                if member.status == .invited, canManage {
+                    InvitationNextSteps(email: member.email, server: model.account?.server,
+                                        hasAccount: member.hasAccount)
+                        .padding(14)
+                        .background(Theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .layoutMark("invitation-next-steps")
+                }
                 if canManage {
                     HStack(spacing: 10) {
                         primaryAction

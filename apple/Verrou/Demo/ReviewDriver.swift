@@ -63,6 +63,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         log("REVIEW_OUT \(output.path)")
         defaults.removePersistentDomain(forName: Self.defaultsSuite)
+        // Ni demande d'autorisation ni notification réelle pendant la revue.
+        ActivityNotifier.shared.silent = true
 
         // Écrans d'avant le coffre.
         await screen("01-verrouille", root: RootView(), expect: .init(identifiers: ["lock-title"]))
@@ -122,6 +124,11 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             await screen("23-membres-a-confirmer", root: RootView(), expect: pane)
             model.members.selection = "mb-alex"
             await screen("24-membre-confirme", root: RootView(), expect: pane)
+            // Invitation envoyée : « Et ensuite ? » (e-mail, réseau, confirmation).
+            model.members.selection = "mb-tom"
+            var invited = pane
+            invited.identifiers.append("invitation-next-steps")
+            await screen("24b-membre-invite", root: RootView(), expect: invited)
         } else {
             fail("23-membres-a-confirmer", "pas d'organisation dans le coffre fictif")
         }
@@ -293,6 +300,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                      expect: titled, chrome: false)
         await screen("45-rejoindre", root: JoinOrganizationView(link: Self.mockInviteLink), size: nil,
                      expect: titled, chrome: false)
+        // Rien de collé : où trouver le lien, et pourquoi l'invitation n'est
+        // pas listée avant d'être acceptée.
+        await screen("45b-rejoindre-vide", root: JoinOrganizationView(), size: nil, expect: titled, chrome: false)
         await screen("46-renommer", root: RenameOrganizationView(organization: organization), size: nil,
                      expect: titled, chrome: false)
     }
