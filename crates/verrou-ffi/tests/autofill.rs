@@ -155,3 +155,96 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     assert_eq!(&third.authenticator_data[33..37], &3u32.to_be_bytes());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Création conditionnelle : la clé est préparée pendant le remplissage
+/// (extension, coffre ouvert), la demande d'arrière-plan arrive dans un
+/// nouveau processus au coffre fermé, puis l'app range la passkey dans
+/// l'identifiant à sa synchronisation suivante. Le mot de passe reste.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_conditional_passkey_joins_the_filled_login_later() {
+    let Some(server) = server() else { return };
+    let email = register(&server).await;
+    let dir = std::env::temp_dir().join(format!("verrou-conditional-{}", uuid::Uuid::new_v4()));
+    let dir = dir.display().to_string();
+    let app = VaultSession::with_storage(dir.clone());
+    let result = app.login(server, email, PASSWORD.to_owned()).await.unwrap();
+    assert!(matches!(result, LoginResult::Unlocked { .. }));
+    app.create_item(login("Banc d'essai", "http://localhost:8080/"))
+        .await
+        .unwrap();
+    app.sync().await.unwrap();
+    // Identifiant donné par le serveur à l'envoi de la file.
+    let id = app
+        .summaries()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.title == "Banc d'essai")
+        .unwrap()
+        .id;
+
+    // 1. Remplissage dans l'extension : la clé est préparée.
+    let extension = guest(&dir).await;
+    extension.autofill_password(id.clone()).unwrap();
+    assert!(extension.prepare_passkey_upgrade(id.clone()).await.unwrap());
+    extension.lock();
+
+    // 2. Demande d'arrière-plan, coffre fermé (nouveau processus).
+    let background = VaultSession::for_autofill(dir.clone());
+    let hash = Sha256::digest(b"clientDataJSON conditionnel").to_vec();
+    let request = |user: &str| PasskeyCreationRequest {
+        rp_id: "localhost".to_owned(),
+        user_name: user.to_owned(),
+        user_handle: b"utilisateur-9".to_vec(),
+        client_data_hash: hash.clone(),
+        user_verified: false,
+        item_id: None,
+        excluded_credentials: Vec::new(),
+    };
+    let created = background
+        .conditional_passkey_registration(request("Camille@exemple.fr"))
+        .unwrap();
+    assert_eq!(created.item_id, id);
+    // Ni présence ni vérification dans les indicateurs.
+    let auth_data_flags = created
+        .attestation_object
+        .windows(32)
+        .position(|w| w == Sha256::digest(b"localhost").as_slice())
+        .map(|at| created.attestation_object[at + 32])
+        .unwrap();
+    assert_eq!(auth_data_flags & 0x05, 0);
+    assert_eq!(background.pending_passkeys(), 1);
+    // Ticket consommé : une seconde demande est refusée.
+    assert!(
+        background
+            .conditional_passkey_registration(request("camille@exemple.fr"))
+            .is_err()
+    );
+
+    // 3. L'app, coffre ouvert : la passkey rejoint l'identifiant.
+    let titles = Box::pin(app.finish_pending_passkeys()).await.unwrap();
+    assert_eq!(titles, vec!["Banc d'essai".to_owned()]);
+    assert_eq!(app.pending_passkeys(), 0);
+    let passkeys = app.passkeys(id.clone());
+    assert_eq!(passkeys.len(), 1);
+    assert_eq!(passkeys[0].rp_id, "localhost");
+    assert_eq!(passkeys[0].user_name.as_deref(), Some("Camille@exemple.fr"));
+    // Le mot de passe est toujours là.
+    let filler = guest(&dir).await;
+    assert_eq!(
+        filler.autofill_password(id.clone()).unwrap().password,
+        "mot-de-passe-du-site"
+    );
+    // La passkey signe, avec la clé dont le site a reçu la partie publique.
+    let signed = filler
+        .passkey_assertion(
+            "localhost".to_owned(),
+            created.credential_id.clone(),
+            vec![4; 32],
+            true,
+        )
+        .await
+        .unwrap();
+    assert_eq!(signed.user_handle, b"utilisateur-9");
+    // L'identifiant a maintenant une passkey : plus de clé préparée.
+    assert!(!filler.prepare_passkey_upgrade(id).await.unwrap());
+}

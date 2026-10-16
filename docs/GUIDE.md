@@ -110,6 +110,20 @@ around a Rust core.
   3 years. A password created or changed in Verrou (editor, Brave, import) is
   checked against known breaches in the background, with an alert if it
   appears there (Settings → *Sécurité*, on by default).
+- **Upgrade to passkeys**: the audit's *Passkey possible* section lists the
+  logins whose site accepts passkeys (from the
+  [passkeys.2fa.directory](https://passkeys.2fa.directory) list, downloaded
+  whole at most weekly and cached, matched by registrable domain) and that
+  have no passkey yet, with the site's passkey help page. *Créer une passkey*
+  opens the site's passkey page: the one it publishes at
+  `/.well-known/passkey-endpoints` (asked only when you click, for that site
+  only), a known page for a few big sites, or its home page. In Brave and
+  Firefox the extension then offers to save the new passkey in Verrou; on
+  iPhone, Verrou is the AutoFill provider, so Safari saves it there. The
+  login leaves the list on the next sync; keep the password as a fallback,
+  or remove it on the site if it allows passwordless sign-in (Verrou never
+  removes it for you). The audit header (Mac) and summary (iPhone) count
+  these logins.
 - **Change a password in one click**: *Changer le mot de passe* on the audit
   rows (known breaches, reused, weak, old, plain HTTP), in a login's details
   and in its context menu opens the site's change-password page. A short

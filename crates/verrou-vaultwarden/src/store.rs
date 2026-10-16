@@ -276,6 +276,49 @@ impl Store {
         Ok(id)
     }
 
+    /// Petit fichier partagé par l'app et son extension (création
+    /// conditionnelle de passkey, signaux des sites) : lu, transformé par
+    /// `change` et réécrit sous le verrou du dossier, pour qu'une écriture de
+    /// l'autre processus ne se perde pas entre la lecture et l'écriture.
+    /// `change` rend `None` : le fichier est supprimé. Le verrou n'est tenu
+    /// que le temps de ce travail local, jamais pendant le réseau.
+    pub fn update_file<T>(
+        &self,
+        name: &str,
+        change: impl FnOnce(Option<Vec<u8>>) -> (Option<Vec<u8>>, T),
+    ) -> Result<T, Error> {
+        fs::create_dir_all(&self.dir).map_err(Error::storage)?;
+        let _lock = self.lock()?;
+        let target = self.dir.join(name);
+        let (data, result) = change(fs::read(&target).ok());
+        match data {
+            None => match fs::remove_file(&target) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(Error::storage(e)),
+            },
+            Some(data) => {
+                let temp = self.dir.join(format!(".{name}.{}.tmp", std::process::id()));
+                let mut options = fs::OpenOptions::new();
+                options.write(true).create(true).truncate(true);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::OpenOptionsExt as _;
+                    options.mode(0o600);
+                }
+                let written = options
+                    .open(&temp)
+                    .and_then(|mut file| file.write_all(&data).and_then(|()| file.sync_all()))
+                    .and_then(|()| fs::rename(&temp, &target));
+                if let Err(error) = written {
+                    let _ = fs::remove_file(&temp);
+                    return Err(Error::storage(error));
+                }
+            }
+        }
+        Ok(result)
+    }
+
     /// Écriture atomique (fichier temporaire puis renommage), lisible par le
     /// seul utilisateur. Le fichier temporaire est propre au processus et à
     /// l'écriture, et le renommage se fait sous le verrou du dossier

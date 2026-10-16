@@ -301,6 +301,7 @@ struct AuditView: View {
                     }
                 }
                 passkeySection
+                signalSection
             } else {
                 ProgressView()
             }
@@ -354,6 +355,31 @@ struct AuditView: View {
             Section {
                 ErrorLabel(text: "Passkey possible : l'annuaire n'a pas pu être téléchargé (\(error)).")
             }
+        }
+    }
+
+    /// Signaux des sites (iOS 26) : l'utilisateur décide, rien n'est
+    /// supprimé automatiquement.
+    @ViewBuilder private var signalSection: some View {
+        let signals = model.passkeyAudit.signals
+        if !signals.isEmpty {
+            Section {
+                ForEach(signals, id: \.self) { finding in
+                    AuditRow(summary: finding.item, detail: signalDetail(finding), tint: .indigo)
+                }
+            } header: {
+                AuditHeader(title: "Signalé par les sites", count: signals.count, tint: .indigo)
+            } footer: {
+                Text("Les suggestions du clavier en tiennent déjà compte. Verrou ne supprime rien : ouvrez l'élément pour retirer la passkey ou le mot de passe si vous le souhaitez.")
+            }
+        }
+    }
+
+    private func signalDetail(_ finding: SignalFinding) -> String {
+        switch finding.kind {
+        case .passkeyRejected: "Passkey inconnue de \(finding.site) : elle peut être supprimée"
+        case .passkeyRenamed: "Nouveau nom chez \(finding.site) : \(finding.detail ?? "")"
+        case .passwordUnused: "Mot de passe inutile pour \(finding.site) : passkey en place"
         }
     }
 

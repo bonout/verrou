@@ -6,7 +6,8 @@ import XCTest
 ///
 /// 1. l'app se connecte au Vaultwarden de test et publie ses identités ;
 /// 2. un identifiant se remplit depuis la suggestion du clavier (Face ID
-///    simulé, accepté en continu par le script) ;
+///    simulé, accepté en continu par le script), puis la page obtient une
+///    passkey en arrière-plan (création conditionnelle) ;
 /// 3. un code à usage unique se remplit (iOS 18+) ;
 /// 4. une passkey est créée sur la page de test, qui vérifie l'attestation ;
 /// 5. puis utilisée pour se connecter : la page vérifie la signature ES256.
@@ -176,6 +177,14 @@ final class AutoFillUITests: XCTestCase {
         XCTAssertTrue(waitFor(10) { self.pageText("user=") != nil })
         pause()
         XCTAssertEqual(pageText("user="), "user=camille@verrou.test pass=Verrou-AutoFill-42")
+        // Création conditionnelle (iOS 18) : la page demande une passkey en
+        // arrière-plan ; l'extension la crée avec la clé préparée au
+        // remplissage, sans interface.
+        let upgraded = waitFor(30) { self.pageText("UPGRADE") != nil }
+        shot("04b-passkey-conditionnelle")
+        print("AUTOFILL_UPGRADE \(pageText("UPGRADE") ?? "aucun résultat")")
+        XCTAssertTrue(upgraded, "pas de réponse à la création conditionnelle")
+        XCTAssertNotNil(pageText("UPGRADE ok"), pageText("UPGRADE_ERROR") ?? "délai dépassé")
     }
 
     // MARK: 4–5. Passkey
