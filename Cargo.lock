@@ -5135,6 +5135,7 @@ dependencies = [
  "bitwarden-collections",
  "bitwarden-core",
  "bitwarden-crypto",
+ "bitwarden-encoding",
  "bitwarden-send",
  "bitwarden-vault",
  "chrono",
