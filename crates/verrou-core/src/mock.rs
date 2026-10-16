@@ -1025,6 +1025,32 @@ pub fn passkeys(items: &[Item]) -> Vec<crate::Passkey> {
         .collect()
 }
 
+/// Extrait de l'annuaire des passkeys (passkeys.2fa.directory, format
+/// `v1/supported.json`) pour les sites du coffre fictif : l'audit « Passkey
+/// possible » de la démonstration et des captures, sans réseau.
+pub const PASSKEY_DIRECTORY: &str = r#"{
+  "github.com": {"mfa": "allowed", "passwordless": "allowed",
+    "documentation": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/about-passkeys"},
+  "mail.google.com": {"mfa": "allowed", "passwordless": "allowed",
+    "documentation": "https://safety.google/authentication/passkey/"},
+  "appleid.apple.com": {"mfa": "allowed", "passwordless": "allowed",
+    "documentation": "https://support.apple.com/en-us/HT204915",
+    "notes": "Passwordless authentication only works on Apple devices."},
+  "amazon.fr": {"passwordless": "allowed",
+    "documentation": "https://www.amazon.com/gp/help/customer/display.html?nodeId=TPphmhSWBgcI9Ak87p",
+    "notes": "Passkeys must be activated individually on different regional Amazon sites, such as UK and DE."},
+  "booking.com": {"passwordless": "allowed"},
+  "notion.so": {"passwordless": "allowed", "documentation": "https://www.notion.com/help/passkeys"},
+  "discord.com": {"passwordless": "allowed",
+    "documentation": "https://support.discord.com/hc/articles/25966860846231"},
+  "npmjs.com": {"mfa": "allowed",
+    "documentation": "https://docs.npmjs.com/configuring-two-factor-authentication"},
+  "vercel.com": {"passwordless": "allowed"},
+  "uber.com": {"passwordless": "allowed"},
+  "facebook.com": {"passwordless": "allowed", "mfa": "allowed",
+    "documentation": "https://www.facebook.com/help/1181045243159511"}
+}"#;
+
 #[cfg(test)]
 mod tests {
     use super::*;
