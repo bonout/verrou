@@ -146,6 +146,11 @@ struct MainView: View {
             NewSshKeyView(generator: generator)
                 .environment(model)
         }
+        .sheet(item: $model.unshareRequest) { request in
+            UnshareView(request: request)
+                .environment(model)
+                .interactiveDismissDisabled(model.unshareBusy)
+        }
         .sheet(item: $model.moveRequest) { request in
             MoveToFolderView(request: request)
                 .environment(model)
@@ -247,6 +252,7 @@ struct SidebarView: View {
                 row(.all, "Tous les éléments", "square.grid.2x2", count: model.counts?.all)
                 row(.favorites, "Favoris", "star.fill", count: model.counts?.favorites, tint: .yellow)
                 row(.withTotp, "Codes à usage unique", "clock.badge.checkmark", count: model.counts?.withTotp, tint: .teal)
+                row(.passkeys, "Passkeys", "person.badge.key.fill", count: model.counts?.passkeys, tint: .purple)
             }
             Section("Catégories") {
                 ForEach(model.counts?.categories ?? [], id: \.category) { entry in
@@ -486,9 +492,9 @@ struct ItemListView: View {
                 }
                 Menu {
                     Picker("Trier", selection: $model.sort) {
-                        Text("Pertinence").tag(ResultOrder.relevance)
-                        Text("Titre").tag(ResultOrder.title)
-                        Text("Modifié récemment").tag(ResultOrder.recentlyModified)
+                        ForEach(ResultOrder.menu, id: \.self) { order in
+                            Text(order.label).tag(order)
+                        }
                     }
                     .pickerStyle(.inline)
                 } label: {
@@ -497,7 +503,8 @@ struct ItemListView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Trier")
+                .help("Trier : \(model.sort.label)")
+                .layoutMark("sort-menu")
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 6)
@@ -513,7 +520,8 @@ struct ItemListView: View {
                     ScrollView {
                         LazyVStack(spacing: 2) {
                             ForEach(model.rows) { row in
-                                ListRow(row: row, selected: model.selectedSet.contains(row.id)) {
+                                ListRow(row: row, selected: model.selectedSet.contains(row.id),
+                                        showsPasskey: model.showsPasskeyLines) {
                                     listFocused = true
                                 }
                                 .equatable()
@@ -583,6 +591,8 @@ private struct ListRow: View, Equatable {
     @Environment(AppModel.self) private var model
     let row: ResultRow
     let selected: Bool
+    /// Vue des passkeys : site et utilisateur de la passkey.
+    var showsPasskey = false
     /// Donne le focus à la liste (les flèches font alors défiler les éléments).
     let focusList: () -> Void
     @State private var hovered = false
@@ -590,11 +600,11 @@ private struct ListRow: View, Equatable {
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.selected == rhs.selected && lhs.row.summary == rhs.row.summary
-            && lhs.row.highlights == rhs.row.highlights
+            && lhs.row.highlights == rhs.row.highlights && lhs.showsPasskey == rhs.showsPasskey
     }
 
     var body: some View {
-        ItemRow(summary: row.summary, highlights: row.highlights, selected: selected)
+        ItemRow(summary: row.summary, highlights: row.highlights, selected: selected, showsPasskey: showsPasskey)
             .padding(.horizontal, 8)
             .background(selected ? Theme.accent : hovered ? Color.primary.opacity(0.07) : .clear,
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
@@ -656,12 +666,13 @@ struct ItemRow: View {
     let highlights: [UInt32]
     /// Sur fond d'accent : texte blanc.
     var selected = false
+    var showsPasskey = false
 
     var body: some View {
         #if DEBUG || BENCH
         let _ = BenchDriver.rowsBuilt += 1
         #endif
-        ItemRowContent(summary: summary, highlights: highlights, selected: selected) {
+        ItemRowContent(summary: summary, highlights: highlights, selected: selected, showsPasskey: showsPasskey) {
             ItemIcon(summary: summary, size: 34)
         }
         .padding(.vertical, 6)
@@ -685,7 +696,10 @@ struct RowMenu: View {
 
     @ViewBuilder private var single: some View {
         if summary.category == .login {
-            Button("Copier l'identifiant") { model.copy(summary.subtitle, label: "Identifiant", secret: false) }
+            Button("Copier l'identifiant") {
+                model.session.recordItemUse(id: summary.id)
+                model.copy(summary.subtitle, label: "Identifiant", secret: false)
+            }
             Button("Copier le mot de passe") { model.copyPassword(of: summary.id) }
         }
         if summary.category == .sshKey {
@@ -712,6 +726,9 @@ struct RowMenu: View {
             Divider()
             if summary.state == .active, summary.sharing != nil || !model.writableOrganizations.isEmpty {
                 Button(summary.sharing == nil ? "Partager…" : "Collections…") { model.openSharing(summary.id) }
+            }
+            if summary.canUnshare {
+                Button("Retirer du partage…") { model.requestUnshare([summary.id]) }
             }
             switch summary.state {
             case .active:
@@ -769,5 +786,90 @@ struct EmptyPaneDetailView: View {
     var body: some View {
         ContentUnavailableView(title, systemImage: symbol)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// « Retirer du partage… » : ce qui va se passer, et la confirmation (la
+/// copie de l'organisation est supprimée définitivement).
+struct UnshareView: View {
+    @Environment(AppModel.self) private var model
+    let request: UnshareRequest
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "person.2.slash.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.indigo)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(request.question)
+                        .font(.title3.weight(.semibold))
+                        .layoutMark("sheet-title")
+                    Text(request.message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            Divider()
+            Form {
+                Section("Éléments") {
+                    ForEach(request.itemIDs.prefix(6), id: \.self) { id in
+                        if let summary = model.summary(id: id) {
+                            HStack(spacing: 10) {
+                                ItemIcon(summary: summary, size: 22)
+                                Text(summary.title).lineLimit(1)
+                                Spacer()
+                                Text(summary.sharing?.organization ?? "")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if request.itemIDs.count > 6 {
+                        Text("et \(request.itemIDs.count - 6) autres").foregroundStyle(.secondary)
+                    }
+                }
+                Section {
+                    Label("Rechiffré avec votre clé et une nouvelle clé d'élément : l'organisation ne peut plus le lire.",
+                          systemImage: "lock.rotation")
+                    Label("Les autres membres le perdent, sur tous leurs appareils.", systemImage: "person.2.slash")
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                if let error = model.unshareError {
+                    Section {
+                        Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            Divider()
+            HStack(spacing: 10) {
+                Spacer()
+                if let progress = model.bulkProgress, model.unshareBusy {
+                    ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
+                        .frame(width: 120)
+                    Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                }
+                Button("Annuler") { model.unshareRequest = nil }
+                    .keyboardShortcut(.cancelAction)
+                    .disabled(model.unshareBusy)
+                Button(request.itemIDs.count == 1 ? "Retirer du partage" : "Retirer \(request.itemIDs.count) éléments",
+                       role: .destructive) {
+                    Task { await model.performUnshare(request) }
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .layoutMark("sheet-primary")
+                .disabled(model.unshareBusy)
+            }
+            .padding(16)
+        }
+        .frame(width: 500)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 }

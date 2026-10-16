@@ -177,15 +177,35 @@ struct EditItemView: View {
         } header: {
             SectionHeader("Identifiant")
         }
-        Section(header: SectionHeader("Sites")) {
+        Section {
             ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
-                TextField("https://exemple.fr", text: urlBinding(index))
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("https://exemple.fr", text: urlBinding(index))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Picker(selection: matchBinding(index)) {
+                        Text("Par défaut (\(fallbackRule.label))").tag(UriMatchRule?.none)
+                        ForEach(UriMatchRule.all) { rule in
+                            Text(rule.label).tag(Optional(rule))
+                        }
+                    } label: {
+                        Label("Correspondance", systemImage: "scope")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                    .pickerStyle(.menu)
+                    .accessibilityIdentifier("match-picker-\(index)")
+                }
             }
-            .onDelete { draft.login?.urls.remove(atOffsets: $0) }
-            Button("Ajouter un site", systemImage: "plus.circle.fill") { draft.login?.urls.append("") }
+            .onDelete { offsets in
+                for index in offsets.sorted(by: >) { draft.login?.removeURL(at: index) }
+            }
+            Button("Ajouter un site", systemImage: "plus.circle.fill") { draft.login?.appendURL() }
+        } header: {
+            SectionHeader("Sites")
+        } footer: {
+            Text("La correspondance décide des pages où l'identifiant est proposé ; elle est enregistrée avec l'élément, comme dans Bitwarden.")
         }
     }
 
@@ -338,7 +358,7 @@ struct EditItemView: View {
 
     private func save() {
         // Les sites laissés vides ne partent pas, ni les champs sans nom ni valeur.
-        draft.login?.urls.removeAll { $0.trimmingCharacters(in: .whitespaces).isEmpty }
+        draft.login?.dropEmptyURLs()
         draft.fields.removeAll { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.value ?? "").isEmpty
             && $0.fieldType != .linked }
         // Le numéro de carte s'enregistre sans espaces.
@@ -369,6 +389,17 @@ struct EditItemView: View {
     private func optionalText(_ path: WritableKeyPath<ItemDraft, String?>) -> Binding<String> {
         Binding(get: { draft[keyPath: path] ?? "" },
                 set: { draft[keyPath: path] = $0.isEmpty ? nil : $0 })
+    }
+
+    /// Règle des sites sans règle propre : celle du dossier, sinon celle de
+    /// l'iPhone.
+    private var fallbackRule: UriMatchRule {
+        model.matchSettings?.fallback(folderID: draft.folderId) ?? .domain
+    }
+
+    private func matchBinding(_ index: Int) -> Binding<UriMatchRule?> {
+        Binding(get: { draft.login?.matchRule(at: index) },
+                set: { draft.login?.setMatchRule($0, at: index) })
     }
 
     private func urlBinding(_ index: Int) -> Binding<String> {

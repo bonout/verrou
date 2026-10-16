@@ -8,7 +8,7 @@ struct SettingsTab: View {
 
     var body: some View {
         @Bindable var model = model
-        NavigationStack {
+        NavigationStack(path: $model.settingsPath) {
             Form {
                 Section {
                     AccountHeader()
@@ -100,6 +100,10 @@ struct SettingsTab: View {
                     Toggle(isOn: $model.showSiteIcons) {
                         SettingsLabel("Icônes des sites", symbol: "photo.on.rectangle", tint: .teal)
                     }
+                    NavigationLink(value: PhoneModel.SettingsRoute.filling) {
+                        SettingsLabel("Coffre et remplissage", symbol: "scope", tint: .purple)
+                    }
+                    .accessibilityIdentifier("settings-filling")
                 } header: {
                     SectionHeader("Affichage")
                 }
@@ -139,6 +143,11 @@ struct SettingsTab: View {
                 }
             }
             .navigationTitle("Réglages")
+            .navigationDestination(for: PhoneModel.SettingsRoute.self) { route in
+                switch route {
+                case .filling: FillingSettingsView()
+                }
+            }
             .confirmationDialog("Se déconnecter de cet iPhone ?", isPresented: $confirmLogout, titleVisibility: .visible) {
                 Button("Se déconnecter", role: .destructive) { model.logout() }
             } message: {

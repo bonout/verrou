@@ -112,7 +112,26 @@ final class AppModel {
     /// Cartes, mots de passe anciens, double authentification (`Watchtower.swift`).
     let watchtower = Watchtower()
     var query: String = "" { didSet { refresh() } }
-    var sort: ResultOrder = .relevance { didSet { refresh() } }
+    /// Ordre de la liste, gardé sur ce Mac.
+    var sort: ResultOrder = DevicePreferences.sort {
+        didSet {
+            DevicePreferences.sort = sort
+            refresh()
+        }
+    }
+    /// Filtre ouvert au déverrouillage, gardé sur ce Mac.
+    var defaultFilter: DefaultFilter = DevicePreferences.defaultFilter {
+        didSet { DevicePreferences.defaultFilter = defaultFilter }
+    }
+    /// Règles de correspondance de ce Mac (défaut, dossiers) et domaines
+    /// équivalents du compte.
+    var matchSettings: MatchSettingsView?
+    /// « Retirer du partage… » en attente de confirmation.
+    var unshareRequest: UnshareRequest?
+    /// Le retrait du partage est en cours (feuille ouverte).
+    var unshareBusy = false
+    /// Le retrait a échoué : affiché dans la feuille.
+    var unshareError: String?
     /// L'élément actif : montré dans la colonne de détail, cible des
     /// actions d'un seul élément. Le changer directement revient à une
     /// sélection simple (voir `MultiSelection.swift` pour ⌘-clic, ⇧-clic, ⌘A).
@@ -540,6 +559,9 @@ final class AppModel {
     }
 
     private func didUnlock(failures: UInt32) {
+        // Le filtre choisi dans les réglages (sauf revue et démonstration,
+        // qui partent de « Tous les éléments »).
+        if !Self.isReview { filter = defaultFilter.filter }
         reloadVault()
         lockState = .unlocked
         updateSiteIcons()
@@ -635,6 +657,7 @@ final class AppModel {
         summaryIndex = Dictionary(summaries.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { first, _ in first })
         counts = loaded.map(\.counts) ?? (try? session.counts())
         organizations = loaded?.organizations ?? session.organizations()
+        matchSettings = session.matchSettings()
         refreshPending()
         // Un élément créé a reçu son identifiant du serveur : la sélection suit.
         resolveTemporaryIDs()
@@ -1234,6 +1257,7 @@ final class AppModel {
     func copyCode(of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyCode(of: itemID) }) { return }
         guard let code = totpCode(of: itemID) else { return }
+        session.recordItemUse(id: itemID)
         copy(code.code, label: "Code", secret: true)
     }
 
@@ -1256,6 +1280,8 @@ final class AppModel {
         // Le numéro de carte se copie sans espaces : c'est ce qu'attendent les
         // formulaires.
         let copied = field.fieldType == .cardNumber ? value.replacingOccurrences(of: " ", with: "") : value
+        // Un secret révélé est déjà noté par le cœur ; un champ en clair, ici.
+        if !field.secret { session.recordItemUse(id: itemID) }
         copy(copied, label: field.label, secret: field.secret)
         if field.secret { revealed[field.id] = nil }
     }

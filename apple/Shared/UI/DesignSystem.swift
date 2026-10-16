@@ -259,6 +259,9 @@ struct ItemRowContent<Icon: View>: View {
     var subtitleFont: Font = .callout
     /// Indicateur « protégé » (iPhone, extension).
     var showsProtection = false
+    /// Vue des passkeys : la ligne secondaire montre le site et
+    /// l'utilisateur de la passkey au lieu du sous-titre.
+    var showsPasskey = false
     @ViewBuilder let icon: Icon
 
     var body: some View {
@@ -281,10 +284,23 @@ struct ItemRowContent<Icon: View>: View {
                             .accessibilityLabel("Partagé")
                     }
                 }
-                Text(summary.subtitle)
+                if showsPasskey, let line = summary.passkeyLine {
+                    Label {
+                        Text(line)
+                    } icon: {
+                        Image(systemName: "person.badge.key.fill")
+                    }
+                    .labelStyle(CompactLabelStyle())
                     .font(subtitleFont)
                     .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
+                    .accessibilityLabel("Passkey \(line)")
+                } else {
+                    Text(summary.subtitle)
+                        .font(subtitleFont)
+                        .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
             if summary.pendingSync {
@@ -300,6 +316,13 @@ struct ItemRowContent<Icon: View>: View {
                     .foregroundStyle(selected ? .white : .orange)
                     .accessibilityLabel("Protégé")
             }
+            if summary.passkeyRpId != nil, !showsPasskey {
+                Image(systemName: "person.badge.key")
+                    .font(.caption)
+                    .foregroundStyle(selected ? .white : .purple)
+                    .help("Passkey")
+                    .accessibilityLabel("Passkey")
+            }
             if summary.hasTotp {
                 Image(systemName: "clock.badge.checkmark")
                     .font(.caption)
@@ -309,5 +332,15 @@ struct ItemRowContent<Icon: View>: View {
             }
         }
         .foregroundStyle(selected ? Color.white : Color.primary)
+    }
+}
+
+/// Icône et texte serrés, alignés sur la ligne de base.
+struct CompactLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 4) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
     }
 }

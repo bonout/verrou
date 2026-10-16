@@ -18,6 +18,9 @@ struct SettingsView: View {
             AccountSettings()
                 .tabItem { Label("Compte", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account)
+            FillingSettings()
+                .tabItem { Label("Coffre et remplissage", systemImage: "rectangle.and.hand.point.up.left") }
+                .tag(SettingsTab.filling)
             Group {
                 if let bridge = model.browserBridge {
                     SettingsPane { BrowserSection(bridge: bridge) }
@@ -38,7 +41,7 @@ struct SettingsView: View {
 }
 
 enum SettingsTab: String {
-    case general, security, account, integrations
+    case general, security, account, filling, integrations
 }
 
 /// Formulaire d'un onglet : largeur fixe, hauteur ajustée au contenu.
@@ -394,5 +397,119 @@ private struct NewPasswordBreachSection: View {
             Text("À chaque mot de passe créé ou modifié dans Verrou (éditeur, Brave, import), Have I Been Pwned est interrogé en arrière-plan. Seuls les 5 premiers caractères de son empreinte SHA-1 quittent ce Mac.")
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+/// Filtre ouvert au déverrouillage, règles de correspondance des sites
+/// (défaut de ce Mac, dossiers) et domaines équivalents du compte.
+private struct FillingSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        SettingsPane {
+            Section {
+                Picker("Au déverrouillage, afficher", selection: $model.defaultFilter) {
+                    ForEach(DefaultFilter.allCases) { filter in
+                        Text(filter.label).tag(filter)
+                    }
+                }
+                Picker("Trier la liste par", selection: $model.sort) {
+                    ForEach(ResultOrder.menu, id: \.self) { order in
+                        Text(order.label).tag(order)
+                    }
+                }
+            } footer: {
+                Text("Gardés sur ce Mac. « Dernière utilisation » suit ce que vous remplissez, copiez ou affichez ici : seulement des identifiants d'éléments et des dates, jamais envoyés au serveur.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Picker("Correspondance par défaut", selection: defaultRule) {
+                    ForEach(UriMatchRule.all) { rule in
+                        Text(rule.label).tag(rule)
+                    }
+                }
+                .layoutMark("default-match")
+            } header: {
+                Text("Correspondance des sites")
+            } footer: {
+                Text("Pour les sites qui n'ont pas leur propre règle (à choisir dans la modification d'un identifiant). \(defaultRule.wrappedValue.explanation)")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                ForEach(model.matchSettings?.folderRules ?? [], id: \.folderId) { rule in
+                    HStack {
+                        Label(rule.folderName.isEmpty ? "Dossier supprimé" : rule.folderName, systemImage: "folder")
+                        Spacer()
+                        Picker(rule.folderName, selection: folderRule(rule.folderId)) {
+                            ForEach(UriMatchRule.all) { option in
+                                Text(option.label).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .fixedSize()
+                        Button {
+                            model.setFolderMatchRule(rule.folderId, nil)
+                        } label: {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Revenir à la règle par défaut pour ce dossier")
+                    }
+                }
+                let free = model.folders.filter { folder in
+                    !(model.matchSettings?.folderRules.contains { $0.folderId == folder.id } ?? false)
+                }
+                Menu {
+                    ForEach(free, id: \.id) { folder in
+                        Button(folder.name) { model.setFolderMatchRule(folder.id, .host) }
+                    }
+                } label: {
+                    Label("Règle pour un dossier…", systemImage: "plus.circle.fill")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .disabled(free.isEmpty)
+            } header: {
+                Text("Par dossier")
+            } footer: {
+                Text("Bitwarden n'a pas de règle par dossier : celle-ci reste sur ce Mac, et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail).")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                let groups = model.matchSettings?.equivalentDomains ?? []
+                if groups.isEmpty {
+                    Text(model.mode == .vaultwarden ? "Lus à la prochaine synchronisation." : "Aucun dans le coffre fictif.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    DisclosureGroup("\(groups.count) groupe\(groups.count > 1 ? "s" : "") de domaines") {
+                        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                            Text(group.joined(separator: " · "))
+                                .font(.callout)
+                                .lineLimit(2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("Domaines équivalents")
+            } footer: {
+                Text("Réglages de votre compte, lus sur le serveur (coffre web → Paramètres → Domaines) : la règle « Domaine de base » propose aussi l'identifiant sur les domaines du même groupe.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var defaultRule: Binding<UriMatchRule> {
+        Binding(get: { model.matchSettings?.defaultRule ?? .domain },
+                set: { model.setDefaultMatchRule($0) })
+    }
+
+    private func folderRule(_ folderID: String) -> Binding<UriMatchRule> {
+        Binding(get: { model.matchSettings?.folderRules.first { $0.folderId == folderID }?.rule ?? .domain },
+                set: { model.setFolderMatchRule(folderID, $0) })
     }
 }

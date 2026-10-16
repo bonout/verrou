@@ -354,6 +354,8 @@ final class AutoFillModel {
     private func fillCode(_ id: String) async {
         guard let vault else { return }
         if let code = vault.currentCode(of: id) {
+            // Noté pour le tri « Dernière utilisation » de l'app.
+            vault.session.recordItemUse(id: id)
             finish(.oneTimeCode(code.code))
         } else {
             actionError = "Cet élément n'a pas de code à usage unique."
