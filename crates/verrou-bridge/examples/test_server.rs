@@ -245,6 +245,18 @@ fn main() {
             "camille@exemple.fr",
             "mot-de-passe-local",
         ),
+        // Règle « commence par » : seulement sous /connexion.
+        {
+            let mut sso = login(
+                "banque-sso",
+                "Banque (SSO)",
+                "https://banque.exemple.fr/connexion",
+                "camille",
+                "banque-secret",
+            );
+            sso.url_matches = vec![Some(verrou_core::UriMatch::StartsWith)];
+            sso
+        },
         ssh_key(),
         card(),
         identity(),
