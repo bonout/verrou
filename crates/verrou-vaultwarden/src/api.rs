@@ -132,6 +132,9 @@ pub(crate) struct PasswordGrant<'a> {
     pub email: &'a str,
     /// Empreinte d'authentification, dérivée par le SDK.
     pub auth_hash: &'a str,
+    /// Connexion approuvée par un autre appareil : `auth_hash` est alors le
+    /// code d'accès de la demande.
+    pub auth_request: Option<&'a str>,
     pub device_id: &'a str,
     pub two_factor: Option<&'a TwoFactorAnswer>,
 }
@@ -210,6 +213,9 @@ impl Api {
             ("deviceIdentifier", grant.device_id.to_owned()),
             ("deviceName", DEVICE_NAME.to_owned()),
         ];
+        if let Some(request) = grant.auth_request {
+            form.push(("authRequest", request.to_owned()));
+        }
         if let Some(answer) = grant.two_factor {
             form.push(("twoFactorProvider", answer.provider.to_string()));
             form.push(("twoFactorToken", answer.token.clone()));
@@ -538,16 +544,28 @@ impl Api {
         &self,
         email: &str,
         auth_hash: &str,
+        auth_request: Option<&str>,
         device_id: &str,
     ) -> Result<(), Error> {
-        let response = self
-            .http
-            .post(format!("{}/api/two-factor/send-email-login", self.base))
-            .json(&serde_json::json!({
+        // Connexion par un autre appareil : la demande et son code d'accès
+        // à la place de l'empreinte du mot de passe.
+        let body = match auth_request {
+            Some(request) => serde_json::json!({
+                "email": email,
+                "authRequestId": request,
+                "authRequestAccessCode": auth_hash,
+                "deviceIdentifier": device_id,
+            }),
+            None => serde_json::json!({
                 "email": email,
                 "masterPasswordHash": auth_hash,
                 "deviceIdentifier": device_id,
-            }))
+            }),
+        };
+        let response = self
+            .http
+            .post(format!("{}/api/two-factor/send-email-login", self.base))
+            .json(&body)
             .send_retrying()
             .await?;
         if response.status().is_success() {

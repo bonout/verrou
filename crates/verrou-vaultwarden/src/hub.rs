@@ -35,7 +35,7 @@ use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 use crate::{Connection, Error};
 
 /// Sans aucun message (le serveur pingue toutes les 15 s) : canal mort.
-const SILENCE: Duration = Duration::from_secs(50);
+pub(crate) const SILENCE: Duration = Duration::from_secs(50);
 const HANDSHAKE: &str = "{\"protocol\":\"messagepack\",\"version\":1}\u{1e}";
 
 /// Le genre d'un changement annoncé.
@@ -82,7 +82,7 @@ pub struct HubUpdate {
     pub from_this_device: bool,
 }
 
-type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
+pub(crate) type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
 /// Un canal ouvert.
 pub struct Hub {
@@ -114,41 +114,7 @@ impl Hub {
                 .parse()
                 .map_err(|_| Error::Invalid("jeton d'accès illisible".to_owned()))?,
         );
-        let (mut socket, _) = tokio::time::timeout(
-            Duration::from_secs(20),
-            tokio_tungstenite::connect_async_tls_with_config(
-                request,
-                None,
-                false,
-                Some(connector()?),
-            ),
-        )
-        .await
-        .map_err(|_| Error::Network("canal des mises à jour : délai dépassé".to_owned()))?
-        .map_err(socket_error)?;
-        socket
-            .send(Message::text(HANDSHAKE))
-            .await
-            .map_err(socket_error)?;
-        // Le serveur accepte le protocole par `{}` + séparateur.
-        loop {
-            let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
-                .await
-                .map_err(|_| Error::Network("canal des mises à jour : pas de réponse".to_owned()))?
-                .ok_or_else(closed)?
-                .map_err(socket_error)?;
-            match message {
-                Message::Binary(data) if data.starts_with(b"{}") => break,
-                Message::Text(text) if text.starts_with("{}") => break,
-                Message::Ping(_) | Message::Pong(_) => {}
-                Message::Close(_) => return Err(closed()),
-                _ => {
-                    return Err(Error::Server(
-                        "canal des mises à jour : protocole refusé".to_owned(),
-                    ));
-                }
-            }
-        }
+        let socket = connect(request).await?;
         Ok(Self {
             socket,
             device_id,
@@ -188,6 +154,97 @@ impl Hub {
     pub async fn close(mut self) {
         let _ = self.socket.close(None).await;
     }
+}
+
+/// Ouvre une connexion `SignalR` (`MessagePack`) : `WebSocket`, puis
+/// annonce du protocole et sa réponse `{}`.
+async fn connect(
+    request: tokio_tungstenite::tungstenite::handshake::client::Request,
+) -> Result<Socket, Error> {
+    let (mut socket, _) = tokio::time::timeout(
+        Duration::from_secs(20),
+        tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector()?)),
+    )
+    .await
+    .map_err(|_| Error::Network("canal des mises à jour : délai dépassé".to_owned()))?
+    .map_err(socket_error)?;
+    socket
+        .send(Message::text(HANDSHAKE))
+        .await
+        .map_err(socket_error)?;
+    // Le serveur accepte le protocole par `{}` + séparateur.
+    loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
+            .await
+            .map_err(|_| Error::Network("canal des mises à jour : pas de réponse".to_owned()))?
+            .ok_or_else(closed)?
+            .map_err(socket_error)?;
+        match message {
+            Message::Binary(data) if data.starts_with(b"{}") => break,
+            Message::Text(text) if text.starts_with("{}") => break,
+            Message::Ping(_) | Message::Pong(_) => {}
+            Message::Close(_) => return Err(closed()),
+            _ => {
+                return Err(Error::Server(
+                    "canal des mises à jour : protocole refusé".to_owned(),
+                ));
+            }
+        }
+    }
+    Ok(socket)
+}
+
+/// Canal anonyme (`/notifications/anonymous-hub?Token=<id>`) : attend que
+/// la demande de connexion `id` reçoive une réponse, jusqu'à `deadline`.
+/// Sans canal sur le serveur : `NotFound`.
+pub(crate) async fn wait_for_auth_response(
+    server: &str,
+    id: &str,
+    deadline: tokio::time::Instant,
+) -> Result<(), Error> {
+    let url = format!(
+        "{}?Token={}",
+        hub_url(server)?.replace("/notifications/hub", "/notifications/anonymous-hub"),
+        id
+    );
+    let request = url.into_client_request().map_err(socket_error)?;
+    let mut socket = connect(request).await?;
+    let result = crate::device_login::read_anonymous_hub(&mut socket, id, deadline).await;
+    let _ = socket.close(None).await;
+    result.map(drop)
+}
+
+/// `[1, {}, nil, "AuthRequestResponseRecieved", [{Type: 16, Payload: {Id}}]]`
+/// (sic : l'orthographe de Bitwarden) pour la demande `id`.
+pub(crate) fn is_auth_response(frame: &[u8], id: &str) -> bool {
+    let Ok(value) = rmpv::decode::read_value(&mut &frame[..]) else {
+        return false;
+    };
+    let Some(parts) = value.as_array() else {
+        return false;
+    };
+    if parts.first().and_then(Value::as_i64) != Some(1)
+        || parts.get(3).and_then(Value::as_str) != Some("AuthRequestResponseRecieved")
+    {
+        return false;
+    }
+    let Some(argument) = parts
+        .get(4)
+        .and_then(Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(Value::as_map)
+    else {
+        return false;
+    };
+    let field = |map: &[(Value, Value)], name: &str| {
+        map.iter()
+            .find(|(key, _)| key.as_str() == Some(name))
+            .map(|(_, value)| value.clone())
+    };
+    let payload_id = field(argument, "Payload")
+        .and_then(|p| p.as_map().and_then(|m| field(m, "Id")))
+        .and_then(|v| v.as_str().map(str::to_owned));
+    payload_id.is_some_and(|p| p.eq_ignore_ascii_case(id))
 }
 
 /// `https://hôte/chemin` → `wss://hôte/chemin/notifications/hub`.
@@ -232,7 +289,7 @@ fn socket_error(error: tokio_tungstenite::tungstenite::Error) -> Error {
 }
 
 /// Découpe un message binaire en trames (longueur en entier variable).
-fn frames(mut data: &[u8]) -> Vec<&[u8]> {
+pub(crate) fn frames(mut data: &[u8]) -> Vec<&[u8]> {
     let mut frames = Vec::new();
     while !data.is_empty() {
         let mut length: usize = 0;

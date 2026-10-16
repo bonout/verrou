@@ -38,6 +38,7 @@ mod bulk;
 pub mod change_password;
 pub mod collections;
 mod convert;
+pub mod device_login;
 mod directory_cache;
 mod domains;
 mod edit;
@@ -68,7 +69,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use bitwarden_api_api::models::{CipherDetailsResponseModel, SyncResponseModel};
 use bitwarden_core::key_management::account_cryptographic_state::WrappedAccountCryptographicState;
 use bitwarden_core::key_management::crypto::{
-    InitOrgCryptoRequest, InitUserCryptoMethod, InitUserCryptoRequest,
+    AuthRequestMethod, InitOrgCryptoRequest, InitUserCryptoMethod, InitUserCryptoRequest,
 };
 use bitwarden_core::key_management::{MasterPasswordAuthenticationData, MasterPasswordUnlockData};
 use bitwarden_core::{Client, ClientSettings, DeviceType};
@@ -156,18 +157,30 @@ pub enum LoginStep {
 }
 
 /// Connexion en attente du second facteur. Garde le mot de passe principal
-/// (dans un `SecretString`) le temps de l'échange : il faut encore déchiffrer
-/// la clé de l'utilisateur une fois le jeton obtenu.
+/// (dans un `SecretString`), ou la clé reçue d'un autre appareil, le temps de
+/// l'échange : il faut encore déchiffrer la clé de l'utilisateur une fois le
+/// jeton obtenu.
 #[derive(Clone)]
 pub struct PendingLogin {
     api: Api,
     store: Store,
     email: String,
-    password: SecretString,
+    secret: LoginSecret,
     prelogin: Prelogin,
+    /// Empreinte d'authentification, ou code d'accès d'une demande approuvée.
     auth_hash: String,
+    /// Connexion approuvée par un autre appareil : la demande.
+    auth_request: Option<String>,
     device_id: String,
     methods: Vec<TwoFactorMethod>,
+}
+
+/// Ce qui ouvre la clé de l'utilisateur une fois connecté.
+#[derive(Clone)]
+enum LoginSecret {
+    Password(SecretString),
+    /// Approuvée par un autre appareil (`device_login`).
+    Device(device_login::Approval),
 }
 
 /// Première connexion (ou reconnexion après expiration de la session).
@@ -187,9 +200,10 @@ pub async fn login(
         api,
         store: store.clone(),
         email,
-        password,
+        secret: LoginSecret::Password(password),
         prelogin,
         auth_hash: auth.master_password_authentication_hash.to_string(),
+        auth_request: None,
         device_id: store.device_id()?,
         methods: Vec::new(),
     };
@@ -215,8 +229,19 @@ impl PendingLogin {
     /// Envoie le code par e-mail (méthode `Email`).
     pub async fn send_email_code(&self) -> Result<(), Error> {
         self.api
-            .send_email_code(&self.email, &self.auth_hash, &self.device_id)
+            .send_email_code(
+                &self.email,
+                &self.auth_hash,
+                self.auth_request.as_deref(),
+                &self.device_id,
+            )
             .await
+    }
+
+    /// Connexion approuvée par un autre appareil (pas de mot de passe
+    /// principal saisi).
+    pub fn is_device_login(&self) -> bool {
+        self.auth_request.is_some()
     }
 
     /// Envoie la réponse au second facteur. En cas de refus
@@ -234,6 +259,7 @@ impl PendingLogin {
         let grant = PasswordGrant {
             email: &self.email,
             auth_hash: &self.auth_hash,
+            auth_request: self.auth_request.as_deref(),
             device_id: &self.device_id,
             two_factor: answer,
         };
@@ -294,7 +320,10 @@ impl PendingLogin {
             equivalent_domains: domains::fetch(&self.api, &tokens.access).await?,
         };
         let sdk = sdk_client(&account.server);
-        init_with_password(&sdk, &account, &self.password).await?;
+        match &self.secret {
+            LoginSecret::Password(password) => init_with_password(&sdk, &account, password).await?,
+            LoginSecret::Device(approval) => init_with_approval(&sdk, &account, approval).await?,
+        }
         account.refresh_token = sdk
             .crypto()
             .encrypt_with_local_user_data_key(tokens.refresh)
@@ -759,7 +788,7 @@ impl Connection {
     }
 }
 
-fn sdk_client(server: &str) -> Client {
+pub(crate) fn sdk_client(server: &str) -> Client {
     // Le SDK ne fait aucune requête pour Verrou : ces adresses ne servent
     // qu'à remplir sa configuration.
     Client::new(Some(ClientSettings {
@@ -796,6 +825,40 @@ async fn init_with_password(
     // La clé de l'utilisateur ne se déchiffre qu'avec le bon mot de passe :
     // tout échec ici veut dire « mauvais mot de passe ».
     .map_err(|_| Error::WrongPassword)
+}
+
+/// Clé reçue d'un autre appareil (`device_login`), chiffrée pour la clé
+/// privée RSA de la demande : le SDK la déchiffre, comme l'app officielle.
+async fn init_with_approval(
+    sdk: &Client,
+    account: &Account,
+    approval: &device_login::Approval,
+) -> Result<(), Error> {
+    let protected: UnsignedSharedKey = approval.key.parse().map_err(Error::crypto)?;
+    let method = if approval.master_key {
+        AuthRequestMethod::MasterKey {
+            protected_master_key: protected,
+            auth_request_key: account.wrapped_user_key.parse().map_err(Error::crypto)?,
+        }
+    } else {
+        AuthRequestMethod::UserKey {
+            protected_user_key: protected,
+        }
+    };
+    init(
+        sdk,
+        account,
+        InitUserCryptoMethod::AuthRequest {
+            request_private_key: approval
+                .private_key
+                .expose()
+                .parse()
+                .map_err(Error::crypto)?,
+            method,
+        },
+    )
+    .await
+    .map_err(|_| Error::Crypto("la clé reçue de l'autre appareil ne s'ouvre pas".to_owned()))
 }
 
 async fn init(sdk: &Client, account: &Account, method: InitUserCryptoMethod) -> Result<(), Error> {
