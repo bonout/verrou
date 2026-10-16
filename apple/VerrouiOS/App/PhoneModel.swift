@@ -404,12 +404,24 @@ final class PhoneModel {
         await unlockWithBiometrics()
     }
 
+    /// Face ID reconnu, coffre en cours de déchiffrement : l'écran verrouillé
+    /// s'ouvre déjà (le coffre vide est construit dessous), sans attendre.
+    private(set) var opening = false
+    /// Face ID demandé par l'app : l'inactivité qui suit vient de la feuille
+    /// du système, pas du sélecteur d'apps. Levé au retour au premier plan
+    /// (ou en arrière-plan).
+    private(set) var biometricPrompt = false
+
     func unlockWithBiometrics() async {
-        defer { lastBiometricPrompt = interruptedPrompt ? nil : Date() }
+        defer {
+            lastBiometricPrompt = interruptedPrompt ? nil : Date()
+            opening = false
+        }
         interruptedPrompt = false
         guard lockState == .locked else { return }
         lockState = .unlocking
         unlockError = nil
+        biometricPrompt = true
         if mode == .demo {
             switch await Biometrics.authenticate(reason: "déverrouiller votre coffre") {
             case .success: openMockVault()
@@ -422,7 +434,9 @@ final class PhoneModel {
         }
         do {
             let failures = try await Perf.measure("\(Biometrics.name) + déchiffrement du coffre") {
-                try await vault.unlockWithBiometrics(reason: "déverrouiller votre coffre")
+                try await vault.unlockWithBiometrics(reason: "déverrouiller votre coffre") { [weak self] in
+                    self?.opening = true
+                }
             }
             didUnlock(failures: failures)
         } catch BiometricVault.Failure.cancelled {
@@ -523,6 +537,10 @@ final class PhoneModel {
 
     /// Verrouillage automatique et synchronisation au retour au premier plan.
     func scenePhaseChanged(to phase: ScenePhase) {
+        Perf.mark("scène \(String(describing: phase)) à +\(Perf.msSinceLaunch) ms du lancement (\(String(describing: lockState)))")
+        // Au lancement, la scène devient active juste après la demande, avant
+        // la feuille de Face ID : on ne lève qu'une fois la demande close.
+        if phase == .background || (phase == .active && lockState != .unlocking) { biometricPrompt = false }
         switch phase {
         case .background:
             backgroundedAt = Date()

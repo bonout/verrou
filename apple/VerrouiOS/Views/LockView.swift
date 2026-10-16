@@ -32,7 +32,7 @@ struct LockView: View {
 
     /// Durée de l'effacement : l'écran quitte ensuite la hiérarchie.
     static func departure(reduceMotion: Bool) -> Duration {
-        reduceMotion ? .milliseconds(160) : .milliseconds(260)
+        reduceMotion ? .milliseconds(160) : .milliseconds(320)
     }
 
     private var flourish: Bool {
@@ -56,8 +56,10 @@ struct LockView: View {
         // apparaît dessous aussitôt. Sans délai : un délai ne s'applique pas
         // au calque du shader, qui disparaîtrait avant le texte.
         .opacity(departing ? 0 : 1)
+        // Départ lent puis rapide : l'anse a le temps de s'ouvrir, visible,
+        // avant que l'écran ne s'efface.
         .animation(departing
-                   ? (reduceMotion ? .linear(duration: 0.15) : .easeOut(duration: 0.24))
+                   ? (reduceMotion ? .linear(duration: 0.15) : .timingCurve(0.55, 0, 0.85, 1, duration: 0.3))
                    : .easeOut(duration: 0.15),
                    value: departing)
         .allowsHitTesting(!departing)
