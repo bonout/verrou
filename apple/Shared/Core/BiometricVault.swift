@@ -129,7 +129,12 @@ enum BiometricVault {
         if sealed.simulated == true { return try openSimulated(sealed) }
         #endif
         let enclave = ContinuousClock.now
-        defer { Perf.mark("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms") }
+        defer {
+            // Contexte refermé dès la clé obtenue : iOS peut rendre la main à
+            // l'app au lieu de la laisser inactive après la feuille de Face ID.
+            context.invalidate()
+            Perf.mark("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms")
+        }
         do {
             // Le contexte déjà authentifié évite une seconde demande.
             let enclaveKey = try SecureEnclave.P256.KeyAgreement.PrivateKey(

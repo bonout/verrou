@@ -360,6 +360,8 @@ private struct ToolbarSpacerIfAvailable: ToolbarContent {
 /// les favoris.
 struct SearchResultsView: View {
     @Environment(PhoneModel.self) private var model
+    /// Champ de recherche actif, clavier ouvert : dès que l'onglet est choisi.
+    @State private var searching = false
 
     var body: some View {
         @Bindable var model = model
@@ -372,9 +374,25 @@ struct SearchResultsView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Rechercher")
-        .modifier(VaultSearchField(query: $model.searchQuery))
+        .modifier(VaultSearchField(query: $model.searchQuery, presented: $searching))
         .autocorrectionDisabled()
         .textInputAutocapitalization(.never)
+        .onAppear { if model.tab == .search { searching = true } }
+        .onChange(of: model.tab) { _, tab in
+            if tab == .search, model.searchPath.isEmpty {
+                searching = true
+                if let at = model.searchChosenAt { Perf.mark("recherche : champ activé à +\(Perf.ms(since: at)) ms") }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            guard model.tab == .search, let at = model.searchChosenAt else { return }
+            Perf.mark("recherche : le clavier commence à monter à +\(Perf.ms(since: at)) ms")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidShowNotification)) { _ in
+            guard model.tab == .search, let at = model.searchChosenAt else { return }
+            Perf.mark("recherche : clavier affiché à +\(Perf.ms(since: at)) ms du choix de l'onglet")
+            model.searchChosenAt = nil
+        }
     }
 
     @ViewBuilder private var results: some View {
@@ -411,18 +429,18 @@ struct SearchResultsView: View {
     }
 }
 
-/// Le champ de recherche : dans la barre d'onglets sur iOS 26 (onglet de
-/// recherche), sous le titre et toujours visible avant.
+/// Le champ de recherche : sous le titre, toujours visible.
 private struct VaultSearchField: ViewModifier {
     @Binding var query: String
+    @Binding var presented: Bool
 
     func body(content: Content) -> some View {
-        if #available(iOS 26, *) {
-            content.searchable(text: $query, prompt: "Rechercher dans le coffre")
-        } else {
-            content.searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                               prompt: "Rechercher dans le coffre")
-        }
+        // En haut de l'écran, toujours visible, iOS 26 compris : le clavier
+        // monte aussitôt, sans attendre que la barre d'onglets se transforme
+        // en champ (une animation de plus, environ 0,3 s).
+        content.searchable(text: $query, isPresented: $presented,
+                           placement: .navigationBarDrawer(displayMode: .always),
+                           prompt: "Rechercher dans le coffre")
     }
 }
 
