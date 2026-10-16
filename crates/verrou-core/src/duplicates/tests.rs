@@ -13,6 +13,7 @@ fn login(id: &str, url: &str, username: &str, password: &str, modified: i64) -> 
         } else {
             vec![url.to_owned()]
         },
+        url_matches: Vec::new(),
         folder: None,
         tags: Vec::new(),
         favorite: false,

@@ -241,6 +241,7 @@ mod tests {
             title: "Slack".to_owned(),
             subtitle: "camille".to_owned(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,

@@ -38,6 +38,7 @@ mod bulk;
 pub mod change_password;
 pub mod collections;
 mod convert;
+mod domains;
 mod edit;
 pub mod emergency;
 mod error;
@@ -55,6 +56,7 @@ pub mod ssh_key;
 mod store;
 pub mod two_factor_directory;
 pub mod unlock_keys;
+mod unshare;
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
@@ -81,6 +83,7 @@ pub use merge::{MergeOutcome, MergeSummary};
 pub use organizations::{Collection, Organization, PendingMembership, ShareOutcome};
 pub use outbox::{CONFLICT_SUFFIX, Closer, SyncReport, Synced, sync_shared};
 pub use store::{Account, KdfSettings, Store};
+pub use unshare::UnshareOutcome;
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
 
@@ -97,6 +100,9 @@ pub struct Decrypted {
     pub passkeys: Vec<verrou_core::Passkey>,
     /// Organisations (coffres partagés) et leurs collections, triées par nom.
     pub organizations: Vec<Organization>,
+    /// Domaines équivalents du compte (réglages Bitwarden), pour la règle
+    /// de correspondance « domaine ».
+    pub equivalent_domains: Vec<Vec<String>>,
     /// Éléments dont une modification faite hors ligne attend le serveur.
     pub pending_items: Vec<String>,
     /// Modifications faites hors ligne, pas encore envoyées.
@@ -280,6 +286,7 @@ impl PendingLogin {
             refresh_token: String::new(),
             synced_at: Some(now()),
             sync: Some(sync_json),
+            equivalent_domains: None,
         };
         let sdk = sdk_client(&account.server);
         init_with_password(&sdk, &account, &self.password).await?;
@@ -457,7 +464,15 @@ impl Connection {
             }
             other => other?,
         };
-        let unchanged = self.store_sync(sync_json)? && self.report == before && !had_outbox;
+        let domains_changed = match self.refresh_domains(&access).await {
+            Err(Error::Network(message)) => {
+                self.mark_offline();
+                return Err(Error::Network(message));
+            }
+            other => other?,
+        };
+        let unchanged =
+            self.store_sync(sync_json)? && self.report == before && !had_outbox && !domains_changed;
         if unchanged {
             return Ok(None);
         }
@@ -608,6 +623,7 @@ impl Connection {
             folders,
             passkeys,
             organizations: directory.organizations,
+            equivalent_domains: self.equivalent_domains(),
             pending_items: self.outbox.pending_items(),
             pending_changes: self.outbox.pending_changes(),
             remapped: self

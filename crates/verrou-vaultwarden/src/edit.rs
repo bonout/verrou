@@ -21,8 +21,8 @@ use bitwarden_vault::{
     UriMatchType, VaultClientExt,
 };
 use chrono::{DateTime, Utc};
-use verrou_core::SecretString;
 use verrou_core::template::{self, Template};
+use verrou_core::{SecretString, UriMatch};
 
 use crate::outbox::{Action, request_of};
 use crate::{Connection, Decrypted, Error};
@@ -189,6 +189,10 @@ pub struct LoginDraft {
     pub password: Option<SecretString>,
     pub totp: Option<SecretString>,
     pub uris: Vec<String>,
+    /// Règle de correspondance de chaque site, dans l'ordre de `uris`
+    /// (`None` dans la liste : règle par défaut). `None` : chaque site
+    /// gardé garde sa règle (brouillons qui ne la montrent pas).
+    pub uri_matches: Option<Vec<Option<UriMatch>>>,
 }
 
 impl Connection {
@@ -336,22 +340,38 @@ fn secret(value: Option<SecretString>) -> Option<String> {
     text(value.map(|v| v.expose().to_owned()))
 }
 
-fn uris(list: Vec<String>, previous: &[LoginUriView]) -> Option<Vec<LoginUriView>> {
+fn uris(
+    list: Vec<String>,
+    matches: Option<&[Option<UriMatch>]>,
+    previous: &[LoginUriView],
+) -> Option<Vec<LoginUriView>> {
     let uris: Vec<LoginUriView> = list
         .into_iter()
-        .map(|u| u.trim().to_owned())
-        .filter(|u| !u.is_empty())
-        .map(|uri| {
-            // Un site gardé garde sa règle de correspondance. Une nouvelle
-            // adresse d'app (`macapp://`) ne correspond jamais à une page web
-            // dans les extensions Bitwarden : règle « jamais ».
-            let rule = previous
-                .iter()
-                .find(|p| p.uri.as_deref() == Some(uri.as_str()))
-                .map_or_else(
-                    || verrou_core::apps::is_app_uri(&uri).then_some(UriMatchType::Never),
-                    |p| p.r#match,
-                );
+        .enumerate()
+        .map(|(i, u)| (i, u.trim().to_owned()))
+        .filter(|(_, u)| !u.is_empty())
+        .map(|(index, uri)| {
+            // La règle choisie dans l'éditeur ; sinon, un site gardé garde
+            // la sienne. Une nouvelle adresse d'app (`macapp://`) ne
+            // correspond jamais à une page web dans les extensions
+            // Bitwarden : règle « jamais ».
+            let chosen = matches.map(|m| {
+                m.get(index)
+                    .copied()
+                    .flatten()
+                    .map(crate::convert::uri_match_type)
+            });
+            let rule = match chosen {
+                Some(Some(rule)) => Some(rule),
+                Some(None) => verrou_core::apps::is_app_uri(&uri).then_some(UriMatchType::Never),
+                None => previous
+                    .iter()
+                    .find(|p| p.uri.as_deref() == Some(uri.as_str()))
+                    .map_or_else(
+                        || verrou_core::apps::is_app_uri(&uri).then_some(UriMatchType::Never),
+                        |p| p.r#match,
+                    ),
+            };
             LoginUriView {
                 uri: Some(uri),
                 r#match: rule,
@@ -467,7 +487,7 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
                 username: text(d.username),
                 password: secret(d.password),
                 password_revision_date: None,
-                uris: uris(d.uris, &[]),
+                uris: uris(d.uris, d.uri_matches.as_deref(), &[]),
                 totp: secret(d.totp),
                 autofill_on_page_load: None,
                 fido2_credentials: None,
@@ -548,6 +568,15 @@ pub(crate) fn draft_of(view: CipherView) -> Draft {
             username: login.username,
             password: login.password.map(SecretString::new),
             totp: login.totp.map(SecretString::new),
+            uri_matches: Some(
+                login
+                    .uris
+                    .iter()
+                    .flatten()
+                    .filter(|u| u.uri.is_some())
+                    .map(|u| u.r#match.map(crate::convert::uri_match))
+                    .collect(),
+            ),
             uris: login
                 .uris
                 .into_iter()
@@ -599,7 +628,11 @@ pub(crate) fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> 
     login.password = password;
     login.username = text(d.username);
     login.totp = secret(d.totp);
-    login.uris = uris(d.uris, login.uris.as_deref().unwrap_or_default());
+    login.uris = uris(
+        d.uris,
+        d.uri_matches.as_deref(),
+        login.uris.as_deref().unwrap_or_default(),
+    );
     login.generate_checksums();
     Ok(())
 }
@@ -612,6 +645,7 @@ mod tests {
         Draft {
             name: " Exemple ".to_owned(),
             login: Some(LoginDraft {
+                uri_matches: None,
                 username: Some("camille".to_owned()),
                 password: Some(SecretString::new(password)),
                 totp: None,
@@ -654,7 +688,8 @@ mod tests {
     }
 
     fn uris_from(draft: &Draft, previous: &[LoginUriView]) -> Vec<LoginUriView> {
-        uris(draft.login.as_ref().unwrap().uris.clone(), previous).unwrap()
+        let login = draft.login.as_ref().unwrap();
+        uris(login.uris.clone(), login.uri_matches.as_deref(), previous).unwrap()
     }
 
     #[test]

@@ -303,6 +303,7 @@ mod tests {
             } else {
                 vec![url.to_owned()]
             },
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,

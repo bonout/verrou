@@ -157,6 +157,7 @@ fn login_draft(name: &str, password: &str) -> Draft {
     Draft {
         name: name.to_owned(),
         login: Some(LoginDraft {
+            uri_matches: None,
             username: Some("camille".to_owned()),
             password: Some(SecretString::new(password)),
             totp: None,

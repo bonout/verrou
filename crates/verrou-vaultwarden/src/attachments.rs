@@ -114,14 +114,28 @@ impl Connection {
             .file_name
             .clone()
             .unwrap_or_else(|| "pièce jointe".to_owned());
+        let access = self.access_token().await?;
+        let plain = Box::pin(self.fetch_attachment(&access, item_id, cipher, attachment)).await?;
+        Ok((name, plain))
+    }
+
+    /// Télécharge et déchiffre une pièce jointe d'un élément chiffré
+    /// (`cipher`) : vérifie sa taille, puis la déchiffre par le SDK.
+    pub(crate) async fn fetch_attachment(
+        &self,
+        access: &str,
+        item_id: &str,
+        cipher: Cipher,
+        attachment: AttachmentView,
+    ) -> Result<Zeroizing<Vec<u8>>, Error> {
+        let attachment_id = attachment.id.clone().ok_or(Error::NotFound)?;
         let expected = attachment
             .size
             .as_deref()
             .and_then(|s| s.parse::<u64>().ok());
-        let access = self.access_token().await?;
         let url = self
             .api
-            .attachment_url(&access, item_id, attachment_id)
+            .attachment_url(access, item_id, &attachment_id)
             .await?;
         let encrypted = self
             .api
@@ -138,7 +152,7 @@ impl Connection {
             .attachments()
             .decrypt_buffer(cipher, attachment, &encrypted)
             .map_err(|e| attachment_error(&e))?;
-        Ok((name, Zeroizing::new(plain)))
+        Ok(Zeroizing::new(plain))
     }
 
     /// Ajoute un fichier à un élément modifiable, puis synchronise.

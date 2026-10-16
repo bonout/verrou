@@ -11,11 +11,14 @@
 //! requête doit trouver sa place dans au moins un champ, avec un poids qui
 //! favorise le titre puis le site.
 
+use std::collections::HashMap;
+
 use nucleo_matcher::pattern::{Atom, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32String};
 use unicode_normalization::UnicodeNormalization;
 
 use crate::model::{Item, ItemKind, ItemState};
+use crate::passkey::Passkey;
 use crate::template::Template;
 
 /// Ce que montre la barre latérale.
@@ -38,6 +41,8 @@ pub enum Filter {
     Organization(String),
     /// Éléments d'une collection d'organisation, par identifiant.
     Collection(String),
+    /// Identifiants qui portent au moins une passkey.
+    Passkeys,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -47,6 +52,12 @@ pub enum Sort {
     Relevance,
     Title,
     RecentlyModified,
+    /// Création, du plus récent au plus ancien.
+    Created,
+    /// Dernière utilisation sur cet appareil (remplissage, copie,
+    /// affichage d'un secret), du plus récent au plus ancien ; les éléments
+    /// jamais utilisés ensuite, par titre.
+    LastUsed,
 }
 
 /// Un résultat : position de l'élément dans le coffre, score, et positions des
@@ -95,6 +106,8 @@ struct Entry {
     title_rank: u32,
     folder: Option<String>,
     tags: Vec<String>,
+    /// Sites des passkeys de l'élément (`rpId` repliés) ; vide : aucune.
+    passkey_sites: Vec<String>,
 }
 
 pub(crate) struct SearchIndex {
@@ -114,7 +127,8 @@ const BONUS_FAVORITE: u32 = 24;
 /// à l'écran).
 pub const HIGHLIGHT_LIMIT: usize = 200;
 
-pub(crate) fn fold(text: &str) -> String {
+/// Texte replié : minuscules, sans accents (« Société » → « societe »).
+pub fn fold(text: &str) -> String {
     text.nfkd()
         .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
         .flat_map(char::to_lowercase)
@@ -161,6 +175,7 @@ impl SearchIndex {
                     title_rank: 0,
                     folder: item.folder.as_deref().map(fold),
                     tags: item.tags.iter().map(|t| fold(t)).collect(),
+                    passkey_sites: Vec::new(),
                 }
             })
             .collect::<Vec<Entry>>();
@@ -178,12 +193,32 @@ impl SearchIndex {
         Self { entries }
     }
 
+    /// Note les passkeys de chaque élément (filtre « Passkeys », mot-clé
+    /// `passkey:`).
+    pub(crate) fn mark_passkeys(&mut self, by_id: &HashMap<String, usize>, passkeys: &[Passkey]) {
+        for entry in &mut self.entries {
+            entry.passkey_sites.clear();
+        }
+        for passkey in passkeys {
+            if let Some(&index) = by_id.get(&passkey.item) {
+                self.entries[index].passkey_sites.push(fold(&passkey.rp_id));
+            }
+        }
+    }
+
+    pub(crate) fn has_passkey(&self, index: usize) -> bool {
+        self.entries
+            .get(index)
+            .is_some_and(|e| !e.passkey_sites.is_empty())
+    }
+
     pub(crate) fn search(
         &self,
         items: &[Item],
         query: &str,
         filter: &Filter,
         sort: Sort,
+        last_used: &HashMap<String, i64>,
     ) -> Vec<Hit> {
         let parsed = ParsedQuery::parse(query);
         let mut matcher = Matcher::new({
@@ -231,6 +266,17 @@ impl SearchIndex {
                     .cmp(&items[a.index].modified)
                     .then_with(|| by_title(a, b))
             }),
+            Sort::Created => hits.sort_by(|a, b| {
+                items[b.index]
+                    .created
+                    .cmp(&items[a.index].created)
+                    .then_with(|| by_title(a, b))
+            }),
+            Sort::LastUsed => {
+                let used = |hit: &Hit| last_used.get(&items[hit.index].id).copied();
+                // `Some` (utilisé) avant `None`, le plus récent d'abord.
+                hits.sort_by(|a, b| used(b).cmp(&used(a)).then_with(|| by_title(a, b)));
+            }
         }
         // Le surlignage ne sert qu'aux lignes visibles : le calculer pour
         // les 10 000 résultats d'une seule lettre doublait le temps de frappe.
@@ -273,6 +319,7 @@ fn filter_accepts(filter: &Filter, item: &Item, entry: &Entry) -> bool {
             .shared
             .as_ref()
             .is_some_and(|s| s.collections.iter().any(|(c, _)| c == id)),
+        Filter::Passkeys => !entry.passkey_sites.is_empty(),
     }
 }
 
@@ -327,7 +374,7 @@ fn score_entry(
 }
 
 /// Requête découpée : mots à chercher, et filtres explicites (`tag:`,
-/// `dossier:`, `type:`).
+/// `dossier:`, `type:`, `passkey:`, `has:`).
 struct ParsedQuery {
     atoms: Vec<Atom>,
     /// Caractères exigés par chaque mot, dans l'ordre de `atoms`.
@@ -337,6 +384,11 @@ struct ParsedQuery {
     folders: Vec<String>,
     kinds: Vec<ItemKind>,
     templates: Vec<Template>,
+    /// `passkey:` (vide : n'importe quelle passkey) ou `passkey:github`
+    /// (site de la passkey qui commence par…), et `has:passkey`.
+    passkeys: Vec<String>,
+    /// `has:totp` (ou `has:otp`).
+    with_totp: bool,
 }
 
 impl ParsedQuery {
@@ -346,9 +398,26 @@ impl ParsedQuery {
         let mut folders = Vec::new();
         let mut kinds = Vec::new();
         let mut templates = Vec::new();
+        let mut passkeys = Vec::new();
+        let mut with_totp = false;
         for token in query.split_whitespace() {
             let lower = fold(token);
-            if let Some(tag) = lower
+            if let Some(site) = lower
+                .strip_prefix("passkey:")
+                .or_else(|| lower.strip_prefix("passkeys:"))
+            {
+                passkeys.push(site.to_owned());
+            } else if let Some(what) = lower
+                .strip_prefix("has:")
+                .or_else(|| lower.strip_prefix("avec:"))
+            {
+                match what {
+                    "passkey" | "passkeys" => passkeys.push(String::new()),
+                    "totp" | "otp" | "2fa" => with_totp = true,
+                    // Inconnu : cherché comme un mot.
+                    _ => words.push(token),
+                }
+            } else if let Some(tag) = lower
                 .strip_prefix("tag:")
                 .or_else(|| lower.strip_prefix('#'))
             {
@@ -399,11 +468,21 @@ impl ParsedQuery {
             folders,
             kinds,
             templates,
+            passkeys,
+            with_totp,
         }
     }
 
     fn filters_accept(&self, item: &Item, entry: &Entry) -> bool {
-        self.kinds.iter().all(|k| item.kind == *k)
+        (!self.with_totp || item.has_totp())
+            && self.passkeys.iter().all(|site| {
+                entry.passkey_sites.iter().any(|rp| {
+                    // `passkey:github` trouve `github.com` et `login.github.com`.
+                    rp.starts_with(site.as_str())
+                        || rp.split('.').any(|label| label.starts_with(site.as_str()))
+                })
+            })
+            && self.kinds.iter().all(|k| item.kind == *k)
             && self.templates.iter().all(|t| item.template() == Some(*t))
             && self
                 .tags

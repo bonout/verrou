@@ -14,6 +14,7 @@ fn login(name: &str, url: &str) -> ItemDraft {
     ItemDraft {
         name: name.to_owned(),
         login: Some(LoginFields {
+            url_matches: None,
             username: Some("camille@exemple.fr".to_owned()),
             password: Some("mot-de-passe-du-site".to_owned()),
             totp: Some("JBSWY3DPEHPK3PXP".to_owned()),

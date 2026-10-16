@@ -26,6 +26,8 @@ sha2.workspace = true
 tokio.workspace = true
 # Clés des passkeys créées pour le remplissage automatique d'iOS.
 rand.workspace = true
+# Réglages de l'appareil (`match-rules.json`, `usage.json`).
+serde_json.workspace = true
 
 [dev-dependencies]
 # Tests contre un vrai Vaultwarden (`VERROU_TEST_SERVER`) : inscription d'un

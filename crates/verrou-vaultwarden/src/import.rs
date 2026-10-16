@@ -313,6 +313,7 @@ fn import_view(
     now: DateTime<Utc>,
 ) -> Result<bitwarden_vault::CipherView, Error> {
     let login = (item.kind == ImportKind::Login).then(|| LoginDraft {
+        uri_matches: None,
         username: item.username.clone(),
         password: item.password.clone(),
         totp: item.totp.clone(),
@@ -537,6 +538,7 @@ mod tests {
         let mut draft = Draft {
             name: "Exemple".to_owned(),
             login: Some(LoginDraft {
+                uri_matches: None,
                 username: Some("camille".to_owned()),
                 password: Some(SecretString::new("ancien")),
                 totp: Some(SecretString::new("AUTRE")),

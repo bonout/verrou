@@ -116,6 +116,9 @@ pub struct Item {
     /// Jamais un secret.
     pub subtitle: String,
     pub urls: Vec<String>,
+    /// Règle de correspondance de chaque site, dans l'ordre de `urls`
+    /// (`None` : règle par défaut). Peut être plus courte que `urls`.
+    pub url_matches: Vec<Option<crate::matching::UriMatch>>,
     pub folder: Option<String>,
     pub tags: Vec<String>,
     pub favorite: bool,

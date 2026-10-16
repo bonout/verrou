@@ -5,8 +5,34 @@
 
 use std::collections::HashMap;
 
-use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType};
-use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString, template};
+use bitwarden_vault::{CipherRepromptType, CipherType, CipherView, FieldType, UriMatchType};
+use verrou_core::{
+    Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString, UriMatch, template,
+};
+
+/// Règle de correspondance de Bitwarden → Verrou.
+pub(crate) fn uri_match(rule: UriMatchType) -> UriMatch {
+    match rule {
+        UriMatchType::Domain => UriMatch::Domain,
+        UriMatchType::Host => UriMatch::Host,
+        UriMatchType::StartsWith => UriMatch::StartsWith,
+        UriMatchType::Exact => UriMatch::Exact,
+        UriMatchType::RegularExpression => UriMatch::RegularExpression,
+        UriMatchType::Never => UriMatch::Never,
+    }
+}
+
+/// Règle de correspondance de Verrou → Bitwarden.
+pub(crate) fn uri_match_type(rule: UriMatch) -> UriMatchType {
+    match rule {
+        UriMatch::Domain => UriMatchType::Domain,
+        UriMatch::Host => UriMatchType::Host,
+        UriMatch::StartsWith => UriMatchType::StartsWith,
+        UriMatch::Exact => UriMatchType::Exact,
+        UriMatch::RegularExpression => UriMatchType::RegularExpression,
+        UriMatch::Never => UriMatchType::Never,
+    }
+}
 
 /// Les éléments archivés et ceux de la corbeille sont gardés, avec leur état :
 /// l'interface les montre à part.
@@ -33,6 +59,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
         },
         subtitle: String::new(),
         urls: Vec::new(),
+        url_matches: Vec::new(),
         folder,
         tags: Vec::new(),
         favorite: view.favorite,
@@ -95,13 +122,14 @@ fn login(view: &CipherView, item: &mut Item) {
         login.totp.as_ref(),
     );
     item.subtitle = username.cloned().unwrap_or_default();
-    item.urls = login
+    // Sites et règles, dans le même ordre.
+    (item.urls, item.url_matches) = login
         .uris
         .iter()
         .flatten()
-        .filter_map(|u| u.uri.clone())
-        .filter(|u| !u.trim().is_empty())
-        .collect();
+        .filter_map(|u| Some((u.uri.clone()?, u.r#match.map(uri_match))))
+        .filter(|(u, _)| !u.trim().is_empty())
+        .unzip();
 }
 
 fn card(view: &CipherView, item: &mut Item) {

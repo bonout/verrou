@@ -157,6 +157,7 @@ pub fn template_draft(template: ItemTemplate) -> ItemDraft {
             password: l.password.map(|p| p.expose().to_owned()),
             totp: None,
             urls: Vec::new(),
+            url_matches: None,
         }),
         fields,
         template: Some(template.into()),

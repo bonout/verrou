@@ -574,6 +574,7 @@ pub fn duplicate_items() -> Vec<Item> {
                 title: (*title).to_owned(),
                 subtitle: (*username).to_owned(),
                 urls: urls.iter().map(|u| (*u).to_owned()).collect(),
+                url_matches: Vec::new(),
                 folder: None,
                 tags: Vec::new(),
                 favorite: false,
@@ -594,6 +595,7 @@ pub fn duplicate_items() -> Vec<Item> {
             title: title.to_owned(),
             subtitle: "Visa •••• 4242".to_owned(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,
@@ -703,6 +705,7 @@ impl Builder<'_> {
             title: title.to_owned(),
             subtitle: username.to_owned(),
             urls: vec![format!("https://{domain}")],
+            url_matches: Vec::new(),
             folder: Some(folder.to_owned()),
             tags: tags.iter().map(|t| (*t).to_owned()).collect(),
             favorite,
@@ -761,6 +764,7 @@ impl Builder<'_> {
                     title: (*title).to_owned(),
                     subtitle: format!("{brand} •••• {last4}"),
                     urls: Vec::new(),
+                    url_matches: Vec::new(),
                     folder: Some("Finances".to_owned()),
                     tags: vec!["banque".to_owned()],
                     favorite: *favorite,
@@ -796,6 +800,7 @@ impl Builder<'_> {
             title: "Camille Martin".to_owned(),
             subtitle: "camille.martin@exemple.fr".to_owned(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: Some("Personnel".to_owned()),
             tags: Vec::new(),
             favorite: true,
@@ -836,6 +841,7 @@ impl Builder<'_> {
             title: "Passeport".to_owned(),
             subtitle: "Camille Martin".to_owned(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: Some("Administratif".to_owned()),
             tags: vec!["voyage".to_owned()],
             favorite: false,
@@ -899,6 +905,7 @@ impl Builder<'_> {
                     // sous-titre est affiché et indexé en clair.
                     subtitle: "Note sécurisée".to_owned(),
                     urls: Vec::new(),
+                    url_matches: Vec::new(),
                     folder: Some((*folder).to_owned()),
                     tags: Vec::new(),
                     favorite: *favorite,
@@ -945,6 +952,7 @@ impl Builder<'_> {
             title: "Clé SSH du N100".to_owned(),
             subtitle: "SHA256:fictive…".to_owned(),
             urls: Vec::new(),
+            url_matches: Vec::new(),
             folder: Some("Travail".to_owned()),
             tags: vec!["infra".to_owned()],
             favorite: false,
@@ -984,6 +992,37 @@ fn capitalise(word: &str) -> String {
     chars
         .next()
         .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
+}
+
+/// Passkeys fictives (filtre « Passkeys », captures) : sur quelques
+/// identifiants du coffre fictif, par titre. Leur clé n'est pas une vraie
+/// clé : elles ne servent pas à signer.
+pub fn passkeys(items: &[Item]) -> Vec<crate::Passkey> {
+    const SITES: [(&str, &str, &str); 3] = [
+        ("GitHub", "github.com", "camille-dev"),
+        ("Google", "accounts.google.com", "camille.martin@exemple.fr"),
+        ("Apple ID", "apple.com", "camille.martin@exemple.fr"),
+    ];
+    SITES
+        .iter()
+        .enumerate()
+        .filter_map(|(n, (title, rp_id, user))| {
+            let item = items.iter().find(|i| i.title == *title)?;
+            Some(crate::Passkey {
+                item: item.id.clone(),
+                credential_id: format!("00000000-0000-4000-8000-00000000000{n}"),
+                rp_id: (*rp_id).to_owned(),
+                rp_name: Some((*title).to_owned()),
+                user_handle: None,
+                user_name: Some((*user).to_owned()),
+                user_display_name: Some("Camille Martin".to_owned()),
+                counter: 0,
+                discoverable: true,
+                created: NOW - 40 * DAY,
+                key: SecretString::new("clé fictive"),
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

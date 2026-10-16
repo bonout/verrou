@@ -50,6 +50,11 @@ pub enum Skipped {
     NotFound,
     /// Déjà dans une organisation (partage seulement).
     AlreadyShared,
+    /// Pas dans une organisation (retrait du partage seulement).
+    NotShared,
+    /// L'organisation en masque les mots de passe à ce compte (retrait du
+    /// partage seulement : la copie les révélerait).
+    PasswordsHidden,
 }
 
 /// Bilan d'une action groupée.

@@ -338,6 +338,7 @@ fn login_draft(name: &str, password: &str) -> Draft {
         name: name.to_owned(),
         notes: Some(SecretString::new("partagé avec la famille")),
         login: Some(LoginDraft {
+            uri_matches: None,
             username: Some("famille@exemple.fr".to_owned()),
             password: Some(SecretString::new(password)),
             totp: None,
