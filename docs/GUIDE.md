@@ -302,6 +302,7 @@ scripts/
   build-apple.sh     Rust core → VerrouFFI.xcframework (macOS, iPhone, Simulator) + Swift bindings
   install-macos.sh   Release build, signed locally, copied to /Applications
   install-ios.sh     iPhone Release build, signed with your team, installed over USB/Wi-Fi
+  testflight-ios.sh  iPhone archive signed for distribution, uploaded to TestFlight (internal testing)
   demo-capture.sh    scripted demo → docs/media/
   e2e.sh             app walkthrough against a throwaway Vaultwarden
   ios-e2e.sh         iPhone walkthrough in a headless Simulator, same server
@@ -427,6 +428,30 @@ You need, once:
 Then turn Verrou on in Settings → General → AutoFill & Passwords. A
 development profile carries `get-task-allow` (a debugger can attach), and
 expires after a year: run the script again.
+
+### TestFlight (internal testing)
+
+`scripts/testflight-ios.sh` archives the iPhone app in Release, signs it for
+distribution with your team and uploads it to App Store Connect, marked for
+internal testing only:
+
+```sh
+ASC_KEY_PATH=~/path/AuthKey_<KEY ID>.p8 ASC_KEY_ID=<KEY ID> ASC_ISSUER_ID=<issuer> \
+  VERROU_TEAM=<team ID> scripts/testflight-ios.sh
+```
+
+- The app record must exist in App Store Connect (iOS, bundle `app.verrou.ios`).
+- The upload needs an App Store Connect API key with the **Admin** role: Xcode's
+  cloud-managed distribution certificate refuses App Manager keys, and
+  `xcodebuild` can't use the account signed in to Xcode for an upload. Keep the
+  `.p8` outside the repository (`chmod 600`).
+- The build number is the UTC timestamp (`VERROU_BUILD` overrides it), so
+  each upload is higher than the last.
+- Both targets ship a privacy manifest (`PrivacyInfo.xcprivacy`): no tracking,
+  no collected data, and the required reasons for UserDefaults and file
+  timestamps.
+- Internal testing only: an external TestFlight or App Store release would
+  distribute the GPL Bitwarden SDK under Apple's terms.
 
 ### Build and run in the Simulator
 
