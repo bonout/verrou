@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import AuthenticationServices
 import os
 import SwiftUI
@@ -5,6 +8,10 @@ import SwiftUI
 /// Point d'entrée de l'extension de remplissage automatique : le système
 /// l'appelle pour une liste (clavier, touche « Mots de passe »), pour une
 /// suggestion touchée (barre QuickType), pour une passkey ou un code.
+///
+/// Le même code sert l'iPhone (`VerrouAutoFill`) et le Mac
+/// (`VerrouAutoFillMac`) : seul l'hébergement de l'interface SwiftUI change
+/// (`UIHostingController`, `NSHostingController`).
 ///
 /// Le coffre est toujours verrouillé quand une demande arrive (nouveau
 /// processus) : les demandes « sans interaction » rendent la main au système
@@ -16,14 +23,32 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
     private var hosted = false
 
+    #if os(macOS)
+    /// Pas de nib : la vue est créée ici, à la taille de la feuille du système.
+    override func loadView() {
+        view = NSView(frame: NSRect(origin: .zero, size: Self.macSize))
+    }
+
+    static let macSize = NSSize(width: 440, height: 540)
+    #endif
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        #if os(macOS)
+        let host = NSHostingController(rootView: AutoFillRootView().environment(model))
+        addChild(host)
+        host.view.frame = view.bounds
+        host.view.autoresizingMask = [.width, .height]
+        view.addSubview(host.view)
+        preferredContentSize = Self.macSize
+        #else
         let host = UIHostingController(rootView: AutoFillRootView().environment(model))
         addChild(host)
         host.view.frame = view.bounds
         host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(host.view)
         host.didMove(toParent: self)
+        #endif
         hosted = true
     }
 
@@ -35,9 +60,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier],
                                         requestParameters: ASPasskeyCredentialRequestParameters) {
-        model.start(.list(services: serviceIdentifiers, passkeys: AutoFillModel.PasskeyQuery(
+        var query = AutoFillModel.PasskeyQuery(
             rpID: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash,
-            allowed: requestParameters.allowedCredentials)))
+            allowed: requestParameters.allowedCredentials)
+        if #available(iOS 18.0, *) {
+            query.prf = PasskeyPrfAssertion(requestParameters.extensionInput?.prf)
+        }
+        model.start(.list(services: serviceIdentifiers, passkeys: query))
     }
 
     @available(iOS 18.0, *)

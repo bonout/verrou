@@ -101,6 +101,7 @@ private struct GeneralSettings: View {
             }
 
             AppAutofillSection()
+            SystemAutofillSection()
         }
     }
 

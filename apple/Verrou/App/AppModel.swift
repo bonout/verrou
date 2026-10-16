@@ -271,16 +271,26 @@ final class AppModel {
         let environment = ProcessInfo.processInfo.environment
         mockSize = UInt32(environment["VERROU_MOCK_SIZE"] ?? "") ?? 0
         autoTouchID = environment["VERROU_DEMO"] == nil && environment["VERROU_E2E_SERVER"] == nil && !Self.isReview
-        var directory = VerrouStorage.privateDirectory()
+        let demo = environment["VERROU_DEMO"] == "1" || environment["VERROU_MOCK"] == "1" || Self.isReview
+        var e2e = false
         #if DEBUG
-        // Parcours de bout en bout : un compte jetable, jamais le vrai.
-        if environment["VERROU_E2E_SERVER"] != nil {
+        e2e = environment["VERROU_E2E_SERVER"] != nil
+        #endif
+        var directory: URL
+        if e2e {
+            // Parcours de bout en bout : un compte jetable, jamais le vrai.
             directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-data")
             try? FileManager.default.removeItem(at: directory)
+        } else if demo {
+            directory = VerrouStorage.privateDirectory()
+        } else {
+            // Build signé par l'équipe : le groupe d'apps partagé avec
+            // l'extension de remplissage (et la migration, une fois) ; build
+            // ad hoc : le dossier privé, comme avant.
+            directory = VerrouStorage.accountLocation().directory
         }
-        #endif
         dataDirectory = directory
-        if environment["VERROU_DEMO"] == "1" || environment["VERROU_MOCK"] == "1" || Self.isReview {
+        if demo {
             mode = .demo
             session = VaultSession()
         } else {
@@ -468,6 +478,7 @@ final class AppModel {
     func logout() {
         lock()
         try? session.logout()
+        SystemAutofill.clear()
         BiometricVault.remove(in: dataDirectory)
         biometricEnrolled = false
         removeAllUnlockKeys()
@@ -664,7 +675,8 @@ final class AppModel {
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
             selection = results.first?.id
-        }
+        }        }
+        if mode == .vaultwarden { SystemAutofill.publish(session) }
     }
 
     /// Après une synchronisation : les résumés (plusieurs centaines) sont lus

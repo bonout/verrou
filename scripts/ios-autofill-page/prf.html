@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Banc d'essai PRF</title>
+<!--
+  Extension PRF de WebAuthn (scripts/ios-autofill-e2e.sh, test6) : une passkey
+  créée avec `extensions.prf`, puis deux connexions qui évaluent la PRF.
+  La page vérifie que :
+  - la création annonce `prf.enabled` (et donne les sorties si le
+    fournisseur les calcule déjà) ;
+  - la même entrée donne la même sortie d'une connexion à l'autre (et à la
+    création), par `eval` comme par `evalByCredential` ;
+  - deux entrées différentes donnent deux sorties différentes, de 32 octets.
+-->
+<style>
+  body { font: 17px -apple-system, system-ui, sans-serif; margin: 16px; color: #1c1c1e; }
+  h1 { font-size: 24px; margin: 4px 0 12px; }
+  button { font-size: 16px; padding: 8px 14px; margin: 4px 4px 4px 0; border-radius: 8px; border: 0; background: #5b5cf0; color: white; }
+  p.result { font-family: ui-monospace, monospace; font-size: 14px; background: #f2f2f7; padding: 8px; border-radius: 8px; min-height: 1em; word-break: break-all; }
+</style>
+</head>
+<body>
+<h1>Banc d'essai PRF</h1>
+<button id="prf-create" type="button">Créer une passkey PRF</button>
+<button id="prf-get" type="button">Connexion PRF</button>
+<button id="prf-bycred" type="button">Connexion PRF par passkey</button>
+<p class="result" id="prf-result">-</p>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0));
+const store = {
+  get: (k) => sessionStorage.getItem("verrou-prf-" + k) ?? localStorage.getItem("verrou-prf-" + k),
+  set: (k, v) => { localStorage.setItem("verrou-prf-" + k, v); sessionStorage.setItem("verrou-prf-" + k, v); },
+};
+const SALT_A = enc.encode("verrou-prf-a");
+const SALT_B = enc.encode("verrou-prf-b");
+const SALT_C = enc.encode("verrou-prf-c");
+const out = (text) => { $("prf-result").textContent = text; };
+
+// Sortie PRF : 32 octets, en base64url.
+function output(value, name) {
+  if (!value) throw new Error(`sortie PRF ${name} absente`);
+  const bytes = new Uint8Array(value);
+  if (bytes.length !== 32) throw new Error(`sortie PRF ${name} de ${bytes.length} octets`);
+  return b64u(bytes);
+}
+
+// Sortie de référence pour l'entrée A : la première obtenue (création ou
+// connexion) ; les suivantes doivent l'égaler.
+function stable(a) {
+  const reference = store.get("a");
+  if (!reference) { store.set("a", a); return true; }
+  return reference === a;
+}
+
+$("prf-create").addEventListener("click", async () => {
+  out("création…");
+  try {
+    for (const k of ["id", "a"]) { localStorage.removeItem("verrou-prf-" + k); sessionStorage.removeItem("verrou-prf-" + k); }
+    const credential = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { id: location.hostname, name: "Banc d'essai PRF" },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "prf@verrou.test", displayName: "PRF" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: { residentKey: "required", userVerification: "required" },
+      attestation: "none", timeout: 120000,
+      extensions: { prf: { eval: { first: SALT_A } } },
+    } });
+    const prf = credential.getClientExtensionResults().prf;
+    if (!prf?.enabled) throw new Error("prf.enabled absent : " + JSON.stringify(prf));
+    store.set("id", b64u(credential.rawId));
+    let results = false;
+    if (prf.results?.first) {
+      store.set("a", output(prf.results.first, "A"));
+      results = true;
+    }
+    out(`PRF_CREATED ok enabled=true results=${results}`);
+  } catch (e) {
+    out("PRF_CREATE_ERROR " + e.name + ": " + e.message);
+  }
+});
+
+async function get(extensions) {
+  const id = store.get("id");
+  if (!id) throw new Error("aucune passkey PRF créée sur cette page");
+  const credential = await navigator.credentials.get({ publicKey: {
+    challenge: crypto.getRandomValues(new Uint8Array(32)), rpId: location.hostname,
+    userVerification: "required", timeout: 120000,
+    allowCredentials: [{ type: "public-key", id: unb64u(id) }],
+    extensions,
+  } });
+  if (b64u(credential.rawId) !== id) throw new Error("autre passkey");
+  const results = credential.getClientExtensionResults().prf?.results;
+  if (!results) throw new Error("pas de sortie PRF : " + JSON.stringify(credential.getClientExtensionResults()));
+  return results;
+}
+
+$("prf-get").addEventListener("click", async () => {
+  out("connexion…");
+  try {
+    const results = await get({ prf: { eval: { first: SALT_A, second: SALT_B } } });
+    const a = output(results.first, "A");
+    const b = output(results.second, "B");
+    out(`PRF_SIGNED ok stable=${stable(a)} differ=${a !== b}`);
+  } catch (e) {
+    out("PRF_GET_ERROR " + e.name + ": " + e.message);
+  }
+});
+
+$("prf-bycred").addEventListener("click", async () => {
+  out("connexion…");
+  try {
+    // `evalByCredential` l'emporte sur `eval` pour cette passkey : la sortie
+    // est celle de l'entrée A, pas de C.
+    const results = await get({ prf: {
+      eval: { first: SALT_C }, evalByCredential: { [store.get("id")]: { first: SALT_A } },
+    } });
+    const a = output(results.first, "A");
+    out(`PRF_BYCRED ok stable=${stable(a)} second=${results.second !== undefined}`);
+  } catch (e) {
+    out("PRF_BYCRED_ERROR " + e.name + ": " + e.message);
+  }
+});
+</script>
+</body>
+</html>
