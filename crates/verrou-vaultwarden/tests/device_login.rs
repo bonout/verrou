@@ -127,6 +127,7 @@ async fn a_known_device_logs_in_after_approval() {
                 password: Some(SecretString::new("tr3s-secret")),
                 totp: None,
                 uris: vec!["https://banque.example".to_owned()],
+                uri_matches: None,
             }),
             ..Draft::default()
         })
