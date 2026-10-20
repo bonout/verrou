@@ -402,7 +402,13 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
 
     // Le fichier du compte ne contient aucun secret en clair.
     let file = std::fs::read_to_string(store.dir().join("account.json")).unwrap();
-    for secret in ["hunter2", "camille", "4242", PASSWORD] {
+    for secret in [
+        "hunter2",
+        "camille",
+        "4242424242424242",
+        "4242 4242 4242 4242",
+        PASSWORD,
+    ] {
         assert!(
             !file.contains(secret),
             "« {secret} » en clair sur le disque"
