@@ -40,9 +40,7 @@ fn accents_and_case_are_ignored() {
 fn hosts_and_usernames_are_searchable() {
     let v = vault();
     assert_eq!(titles(&v, "boursobank", &Filter::All)[0], "Boursorama");
-    assert!(
-        titles(&v, "camille-pro", &Filter::All).contains(&"GitHub — compte pro".to_owned())
-    );
+    assert!(titles(&v, "camille-pro", &Filter::All).contains(&"GitHub — compte pro".to_owned()));
 }
 
 #[test]
