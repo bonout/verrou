@@ -66,11 +66,76 @@ cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 cast_sign_loss = "allow"
 
-# Dépendances optimisées même en debug : PBKDF2 (600 000 itérations), Argon2
-# et RSA y sont 10 à 50 fois plus lents sans optimisation, et chaque test
-# contre Vaultwarden crée et connecte des comptes. Le code de Verrou reste
-# en debug (assertions, compilation incrémentale).
+# Debug : les dépendances sans infos de débogage complètes (moins de disque,
+# édition de liens plus rapide), sauf les numéros de ligne des backtraces.
 [profile.dev.package."*"]
+debug = "line-tables-only"
+
+# La cryptographie optimisée même en debug : PBKDF2 (600 000 itérations),
+# Argon2 et RSA y sont 10 à 50 fois plus lents sans optimisation, et chaque
+# test contre Vaultwarden crée et connecte des comptes. Seulement ces crates :
+# optimiser toutes les dépendances quadruple la compilation à froid.
+[profile.dev.package.aes]
+opt-level = 3
+
+[profile.dev.package.aes-gcm]
+opt-level = 3
+
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.bitwarden-crypto]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.cbc]
+opt-level = 3
+
+[profile.dev.package.crypto-bigint]
+opt-level = 3
+
+[profile.dev.package.curve25519-dalek]
+opt-level = 3
+
+[profile.dev.package.ecdsa]
+opt-level = 3
+
+[profile.dev.package.ed25519-dalek]
+opt-level = 3
+
+[profile.dev.package.elliptic-curve]
+opt-level = 3
+
+[profile.dev.package.hkdf]
+opt-level = 3
+
+[profile.dev.package.hmac]
+opt-level = 3
+
+[profile.dev.package.num-bigint]
+opt-level = 3
+
+[profile.dev.package.p256]
+opt-level = 3
+
+[profile.dev.package.pbkdf2]
+opt-level = 3
+
+[profile.dev.package.primeorder]
+opt-level = 3
+
+[profile.dev.package.ring]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3
+
+[profile.dev.package.sha1]
+opt-level = 3
+
+[profile.dev.package.sha2]
 opt-level = 3
 
 [profile.release]
