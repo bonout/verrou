@@ -66,6 +66,13 @@ cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 cast_sign_loss = "allow"
 
+# Dépendances optimisées même en debug : PBKDF2 (600 000 itérations), Argon2
+# et RSA y sont 10 à 50 fois plus lents sans optimisation, et chaque test
+# contre Vaultwarden crée et connecte des comptes. Le code de Verrou reste
+# en debug (assertions, compilation incrémentale).
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
