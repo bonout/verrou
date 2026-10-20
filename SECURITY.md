@@ -1116,4 +1116,5 @@ d'installer un build qui l'aurait.
 
 ## Signaler un problème
 
-Ouvrir une issue privée sur ce dépôt.
+Ne pas ouvrir d'issue publique : signaler la faille en privé via
+[Security › Report a vulnerability](https://github.com/bonout/verrou/security/advisories/new).

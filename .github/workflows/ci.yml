@@ -16,7 +16,7 @@ jobs:
   rust:
     name: Rust (fmt, clippy, tests)
     runs-on: ubuntu-latest
-    # Vaultwarden jetable, même version que la production : les tests
+    # Vaultwarden jetable, version épinglée : les tests
     # d'intégration y créent leurs comptes (connexion, TOTP, synchronisation).
     services:
       vaultwarden:

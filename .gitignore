@@ -6,3 +6,13 @@
 /apple/Verrou.xcodeproj/
 xcuserdata/
 .DS_Store
+
+# Clés et profils de signature, variables locales : jamais versionnés.
+*.p8
+*.p12
+*.pem
+*.cer
+*.mobileprovision
+.env
+.env.*
+apple/Local.xcconfig

@@ -88,7 +88,7 @@ final class AppModel {
     var loginError: String?
     /// Adresse et e-mail saisis, gardés pour le second facteur et pour
     /// préremplir une reconnexion.
-    var loginServer = "https://vault.example.net"
+    var loginServer = "https://"
     var loginEmail = ""
     /// La session a expiré : il faut se reconnecter (mot de passe et second facteur).
     private(set) var reloginRequired = false
