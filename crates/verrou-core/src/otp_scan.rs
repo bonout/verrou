@@ -661,6 +661,7 @@ mod tests {
             title: title.to_owned(),
             subtitle: user.to_owned(),
             urls: urls.iter().map(|u| (*u).to_owned()).collect(),
+            url_matches: Vec::new(),
             folder: None,
             tags: vec![],
             favorite: false,
