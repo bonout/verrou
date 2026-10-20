@@ -231,7 +231,13 @@ fn sites_keep_services_apart() {
     trashed.state = ItemState::Trashed;
     let items = vec![
         login("Nextcloud", "https://cloud.example.net", "camille", "a", 1),
-        login("Vaultwarden", "https://vault.example.net", "camille", "b", 2),
+        login(
+            "Vaultwarden",
+            "https://vault.example.net",
+            "camille",
+            "b",
+            2,
+        ),
         trashed,
     ];
     assert_eq!(
