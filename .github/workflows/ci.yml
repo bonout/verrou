@@ -13,8 +13,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # En parallèle des tests : Clippy n'a pas besoin de Vaultwarden.
+  lint:
+    name: Lint (fmt, clippy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Seules les actions de GitHub, épinglées par SHA : rustup est déjà sur le runner.
+      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
   rust:
-    name: Rust (fmt, clippy, tests)
+    name: Tests (Rust, extension)
     runs-on: ubuntu-latest
     # Vaultwarden jetable, version épinglée : les tests
     # d'intégration y créent leurs comptes (connexion, TOTP, synchronisation).
@@ -36,8 +56,7 @@ jobs:
       VERROU_TEST_SERVER: http://localhost:8099
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Seules les actions de GitHub, épinglées par SHA : rustup est déjà sur le runner.
-      - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -47,8 +66,6 @@ jobs:
             target/
           key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
-      - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
       # L'extension (bridge.js, crypto.js) contre le vrai pont, à travers le
       # vrai hôte Native Messaging.
