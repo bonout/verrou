@@ -376,6 +376,7 @@ mod tests {
             title: id.to_owned(),
             subtitle: String::new(),
             urls: vec![url.to_owned()],
+            url_matches: Vec::new(),
             folder: None,
             tags: Vec::new(),
             favorite: false,
