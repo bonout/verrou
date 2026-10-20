@@ -553,7 +553,7 @@ mod tests {
             stored(CredentialSignal::PasskeyRenamed {
                 rp_id: "github.com".to_owned(),
                 user_handle: b"u2".to_vec(),
-                name: "camille-pro".to_owned(),
+                name: "camille-travail".to_owned(),
             }),
             stored(CredentialSignal::UnusedPassword {
                 domain: "exemple.fr".to_owned(),
@@ -581,7 +581,7 @@ mod tests {
                 (
                     SignalFindingKind::PasskeyRenamed,
                     "GitHub pro".to_owned(),
-                    Some("camille-pro".to_owned())
+                    Some("camille-travail".to_owned())
                 ),
                 (
                     SignalFindingKind::PasswordUnused,
@@ -607,7 +607,7 @@ mod tests {
             .iter()
             .find(|i| i.credential_id == vec![3; 16])
             .unwrap();
-        assert_eq!(pro.user, "camille-pro");
+        assert_eq!(pro.user, "camille-travail");
         fs::remove_dir_all(dir).unwrap();
     }
 }
