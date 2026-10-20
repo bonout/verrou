@@ -675,7 +675,7 @@ final class AppModel {
         refresh()
         if selection.map({ id in !summaries.contains { $0.id == id } }) ?? true {
             selection = results.first?.id
-        }        }
+        }
         if mode == .vaultwarden { SystemAutofill.publish(session) }
     }
 

@@ -30,6 +30,7 @@ if [[ -n "$TEAM" ]]; then
   [[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || { echo "VERROU_MAC_TEAM : identifiant d'équipe à 10 caractères attendu" >&2; exit 2; }
   SIGNING=(CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="Apple Development"
            VERROU_MAC_APP_GROUP="$TEAM.app.verrou" VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements
+           VERROU_MAC_AUTOFILL_ENTITLEMENTS=VerrouAutoFillMac/VerrouAutoFillMac.entitlements
            -allowProvisioningUpdates)
 else
   SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=)
@@ -61,8 +62,16 @@ if [[ -n "$TEAM" ]]; then
     codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q "$TEAM.app.verrou" \
       || { echo "groupe d'apps absent de $code" >&2; exit 1; }
   done
-else
-  [[ ! -d "$APPEX" ]] || { echo "extension VerrouAutoFillMac dans un build ad hoc : abandon" >&2; exit 1; }
+elif [[ -d "$APPEX" ]]; then
+  # Ad hoc : l'extension est construite sans droits (macOS ne lance un
+  # fournisseur d'identifiants que signé par une équipe) ; on la retire et on
+  # re-signe l'app avec ses propres droits.
+  ENTITLEMENTS="$(mktemp)"
+  codesign -d --entitlements - --xml "$APP" > "$ENTITLEMENTS"
+  rm -rf "$APPEX"
+  codesign --force --sign - --options runtime --entitlements "$ENTITLEMENTS" "$APP"
+  rm -f "$ENTITLEMENTS"
+  codesign --verify --strict "$APP"
 fi
 if [[ "$DEST" == none ]]; then
   echo "Construit (non installé) : $APP"
