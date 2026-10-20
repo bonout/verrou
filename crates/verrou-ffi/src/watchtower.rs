@@ -512,9 +512,9 @@ mod tests {
             .map(|c| c.domain.as_str())
             .collect();
         assert!(domains.contains(&"github.com"), "{domains:?}");
-        // Google, listé par sous-domaine (`mail.google.com`), vaut pour
-        // `accounts.google.com`.
-        assert!(report.candidates.iter().any(|c| c.item.title == "Google"));
+        // Google a déjà une passkey dans le coffre fictif : rien à proposer
+        // (la correspondance par sous-domaine est testée dans le cœur).
+        assert!(!report.candidates.iter().any(|c| c.item.title == "Google"));
         // npm : second facteur seulement.
         assert!(
             report
