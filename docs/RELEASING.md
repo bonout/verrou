@@ -52,5 +52,9 @@ sees them.
 | `MAC_DEVELOPER_ID_P12`, `MAC_DEVELOPER_ID_PASSWORD` | the Developer ID Application certificate and its private key, exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
 | `AMO_JWT_ISSUER`, `AMO_JWT_SECRET` | addons.mozilla.org API keys (https://addons.mozilla.org/developers/addon/api/key/) |
 
+Each pair is optional: without the Developer ID certificate the Mac app is
+ad hoc (even with the team and API key, which TestFlight uses); without the
+AMO keys the Firefox extension is unsigned.
+
 Signed builds show the Apple team's legal name (`codesign -dv`, Gatekeeper,
 TestFlight and the App Store).
