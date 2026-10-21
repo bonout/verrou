@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Archives the iPhone app in Release, signed for distribution with your
-# team, and uploads it to App Store Connect for TestFlight (internal testing).
+# team, and uploads it to App Store Connect: TestFlight, then App Store review.
 #
 #   VERROU_TEAM=ABCDE12345 scripts/testflight-ios.sh
 #
@@ -13,6 +13,9 @@
 #
 # The build number is the timestamp (YYYYMMDDHHMM): each upload exceeds the
 # previous one, as App Store Connect requires. VERROU_BUILD overrides it.
+#
+# VERROU_TESTFLIGHT_INTERNAL=1 marks the build for internal testing only: it
+# can then never be submitted to the App Store.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -20,6 +23,7 @@ cd "$ROOT"
 TEAM="${VERROU_TEAM:?VERROU_TEAM=<your Apple team identifier> is required}"
 GROUP="${VERROU_APP_GROUP:-group.app.verrou.$(tr '[:upper:]' '[:lower:]' <<<"$TEAM")}"
 BUILD="${VERROU_BUILD:-$(date -u +%Y%m%d%H%M)}"
+[[ "${VERROU_TESTFLIGHT_INTERNAL:-0}" == 1 ]] && INTERNAL=true || INTERNAL=false
 OUT="target/testflight"
 ARCHIVE="$OUT/Verrou.xcarchive"
 
@@ -50,7 +54,7 @@ cat > "$OUT/ExportOptions.plist" <<EOF
   <key>destination</key><string>upload</string>
   <key>teamID</key><string>$TEAM</string>
   <key>signingStyle</key><string>automatic</string>
-  <key>testFlightInternalTestingOnly</key><true/>
+  <key>testFlightInternalTestingOnly</key><$INTERNAL/>
   <key>manageAppVersionAndBuildNumber</key><false/>
 </dict>
 </plist>
