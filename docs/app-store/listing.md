@@ -2,7 +2,8 @@
 
 The iPhone app's App Store texts, in English (primary) and French. Paste each field
 into App Store Connect (Distribution › the version › the language). Screenshots:
-`scripts/app-store-screenshots.py` (iPhone 6.9", 1320×2868).
+`scripts/app-store-screenshots.py`, which writes `6.3in/` (1206×2622, the "iPhone
+with Dynamic Island (medium display)" slot) and `6.9in/` (1320×2868).
 
 | URL | |
 |---|---|

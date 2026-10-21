@@ -1,6 +1,8 @@
 """App Store screenshots for Verrou: one message per screen, the app's real UI
-in a phone frame, rendered at 1320x2868 (iPhone 6.9") by headless Brave or
-Chrome (BROWSER overrides the path).
+in a phone frame, rendered by headless Brave or Chrome (BROWSER overrides the
+path) in <out-dir>/6.3in (1206x2622, the "iPhone with Dynamic Island, medium
+display" slot App Store Connect asks for) and <out-dir>/6.9in (1320x2868).
+Both have the same aspect ratio: the 6.3" set is the 6.9" one resampled.
 
   SIM_DEVICE_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max \
     APPEARANCES=light OUT=target/store-en scripts/ios-showcase.sh
@@ -13,6 +15,8 @@ import base64, html, os, subprocess, sys, tempfile
 from pathlib import Path
 
 W, H = 1320, 2868
+# App Store Connect sizes (portrait) rendered from the W x H page.
+SIZES = {"6.9in": (1320, 2868), "6.3in": (1206, 2622)}
 BRAVE = os.environ.get("BROWSER", "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")
 
 # (raw capture, background, {lang: (kicker, headline with *highlight*, footer)})
@@ -73,7 +77,8 @@ def headline_html(text):
 
 def main():
     raw, out, lang = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]
-    out.mkdir(parents=True, exist_ok=True)
+    for size in SIZES:
+        (out / size).mkdir(parents=True, exist_ok=True)
     # Phone frame: the capture's aspect ratio, as large as the layout allows.
     pw = 1060
     ph = round((pw - 44) * H / W) + 44
@@ -88,12 +93,16 @@ def main():
             page.write_text(PAGE.format(W=W, H=H, c1=c1, c2=c2, kicker=html.escape(kicker),
                                         headline=headline_html(headline), footer=html.escape(footer),
                                         img=img, pw=pw, ph=ph, phone_top=phone_top, size=size))
-            target = out / f"{n:02d}-{shot.split('-', 1)[1]}.png"
+            name = f"{n:02d}-{shot.split('-', 1)[1]}.png"
+            target = out / "6.9in" / name
             subprocess.run([BRAVE, "--headless=new", "--disable-gpu", "--hide-scrollbars",
                             "--force-device-scale-factor=1", f"--window-size={W},{H}",
                             f"--screenshot={target}", page.as_uri()],
                            check=True, capture_output=True)
-            print(target)
+            w, h = SIZES["6.3in"]
+            subprocess.run(["sips", "-z", str(h), str(w), str(target), "--out", str(out / "6.3in" / name)],
+                           check=True, capture_output=True)
+            print(name)
 
 
 main()
