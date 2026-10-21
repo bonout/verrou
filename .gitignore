@@ -16,3 +16,9 @@ xcuserdata/
 .env
 .env.*
 apple/Local.xcconfig
+# Générés par xcodegen à partir de apple/project.yml (sections info:).
+/apple/Verrou/Info.plist
+/apple/VerrouAutoFillMac/Info.plist
+
+# Réglages Claude Code personnels ; .claude/settings.json est partagé.
+.claude/settings.local.json
