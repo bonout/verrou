@@ -1,0 +1,492 @@
+{
+  "extDescription": {
+    "message": "Remplit et enregistre vos identifiants dans Verrou, le gestionnaire de mots de passe pour Vaultwarden."
+  },
+  "settingBridge": {
+    "message": "Brave, Firefox et le terminal"
+  },
+  "verrouNotResponding": {
+    "message": "Verrou ne répond pas"
+  },
+  "verrouNotRespondingDetail": {
+    "message": "Verrou ne répond pas ($DETAIL$)",
+    "placeholders": {
+      "detail": {
+        "content": "$1"
+      }
+    }
+  },
+  "verrouLocked": {
+    "message": "Verrou est verrouillé"
+  },
+  "verrouUnreachable": {
+    "message": "Verrou n'est pas joignable"
+  },
+  "unlock": {
+    "message": "Déverrouiller"
+  },
+  "unlockWait": {
+    "message": "Déverrouillez Verrou…"
+  },
+  "unlockHint": {
+    "message": "Touch ID ou mot de passe principal"
+  },
+  "confirmInVerrou": {
+    "message": "Confirmez dans Verrou"
+  },
+  "confirmInVerrouWait": {
+    "message": "Confirmez dans Verrou…"
+  },
+  "close": {
+    "message": "Fermer"
+  },
+  "cancel": {
+    "message": "Annuler"
+  },
+  "ok": {
+    "message": "OK"
+  },
+  "save": {
+    "message": "Enregistrer"
+  },
+  "saving": {
+    "message": "Enregistrement…"
+  },
+  "saveFailed": {
+    "message": "Enregistrement impossible"
+  },
+  "newLogin": {
+    "message": "Nouvel identifiant"
+  },
+  "otherLogin": {
+    "message": "Remplir avec un autre identifiant…"
+  },
+  "noTab": {
+    "message": "aucun onglet"
+  },
+  "pairRefused": {
+    "message": "Appairage refusé dans Verrou."
+  },
+  "pairBusy": {
+    "message": "Un appairage est déjà en cours : réessayez dans un instant."
+  },
+  "pairNoAnswer": {
+    "message": "Verrou ne répond pas. Est-il installé, et « $SETTING$ » activé dans ses réglages ? ($DETAIL$)",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      },
+      "detail": {
+        "content": "$2"
+      }
+    }
+  },
+  "pillClose": {
+    "message": "Fermer Verrou sur cette page"
+  },
+  "pillOtherLogins": {
+    "message": "Autres identifiants"
+  },
+  "pillProtected": {
+    "message": "« $TITLE$ » est protégé",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillUnpairedTitle": {
+    "message": "L'extension n'est pas reliée à Verrou"
+  },
+  "pillUnpairedHint": {
+    "message": "Reliez-la depuis son icône dans la barre d'outils"
+  },
+  "pillOpenApp": {
+    "message": "Ouvrez l'app Verrou"
+  },
+  "pillGenerate": {
+    "message": "Générer un mot de passe"
+  },
+  "pillLinkHint": {
+    "message": "Relier ce site à un identifiant de Verrou"
+  },
+  "pillPasskey": {
+    "message": "Passkey · $USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillSignInPasskey": {
+    "message": "Se connecter avec une passkey"
+  },
+  "pillCodeOf": {
+    "message": "Code de $TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillFillCode": {
+    "message": "Remplir le code"
+  },
+  "pillSignIn": {
+    "message": "Se connecter"
+  },
+  "pillNoCode": {
+    "message": "Aucun code pour ce site"
+  },
+  "pillNoLogin": {
+    "message": "Aucun identifiant pour ce site"
+  },
+  "pillNoCard": {
+    "message": "Aucune carte dans Verrou"
+  },
+  "pillNoAddress": {
+    "message": "Aucune adresse dans Verrou"
+  },
+  "pillFillCard": {
+    "message": "Remplir la carte $CARD$",
+    "placeholders": {
+      "card": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillFillAddress": {
+    "message": "Remplir l'adresse"
+  },
+  "pillOtherCards": {
+    "message": "Autres cartes"
+  },
+  "pillOtherAddresses": {
+    "message": "Autres adresses"
+  },
+  "pillSuggestPassword": {
+    "message": "Suggérer un mot de passe fort"
+  },
+  "fieldButton": {
+    "message": "Verrou : identifiants pour ce site"
+  },
+  "bannerLabel": {
+    "message": "Verrou : enregistrement"
+  },
+  "bannerNoUsername": {
+    "message": "sans identifiant"
+  },
+  "bannerSaveTitle": {
+    "message": "Enregistrer dans Verrou ?"
+  },
+  "bannerUpdateTitle": {
+    "message": "Mettre à jour le mot de passe de « $TITLE$ » ?",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "bannerNotNow": {
+    "message": "Pas maintenant"
+  },
+  "bannerNever": {
+    "message": "Jamais pour ce site"
+  },
+  "bannerUpdate": {
+    "message": "Mettre à jour"
+  },
+  "bannerPasswordUpdated": {
+    "message": "Mot de passe mis à jour"
+  },
+  "bannerSaved": {
+    "message": "Enregistré dans Verrou"
+  },
+  "passkeyUseBrowser": {
+    "message": "Utiliser le navigateur"
+  },
+  "passkeyOfflineTitle": {
+    "message": "Verrou n'est pas joignable : la passkey est laissée au navigateur"
+  },
+  "passkeyOfflineHint": {
+    "message": "Ouvrez Verrou, et activez « $SETTING$ » dans ses réglages.",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      }
+    }
+  },
+  "passkeyUnpairedTitle": {
+    "message": "L'extension n'est pas reliée à Verrou : la passkey est laissée au navigateur"
+  },
+  "passkeyUnpairedHint": {
+    "message": "Reliez l'extension depuis son icône dans la barre d'outils."
+  },
+  "passkeyOutdatedTitle": {
+    "message": "Verrou vient d'être mis à jour : la passkey est laissée au navigateur"
+  },
+  "passkeyOutdatedHint": {
+    "message": "Rechargez la page pour utiliser les passkeys de Verrou."
+  },
+  "passkeyAlgorithmTitle": {
+    "message": "Verrou ne gère pas ce type de clé : la passkey est laissée au navigateur"
+  },
+  "passkeyAlgorithmHint": {
+    "message": "Le site n'accepte pas les clés ES256, les seules que Verrou sait créer."
+  },
+  "passkeyOtherTitle": {
+    "message": "Verrou n'a pas pu prendre la demande : la passkey est laissée au navigateur"
+  },
+  "passkeyLockedTitle": {
+    "message": "Passkey : Verrou est verrouillé"
+  },
+  "passkeyTimedOut": {
+    "message": "Verrou n'a pas répondu à temps"
+  },
+  "passkeySignInTitle": {
+    "message": "Se connecter avec une passkey de Verrou ?"
+  },
+  "passkeyOtherDevice": {
+    "message": "Autre appareil ou navigateur"
+  },
+  "passkeySigningIn": {
+    "message": "Connexion…"
+  },
+  "passkeySignInFailed": {
+    "message": "Connexion impossible"
+  },
+  "passkeyExists": {
+    "message": "Cette passkey est déjà dans Verrou"
+  },
+  "passkeyReplaces": {
+    "message": "remplace sa passkey"
+  },
+  "passkeySaveTitle": {
+    "message": "Enregistrer une passkey dans Verrou ?"
+  },
+  "passkeyNoName": {
+    "message": "sans nom"
+  },
+  "passkeySaved": {
+    "message": "Passkey enregistrée dans Verrou"
+  },
+  "popupPairing": {
+    "message": "Appairage…"
+  },
+  "popupCheckCode": {
+    "message": "Vérifiez que Verrou affiche le même code, puis acceptez :"
+  },
+  "popupCodesDiffer": {
+    "message": "Si les codes diffèrent, refusez dans Verrou."
+  },
+  "popupConnecting": {
+    "message": "Connexion…"
+  },
+  "popupConnectingToVerrou": {
+    "message": "Connexion à Verrou…"
+  },
+  "popupUnpaired": {
+    "message": "Non relié"
+  },
+  "popupPair": {
+    "message": "Relier à Verrou"
+  },
+  "popupPairIntro": {
+    "message": "Reliez l'extension à l'app Verrou de ce Mac pour remplir vos identifiants."
+  },
+  "popupUnlocked": {
+    "message": "Déverrouillé"
+  },
+  "popupScanQr": {
+    "message": "Ajouter le QR code affiché"
+  },
+  "popupEnterKeyLink": {
+    "message": "ou saisir la clé à la main"
+  },
+  "popupNoLogins": {
+    "message": "Aucun identifiant pour ce site."
+  },
+  "popupTwoFactor": {
+    "message": "Double authentification"
+  },
+  "popupTwoFactorIntro": {
+    "message": "Le site affiche un QR code pour une app d'authentification : Verrou peut le garder et générer les codes."
+  },
+  "popupAutoSubmit": {
+    "message": "Envoyer le formulaire après le remplissage"
+  },
+  "popupAutoSubmitHint": {
+    "message": "Seulement pour une connexion, quand plus rien n'est à saisir et sans captcha visible."
+  },
+  "popupSearchLogin": {
+    "message": "Rechercher un identifiant"
+  },
+  "popupChooseLogin": {
+    "message": "Choisissez l'identifiant à utiliser sur $HOST$.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupThisSite": {
+    "message": "ce site"
+  },
+  "popupAddAndFill": {
+    "message": "Ajouter et remplir"
+  },
+  "popupFailed": {
+    "message": "Impossible : $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupConfirmLink": {
+    "message": "Ajouter $HOST$ à « $TITLE$ » ? Verrou le proposera ensuite sur ce site. Vérifiez bien l'adresse : un site d'hameçonnage imite souvent celui qu'il vise.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      },
+      "title": {
+        "content": "$2"
+      }
+    }
+  },
+  "popupQrUnsupported": {
+    "message": "ce navigateur ne sait pas lire les QR codes : saisissez la clé à la main"
+  },
+  "popupCaptureFailed": {
+    "message": "capture de l'onglet impossible ($REASON$)",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupReading": {
+    "message": "Lecture…"
+  },
+  "popupNoQr": {
+    "message": "Aucun QR code de double authentification visible : faites-le apparaître à l'écran, ou saisissez la clé."
+  },
+  "popupRetry": {
+    "message": "Réessayer"
+  },
+  "popupEnterKey": {
+    "message": "Saisir la clé à la main"
+  },
+  "popupContinue": {
+    "message": "Continuer"
+  },
+  "popupSecretKey": {
+    "message": "La clé secrète affichée par le site (« clé de configuration ») :"
+  },
+  "popupVerificationCode": {
+    "message": "Code de vérification"
+  },
+  "popupEnteredKey": {
+    "message": "Clé saisie"
+  },
+  "popupReplacesCode": {
+    "message": "$USERNAME$ · remplace le code actuel",
+    "placeholders": {
+      "username": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupForThisSite": {
+    "message": "pour ce site"
+  },
+  "popupAddToVerrou": {
+    "message": "Ajouter à Verrou"
+  },
+  "popupCodeAdded": {
+    "message": "Code ajouté. Verrou génère maintenant les codes de ce site : saisissez le code actuel pour terminer l'activation sur le site."
+  },
+  "popupAddFailed": {
+    "message": "Ajout impossible : $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupAddCodeTo": {
+    "message": "Ajouter ce code de vérification à :"
+  },
+  "popupBack": {
+    "message": "Retour"
+  },
+  "popupUnpair": {
+    "message": "Délier cette extension"
+  },
+  "popupVersionHowFirefox": {
+    "message": "Dans about:debugging › Ce Firefox, rechargez-la, ou chargez le manifest.json du dossier « extension-firefox » de Verrou.app (Réglages de Verrou › Navigateurs et terminal › Extension Firefox › Copier le chemin). Module installé (.xpi) : installez celui de la nouvelle version."
+  },
+  "popupVersionHowBrave": {
+    "message": "Dans brave://extensions, chargez le dossier « extension » de Verrou.app (Réglages de Verrou › Navigateurs et terminal › Copier le chemin), ou rechargez-la."
+  },
+  "popupVersionTitle": {
+    "message": "L'extension n'est pas celle de Verrou"
+  },
+  "popupVersionText": {
+    "message": "Elle est en version $RUNNING$, Verrou livre la $BUNDLED$. $HOW$",
+    "placeholders": {
+      "running": {
+        "content": "$1"
+      },
+      "bundled": {
+        "content": "$2"
+      },
+      "how": {
+        "content": "$3"
+      }
+    }
+  },
+  "popupAllowSites": {
+    "message": "Autoriser Verrou sur les sites"
+  },
+  "popupAccessGranted": {
+    "message": "Accès accordé : rechargez les pages déjà ouvertes."
+  },
+  "popupAccessDenied": {
+    "message": "Accès refusé : Verrou ne pourra rien remplir."
+  },
+  "popupRequestFailed": {
+    "message": "Demande impossible : $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupNoSiteAccess": {
+    "message": "Verrou n'a pas accès aux sites"
+  },
+  "popupSiteAccessText": {
+    "message": "Firefox demande votre accord pour que l'extension remplisse vos identifiants et propose vos passkeys sur les pages."
+  },
+  "popupOffline": {
+    "message": "Hors ligne"
+  },
+  "popupOfflineText": {
+    "message": "Ouvrez l'app et activez « $SETTING$ » dans ses réglages. D'ici là, ni remplissage ni passkeys : le navigateur reprend la main.",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupLocked": {
+    "message": "Verrouillé"
+  },
+  "popupUnlockVerrou": {
+    "message": "Déverrouiller Verrou"
+  },
+  "popupVerrouLocked": {
+    "message": "Verrou est verrouillé."
+  }
+}

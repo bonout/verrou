@@ -1,6 +1,6 @@
 [package]
 name = "verrou-bridge"
-description = "Pont entre Verrou et ses clients (extension de navigateur, terminal) : appairage, canal chiffré, relais Native Messaging, signatures SSH."
+description = "Bridge between Verrou and its clients (browser extension, terminal): pairing, encrypted channel, Native Messaging relay, SSH signatures."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,18 +18,18 @@ url.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
 tokio = { workspace = true, features = ["net", "io-util", "time"] }
-# Accord de clé et chiffrement du canal : les mêmes primitives que WebCrypto
-# côté extension (ECDH P-256, HKDF-SHA256, AES-256-GCM).
+# Key agreement and channel encryption: the same primitives as WebCrypto
+# on the extension side (ECDH P-256, HKDF-SHA256, AES-256-GCM).
 p256 = { version = "0.13", features = ["ecdh"] }
 hkdf = "0.12"
 aes-gcm = "0.10"
-# Agent SSH : signer avec les clés du coffre, sans qu'elles quittent l'app.
-# La version que le SDK de Bitwarden utilise déjà (une seule copie de RSA).
+# SSH agent: sign with the vault's keys, without them leaving the app.
+# The version the Bitwarden SDK already uses (a single copy of RSA).
 ssh-key = { version = "0.7.0-rc.11", features = ["ed25519", "p256", "p384", "rsa", "sha1"] }
 signature = "3"
 
 [dev-dependencies]
-# Clés de test (ssh-key attend un générateur rand_core 0.10).
+# Test keys (ssh-key expects a rand_core 0.10 generator).
 getrandom = { version = "0.4", features = ["sys_rng"] }
 
 [[bin]]

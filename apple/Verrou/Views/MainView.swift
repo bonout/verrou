@@ -28,21 +28,21 @@ struct MainView: View {
                     SendDetailView(send: send)
                         .id(send.id)
                 } else {
-                    EmptyPaneDetailView(title: "Aucun envoi sélectionné", symbol: "paperplane")
+                    EmptyPaneDetailView(title: String(localized: "No send selected"), symbol: "paperplane")
                 }
             case .emergency:
                 if let selected = model.emergency.selected {
                     EmergencyDetailView(contact: selected.contact, trusted: selected.trusted)
                         .id(selected.contact.id)
                 } else {
-                    EmptyPaneDetailView(title: "Aucun accès sélectionné", symbol: "person.2.badge.key")
+                    EmptyPaneDetailView(title: String(localized: "No access selected"), symbol: "person.2.badge.key")
                 }
             case .members:
                 if let member = model.members.selected {
                     MemberDetailView(member: member)
                         .id(member.id)
                 } else {
-                    EmptyPaneDetailView(title: "Aucun membre sélectionné", symbol: "person.3")
+                    EmptyPaneDetailView(title: String(localized: "No member selected"), symbol: "person.3")
                 }
             case .audit, nil:
                 if model.isMultiSelection {
@@ -64,50 +64,50 @@ struct MainView: View {
                     Button {
                         model.emergency.inviteNew()
                     } label: {
-                        Label("Inviter un contact", systemImage: "plus")
+                        Label("Invite a Contact", systemImage: "plus")
                     }
-                    .help("Inviter un contact d'urgence")
+                    .help("Invite an emergency contact")
                 case .members:
                     Button {
                         model.inviteMembers()
                     } label: {
-                        Label("Inviter", systemImage: "person.badge.plus")
+                        Label("Invite", systemImage: "person.badge.plus")
                     }
-                    .help("Inviter des personnes dans l'organisation")
+                    .help("Invite people to the organization")
                     .disabled(model.membersOrganization?.canManageMembers != true)
                 case .audit, nil:
                     Menu {
-                        Button("Nouvel identifiant") { model.newItem(login: true) }
-                        Button("Nouvelle note sécurisée") { model.newItem(login: false) }
-                        Button("Nouvelle clé SSH…") { model.newSshKey() }
-                        Button("Nouveau document…") { model.newDocument() }
+                        Button("New Login") { model.newItem(login: true) }
+                        Button("New Secure Note") { model.newItem(login: false) }
+                        Button("New SSH Key…") { model.newSshKey() }
+                        Button("New Document…") { model.newDocument() }
                         Divider()
                         ForEach(ItemTemplate.menuOrder, id: \.self) { template in
                             Button(template.menuTitle) { model.newItem(template: template) }
                         }
                     } label: {
-                        Label("Nouvel élément", systemImage: "plus")
+                        Label("New Item", systemImage: "plus")
                     } primaryAction: {
                         model.newItem(login: true)
                     }
                     .disabled(!model.canEdit)
-                    .help(model.canEdit ? "Nouvel identifiant (⌘N)" : "Coffre fictif : lecture seule")
+                    .help(model.canEdit ? "New login (⌘N)" : "Mock vault: read-only")
                 }
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     model.lock()
                 } label: {
-                    Label("Verrouiller", systemImage: "lock")
+                    Label("Lock", systemImage: "lock")
                 }
-                .help("Verrouiller le coffre (⌃⌘L)")
+                .help("Lock the vault (⌃⌘L)")
                 .keyboardShortcut("l", modifiers: [.command, .control])
             }
-            // Actions de l'élément sélectionné : toujours les mêmes boutons,
-            // grisés quand ils ne s'appliquent pas. Ici plutôt que dans la
-            // fiche, recréée à chaque sélection : la barre ne clignote plus.
-            // Absentes des volets des envois et des accès d'urgence, qui
-            // n'affichent pas d'élément du coffre.
+            // Actions of the selected item: always the same buttons, dimmed
+            // when they don't apply. Here rather than in the detail, rebuilt
+            // on each selection: the toolbar no longer flickers. Absent from
+            // the sends and emergency access panes, which don't display a
+            // vault item.
             ToolbarItemGroup(placement: .primaryAction) {
                 if model.pane != .sends && model.pane != .emergency && model.pane != .members {
                     ItemToolbarActions()
@@ -159,16 +159,16 @@ struct MainView: View {
             SharingView(flow: flow)
                 .environment(model)
         }
-        // La vue reste montée derrière l'écran verrouillé (voir RootView) :
-        // c'est le déverrouillage qui lui rend la main.
+        // The view stays mounted behind the lock screen (see RootView):
+        // unlocking is what hands control back to it.
         .onAppear { searchFocused = model.lockState == .unlocked }
         .onChange(of: model.lockState) { _, state in
             searchFocused = state == .unlocked
             guard state == .unlocked, let start = model.unlockStartedAt else { return }
             model.unlockStartedAt = nil
-            // Prochain tour de boucle : la liste est dessinée.
+            // Next run loop turn: the list is drawn.
             DispatchQueue.main.async {
-                Perf.log.notice("coffre affiché à +\(Perf.ms(since: start)) ms de la clé reçue")
+                Perf.log.notice("vault displayed at +\(Perf.ms(since: start)) ms after the key was received")
             }
         }
         .onKeyPress(.escape) {
@@ -178,13 +178,13 @@ struct MainView: View {
     }
 }
 
-/// Actions de l'élément sélectionné, dans la barre d'outils.
+/// Actions of the selected item, in the toolbar.
 private struct ItemToolbarActions: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        // Plusieurs éléments sélectionnés : l'archivage vaut pour tous, le
-        // reste (une seule fiche) est grisé.
+        // Several items selected: archiving applies to all of them, the rest
+        // (a single detail) is dimmed.
         let multi = model.isMultiSelection
         let item = multi ? nil : model.selectedSummary
         Button {
@@ -195,34 +195,34 @@ private struct ItemToolbarActions: View {
                 Task { await model.setArchived(item.id, true) }
             }
         } label: {
-            Label("Archiver", systemImage: "archivebox")
+            Label("Archive", systemImage: "archivebox")
         }
-        .help(multi ? "Archiver les \(model.selectedIDs.count) éléments sélectionnés"
-                    : "Archiver : garder l'élément hors du chemin")
+        .help(multi ? "Archive the \(model.selectedIDs.count) selected items"
+                    : "Archive: keep the item out of the way")
         .disabled(multi ? !model.canEdit || model.availability(of: model.selectedIDs).active == 0
                         : !model.canModify(item) || item?.state != .active)
         Button {
             if let item { Task { await model.edit(item.id) } }
         } label: {
-            Label("Modifier", systemImage: "pencil")
+            Label("Edit", systemImage: "pencil")
         }
-        .help(item?.sharing?.readOnly == true ? "Partagé en lecture seule" : "Modifier (⌘E)")
+        .help(item?.sharing?.readOnly == true ? "Shared read-only" : "Edit (⌘E)")
         .keyboardShortcut("e", modifiers: .command)
         .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
         Button {
             if let item { model.openSharing(item.id) }
         } label: {
-            Label("Partager", systemImage: "person.2")
+            Label("Share", systemImage: "person.2")
         }
-        .help(item?.sharing == nil ? "Partager dans un coffre partagé…" : "Collections…")
+        .help(item?.sharing == nil ? "Share in a shared vault…" : "Collections…")
         .disabled(!model.canModify(item) || item?.state != .active
                   || (item?.sharing == nil && model.writableOrganizations.isEmpty))
         Button {
             if let item { model.copyPassword(of: item.id) }
         } label: {
-            Label("Copier le mot de passe", systemImage: "key")
+            Label("Copy Password", systemImage: "key")
         }
-        .help("Copier le mot de passe (⇧⌘C)")
+        .help("Copy the password (⇧⌘C)")
         .keyboardShortcut("c", modifiers: [.command, .shift])
         .disabled(item?.category != .login)
         Button {
@@ -230,43 +230,43 @@ private struct ItemToolbarActions: View {
                 NSWorkspace.shared.open(url)
             }
         } label: {
-            Label("Ouvrir le site", systemImage: "safari")
+            Label("Open Website", systemImage: "safari")
         }
-        .help(item?.host.map { "Ouvrir \($0)" } ?? "Ouvrir le site")
+        .help(item?.host.map { String(localized: "Open \($0)") } ?? String(localized: "Open the website"))
         .disabled(item?.host == nil)
     }
 }
 
-// MARK: Barre latérale
+// MARK: Sidebar
 
 struct SidebarView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var model = model
-        // Un volet ouvert (audit, envois…) : aucun filtre en surbrillance, et
-        // un clic sur n'importe lequel ramène à la liste.
+        // A pane open (audit, sends…): no filter highlighted, and a click on
+        // any of them goes back to the list.
         List(selection: Binding(get: { model.pane == nil ? model.filter : nil },
                                 set: { if let f = $0 { model.filter = f } })) {
             Section {
-                row(.all, "Tous les éléments", "square.grid.2x2", count: model.counts?.all)
-                row(.favorites, "Favoris", "star.fill", count: model.counts?.favorites, tint: .yellow)
-                row(.withTotp, "Codes à usage unique", "clock.badge.checkmark", count: model.counts?.withTotp, tint: .teal)
-                row(.passkeys, "Passkeys", "person.badge.key.fill", count: model.counts?.passkeys, tint: .purple)
+                row(.all, String(localized: "All items"), "square.grid.2x2", count: model.counts?.all)
+                row(.favorites, String(localized: "Favorites"), "star.fill", count: model.counts?.favorites, tint: .yellow)
+                row(.withTotp, String(localized: "One-time codes"), "clock.badge.checkmark", count: model.counts?.withTotp, tint: .teal)
+                row(.passkeys, String(localized: "Passkeys"), "person.badge.key.fill", count: model.counts?.passkeys, tint: .purple)
             }
-            Section("Catégories") {
+            Section("Categories") {
                 ForEach(model.counts?.categories ?? [], id: \.category) { entry in
                     row(.category(category: entry.category), entry.category.label, entry.category.symbol,
                         count: entry.count, tint: entry.category.tint)
                 }
-                // Modèles (Wi-Fi, passeport…) : seulement ceux qui ont des éléments.
+                // Templates (Wi-Fi, passport…): only those that have items.
                 ForEach(model.counts?.templates ?? [], id: \.template) { entry in
                     row(.template(template: entry.template), entry.template.label, entry.template.symbol,
                         count: entry.count, tint: entry.template.tint)
                 }
             }
             if let folders = model.counts?.folders, !folders.isEmpty {
-                Section("Dossiers") {
+                Section("Folders") {
                     ForEach(folders, id: \.name) { folder in
                         row(.folder(name: folder.name), folder.name, "folder", count: folder.count, tint: .secondary)
                     }
@@ -274,14 +274,14 @@ struct SidebarView: View {
             }
             SharedVaultsSection()
             if let counts = model.counts, counts.archived + counts.trashed > 0 {
-                Section("Rangement") {
-                    row(.archived, "Archives", "archivebox", count: counts.archived, tint: .secondary)
-                    row(.trash, "Corbeille", "trash", count: counts.trashed, tint: .secondary)
+                Section("Storage") {
+                    row(.archived, String(localized: "Archive"), "archivebox", count: counts.archived, tint: .secondary)
+                    row(.trash, String(localized: "Trash"), "trash", count: counts.trashed, tint: .secondary)
                 }
             }
-            // Vaultwarden n'a pas d'étiquettes : la section n'apparaît qu'avec le coffre fictif.
+            // Vaultwarden has no tags: the section only appears with the mock vault.
             if let tags = model.counts?.tags, !tags.isEmpty {
-                Section("Étiquettes") {
+                Section("Tags") {
                     ForEach(tags, id: \.name) { tag in
                         row(.tag(name: tag.name), tag.name, "number", count: tag.count, tint: .secondary)
                     }
@@ -290,8 +290,8 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
-            // Sans fond, les dernières lignes de la liste défilent sous les
-            // boutons et le pied.
+            // Without a background, the last rows of the list scroll under the
+            // buttons and the footer.
             VStack(spacing: 0) {
                 Divider()
                     .padding(.bottom, 6)
@@ -321,9 +321,9 @@ struct SidebarView: View {
     }
 }
 
-/// Entrée du bas de la barre latérale (audit, doublons, envois, accès
-/// d'urgence) : un bouton plutôt qu'une ligne de la liste, en surbrillance
-/// quand son volet occupe la colonne centrale.
+/// Entry at the bottom of the sidebar (audit, duplicates, sends, emergency
+/// access): a button rather than a list row, highlighted when its pane
+/// occupies the middle column.
 struct SidebarPaneButton: View {
     let title: String
     let symbol: String
@@ -360,8 +360,8 @@ struct SidebarPaneButton: View {
     }
 }
 
-/// En-tête d'un volet de la colonne centrale : titre, explication, action,
-/// et le dernier message (réussite ou erreur).
+/// Header of a pane of the middle column: title, explanation, action, and
+/// the last message (success or error).
 struct PaneHeader<Action: View>: View {
     let title: String
     let caption: String
@@ -402,7 +402,7 @@ struct PaneHeader<Action: View>: View {
     }
 }
 
-/// Compte et état de la synchronisation. Un clic relance la synchronisation.
+/// Account and sync status. A click starts the sync again.
 struct VaultFooter: View {
     @Environment(AppModel.self) private var model
 
@@ -423,18 +423,19 @@ struct VaultFooter: View {
         .contentShape(Rectangle())
         .onTapGesture { Task { await model.syncNow() } }
         .help(model.mode == .vaultwarden
-              ? (model.pendingLabel.map { "\($0) : envoyées au retour du serveur. Synchroniser (⌘R)" } ?? "Synchroniser (⌘R)")
+              ? (model.pendingLabel.map { String(localized: "\($0): sent when the server is back. Sync (⌘R)") }
+                    ?? String(localized: "Sync (⌘R)"))
               : "")
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 
     private var title: String {
-        model.mode == .demo ? "Coffre fictif" : model.account?.email ?? "Vaultwarden"
+        model.mode == .demo ? String(localized: "Mock vault") : model.account?.email ?? "Vaultwarden"
     }
 
     private var dotColor: Color {
-        // Des modifications attendent le serveur.
+        // Changes are waiting for the server.
         if model.pendingChanges > 0, model.syncState != .syncing, model.syncState != .offline { return .orange }
         return switch model.syncState {
         case .idle: .green
@@ -445,30 +446,30 @@ struct VaultFooter: View {
     }
 
     private var status: String {
-        if model.mode == .demo { return "Hors ligne · données locales" }
+        if model.mode == .demo { return String(localized: "Offline · local data") }
         let last = model.account?.syncedAt.map { synced in
             Date(timeIntervalSince1970: TimeInterval(synced)).formatted(date: .omitted, time: .shortened)
         }
         if let pending = model.pendingLabel, model.syncState != .syncing {
-            // « Hors ligne · 3 modifications en attente »
-            return model.syncState == .offline ? "Hors ligne · \(pending)" : pending
+            // "Offline · 3 pending changes"
+            return model.syncState == .offline ? String(localized: "Offline · \(pending)") : pending
         }
         switch model.syncState {
-        case .syncing: return "Synchronisation…"
-        case .offline: return "Hors ligne · état de \(last ?? "—")"
+        case .syncing: return String(localized: "Syncing…")
+        case .offline: return String(localized: "Offline · as of \(last ?? "—")")
         case .failed(let message): return message
-        case .idle: return last.map { "Synchronisé à \($0)" } ?? "Jamais synchronisé"
+        case .idle: return last.map { String(localized: "Synced at \($0)") } ?? String(localized: "Never synced")
         }
     }
 }
 
-// MARK: Liste
+// MARK: List
 
 struct ItemListView: View {
     @Environment(AppModel.self) private var model
     var searchFocused: FocusState<Bool>.Binding
-    // Un clic sur une ligne donne le focus à la liste : les flèches font
-    // alors défiler les éléments, pas la barre latérale.
+    // A click on a row gives focus to the list: the arrows then scroll
+    // through the items, not the sidebar.
     @FocusState private var listFocused: Bool
 
     var body: some View {
@@ -485,13 +486,13 @@ struct ItemListView: View {
                     .monospacedDigit()
                 Spacer()
                 if model.filter == .category(category: .sshKey) && model.canEdit {
-                    Button("Nouvelle clé SSH…", systemImage: "plus") { model.newSshKey() }
+                    Button("New SSH Key…", systemImage: "plus") { model.newSshKey() }
                         .buttonStyle(.borderless)
                         .font(.caption)
-                        .help("Générer une clé SSH dans le coffre")
+                        .help("Generate an SSH key in the vault")
                 }
                 Menu {
-                    Picker("Trier", selection: $model.sort) {
+                    Picker("Sort", selection: $model.sort) {
                         ForEach(ResultOrder.menu, id: \.self) { order in
                             Text(order.label).tag(order)
                         }
@@ -503,7 +504,7 @@ struct ItemListView: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help("Trier : \(model.sort.label)")
+                .help("Sort: \(model.sort.label)")
                 .layoutMark("sort-menu")
             }
             .padding(.horizontal, 16)
@@ -513,9 +514,9 @@ struct ItemListView: View {
             if model.rows.isEmpty {
                 NoResultsView(query: model.query)
             } else {
-                // Pile paresseuse plutôt que `List` : la liste de macOS calcule la
-                // hauteur de toutes ses lignes, donc les construit toutes (et
-                // demande toutes les icônes) dès que les résultats changent.
+                // Lazy stack rather than `List`: the macOS list computes the
+                // height of all its rows, so builds them all (and requests all
+                // the icons) as soon as the results change.
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 2) {
@@ -535,8 +536,8 @@ struct ItemListView: View {
                     .focusEffectDisabled()
                     .focused($listFocused)
                     .onKeyPress(keys: [.downArrow, .upArrow]) { press in arrow(press) }
-                    // Échap : retour à l'élément actif seul (sinon, comme
-                    // avant, Échap efface la recherche).
+                    // Esc: back to the active item alone (otherwise, as
+                    // before, Esc clears the search).
                     .onKeyPress(.escape) {
                         guard model.isMultiSelection else { return .ignored }
                         model.applySelection(.collapse)
@@ -545,8 +546,8 @@ struct ItemListView: View {
                     .onChange(of: model.selection) { _, id in
                         if let id { proxy.scrollTo(id) }
                     }
-                    // ⌘A : tous les résultats, quand la liste a le focus
-                    // (dans le champ de recherche, ⌘A sélectionne le texte).
+                    // ⌘A: all the results, when the list has focus (in the
+                    // search field, ⌘A selects the text).
                     .background(
                         Button("") { model.applySelection(.selectAll) }
                             .keyboardShortcut("a", modifiers: .command)
@@ -561,7 +562,7 @@ struct ItemListView: View {
         .onKeyPress(keys: [.downArrow, .upArrow]) { press in arrow(press) }
     }
 
-    /// ↑/↓ : élément voisin ; avec ⇧, étend la sélection depuis l'ancre.
+    /// ↑/↓: neighboring item; with ⇧, extends the selection from the anchor.
     private func arrow(_ press: KeyPress) -> KeyPress.Result {
         let offset: Int32 = press.key == .downArrow ? 1 : -1
         if press.modifiers.contains(.shift) {
@@ -577,23 +578,23 @@ struct ItemListView: View {
         let micro = Double(model.lastSearchDuration.components.attoseconds) / 1e12
             + Double(model.lastSearchDuration.components.seconds) * 1e6
         let time = micro < 1000 ? String(format: "%.0f µs", micro) : String(format: "%.1f ms", micro / 1000)
-        return "\(n) élément\(n > 1 ? "s" : "") · \(time)"
+        return n > 1 ? String(localized: "\(n) items · \(time)") : String(localized: "\(n) item · \(time)")
     }
 }
 
-/// Une ligne de la liste : surbrillance au survol (sans animation, état
-/// propre à la ligne : seules les deux lignes concernées se redessinent),
-/// sélection dès l'appui du bouton, comme le Finder.
+/// A list row: highlight on hover (without animation, state specific to the
+/// row: only the two rows concerned redraw), selection as soon as the
+/// button is pressed, like the Finder.
 ///
-/// Comparée par son contenu (`equatable`) : un changement de sélection ne
-/// redessine que les lignes dont l'état change, pas toutes les visibles.
+/// Compared by its content (`equatable`): a selection change only redraws
+/// the rows whose state changes, not all the visible ones.
 private struct ListRow: View, Equatable {
     @Environment(AppModel.self) private var model
     let row: ResultRow
     let selected: Bool
-    /// Vue des passkeys : site et utilisateur de la passkey.
+    /// Passkeys view: site and user of the passkey.
     var showsPasskey = false
-    /// Donne le focus à la liste (les flèches font alors défiler les éléments).
+    /// Gives focus to the list (the arrows then scroll through the items).
     let focusList: () -> Void
     @State private var hovered = false
     @State private var pressed = false
@@ -610,8 +611,8 @@ private struct ListRow: View, Equatable {
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
-            // À l'appui, pas au relâchement : la surbrillance suit le clic
-            // sans attendre. ⌃-clic : seulement le menu contextuel.
+            // On press, not on release: the highlight follows the click
+            // without waiting. ⌃-click: only the context menu.
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
@@ -635,7 +636,7 @@ struct SearchField: View {
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Rechercher dans Verrou", text: $text)
+            TextField("Search Verrou", text: $text)
                 .textFieldStyle(.plain)
                 .focused(focused)
                 .layoutMark("search")
@@ -644,7 +645,7 @@ struct SearchField: View {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Effacer la recherche")
+                .accessibilityLabel("Clear the search")
             } else {
                 Text("⌘F").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
@@ -664,7 +665,7 @@ struct SearchField: View {
 struct ItemRow: View {
     let summary: ItemSummary
     let highlights: [UInt32]
-    /// Sur fond d'accent : texte blanc.
+    /// On an accent background: white text.
     var selected = false
     var showsPasskey = false
 
@@ -685,8 +686,8 @@ struct RowMenu: View {
     let summary: ItemSummary
 
     var body: some View {
-        // Clic droit sur une ligne de la sélection : l'action vaut pour toute
-        // la sélection ; sur une autre ligne, pour cette ligne seule.
+        // Right-click on a row of the selection: the action applies to the
+        // whole selection; on another row, to this row alone.
         if model.isMultiSelection && model.selectedSet.contains(summary.id) {
             BulkActions(ids: model.selectedIDs, style: .menu)
         } else {
@@ -696,53 +697,53 @@ struct RowMenu: View {
 
     @ViewBuilder private var single: some View {
         if summary.category == .login {
-            Button("Copier l'identifiant") {
+            Button("Copy Username") {
                 model.session.recordItemUse(id: summary.id)
-                model.copy(summary.subtitle, label: "Identifiant", secret: false)
+                model.copy(summary.subtitle, label: String(localized: "Username"), secret: false)
             }
-            Button("Copier le mot de passe") { model.copyPassword(of: summary.id) }
+            Button("Copy Password") { model.copyPassword(of: summary.id) }
         }
         if summary.category == .sshKey {
-            Button("Copier la clé publique") { model.copyPublicKey(of: summary.id) }
+            Button("Copy Public Key") { model.copyPublicKey(of: summary.id) }
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
-            Button("Ouvrir \(host)") { NSWorkspace.shared.open(url) }
+            Button("Open \(host)") { NSWorkspace.shared.open(url) }
         }
         if summary.canChangePassword {
-            Button("Changer le mot de passe") { Task { await model.changePassword(of: summary) } }
+            Button("Change Password") { Task { await model.changePassword(of: summary) } }
                 .disabled(model.changingPassword != nil)
         }
         if model.sendsAvailable, summary.state != .trashed,
            summary.category == .login || summary.category == .secureNote {
-            Button("Envoyer de façon sécurisée…") {
+            Button("Send Securely…") {
                 model.composeSend(from: summary)
             }
         }
         if model.canEdit, !model.canModify(summary) {
             Divider()
-            // Collection en lecture seule : rien à modifier depuis ce compte.
-            Text("Partagé en lecture seule")
+            // Read-only collection: nothing to edit from this account.
+            Text("Shared read-only")
         } else if model.canEdit {
             Divider()
             if summary.state == .active, summary.sharing != nil || !model.writableOrganizations.isEmpty {
-                Button(summary.sharing == nil ? "Partager…" : "Collections…") { model.openSharing(summary.id) }
+                Button(summary.sharing == nil ? "Share…" : "Collections…") { model.openSharing(summary.id) }
             }
             if summary.canUnshare {
-                Button("Retirer du partage…") { model.requestUnshare([summary.id]) }
+                Button("Remove from Sharing…") { model.requestUnshare([summary.id]) }
             }
             switch summary.state {
             case .active:
-                Button("Modifier…") { Task { await model.edit(summary.id) } }
-                Button(summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris") {
+                Button("Edit…") { Task { await model.edit(summary.id) } }
+                Button(summary.favorite ? "Remove from Favorites" : "Add to Favorites") {
                     Task { await model.setFavorite(summary.id, !summary.favorite) }
                 }
-                Button("Archiver") { Task { await model.setArchived(summary.id, true) } }
-                Button("Mettre à la corbeille") { Task { await model.trash(summary.id) } }
+                Button("Archive") { Task { await model.setArchived(summary.id, true) } }
+                Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .archived:
-                Button("Sortir des archives") { Task { await model.setArchived(summary.id, false) } }
-                Button("Mettre à la corbeille") { Task { await model.trash(summary.id) } }
+                Button("Unarchive") { Task { await model.setArchived(summary.id, false) } }
+                Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .trashed:
-                Button("Restaurer") { Task { await model.restore(summary.id) } }
+                Button("Restore") { Task { await model.restore(summary.id) } }
             }
         }
     }
@@ -753,10 +754,10 @@ struct NoResultsView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label(query.isEmpty ? "Aucun élément" : "Aucun résultat", systemImage: "magnifyingglass")
+            Label(query.isEmpty ? "No items" : "No results", systemImage: "magnifyingglass")
         } description: {
             if !query.isEmpty {
-                Text("Rien ne correspond à « \(query) ».\nEssayez `tag:banque`, `type:carte` ou `!mot` pour exclure.")
+                Text("Nothing matches “\(query)”.\nTry `tag:bank`, `type:carte` or `!word` to exclude.")
             }
         }
         .frame(maxHeight: .infinity)
@@ -767,18 +768,18 @@ struct EmptyDetailView: View {
     var body: some View {
         VStack(spacing: 12) {
             AppMark(size: 56).opacity(0.85)
-            Text("Sélectionnez un élément").font(.title3.weight(.semibold))
+            Text("Select an item").font(.title3.weight(.semibold))
             HStack(spacing: 16) {
-                KeyHint(keys: "⌘F", label: "Rechercher")
-                KeyHint(keys: "↑↓", label: "Parcourir")
-                KeyHint(keys: "⌘⇧Espace", label: "Accès rapide")
+                KeyHint(keys: "⌘F", label: "Search")
+                KeyHint(keys: "↑↓", label: "Browse")
+                KeyHint(keys: String(localized: "⌘⇧Space"), label: "Quick Access")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// Colonne de droite d'un volet, rien de sélectionné.
+/// Right column of a pane, nothing selected.
 struct EmptyPaneDetailView: View {
     let title: String
     let symbol: String
@@ -789,8 +790,8 @@ struct EmptyPaneDetailView: View {
     }
 }
 
-/// « Retirer du partage… » : ce qui va se passer, et la confirmation (la
-/// copie de l'organisation est supprimée définitivement).
+/// "Remove from Sharing…": what is going to happen, and the confirmation
+/// (the organization's copy is permanently deleted).
 struct UnshareView: View {
     @Environment(AppModel.self) private var model
     let request: UnshareRequest
@@ -815,7 +816,7 @@ struct UnshareView: View {
             .padding(16)
             Divider()
             Form {
-                Section("Éléments") {
+                Section("Items") {
                     ForEach(request.itemIDs.prefix(6), id: \.self) { id in
                         if let summary = model.summary(id: id) {
                             HStack(spacing: 10) {
@@ -829,13 +830,13 @@ struct UnshareView: View {
                         }
                     }
                     if request.itemIDs.count > 6 {
-                        Text("et \(request.itemIDs.count - 6) autres").foregroundStyle(.secondary)
+                        Text("and \(request.itemIDs.count - 6) more").foregroundStyle(.secondary)
                     }
                 }
                 Section {
-                    Label("Rechiffré avec votre clé et une nouvelle clé d'élément : l'organisation ne peut plus le lire.",
+                    Label("Re-encrypted with your key and a new item key: the organization can no longer read it.",
                           systemImage: "lock.rotation")
-                    Label("Les autres membres le perdent, sur tous leurs appareils.", systemImage: "person.2.slash")
+                    Label("The other members lose it, on all their devices.", systemImage: "person.2.slash")
                 }
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -852,12 +853,13 @@ struct UnshareView: View {
                 if let progress = model.bulkProgress, model.unshareBusy {
                     ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
                         .frame(width: 120)
-                    Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                    Text("\(progress.done) of \(progress.total)").font(.caption).monospacedDigit()
                 }
-                Button("Annuler") { model.unshareRequest = nil }
+                Button("Cancel") { model.unshareRequest = nil }
                     .keyboardShortcut(.cancelAction)
                     .disabled(model.unshareBusy)
-                Button(request.itemIDs.count == 1 ? "Retirer du partage" : "Retirer \(request.itemIDs.count) éléments",
+                Button(request.itemIDs.count == 1 ? String(localized: "Remove from Sharing")
+                                                   : String(localized: "Remove \(request.itemIDs.count) Items"),
                        role: .destructive) {
                     Task { await model.performUnshare(request) }
                 }

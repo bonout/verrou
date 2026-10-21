@@ -1,8 +1,8 @@
 import XCTest
 
-/// Défilement de la liste sur un coffre fictif de 2 000 éléments (lancé par
-/// `scripts/ios-bench.sh`) : saccades mesurées par les signposts de
-/// défilement d'UIKit (`XCTOSSignpostMetric.scrollingAndDecelerationMetric`).
+/// Scrolling the list on a demo vault of 2,000 items (launched by
+/// `scripts/ios-bench.sh`): hitches measured by UIKit's scrolling signposts
+/// (`XCTOSSignpostMetric.scrollingAndDecelerationMetric`).
 final class ScrollPerformanceUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
@@ -12,14 +12,14 @@ final class ScrollPerformanceUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "2000"]
         app.launch()
-        let field = app.secureTextFields["Mot de passe principal"]
-        XCTAssertTrue(field.waitForExistence(timeout: 20), "écran verrouillé")
+        let field = app.secureTextFields["Master password"]
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "lock screen")
         field.tap()
         field.typeText("verrou\n")
-        let all = app.descendants(matching: .any)["Tous les éléments"].firstMatch
-        XCTAssertTrue(all.waitForExistence(timeout: 20), "coffre ouvert")
+        let all = app.descendants(matching: .any)["All items"].firstMatch
+        XCTAssertTrue(all.waitForExistence(timeout: 20), "vault open")
         all.tap()
-        XCTAssertTrue(app.navigationBars["Tous les éléments"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.navigationBars["All items"].waitForExistence(timeout: 10))
         let list = app.collectionViews.firstMatch
 
         let options = XCTMeasureOptions()

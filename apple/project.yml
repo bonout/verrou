@@ -5,7 +5,7 @@ options:
     macOS: "15.0"
     iOS: "17.0"
   createIntermediateGroups: true
-  developmentLanguage: fr
+  developmentLanguage: en
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -13,25 +13,23 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
-    # Groupe d'apps partagé par l'app iPhone et l'extension. Un identifiant de
-    # groupe est unique chez Apple : pour un iPhone, passer le sien, par
-    # exemple VERROU_APP_GROUP=group.<équipe>.verrou (scripts/install-ios.sh).
+    # App group shared by the iPhone app and its extension. A group identifier
+    # is unique at Apple: for an iPhone, pass your own, for example
+    # VERROU_APP_GROUP=group.<team>.verrou (scripts/install-ios.sh).
     VERROU_APP_GROUP: group.app.verrou
-    # Mac : signé ad hoc par défaut, sans groupe d'apps ni extension de
-    # remplissage du système. Un build signé par l'équipe
-    # (VERROU_MAC_TEAM=<équipe> scripts/install-macos.sh) passe
-    # VERROU_MAC_APP_GROUP=<équipe>.app.verrou et
-    # VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements : macOS ne valide
-    # un groupe d'apps, et ne lance un fournisseur d'identifiants, que pour une
-    # app signée par une équipe (voir docs/GUIDE.md).
+    # Mac: signed ad hoc by default, with no app group and no system AutoFill
+    # extension. A team-signed build (VERROU_MAC_TEAM=<team>
+    # scripts/install-macos.sh) passes VERROU_MAC_APP_GROUP=<team>.app.verrou
+    # and VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements: macOS only
+    # validates an app group, and only launches a credential provider, for an
+    # app signed by a team (see docs/GUIDE.md).
     VERROU_MAC_APP_GROUP: ""
     VERROU_MAC_ENTITLEMENTS: Verrou/Verrou.entitlements
-    # Droits de l'extension VerrouAutoFillMac : aucun en ad hoc (son droit de
-    # fournisseur exige un profil ; sans lui, macOS ne l'active jamais, et
-    # scripts/install-macos.sh la retire du paquet),
-    # VerrouAutoFillMac/VerrouAutoFillMac.entitlements avec l'équipe. Xcode
-    # vérifie les extensions après la signature : on ne peut pas la retirer
-    # pendant le build.
+    # Entitlements of the VerrouAutoFillMac extension: none ad hoc (its
+    # provider entitlement needs a profile; without it macOS never enables it,
+    # and scripts/install-macos.sh removes it from the bundle),
+    # VerrouAutoFillMac/VerrouAutoFillMac.entitlements with a team. Xcode
+    # checks extensions after signing: it can't be removed during the build.
     VERROU_MAC_AUTOFILL_ENTITLEMENTS: ""
     ENABLE_HARDENED_RUNTIME: YES
     DEAD_CODE_STRIPPING: YES
@@ -42,33 +40,33 @@ targets:
     sources:
       - path: Verrou
       - path: Shared
-      # Hôte Native Messaging, lancé par le navigateur (pas par l'app) :
-      # Contents/MacOS/verrou-native-host, signé avec l'app, sans sandbox.
+      # Native Messaging host, launched by the browser (not by the app):
+      # Contents/MacOS/verrou-native-host, signed with the app, not sandboxed.
       - path: Helpers/verrou-native-host
         buildPhase:
           copyFiles:
             destination: executables
         attributes: [CodeSignOnCopy]
-      # L'extension de navigateur, livrée avec l'app (à charger dans Brave) ;
-      # celle de Firefox (extension-firefox) en est tirée après la copie.
+      # The browser extension, shipped with the app (to load in Brave); the
+      # Firefox one (extension-firefox) is derived from it after the copy.
       - path: ../extension
         type: folder
         buildPhase: resources
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
-      # Fournisseur d'identifiants du système (Safari, apps du Mac) : retiré
-      # du paquet d'un build ad hoc (phase « Fournisseur d'identifiants »).
+      # System credential provider (Safari, Mac apps): removed from the
+      # bundle of an ad hoc build (by scripts/install-macos.sh).
       - target: VerrouAutoFillMac
     info:
       path: Verrou/Info.plist
       properties:
         VerrouAppGroup: $(VERROU_MAC_APP_GROUP)
-    # L'extension copiée donne celle de Firefox (même code, autre manifeste),
-    # puis les deux reçoivent une version propre à leur contenu : Brave la
-    # recharge d'elle-même quand l'app est mise à jour (extension/update.js).
+    # The copied extension yields the Firefox one (same code, other manifest),
+    # then both get a version derived from their content: Brave reloads it by
+    # itself when the app is updated (extension/update.js).
     postBuildScripts:
-      - name: Version de l'extension
+      - name: Extension version
         basedOnDependencyAnalysis: false
         script: |
           EXTENSION="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/extension"
@@ -86,15 +84,14 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: $(VERROU_MAC_ENTITLEMENTS)
         OTHER_LDFLAGS: ["-lc++"]
-        # La phase « Version de l'extension » réécrit le manifeste copié dans le
-        # paquet et y ajoute l'extension de Firefox.
+        # The "Extension version" phase rewrites the manifest copied into the
+        # bundle and adds the Firefox extension next to it.
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
-  # Fournisseur d'identifiants du Mac (Réglages Système → Général →
-  # Remplissage automatique et mots de passe) : identifiants, codes et
-  # passkeys pour Safari et les apps. Le modèle et le contrôleur sont ceux de
-  # l'iPhone (VerrouAutoFill) ; seule l'interface est propre au Mac. Ouvre le
-  # coffre du groupe d'apps en invitée, comme sur l'iPhone.
+  # Mac credential provider (System Settings → General → AutoFill &
+  # Passwords): logins, codes and passkeys for Safari and apps. The model and
+  # controller are the iPhone ones (VerrouAutoFill); only the interface is
+  # Mac-specific. Opens the app group's vault as a guest, as on the iPhone.
   VerrouAutoFillMac:
     type: app-extension
     platform: macOS
@@ -139,8 +136,8 @@ targets:
         OTHER_LDFLAGS: ["-lc++"]
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
 
-  # Tests unitaires du Mac sans app hôte (rien ne s'affiche) : migration du
-  # compte vers le groupe d'apps, sélection des entrées PRF.
+  # Mac unit tests without a host app (nothing is shown): account migration
+  # to the app group, PRF input selection.
   #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
   VerrouMacTests:
     type: bundle.unit-test
@@ -158,13 +155,12 @@ targets:
         DEVELOPMENT_TEAM: ""
         ENABLE_HARDENED_RUNTIME: NO
 
-  # App iPhone et son extension de remplissage automatique. Simulateur sans
-  # compte Apple : signé ad hoc (« - », jamais une équipe de développeur).
-  # La signature ad hoc du simulateur garde les droits dans le binaire
-  # (section __TEXT,__entitlements) : le groupe d'apps partagé avec
-  # l'extension et le droit de fournisseur de remplissage fonctionnent. Un
-  # build CODE_SIGNING_ALLOWED=NO n'a aucun droit : pas de groupe d'apps,
-  # l'extension ne voit pas le coffre.
+  # iPhone app and its AutoFill extension. Simulator without an Apple
+  # account: signed ad hoc ("-", never a developer team). The simulator's ad
+  # hoc signature keeps the entitlements in the binary (__TEXT,__entitlements
+  # section): the app group shared with the extension and the AutoFill
+  # provider entitlement work. A CODE_SIGNING_ALLOWED=NO build has no
+  # entitlements: no app group, the extension can't see the vault.
   VerrouiOS:
     type: application
     platform: iOS
@@ -175,15 +171,15 @@ targets:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
       - target: VerrouAutoFill
-    # Clés hors INFOPLIST_KEY_*, fusionnées avec l'Info.plist généré.
+    # Keys outside INFOPLIST_KEY_*, merged into the generated Info.plist.
     info:
       path: VerrouiOS/Info.plist
       properties:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         VerrouAppGroup: $(VERROU_APP_GROUP)
-        # Réveil d'arrière-plan : nouveautés du partage, notifiées localement
-        # (PhoneModel.backgroundActivityCheck, voir SECURITY.md).
+        # Background wake-up: sharing updates, notified locally
+        # (PhoneModel.backgroundActivityCheck, see SECURITY.md).
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
     scheme:
@@ -204,21 +200,21 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Verrou
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
         INFOPLIST_KEY_NSHumanReadableCopyright: "GPL-3.0-or-later"
-        INFOPLIST_KEY_NSFaceIDUsageDescription: "Face ID déverrouille votre coffre et confirme l'accès aux éléments protégés."
-        INFOPLIST_KEY_NSCameraUsageDescription: "La caméra sert à scanner le QR code d'un code à usage unique (double authentification). Aucune image n'est enregistrée."
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Face ID unlocks your vault and confirms access to protected items."
+        INFOPLIST_KEY_NSCameraUsageDescription: "The camera scans the QR code of a one-time code (two-factor authentication). No image is saved."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # Groupe d'apps et trousseau partagés avec l'extension VerrouAutoFill :
-        # appliqués à la signature (ad hoc comprise, dans le simulateur).
+        # App group and keychain shared with the VerrouAutoFill extension:
+        # applied at signing (ad hoc included, in the simulator).
         CODE_SIGN_ENTITLEMENTS: VerrouiOS/VerrouiOS.entitlements
         OTHER_LDFLAGS: ["-lc++"]
 
-  # Extension de remplissage automatique (identifiants, codes, passkeys),
-  # dans l'app iPhone. Elle ouvre le coffre du groupe d'apps en invitée
-  # (VaultAccess(autofillAt:)) : voir SECURITY.md, « Remplissage automatique ».
+  # AutoFill extension (logins, codes, passkeys), inside the iPhone app. It
+  # opens the app group's vault as a guest (VaultAccess(autofillAt:)): see
+  # SECURITY.md, "AutoFill".
   VerrouAutoFill:
     type: app-extension
     platform: iOS
@@ -236,7 +232,7 @@ targets:
         CFBundleDisplayName: Verrou
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        NSFaceIDUsageDescription: "Face ID déverrouille votre coffre pour remplir identifiants, codes et passkeys."
+        NSFaceIDUsageDescription: "Face ID unlocks your vault to fill logins, codes and passkeys."
         VerrouAppGroup: $(VERROU_APP_GROUP)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.authentication-services-credential-provider-ui
@@ -247,10 +243,10 @@ targets:
               ProvidesPasskeys: true
               ProvidesOneTimeCodes: true
               ProvidesTextToInsert: false
-              # Création conditionnelle (iOS 18) : passkey proposée par
-              # Safari en arrière-plan après un mot de passe rempli.
+              # Conditional creation (iOS 18): passkey offered by Safari in
+              # the background after a password is filled.
               SupportsConditionalPasskeyRegistration: true
-              # Signaux des sites (iOS 26, ASCredentialUpdater).
+              # Signals from sites (iOS 26, ASCredentialUpdater).
               SupportsCredentialUpdate: true
             ASCredentialProviderExtensionShowsConfigurationUI: false
     settings:
@@ -265,11 +261,11 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         OTHER_LDFLAGS: ["-lc++"]
-        # Le pilote de démonstration de l'app n'a rien à faire ici.
+        # The app's demo driver has no business here.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
 
-  # Test de bout en bout du remplissage (XCUITest) : Safari du simulateur,
-  # page de test servie par le Mac. Lancé par scripts/ios-autofill-e2e.sh.
+  # End-to-end AutoFill test (XCUITest): the simulator's Safari, test page
+  # served by the Mac. Run by scripts/ios-autofill-e2e.sh.
   VerrouAutoFillUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -285,9 +281,9 @@ targets:
         TEST_TARGET_NAME: VerrouiOS
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
-  # Vitrine et mesures de l'app iPhone (XCUITest) sur le coffre fictif :
-  # captures demandées au script (`simctl io screenshot`), défilement mesuré
-  # (XCTOSSignpostMetric). Lancés par scripts/ios-showcase.sh et
+  # iPhone app showcase and measurements (XCUITest) on the mock vault:
+  # screenshots requested from the script (`simctl io screenshot`), measured
+  # scrolling (XCTOSSignpostMetric). Run by scripts/ios-showcase.sh and
   # scripts/ios-bench.sh.
   VerrouiOSUITests:
     type: bundle.ui-testing

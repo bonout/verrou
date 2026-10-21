@@ -1,41 +1,40 @@
 #!/usr/bin/env bash
-# Produit l'extension pour Firefox à partir de celle de Brave.
+# Produces the extension for Firefox from Brave's.
 #
 #   scripts/firefox-extension.sh [SOURCE [DESTINATION]]
 #
-# SOURCE : le dossier de l'extension (par défaut extension/ du dépôt).
-# DESTINATION : le dossier à produire (par défaut target/extension-firefox),
-# remplacé entièrement.
+# SOURCE: the extension's folder (by default extension/ of the repository).
+# DESTINATION: the folder to produce (by default target/extension-firefox),
+# entirely replaced.
 #
-# Un seul code : les fichiers sont copiés tels quels (les scripts choisissent
-# `browser` ou `chrome` d'eux-mêmes, voir extension/browser.js) ; seul le
-# manifeste change :
-#   - `background.scripts` (page d'arrière-plan) au lieu de `service_worker` ;
-#   - `browser_specific_settings.gecko` : identifiant fixe (celui que Verrou
-#     autorise dans la déclaration Native Messaging de Firefox, voir
-#     BrowserBridge.swift) et Firefox 128 au moins (`world: "MAIN"` des
-#     scripts de contenu, nécessaire aux passkeys) ;
-#   - `host_permissions` : les sites des scripts de contenu, que
-#     l'utilisateur peut accorder ou retirer (bouton de la fenêtre de
-#     l'extension) ;
-#   - sans `key` ni `minimum_chrome_version`, propres à Chrome.
+# A single code base: the files are copied as is (the scripts pick `browser`
+# or `chrome` by themselves, see extension/browser.js); only the manifest
+# changes:
+#   - `background.scripts` (background page) instead of `service_worker`;
+#   - `browser_specific_settings.gecko`: fixed ID (the one Verrou allows in
+#     Firefox's Native Messaging declaration, see BrowserBridge.swift) and
+#     Firefox 128 at least (`world: "MAIN"` of the content scripts, needed
+#     for passkeys);
+#   - `host_permissions`: the sites of the content scripts, which the user
+#     can grant or withdraw (button in the extension's popup);
+#   - without `key` or `minimum_chrome_version`, specific to Chrome.
 #
-# Appelé par la phase « Version de l'extension » d'apple/project.yml sur la
-# copie du paquet, avant stamp-extension.sh ; à la main pour charger
-# l'extension depuis le dépôt.
+# Called by the "Extension version" phase of apple/project.yml on the
+# bundle's copy, before stamp-extension.sh; by hand to load the extension
+# from the repository.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="${1:-$ROOT/extension}"
 DEST="${2:-$ROOT/target/extension-firefox}"
-[[ -f "$SRC/manifest.json" ]] || { echo "firefox-extension : $SRC/manifest.json introuvable" >&2; exit 1; }
+[[ -f "$SRC/manifest.json" ]] || { echo "firefox-extension: $SRC/manifest.json not found" >&2; exit 1; }
 
 FIREFOX_ID="verrou@verrou.app"
 FIREFOX_MIN="128.0"
 
 rm -rf "$DEST"
 mkdir -p "$DEST"
-# Les fichiers livrés, sans les tests (comme stamp-extension.sh).
+# The shipped files, without the tests (like stamp-extension.sh).
 (
   cd "$SRC"
   find . -type f ! -name manifest.json ! -name .DS_Store ! -path './test/*' ! -path './e2e/*' -print0 \
@@ -59,7 +58,7 @@ for key in ("key", "minimum_chrome_version"):
 background = manifest.get("background", {})
 worker = background.get("service_worker")
 if not worker:
-    sys.exit("firefox-extension : background.service_worker attendu dans le manifeste")
+    sys.exit("firefox-extension: background.service_worker expected in the manifest")
 manifest["background"] = {"scripts": [worker], **({"type": background["type"]} if "type" in background else {})}
 
 hosts = []
@@ -79,8 +78,8 @@ result["browser_specific_settings"] = {
     "gecko": {
         "id": gecko_id,
         "strict_min_version": minimum,
-        # Rien ne quitte le Mac : l'extension ne parle qu'à l'app Verrou
-        # (exigé par addons.mozilla.org pour la signature).
+        # Nothing leaves the Mac: the extension only talks to the Verrou app
+        # (required by addons.mozilla.org for signing).
         "data_collection_permissions": {"required": ["none"]},
     }
 }
@@ -90,4 +89,4 @@ with open(target, "w", encoding="utf-8") as f:
     f.write("\n")
 PY
 chmod 644 "$DEST/manifest.json"
-echo "extension Firefox : $DEST"
+echo "Firefox extension: $DEST"

@@ -1,5 +1,5 @@
-//! Connexion avec un appareil (« auth requests »), contre un vrai
-//! Vaultwarden 1.37.4 jetable :
+//! Login with a device ("auth requests"), against a real throwaway
+//! Vaultwarden 1.37.4:
 //!
 //! ```sh
 //! docker run -d --rm --name verrou-vw-devlogin -p 127.0.0.1:8201:80 \
@@ -8,16 +8,16 @@
 //!   -e DOMAIN=http://localhost:8201 -e UNAUTHENTICATED_RATELIMIT_MAX_BURST=1000 \
 //!   vaultwarden/server:1.37.4
 //! VERROU_TEST_SERVER=http://localhost:8201 cargo test -p verrou-vaultwarden --test device_login
-//! # L'expiration (plus de 5 minutes) :
+//! # The expiry (more than 5 minutes):
 //! VERROU_TEST_SERVER=http://localhost:8201 cargo test -p verrou-vaultwarden \
 //!   --test device_login -- --ignored a_request_expires
 //! ```
 //!
-//! Deux sessions du même compte : l'une, ouverte, approuve ou refuse ;
-//! l'autre (un appareil qui s'est déjà connecté une fois, comme l'exige
-//! Vaultwarden) demande, attend la réponse sur le canal anonyme, puis se
-//! connecte sans mot de passe principal. Un client du SDK de Bitwarden,
-//! indépendant de Verrou, déchiffre lui aussi la clé approuvée par Verrou.
+//! Two sessions of the same account: one, open, approves or denies; the
+//! other (a device that has already logged in once, as Vaultwarden
+//! requires) asks, waits for the answer on the anonymous channel, then
+//! logs in without the master password. A Bitwarden SDK client,
+//! independent of Verrou, also decrypts the key approved by Verrou.
 
 use std::num::NonZeroU32;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -43,7 +43,7 @@ const PASSWORD: &str = "cheval correct pile agrafe";
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
@@ -59,7 +59,7 @@ fn now() -> u64 {
         .as_secs()
 }
 
-/// Un compte neuf (PBKDF2), avec son adresse.
+/// A new account (PBKDF2), with its address.
 async fn account(server: &str) -> String {
     let email = format!(
         "devlogin-{}@verrou.test",
@@ -85,13 +85,12 @@ async fn sign_in(server: &str, store: &Store, email: &str) -> Unlocked {
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => *unlocked,
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
-/// Un appareil que le serveur connaît déjà (une connexion par mot de passe,
-/// puis déconnexion : l'identifiant d'appareil reste), comme l'exige
-/// Vaultwarden pour créer une demande.
+/// A device the server already knows (a password login, then logout: the
+/// device id stays), as Vaultwarden requires to create a request.
 async fn known_device(server: &str, email: &str) -> Store {
     let store = temp_store();
     drop(sign_in(server, &store, email).await);
@@ -100,8 +99,8 @@ async fn known_device(server: &str, email: &str) -> Store {
     store
 }
 
-/// Attend que la demande `id` apparaisse dans les demandes en attente de
-/// la session ouverte.
+/// Waits for request `id` to show up in the open session's pending
+/// requests.
 async fn pending(unlocked: &mut Unlocked, id: &str) -> device_login::AuthRequest {
     for _ in 0..20 {
         let requests = unlocked.connection.auth_requests().await.unwrap();
@@ -110,7 +109,7 @@ async fn pending(unlocked: &mut Unlocked, id: &str) -> device_login::AuthRequest
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
-    panic!("demande {id} absente");
+    panic!("request {id} missing");
 }
 
 #[tokio::test]
@@ -133,11 +132,11 @@ async fn a_known_device_logs_in_after_approval() {
         })
         .await
         .unwrap();
-    // L'élément part au serveur (file des modifications).
+    // The item goes to the server (change queue).
     approver.connection.sync().await.unwrap();
     let store = known_device(&server, &email).await;
 
-    // L'adresse saisie avec des majuscules : même phrase des deux côtés.
+    // The address typed with capitals: same phrase on both sides.
     let request = device_login::begin(&store, &server, &email.to_uppercase())
         .await
         .unwrap();
@@ -145,11 +144,11 @@ async fn a_known_device_logs_in_after_approval() {
     let shown = pending(&mut approver, request.id()).await;
     assert_eq!(shown.fingerprint, request.fingerprint());
     assert_eq!(shown.fingerprint.split('-').count(), 5);
-    assert_eq!(shown.device, "Mac (app de bureau)", "{shown:?}");
+    assert_eq!(shown.device, "Mac (desktop app)", "{shown:?}");
     assert_ne!(shown.ip, "");
     assert!(shown.created_at.abs_diff(now().cast_signed()) < 60);
 
-    // Approuver pendant que l'autre appareil attend sur le canal anonyme.
+    // Approve while the other device waits on the anonymous channel.
     let waiting = tokio::spawn(async move {
         let answer = request
             .wait_for_answer(Duration::from_secs(30))
@@ -165,11 +164,11 @@ async fn a_known_device_logs_in_after_approval() {
         .unwrap();
     let (request, answer) = tokio::time::timeout(Duration::from_secs(10), waiting)
         .await
-        .expect("le canal anonyme n'a rien dit")
+        .expect("the anonymous channel said nothing")
         .unwrap();
     assert_eq!(answer, Answer::Approved);
 
-    // Plus en attente côté approbateur.
+    // No longer pending on the approver side.
     assert!(
         approver
             .connection
@@ -181,7 +180,7 @@ async fn a_known_device_logs_in_after_approval() {
     );
 
     let LoginStep::Unlocked(unlocked) = request.login().await.unwrap() else {
-        panic!("second facteur inattendu");
+        panic!("unexpected second factor");
     };
     let titles: Vec<_> = unlocked
         .vault
@@ -194,14 +193,14 @@ async fn a_known_device_logs_in_after_approval() {
         unlocked.connection.user_key().await.unwrap().expose(),
         approver.connection.user_key().await.unwrap().expose()
     );
-    // Le compte est enregistré : le mot de passe principal l'ouvre ensuite.
+    // The account is saved: the master password opens it afterwards.
     drop(unlocked);
     let reopened = verrou_vaultwarden::unlock_with_password(&store, &SecretString::new(PASSWORD))
         .await
         .unwrap();
     assert_eq!(reopened.vault.items.len(), 1);
 
-    // Une demande ne sert qu'une fois.
+    // A request can only be used once.
     assert!(request.login().await.is_err());
 }
 
@@ -227,7 +226,7 @@ async fn a_denied_request_cannot_log_in() {
         Answer::Denied
     );
     assert!(matches!(request.login().await, Err(Error::Invalid(_))));
-    // Refusée : effacée, plus rien à approuver.
+    // Denied: erased, nothing left to approve.
     assert!(
         approver
             .connection
@@ -258,12 +257,12 @@ async fn approval_checks_the_fingerprint_shown() {
 async fn a_new_device_is_refused_by_vaultwarden() {
     let Some(server) = server() else { return };
     let email = account(&server).await;
-    // Jamais connecté avec ce compte : Vaultwarden refuse la demande.
+    // Never logged in with this account: Vaultwarden refuses the request.
     let error = device_login::begin(&temp_store(), &server, &email)
         .await
         .err()
-        .expect("demande acceptée d'un appareil inconnu");
-    assert!(error.to_string().contains("jamais connecté"), "{error}");
+        .expect("request accepted from an unknown device");
+    assert!(error.to_string().contains("never"), "{error}");
 }
 
 #[tokio::test]
@@ -281,10 +280,10 @@ async fn second_factor_still_applies() {
         .await
         .unwrap();
     let LoginStep::TwoFactor(pending) = request.login().await.unwrap() else {
-        panic!("Vaultwarden n'a pas demandé le second facteur");
+        panic!("Vaultwarden did not ask for the second factor");
     };
     assert!(pending.is_device_login());
-    // Le pas suivant (le code courant a servi à la connexion précédente).
+    // The next step (the current code was used by the previous login).
     let code = Totp::parse(&secret).unwrap().generate(now() + 30).code;
     let unlocked = pending
         .answer(&TwoFactorAnswer {
@@ -299,10 +298,10 @@ async fn second_factor_still_applies() {
     );
 }
 
-/// Un client indépendant de Verrou, comme l'app officielle : clés et
-/// phrase par le SDK de Bitwarden (`new_auth_request`), requêtes HTTP à la
-/// main, puis la clé approuvée par Verrou ouverte par le SDK
-/// (`InitUserCryptoMethod::AuthRequest`) dans un client neuf.
+/// A client independent of Verrou, like the official app: keys and phrase
+/// from the Bitwarden SDK (`new_auth_request`), HTTP requests by hand,
+/// then the key approved by Verrou opened by the SDK
+/// (`InitUserCryptoMethod::AuthRequest`) in a new client.
 #[tokio::test]
 async fn an_independent_sdk_client_decrypts_the_approved_key() {
     let Some(server) = server() else { return };
@@ -348,7 +347,7 @@ async fn an_independent_sdk_client_decrypts_the_approved_key() {
         .unwrap();
     assert_eq!(response["requestApproved"], json!(true));
     assert_eq!(response["masterPasswordHash"], Value::Null);
-    // Connexion par le code d'accès : le serveur l'accepte.
+    // Login with the access code: the server accepts it.
     let token: Value = http
         .post(format!("{server}/identity/connect/token"))
         .header("device-type", "7")
@@ -369,7 +368,7 @@ async fn an_independent_sdk_client_decrypts_the_approved_key() {
         .json()
         .await
         .unwrap();
-    let private_key = token["PrivateKey"].as_str().expect("connexion refusée");
+    let private_key = token["PrivateKey"].as_str().expect("login refused");
     let sdk = Client::new(None);
     sdk.crypto()
         .initialize_user_crypto(InitUserCryptoRequest {
@@ -401,10 +400,10 @@ async fn an_independent_sdk_client_decrypts_the_approved_key() {
     );
 }
 
-/// Plus de 5 minutes : Vaultwarden refuse le code d'accès, même approuvé,
-/// et Verrou ne propose plus la connexion.
+/// More than 5 minutes: Vaultwarden refuses the access code, even
+/// approved, and Verrou no longer offers the login.
 #[tokio::test]
-#[ignore = "attend 5 minutes : lancer avec --ignored"]
+#[ignore = "waits 5 minutes: run with --ignored"]
 async fn a_request_expires() {
     let Some(server) = server() else { return };
     let email = account(&server).await;
@@ -416,18 +415,18 @@ async fn a_request_expires() {
     tokio::time::sleep(device_login::LOGIN_WINDOW + Duration::from_secs(5)).await;
     assert!(request.is_expired());
     assert_eq!(request.answer_now().await.unwrap(), Answer::Denied);
-    // L'approbation passe encore côté serveur (15 minutes), mais la
-    // connexion est refusée.
+    // The approval still goes through on the server (15 minutes), but the
+    // login is refused.
     approver
         .connection
         .answer_auth_request(&shown.id, &shown.fingerprint, true)
         .await
         .unwrap();
-    let error = request.login().await.err().expect("connexion acceptée");
+    let error = request.login().await.err().expect("login accepted");
     assert!(matches!(error, Error::WrongPassword), "{error:?}");
 }
 
-/// Jeton d'accès par mot de passe (avec le code TOTP si `totp`).
+/// Access token by password (with the TOTP code if `totp`).
 async fn token(server: &str, email: &str, device_id: &str, totp: Option<&str>) -> String {
     let kdf = Kdf::PBKDF2 {
         iterations: NonZeroU32::new(600_000).unwrap(),
@@ -490,15 +489,15 @@ async fn enable_totp(server: &str, email: &str) -> String {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "activation TOTP refusée");
+    assert!(response.status().is_success(), "TOTP activation refused");
     secret.to_owned()
 }
 
-/// Appareil connu d'un compte à second facteur : une connexion complète
-/// (mot de passe et code), sans enregistrer de compte local.
+/// Known device of an account with a second factor: a full login
+/// (password and code), without saving a local account.
 async fn known_device_with_totp(server: &str, email: &str, secret: &str) -> Store {
     let store = temp_store();
-    // Le code courant a servi à l'activation : attendre le pas suivant.
+    // The current code was used for activation: wait for the next step.
     let wait = 30 - now() % 30 + 1;
     tokio::time::sleep(Duration::from_secs(wait)).await;
     token(server, email, &store.device_id().unwrap(), Some(secret)).await;

@@ -1,7 +1,7 @@
-//! Compléments de l'audit pour l'app : double authentification disponible
-//! mais absente (2fa.directory), cartes expirées, mots de passe anciens, et
-//! vérification dans les fuites connues des mots de passe qu'on vient
-//! d'enregistrer. Voir `verrou_core::watchtower`.
+//! Audit extras for the app: two-factor authentication available but
+//! missing (2fa.directory), expired cards, old passwords, and checking
+//! freshly saved passwords against known breaches. See
+//! `verrou_core::watchtower`.
 
 use std::sync::{Arc, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,93 +21,92 @@ fn now() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
-/// Cartes et mots de passe anciens : calculés localement, sans réseau.
+/// Cards and old passwords: computed locally, no network.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct WatchtowerReport {
-    /// Cartes expirées ou qui expirent dans les 60 jours, la plus urgente
-    /// d'abord.
+    /// Cards expired or expiring within 60 days, most urgent first.
     pub cards: Vec<ExpiringCard>,
-    /// Identifiants inchangés depuis plus de 3 ans, le plus ancien d'abord.
+    /// Logins unchanged for more than 3 years, oldest first.
     pub old: Vec<OldPassword>,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ExpiringCard {
     pub item: ItemSummary,
-    /// Mois et année d'expiration (`09/2029`).
+    /// Expiry month and year (`09/2029`).
     pub expiry: String,
-    /// Jours restants jusqu'à la fin du mois d'expiration ; négatif : expirée.
+    /// Days left until the end of the expiry month; negative: expired.
     pub days_left: i64,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct OldPassword {
     pub item: ItemSummary,
-    /// Jours depuis la dernière modification de l'élément.
+    /// Days since the item was last modified.
     pub days: i64,
 }
 
-/// Identifiants dont le site propose la double authentification, sans code
-/// à usage unique dans Verrou.
+/// Logins whose site offers two-factor authentication, with no one-time
+/// code in Verrou.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct TwoFactorReport {
     pub missing: Vec<MissingTwoFactor>,
-    /// Horodatage Unix de la copie de la liste utilisée.
+    /// Unix timestamp of the copy of the list used.
     pub fetched_at: i64,
-    /// Copie de plus de 7 jours, faute de réseau.
+    /// Copy older than 7 days, for lack of network.
     pub stale: bool,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct MissingTwoFactor {
     pub item: ItemSummary,
-    /// Nom du site dans 2fa.directory.
+    /// Site name in 2fa.directory.
     pub site: String,
-    /// Le site accepte les codes à usage unique (TOTP), que Verrou sait
-    /// garder et remplir.
+    /// The site accepts one-time codes (TOTP), which Verrou can store and
+    /// fill.
     pub totp: bool,
-    /// Méthodes proposées (`totp`, `sms`, `u2f`, `email`…).
+    /// Methods offered (`totp`, `sms`, `u2f`, `email`…).
     pub methods: Vec<String>,
-    /// Page d'aide du site pour l'activer (HTTPS).
+    /// The site's help page for turning it on (HTTPS).
     pub documentation: Option<String>,
 }
 
-/// Identifiants dont le site accepte les passkeys, sans passkey dans
-/// Verrou (« Passkey possible »).
+/// Logins whose site accepts passkeys, with no passkey in Verrou
+/// ("Passkey possible").
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyReport {
     pub candidates: Vec<PasskeyCandidate>,
-    /// Horodatage Unix de la copie de l'annuaire utilisée.
+    /// Unix timestamp of the copy of the directory used.
     pub fetched_at: i64,
-    /// Copie de plus de 7 jours, faute de réseau.
+    /// Copy older than 7 days, for lack of network.
     pub stale: bool,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyCandidate {
     pub item: ItemSummary,
-    /// Domaine du site dans l'annuaire (passkeys.2fa.directory).
+    /// Site domain in the directory (passkeys.2fa.directory).
     pub domain: String,
-    /// La passkey peut remplacer le mot de passe à la connexion ; sinon,
-    /// elle sert de second facteur, après le mot de passe.
+    /// The passkey can replace the password at sign-in; otherwise it is a
+    /// second factor, after the password.
     pub passwordless: bool,
-    /// Le site impose la passkey (rare).
+    /// The site requires the passkey (rare).
     pub required: bool,
-    /// Page d'aide du site sur les passkeys (HTTPS).
+    /// The site's help page about passkeys (HTTPS).
     pub documentation: Option<String>,
-    /// Remarque de l'annuaire, en anglais.
+    /// Note from the directory, in English.
     pub notes: Option<String>,
 }
 
-/// D'où vient la page proposée par « Créer une passkey ».
+/// Where the page offered by "Create a passkey" comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum PasskeySetupSource {
-    /// Le site publie sa page de création (`/.well-known/passkey-endpoints`).
+    /// The site publishes its creation page (`/.well-known/passkey-endpoints`).
     WellKnown,
-    /// Grand site connu d'avance, sans requête.
+    /// Major site known in advance, no request.
     Known,
-    /// Le site n'indique pas sa page : son accueil (ou l'adresse de
-    /// l'annuaire).
+    /// The site doesn't give its page: its home page (or the directory's
+    /// address).
     Home,
 }
 
@@ -121,7 +120,7 @@ impl From<passkey_setup::Source> for PasskeySetupSource {
     }
 }
 
-/// Page à ouvrir pour créer une passkey (HTTPS).
+/// Page to open to create a passkey (HTTPS).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeySetupPage {
     pub url: String,
@@ -145,14 +144,14 @@ fn passkey_candidates(v: &Vault, directory: &PasskeyDirectory) -> Vec<PasskeyCan
         .collect()
 }
 
-/// D'où vient la page proposée par « Changer le mot de passe ».
+/// Where the page offered by "Change password" comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ChangePasswordSource {
-    /// Grand site connu d'avance (Google, GitHub…), sans requête.
+    /// Major site known in advance (Google, GitHub…), no request.
     Known,
-    /// Le site suit la norme `/.well-known/change-password`.
+    /// The site follows the `/.well-known/change-password` standard.
     WellKnown,
-    /// Le site n'indique pas sa page (ou ne répond pas) : son accueil.
+    /// The site doesn't give its page (or doesn't answer): its home page.
     Home,
 }
 
@@ -166,7 +165,7 @@ impl From<Source> for ChangePasswordSource {
     }
 }
 
-/// Page à ouvrir pour changer le mot de passe d'un identifiant (HTTPS).
+/// Page to open to change a login's password (HTTPS).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ChangePasswordPage {
     pub url: String,
@@ -178,8 +177,8 @@ fn fingerprint(password: &str) -> [u8; 32] {
 }
 
 impl VaultSession {
-    /// Retient l'empreinte des mots de passe trouvés dans des fuites, tels
-    /// qu'ils ont été vérifiés (voir `still_breached`).
+    /// Remembers the fingerprint of passwords found in breaches, as they
+    /// were checked (see `still_breached`).
     pub(crate) fn remember_breached(
         &self,
         checked: &[(String, SecretString)],
@@ -195,9 +194,9 @@ impl VaultSession {
         }
     }
 
-    /// Installe le coffre renvoyé par une écriture faite depuis Verrou
-    /// (éditeur, extension, import) et retient les identifiants dont le mot
-    /// de passe est nouveau, pour `check_new_passwords`.
+    /// Installs the vault returned by a write made from Verrou (editor,
+    /// extension, import) and remembers the logins whose password is new,
+    /// for `check_new_passwords`.
     pub(crate) fn install_written(
         &self,
         connection: &Arc<tokio::sync::Mutex<Connection>>,
@@ -224,7 +223,7 @@ impl VaultSession {
 
 #[uniffi::export]
 impl VaultSession {
-    /// Cartes expirées ou bientôt expirées, mots de passe anciens.
+    /// Expired or soon-to-expire cards, old passwords.
     pub fn watchtower(&self) -> Result<WatchtowerReport, VerrouError> {
         let now = now();
         self.with_vault(|v| {
@@ -252,11 +251,11 @@ impl VaultSession {
         })
     }
 
-    /// Fuites encore d'actualité : les identifiants dont le mot de passe n'a
-    /// pas changé depuis leur vérification, avec leur résumé à jour. Un
-    /// élément supprimé, mis à la corbeille ou au mot de passe changé (dans
-    /// Verrou, le navigateur ou ailleurs, puis synchronisé) disparaît de la
-    /// liste. Local, sans réseau.
+    /// Breaches still current: the logins whose password hasn't changed
+    /// since they were checked, with their up-to-date summary. An item
+    /// deleted, moved to the trash or whose password changed (in Verrou, the
+    /// browser or elsewhere, then synced) leaves the list. Local, no
+    /// network.
     pub fn still_breached(&self, breaches: Vec<BreachedPassword>) -> Vec<BreachedPassword> {
         let known = self.breached.lock().unwrap_or_else(PoisonError::into_inner);
         self.with_vault(|v| {
@@ -277,7 +276,7 @@ impl VaultSession {
         .unwrap_or_default()
     }
 
-    /// Oublie les nouveaux mots de passe en attente (vérification désactivée).
+    /// Forgets the pending new passwords (check turned off).
     pub fn forget_new_passwords(&self) {
         self.new_passwords
             .lock()
@@ -288,10 +287,10 @@ impl VaultSession {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Sites des identifiants qui proposent la double authentification alors
-    /// que l'élément n'a pas de code à usage unique. Télécharge la liste
-    /// complète de 2fa.directory (rien du coffre ne part), gardée 7 jours dans
-    /// le dossier du compte ; hors ligne, la dernière copie.
+    /// Sites of logins that offer two-factor authentication while the item
+    /// has no one-time code. Downloads the full 2fa.directory list (nothing
+    /// from the vault is sent), kept 7 days in the account folder; offline,
+    /// the last copy.
     pub async fn two_factor_audit(&self) -> Result<TwoFactorReport, VerrouError> {
         let dir = self.store()?.dir().to_path_buf();
         let loaded = verrou_vaultwarden::two_factor_directory::load(&dir).await?;
@@ -315,11 +314,11 @@ impl VaultSession {
         })
     }
 
-    /// Identifiants dont le site accepte les passkeys mais qui n'en ont pas
-    /// encore (« Passkey possible »). Télécharge l'annuaire complet de
-    /// passkeys.2fa.directory (rien du coffre ne part, aucune requête par
-    /// site), gardé 7 jours dans le dossier du compte ; hors ligne, la
-    /// dernière copie. Coffre fictif : un extrait embarqué, sans réseau.
+    /// Logins whose site accepts passkeys but that don't have one yet
+    /// ("Passkey possible"). Downloads the full passkeys.2fa.directory
+    /// directory (nothing from the vault is sent, no per-site request), kept
+    /// 7 days in the account folder; offline, the last copy. Mock vault: an
+    /// embedded excerpt, no network.
     pub async fn passkey_audit(&self) -> Result<PasskeyReport, VerrouError> {
         let Ok(store) = self.store() else {
             let directory =
@@ -347,19 +346,19 @@ impl VaultSession {
         })
     }
 
-    /// Page où créer une passkey pour un identifiant : celle que le site
-    /// publie (`/.well-known/passkey-endpoints`, vérifiée sur son hôte puis
-    /// son domaine), sinon une page connue d'avance, sinon l'adresse de
-    /// l'annuaire ou l'accueil du site. Seulement sur demande de
-    /// l'utilisateur, pour cet élément seul : les requêtes ne partent que
-    /// vers le site qu'il s'apprête à ouvrir.
+    /// Page where to create a passkey for a login: the one the site
+    /// publishes (`/.well-known/passkey-endpoints`, checked on its host then
+    /// its domain), otherwise a page known in advance, otherwise the
+    /// directory's address or the site's home page. Only on the user's
+    /// request, for this item alone: requests only go to the site they are
+    /// about to open.
     pub async fn passkey_setup_page(&self, id: String) -> Result<PasskeySetupPage, VerrouError> {
         let host = self
             .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
             .ok_or_else(|| VerrouError::Invalid {
-                message: "cet élément n'a pas de site".to_owned(),
+                message: "this item has no site".to_owned(),
             })?;
-        // Adresse du site selon l'annuaire en cache (jamais téléchargé ici).
+        // Site address according to the cached directory (never downloaded here).
         let site_url = match self.store() {
             Ok(store) => verrou_vaultwarden::passkey_directory::cached(store.dir())
                 .and_then(|d| d.lookup(&host).and_then(|s| s.url.clone())),
@@ -372,10 +371,10 @@ impl VaultSession {
         })
     }
 
-    /// Vérifie dans Have I Been Pwned (k-anonymat : 5 caractères du SHA-1)
-    /// les mots de passe enregistrés depuis Verrou depuis le dernier appel,
-    /// et rend ceux qui figurent dans des fuites connues. Les mots de passe
-    /// venus d'ailleurs (synchronisation) ne sont pas concernés.
+    /// Checks against Have I Been Pwned (k-anonymity: 5 characters of the
+    /// SHA-1) the passwords saved from Verrou since the last call, and
+    /// returns those that appear in known breaches. Passwords coming from
+    /// elsewhere (sync) are not concerned.
     pub async fn check_new_passwords(&self) -> Result<Vec<BreachedPassword>, VerrouError> {
         let ids: Vec<String> = std::mem::take(
             &mut *self
@@ -401,7 +400,7 @@ impl VaultSession {
         let counts = match verrou_vaultwarden::breach::pwned_counts(&passwords).await {
             Ok(counts) => counts,
             Err(error) => {
-                // Hors ligne : on réessaiera à la prochaine écriture.
+                // Offline: we'll retry on the next write.
                 let mut queue = self
                     .new_passwords
                     .lock()
@@ -431,11 +430,10 @@ impl VaultSession {
         Ok(found)
     }
 
-    /// Page où changer le mot de passe d'un identifiant : grand site connu,
-    /// sinon `/.well-known/change-password` vérifié sur son hôte puis son
-    /// domaine, sinon l'accueil du site. Seulement sur demande de
-    /// l'utilisateur, pour cet élément seul : les requêtes ne partent que
-    /// vers le site qu'il s'apprête à ouvrir.
+    /// Page where to change a login's password: major known site, otherwise
+    /// `/.well-known/change-password` checked on its host then its domain,
+    /// otherwise the site's home page. Only on the user's request, for this
+    /// item alone: requests only go to the site they are about to open.
     pub async fn change_password_page(
         &self,
         id: String,
@@ -443,7 +441,7 @@ impl VaultSession {
         let host = self
             .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
             .ok_or_else(|| VerrouError::Invalid {
-                message: "cet élément n'a pas de site".to_owned(),
+                message: "this item has no site".to_owned(),
             })?;
         let page = change_password::find(&host).await?;
         Ok(ChangePasswordPage {
@@ -461,8 +459,8 @@ mod tests {
     fn watchtower_reports_mock_cards() {
         let session = VaultSession::new();
         session.unlock_mock(0, 42);
-        // Le coffre fictif a des cartes (09/29, 03/28, 11/27) : aucune
-        // n'expire avant l'automne 2027.
+        // The mock vault has cards (09/29, 03/28, 11/27): none expires
+        // before autumn 2027.
         let report = session.watchtower().unwrap();
         assert!(report.cards.iter().all(|c| c.days_left <= 60));
     }
@@ -486,16 +484,16 @@ mod tests {
             })
             .unwrap();
         let found = vec![BreachedPassword { item, count: 3 }];
-        // Vérifié avec le mot de passe actuel : toujours d'actualité.
+        // Checked with the current password: still current.
         session.remember_breached(&[(id.clone(), SecretString::new(password))], &found);
         assert_eq!(session.still_breached(found.clone()).len(), 1);
-        // Vérifié avec un autre mot de passe : il a changé depuis.
+        // Checked with another password: it changed since.
         session.remember_breached(&[(id.clone(), SecretString::new("ancien"))], &found);
         assert!(session.still_breached(found.clone()).is_empty());
-        // Revérifié et propre : oublié.
+        // Rechecked and clean: forgotten.
         session.remember_breached(&[(id, SecretString::new("x"))], &[]);
         assert!(session.still_breached(found.clone()).is_empty());
-        // Verrouillé : plus rien.
+        // Locked: nothing left.
         session.lock();
         assert!(session.still_breached(found).is_empty());
     }
@@ -512,10 +510,10 @@ mod tests {
             .map(|c| c.domain.as_str())
             .collect();
         assert!(domains.contains(&"github.com"), "{domains:?}");
-        // Google a déjà une passkey dans le coffre fictif : rien à proposer
-        // (la correspondance par sous-domaine est testée dans le cœur).
+        // Google already has a passkey in the mock vault: nothing to offer
+        // (subdomain matching is tested in the core).
         assert!(!report.candidates.iter().any(|c| c.item.title == "Google"));
-        // npm : second facteur seulement.
+        // npm: second factor only.
         assert!(
             report
                 .candidates
@@ -523,7 +521,7 @@ mod tests {
                 .filter(|c| c.domain == "npmjs.com")
                 .all(|c| !c.passwordless)
         );
-        // Trié par titre.
+        // Sorted by title.
         let titles: Vec<String> = report
             .candidates
             .iter()
@@ -554,7 +552,7 @@ mod tests {
         let session = VaultSession::new();
         session.unlock_mock(0, 42);
         assert!(session.check_new_passwords().await.unwrap().is_empty());
-        // Sans compte, pas de dossier où garder la liste.
+        // Without an account, no folder to keep the list in.
         assert!(matches!(
             session.two_factor_audit().await,
             Err(VerrouError::NoAccount)

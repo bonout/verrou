@@ -3,24 +3,24 @@ import Observation
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Pièces jointes de l'élément affiché, et ce qui est en cours : envoi,
-/// téléchargement, aperçu.
+/// Attachments of the displayed item, and what is in progress: upload,
+/// download, preview.
 ///
-/// Rien n'est gardé hors ligne : un fichier se télécharge (et se déchiffre,
-/// dans Rust) à chaque ouverture. Pour Quick Look, il passe par un fichier
-/// temporaire du conteneur de l'app, effacé dès la fermeture de l'aperçu, au
-/// changement d'élément, au verrouillage et au lancement suivant.
+/// Nothing is kept offline: a file is downloaded (and decrypted, in Rust) on
+/// each opening. For Quick Look, it goes through a temporary file in the
+/// app's container, deleted as soon as the preview closes, when the item
+/// changes, on lock and at the next launch.
 @MainActor
 @Observable
 final class AttachmentsModel {
-    /// Taille maximale d'un fichier (comme le cœur Rust).
+    /// Maximum size of a file (like the Rust core).
     static let maxSize: Int64 = 100 * 1024 * 1024
 
     private(set) var itemID: String?
     private(set) var entries: [AttachmentEntry] = []
-    /// Envoi ou téléchargement en cours : ce qu'on montre à l'utilisateur.
+    /// Upload or download in progress: what is shown to the user.
     var activity: String?
-    /// Fichier déchiffré montré par Quick Look ; effacé à la fermeture.
+    /// Decrypted file shown by Quick Look; deleted when closed.
     var preview: URL? {
         didSet { if let oldValue, oldValue != preview { Self.discard(oldValue) } }
     }
@@ -39,14 +39,14 @@ final class AttachmentsModel {
         Self.purge()
     }
 
-    // MARK: Fichiers temporaires
+    // MARK: Temporary files
 
     private static var directory: URL {
         FileManager.default.temporaryDirectory.appending(path: "pieces-jointes", directoryHint: .isDirectory)
     }
 
-    /// Écrit le fichier déchiffré pour Quick Look, lisible par l'utilisateur
-    /// seul, sous son vrai nom (Quick Look s'en sert pour le reconnaître).
+    /// Writes the decrypted file for Quick Look, readable by the user only,
+    /// under its real name (Quick Look uses it to recognize it).
     static func temporaryFile(named name: String, data: Data) throws -> URL {
         let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
@@ -63,35 +63,35 @@ final class AttachmentsModel {
         try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
     }
 
-    /// Efface tous les fichiers temporaires (verrouillage, lancement, fin).
+    /// Deletes all the temporary files (lock, launch, quit).
     static func purge() {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// Un nom de fichier sans chemin.
+    /// A file name without a path.
     static func safeName(_ name: String) -> String {
         let cleaned = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty || cleaned.hasPrefix(".") ? "fichier\(cleaned)" : cleaned
+        return cleaned.isEmpty || cleaned.hasPrefix(".") ? String(localized: "file") + cleaned : cleaned
     }
 }
 
 extension AppModel {
-    // MARK: Pièces jointes
+    // MARK: Attachments
 
-    /// Recharge la liste de l'élément affiché (depuis le cache, sans réseau).
+    /// Reloads the list of the displayed item (from the cache, without network).
     func loadAttachments(of itemID: String) async {
         let entries = (try? await session.attachments(itemId: itemID)) ?? []
         guard selection == itemID else { return }
         attachments.show(entries, for: itemID)
     }
 
-    /// Peut-on ajouter ou retirer un fichier à cet élément ?
+    /// Can a file be added to or removed from this item?
     func canEditAttachments(of summary: ItemSummary) -> Bool {
         canEdit && summary.state == .active && attachments.activity == nil && !editorBusy
     }
 
-    /// Ouvre la pièce jointe dans Quick Look (téléchargée et déchiffrée).
+    /// Opens the attachment in Quick Look (downloaded and decrypted).
     func openAttachment(_ entry: AttachmentEntry, of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.openAttachment(entry, of: itemID) }) { return }
         Task {
@@ -99,17 +99,17 @@ extension AppModel {
             do {
                 attachments.preview = try AttachmentsModel.temporaryFile(named: content.fileName, data: content.data)
             } catch {
-                toast = Toast(message: "Ouverture impossible", detail: error.localizedDescription, failure: true)
+                toast = Toast(message: String(localized: "Couldn't open"), detail: error.localizedDescription, failure: true)
             }
         }
     }
 
-    /// Enregistre une copie déchiffrée, là où l'utilisateur le choisit.
+    /// Saves a decrypted copy, where the user chooses.
     func saveAttachment(_ entry: AttachmentEntry, of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.saveAttachment(entry, of: itemID) }) { return }
         let panel = NSSavePanel()
-        panel.title = "Enregistrer la pièce jointe"
-        panel.message = "La copie enregistrée ne sera pas chiffrée."
+        panel.title = String(localized: "Save Attachment")
+        panel.message = String(localized: "The saved copy will not be encrypted.")
         panel.nameFieldStringValue = AttachmentsModel.safeName(entry.fileName)
         panel.canCreateDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -117,50 +117,50 @@ extension AppModel {
             guard let content = await download(entry, of: itemID) else { return }
             do {
                 try content.data.write(to: url, options: .atomic)
-                toast = Toast(message: "Pièce jointe enregistrée", detail: url.lastPathComponent)
+                toast = Toast(message: String(localized: "Attachment saved"), detail: url.lastPathComponent)
             } catch {
-                toast = Toast(message: "Enregistrement impossible", detail: error.localizedDescription, failure: true)
+                toast = Toast(message: String(localized: "Couldn't save"), detail: error.localizedDescription, failure: true)
             }
         }
     }
 
     private func download(_ entry: AttachmentEntry, of itemID: String) async -> AttachmentContent? {
         guard attachments.activity == nil else { return nil }
-        attachments.activity = "Téléchargement de « \(entry.fileName) »…"
+        attachments.activity = String(localized: "Downloading “\(entry.fileName)”…")
         defer { attachments.activity = nil }
         do {
             let content = try await session.downloadAttachment(itemId: itemID, attachmentId: entry.id)
-            // Verrouillé ou autre élément entre-temps : on n'ouvre rien.
+            // Locked or another item in the meantime: open nothing.
             guard lockState == .unlocked, selection == itemID else { return nil }
             return content
         } catch {
-            toast = Toast(message: "Pièce jointe illisible", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Unreadable attachment"), detail: Self.describe(error), failure: true)
             return nil
         }
     }
 
-    /// Supprime définitivement la pièce jointe (après confirmation dans la vue).
+    /// Permanently deletes the attachment (after confirmation in the view).
     func deleteAttachment(_ entry: AttachmentEntry, of itemID: String) async {
         guard canEdit, attachments.activity == nil else { return }
-        attachments.activity = "Suppression de « \(entry.fileName) »…"
+        attachments.activity = String(localized: "Deleting “\(entry.fileName)”…")
         defer { attachments.activity = nil }
         do {
             try await session.deleteAttachment(itemId: itemID, attachmentId: entry.id)
             afterWrite(select: itemID)
             await loadAttachments(of: itemID)
-            toast = Toast(message: "Pièce jointe supprimée", detail: entry.fileName)
+            toast = Toast(message: String(localized: "Attachment deleted"), detail: entry.fileName)
         } catch {
-            toast = Toast(message: "Suppression impossible", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Couldn't delete"), detail: Self.describe(error), failure: true)
         }
     }
 
-    /// « Ajouter un fichier… » : choix dans le Finder.
+    /// "Add File…": choice in the Finder.
     func chooseAttachments(for itemID: String) {
         guard canEdit else { return }
         let panel = NSOpenPanel()
-        panel.title = "Ajouter des pièces jointes"
-        panel.message = "Les fichiers sont chiffrés avant d'être envoyés (100 Mo au plus chacun)."
-        panel.prompt = "Ajouter"
+        panel.title = String(localized: "Add Attachments")
+        panel.message = String(localized: "Files are encrypted before being uploaded (100 MB at most each).")
+        panel.prompt = String(localized: "Add")
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK else { return }
@@ -168,18 +168,18 @@ extension AppModel {
         Task { await addAttachments(urls, to: itemID) }
     }
 
-    /// Ajoute des fichiers (choisis ou déposés) à l'élément, un par un.
+    /// Adds files (chosen or dropped) to the item, one by one.
     func addAttachments(_ urls: [URL], to itemID: String) async {
         guard canEdit, attachments.activity == nil else { return }
         var added = 0
         for url in urls {
-            attachments.activity = "Envoi de « \(url.lastPathComponent) »…"
+            attachments.activity = String(localized: "Uploading “\(url.lastPathComponent)”…")
             do {
                 let data = try Self.readFile(url, limit: AttachmentsModel.maxSize)
                 try await session.addAttachment(itemId: itemID, fileName: url.lastPathComponent, data: data)
                 added += 1
             } catch {
-                toast = Toast(message: "« \(url.lastPathComponent) » non ajouté", detail: Self.describeFile(error), failure: true)
+                toast = Toast(message: String(localized: "“\(url.lastPathComponent)” not added"), detail: Self.describeFile(error), failure: true)
                 break
             }
         }
@@ -187,19 +187,19 @@ extension AppModel {
         guard added > 0, lockState == .unlocked else { return }
         afterWrite(select: itemID)
         await loadAttachments(of: itemID)
-        toast = Toast(message: added == 1 ? "Pièce jointe ajoutée" : "\(added) pièces jointes ajoutées",
-                      detail: "Chiffrée avant l'envoi")
+        toast = Toast(message: added == 1 ? String(localized: "Attachment added") : String(localized: "\(added) attachments added"),
+                      detail: String(localized: "Encrypted before upload"))
     }
 
-    /// Fichier → Nouveau document… : une note sécurisée au nom du fichier,
-    /// le fichier en pièce jointe.
+    /// File → New Document…: a secure note named after the file, with the
+    /// file attached.
     func newDocument() {
         guard canEdit, attachments.activity == nil else { return }
         showMainWindow()
         let panel = NSOpenPanel()
-        panel.title = "Nouveau document"
-        panel.message = "Le fichier est chiffré et rangé dans une note sécurisée à son nom (100 Mo au plus)."
-        panel.prompt = "Créer"
+        panel.title = String(localized: "New Document")
+        panel.message = String(localized: "The file is encrypted and stored in a secure note named after it (100 MB at most).")
+        panel.prompt = String(localized: "Create")
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -208,21 +208,21 @@ extension AppModel {
             folderID = folders.first { $0.name == name }?.id
         }
         Task {
-            attachments.activity = "Envoi de « \(url.lastPathComponent) »…"
+            attachments.activity = String(localized: "Uploading “\(url.lastPathComponent)”…")
             defer { attachments.activity = nil }
             do {
                 let data = try Self.readFile(url, limit: AttachmentsModel.maxSize)
                 let id = try await session.createDocument(fileName: url.lastPathComponent, data: data, folderId: folderID)
                 afterWrite(select: id)
-                toast = Toast(message: "Document créé", detail: url.lastPathComponent)
+                toast = Toast(message: String(localized: "Document created"), detail: url.lastPathComponent)
             } catch {
-                toast = Toast(message: "Document non créé", detail: Self.describeFile(error), failure: true)
+                toast = Toast(message: String(localized: "Document not created"), detail: Self.describeFile(error), failure: true)
             }
         }
     }
 
-    /// Lit un fichier choisi par l'utilisateur (droit du sandbox accordé par
-    /// le panneau ou le glisser-déposer), dans la limite de taille.
+    /// Reads a file chosen by the user (sandbox right granted by the panel
+    /// or the drag and drop), within the size limit.
     static func readFile(_ url: URL, limit: Int64) throws -> Data {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
@@ -245,8 +245,8 @@ enum AttachmentFileError: Error {
 
     var message: String {
         switch self {
-        case .notAFile: "Seuls les fichiers peuvent être joints ou envoyés (pas les dossiers)."
-        case .tooLarge: "Le fichier dépasse 100 Mo, la taille maximale d'une pièce jointe ou d'un envoi."
+        case .notAFile: String(localized: "Only files can be attached or sent (not folders).")
+        case .tooLarge: String(localized: "The file exceeds 100 MB, the maximum size of an attachment or a send.")
         }
     }
 }

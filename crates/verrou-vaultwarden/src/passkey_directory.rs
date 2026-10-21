@@ -1,11 +1,11 @@
-//! Annuaire des sites qui acceptent les passkeys (passkeys.2fa.directory,
-//! du même projet que 2fa.directory), gardé en cache sur le disque.
+//! Directory of the sites that accept passkeys (passkeys.2fa.directory,
+//! from the same project as 2fa.directory), cached on disk.
 //!
-//! Confidentialité : comme pour 2fa.directory, l'annuaire est téléchargé
-//! **en entier** (environ 75 Ko), au plus une fois par semaine, sans rien
-//! envoyer du coffre ; la comparaison avec les sites des identifiants se
-//! fait sur l'appareil (`verrou_core::passkey_upgrade`). Aucune requête par
-//! site. Hors ligne, la dernière copie sert, même périmée.
+//! Privacy: as for 2fa.directory, the directory is downloaded **in full**
+//! (about 75 KB), at most once a week, without sending anything from the
+//! vault; the comparison with the logins' sites happens on the device
+//! (`verrou_core::passkey_upgrade`). No per-site request. Offline, the last
+//! copy is used, even if stale.
 
 use std::path::Path;
 use std::time::Duration;
@@ -15,19 +15,19 @@ use verrou_core::passkey_upgrade::PasskeyDirectory;
 use crate::Error;
 use crate::directory_cache;
 
-/// Les sites qui acceptent une passkey, sans mot de passe ou en second
-/// facteur (`all.json` liste aussi ceux qui ne le font pas encore).
+/// The sites that accept a passkey, passwordless or as a second factor
+/// (`all.json` also lists those that don't yet).
 pub const URL: &str = "https://passkeys-api.2fa.directory/v1/supported.json";
-/// Une copie plus jeune n'est pas retéléchargée.
+/// A younger copy is not downloaded again.
 pub const MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const FILE: &str = "passkeys-directory.json";
 
-/// L'annuaire chargé, et d'où il vient.
+/// The loaded directory, and where it comes from.
 pub struct Loaded {
     pub directory: PasskeyDirectory,
-    /// Horodatage Unix du téléchargement de cette copie.
+    /// Unix timestamp of this copy's download.
     pub fetched_at: i64,
-    /// `true` : copie de plus de `MAX_AGE`, faute de réseau.
+    /// `true`: copy older than `MAX_AGE`, for lack of network.
     pub stale: bool,
 }
 
@@ -35,14 +35,14 @@ fn parse(data: &[u8]) -> Option<PasskeyDirectory> {
     PasskeyDirectory::parse(data).ok().filter(|d| !d.is_empty())
 }
 
-/// La copie en cache, quel que soit son âge, sans réseau.
+/// The cached copy, whatever its age, without network.
 pub fn cached(dir: &Path) -> Option<PasskeyDirectory> {
     directory_cache::cached(dir, FILE, &parse).map(|(directory, _)| directory)
 }
 
-/// L'annuaire, depuis le cache de `dir` s'il a moins de `MAX_AGE`, sinon
-/// téléchargé (et mis en cache). Réseau indisponible : la copie périmée,
-/// ou l'erreur s'il n'y en a pas.
+/// The directory, from the cache in `dir` if it is younger than `MAX_AGE`,
+/// otherwise downloaded (and cached). Network unavailable: the stale copy,
+/// or the error if there is none.
 pub async fn load(dir: &Path) -> Result<Loaded, Error> {
     let loaded = directory_cache::load(dir, FILE, MAX_AGE, parse, || {
         directory_cache::download(URL, "passkeys.2fa.directory")
@@ -95,10 +95,10 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
-    /// Contre le vrai service (réseau) :
+    /// Against the real service (network):
     /// `cargo test -p verrou-vaultwarden -- --ignored passkey_directory`.
     #[tokio::test]
-    #[ignore = "réseau : passkeys-api.2fa.directory"]
+    #[ignore = "network: passkeys-api.2fa.directory"]
     async fn real_service_lists_github() {
         let dir = temp_dir();
         let loaded = load(&dir).await.unwrap();

@@ -5,18 +5,18 @@ import AuthenticationServices
 import os
 import SwiftUI
 
-/// Point d'entrée de l'extension de remplissage automatique : le système
-/// l'appelle pour une liste (clavier, touche « Mots de passe »), pour une
-/// suggestion touchée (barre QuickType), pour une passkey ou un code.
+/// Entry point of the AutoFill extension: the system calls it for a list
+/// (keyboard, "Passwords" key), for a tapped suggestion (QuickType bar), for
+/// a passkey or a code.
 ///
-/// Le même code sert l'iPhone (`VerrouAutoFill`) et le Mac
-/// (`VerrouAutoFillMac`) : seul l'hébergement de l'interface SwiftUI change
+/// The same code serves the iPhone (`VerrouAutoFill`) and the Mac
+/// (`VerrouAutoFillMac`): only the hosting of the SwiftUI interface changes
 /// (`UIHostingController`, `NSHostingController`).
 ///
-/// Le coffre est toujours verrouillé quand une demande arrive (nouveau
-/// processus) : les demandes « sans interaction » rendent la main au système
-/// (`userInteractionRequired`), qui affiche alors l'interface ci-dessous,
-/// où Face ID part tout seul.
+/// The vault is always locked when a request arrives (new process): the
+/// "without interaction" requests hand control back to the system
+/// (`userInteractionRequired`), which then shows the interface below, where
+/// Face ID starts on its own.
 final class CredentialProviderViewController: ASCredentialProviderViewController {
     private lazy var model = AutoFillModel { [weak self] completion in
         self?.complete(completion)
@@ -24,7 +24,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     private var hosted = false
 
     #if os(macOS)
-    /// Pas de nib : la vue est créée ici, à la taille de la feuille du système.
+    /// No nib: the view is created here, at the size of the system's sheet.
     override func loadView() {
         view = NSView(frame: NSRect(origin: .zero, size: Self.macSize))
     }
@@ -52,7 +52,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         hosted = true
     }
 
-    // MARK: Listes
+    // MARK: Lists
 
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
         model.start(.list(services: serviceIdentifiers, passkeys: nil))
@@ -74,10 +74,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.start(.oneTimeCodes(services: serviceIdentifiers))
     }
 
-    // MARK: Suggestion touchée
+    // MARK: Tapped suggestion
 
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
-        // Coffre verrouillé dans ce nouveau processus : il faut Face ID.
+        // Vault locked in this new process: Face ID is needed.
         extensionContext.cancelRequest(withError: NSError(
             domain: ASExtensionErrorDomain, code: ASExtensionError.userInteractionRequired.rawValue))
     }
@@ -86,11 +86,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.start(.provide(credentialRequest))
     }
 
-    // MARK: Création de passkey
+    // MARK: Passkey creation
 
     override func prepareInterface(forPasskeyRegistration registrationRequest: any ASCredentialRequest) {
         guard let request = registrationRequest as? ASPasskeyCredentialRequest else {
-            return complete(.failed("demande de création invalide"))
+            return complete(.failed("invalid creation request"))
         }
         model.start(.register(request))
     }
@@ -99,13 +99,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.start(.none)
     }
 
-    // MARK: Création conditionnelle (iOS 18)
+    // MARK: Conditional creation (iOS 18)
 
-    /// Safari demande une passkey en arrière-plan, juste après un mot de
-    /// passe rempli par Verrou (`mediation: "conditional"`). Aucune
-    /// interface : la clé préparée au remplissage sert, si le site et le
-    /// compte sont les mêmes ; sinon refus silencieux. La passkey rejoint
-    /// l'élément à la prochaine ouverture de l'app (`conditional.rs`).
+    /// Safari requests a passkey in the background, right after a password
+    /// filled by Verrou (`mediation: "conditional"`). No interface: the key
+    /// prepared at fill time is used, if the site and the account are the
+    /// same; otherwise a silent refusal. The passkey joins the item the next
+    /// time the app opens (`conditional.rs`).
     @available(iOS 18.0, *)
     override func performWithoutUserInteractionIfPossible(passkeyRegistration registrationRequest: ASPasskeyCredentialRequest) {
         guard let identity = registrationRequest.credentialIdentity as? ASPasskeyCredentialIdentity,
@@ -116,23 +116,23 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 rpId: identity.relyingPartyIdentifier, userName: identity.userName,
                 userHandle: identity.userHandle, clientDataHash: registrationRequest.clientDataHash,
                 userVerified: false, itemId: nil, excludedCredentials: []))
-            Self.log.notice("passkey conditionnelle créée pour \(identity.relyingPartyIdentifier, privacy: .public)")
+            Self.log.notice("conditional passkey created for \(identity.relyingPartyIdentifier, privacy: .public)")
             extensionContext.completeRegistrationRequest(using: ASPasskeyRegistrationCredential(
                 relyingParty: identity.relyingPartyIdentifier, clientDataHash: registrationRequest.clientDataHash,
                 credentialID: Data(result.credentialId), attestationObject: Data(result.attestationObject)))
         } catch {
-            Self.log.notice("passkey conditionnelle refusée : \(String(describing: error), privacy: .public)")
+            Self.log.notice("conditional passkey refused: \(String(describing: error), privacy: .public)")
             cancel(.failed)
         }
     }
 
-    // MARK: Signaux des sites (iOS 26)
+    // MARK: Site signals (iOS 26)
 
-    // Un site informe le fournisseur (`ASCredentialUpdater`) : l'extension,
-    // lancée en arrière-plan, note le signal sans interface ni coffre ouvert
-    // (`signals.rs`). Les suggestions du système en tiennent compte à la
-    // prochaine publication, et l'audit de l'app les montre ; rien n'est
-    // supprimé du coffre automatiquement.
+    // A site informs the provider (`ASCredentialUpdater`): the extension,
+    // launched in the background, records the signal without an interface
+    // or an open vault (`signals.rs`). The system's suggestions take it into
+    // account at the next publication, and the app's audit shows them;
+    // nothing is removed from the vault automatically.
 
     override func reportPublicKeyCredentialUpdate(forRelyingParty relyingParty: String, userHandle: Data, newName: String) {
         record(.passkeyRenamed(rpId: relyingParty, userHandle: userHandle, name: newName))
@@ -155,13 +155,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         do {
             guard let session = Self.backgroundSession() else { return }
             try session.recordCredentialSignal(signal: signal)
-            Self.log.notice("signal du site noté")
+            Self.log.notice("site signal recorded")
         } catch {
-            Self.log.error("signal du site non noté : \(String(describing: error), privacy: .public)")
+            Self.log.error("site signal not recorded: \(String(describing: error), privacy: .public)")
         }
     }
 
-    /// Le dossier du compte, sans ouvrir le coffre (demandes d'arrière-plan).
+    /// The account folder, without opening the vault (background requests).
     private static func backgroundSession() -> VaultSession? {
         let location = VerrouStorage.accountLocation()
         guard location.shared else { return nil }
@@ -170,7 +170,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
 
     private static let log = Logger(subsystem: "app.verrou.autofill", category: "extension")
 
-    // MARK: Réponse
+    // MARK: Response
 
     private func complete(_ completion: AutoFillModel.Completion) {
         switch completion {

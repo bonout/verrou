@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Connexion à Vaultwarden : identifiants, puis second facteur si le serveur
-/// le demande. Sert aussi à se reconnecter quand la session a expiré.
+/// Login to Vaultwarden: credentials, then second factor if the server asks
+/// for it. Also used to log in again when the session expired.
 struct LoginView: View {
     @Environment(AppModel.self) private var model
-    /// « Créer un compte » ouvert (`RegisterView.swift`).
+    /// "Create an Account" open (`RegisterView.swift`).
     @State private var registration: RegistrationFlow?
 
     init(registration: RegistrationFlow? = nil) {
@@ -51,7 +51,7 @@ struct LoginView: View {
 
 private struct CredentialsStep: View {
     @Environment(AppModel.self) private var model
-    /// « Créer un compte » : pour une personne invitée sur le serveur.
+    /// "Create an Account": for a person invited to the server.
     let createAccount: () -> Void
     @State private var password = ""
     @FocusState private var focus: Field?
@@ -62,31 +62,31 @@ private struct CredentialsStep: View {
         @Bindable var model = model
         VStack(spacing: 18) {
             VStack(spacing: 6) {
-                Text(model.reloginRequired ? "Session expirée" : "Connexion à Vaultwarden")
+                Text(model.reloginRequired ? "Session expired" : "Log in to Vaultwarden")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .layoutMark("login-title")
                 Text(model.reloginRequired
-                     ? "Reconnectez-vous pour reprendre la synchronisation."
-                     : "Votre coffre est déchiffré sur ce Mac ; le mot de passe principal n'est jamais envoyé au serveur.")
+                     ? "Log in again to resume syncing."
+                     : "Your vault is decrypted on this Mac; the master password is never sent to the server.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
             VStack(spacing: 10) {
-                LabeledField(label: "Serveur") {
-                    TextField("https://vault.exemple.fr", text: $model.loginServer)
+                LabeledField(label: "Server") {
+                    TextField("https://vault.example.com", text: $model.loginServer)
                         .textContentType(.URL)
                         .focused($focus, equals: .server)
                         .onSubmit { focus = .email }
                 }
-                LabeledField(label: "E-mail") {
-                    TextField("vous@exemple.fr", text: $model.loginEmail)
+                LabeledField(label: "Email") {
+                    TextField("you@example.com", text: $model.loginEmail)
                         .textContentType(.username)
                         .focused($focus, equals: .email)
                         .onSubmit { focus = .password }
                 }
-                LabeledField(label: "Mot de passe principal") {
+                LabeledField(label: "Master password") {
                     SecureField("", text: $password)
                         .textContentType(.password)
                         .focused($focus, equals: .password)
@@ -99,7 +99,7 @@ private struct CredentialsStep: View {
             Button(action: submit) {
                 HStack(spacing: 8) {
                     if model.loginBusy { ProgressView().controlSize(.small) }
-                    Text(model.loginBusy ? "Connexion…" : "Se connecter")
+                    Text(model.loginBusy ? "Logging in…" : "Log In")
                 }
                 .font(.body.weight(.semibold))
                 .frame(width: 316, height: 30)
@@ -110,12 +110,12 @@ private struct CredentialsStep: View {
             .disabled(!canSubmit)
 
             if model.reloginRequired {
-                Button("Continuer hors ligne") { model.continueOffline() }
+                Button("Continue Offline") { model.continueOffline() }
                     .buttonStyle(.link)
             } else {
-                Button("Créer un compte (invitation reçue)", action: createAccount)
+                Button("Create an Account (Invitation Received)", action: createAccount)
                     .buttonStyle(.link)
-                    .help("Rejoindre ce serveur avec le lien d'invitation reçu par e-mail")
+                    .help("Join this server with the invitation link received by email")
             }
         }
         .onAppear { focus = model.loginEmail.isEmpty ? .email : .password }
@@ -130,7 +130,7 @@ private struct CredentialsStep: View {
         let typed = password
         Task {
             await model.signIn(password: typed)
-            // Le mot de passe ne reste pas dans l'interface une fois envoyé.
+            // The password doesn't stay in the interface once sent.
             password = ""
         }
     }
@@ -146,7 +146,7 @@ private struct TwoFactorStep: View {
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 6) {
-                Text("Second facteur")
+                Text("Second factor")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .layoutMark("login-title")
                 Text(model.loginEmail)
@@ -155,7 +155,7 @@ private struct TwoFactorStep: View {
             }
 
             if options.count > 1 {
-                Picker("Méthode", selection: $chosen) {
+                Picker("Method", selection: $chosen) {
                     ForEach(options.indices, id: \.self) { index in
                         Text(Self.title(options[index])).tag(index)
                     }
@@ -170,20 +170,20 @@ private struct TwoFactorStep: View {
                 case .securityKey(let challenge):
                     securityKey(challenge: challenge)
                 case .authenticator:
-                    codeEntry(prompt: "Code à 6 chiffres de votre application", option: .authenticator)
+                    codeEntry(prompt: "6-digit code from your app", option: .authenticator)
                 case .yubiKeyOtp:
-                    codeEntry(prompt: "Touchez votre YubiKey", option: .yubiKeyOtp)
+                    codeEntry(prompt: "Touch your YubiKey", option: .yubiKeyOtp)
                 case .email:
                     VStack(spacing: 10) {
-                        Button("Envoyer le code par e-mail") { Task { await model.sendEmailCode() } }
-                        codeEntry(prompt: "Code reçu par e-mail", option: .email)
+                        Button("Send the Code by Email") { Task { await model.sendEmailCode() } }
+                        codeEntry(prompt: "Code received by email", option: .email)
                     }
                 }
             }
             .frame(width: 340)
             .disabled(model.loginBusy)
 
-            Button("Annuler") { model.cancelTwoFactor() }
+            Button("Cancel") { model.cancelTwoFactor() }
                 .buttonStyle(.link)
         }
         .onChange(of: chosen) { code = "" }
@@ -193,8 +193,8 @@ private struct TwoFactorStep: View {
         options[min(chosen, options.count - 1)]
     }
 
-    /// La clé se signe en USB, sans navigateur ; l'attente démarre dès que
-    /// l'écran s'affiche. La page du serveur dans Safari reste en repli.
+    /// The key signs over USB, without a browser; the wait starts as soon as
+    /// the screen shows. The server's page in Safari stays as a fallback.
     private func securityKey(challenge: String) -> some View {
         VStack(spacing: 14) {
             ZStack {
@@ -205,8 +205,8 @@ private struct TwoFactorStep: View {
             }
             .frame(height: 44)
             Text(model.securityKeyWaiting
-                 ? "Branchez votre YubiKey, puis touchez-la."
-                 : "Clé de sécurité")
+                 ? "Plug in your YubiKey, then touch it."
+                 : "Security key")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -216,7 +216,7 @@ private struct TwoFactorStep: View {
                 Button {
                     Task { await model.useSecurityKeyNatively(challenge: challenge) }
                 } label: {
-                    Text("Réessayer avec ma YubiKey")
+                    Text("Try Again with My YubiKey")
                         .font(.body.weight(.semibold))
                         .frame(width: 316, height: 30)
                 }
@@ -224,19 +224,19 @@ private struct TwoFactorStep: View {
                 .controlSize(.large)
                 .keyboardShortcut(.defaultAction)
             }
-            Button("Passer par le navigateur") {
+            Button("Use the Browser") {
                 model.cancelSecurityKey()
                 Task { await model.useSecurityKey(challenge: challenge) }
             }
             .buttonStyle(.link)
             .font(.callout)
         }
-        // Un nouveau défi (après un refus) relance l'attente.
+        // A new challenge (after a rejection) restarts the wait.
         .task(id: challenge) { await model.useSecurityKeyNatively(challenge: challenge) }
         .onDisappear { model.cancelSecurityKey() }
     }
 
-    private func codeEntry(prompt: String, option: TwoFactorOption) -> some View {
+    private func codeEntry(prompt: LocalizedStringKey, option: TwoFactorOption) -> some View {
         VStack(spacing: 10) {
             LabeledField(label: prompt) {
                 TextField("", text: $code)
@@ -250,7 +250,7 @@ private struct TwoFactorStep: View {
             } label: {
                 HStack(spacing: 8) {
                     if model.loginBusy { ProgressView().controlSize(.small) }
-                    Text("Valider")
+                    Text("Submit")
                 }
                 .font(.body.weight(.semibold))
                 .frame(width: 316, height: 30)
@@ -274,17 +274,17 @@ private struct TwoFactorStep: View {
 
     static func title(_ option: TwoFactorOption) -> String {
         switch option {
-        case .securityKey: "Clé de sécurité"
-        case .authenticator: "Application"
+        case .securityKey: String(localized: "Security key")
+        case .authenticator: String(localized: "Authenticator app")
         case .yubiKeyOtp: "YubiKey OTP"
-        case .email: "E-mail"
+        case .email: String(localized: "Email")
         }
     }
 }
 
-/// Champ avec son libellé au-dessus, dans le style de l'écran verrouillé.
+/// Field with its label above, in the lock screen's style.
 struct LabeledField<Content: View>: View {
-    let label: String
+    let label: LocalizedStringKey
     @ViewBuilder var content: Content
 
     var body: some View {

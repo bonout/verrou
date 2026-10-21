@@ -1,10 +1,10 @@
-//! Le lien entre ce terminal et Verrou : l'identifiant de client et la clé
-//! du canal, obtenus par `verrou link`.
+//! The link between this terminal and Verrou: the client id and the
+//! channel key, obtained by `verrou link`.
 //!
-//! Fichier `~/.config/verrou/cli.json` (ou `$VERROU_CLI_CONFIG`), mode 600,
-//! dossier 700. La clé ne donne que ce que donne le terminal : chercher sans
-//! secret, et demander un secret ou une signature SSH que l'utilisateur
-//! confirme dans Verrou.
+//! File `~/.config/verrou/cli.json` (or `$VERROU_CLI_CONFIG`), mode 600,
+//! directory 700. The key only gives what the terminal gives: searching
+//! without secrets, and asking for a secret or an SSH signature that the
+//! user confirms in Verrou.
 
 use std::fs;
 use std::io::Write as _;
@@ -15,46 +15,43 @@ use verrou_bridge::crypto::ChannelKey;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Config {
-    /// Identifiant attribué par Verrou à l'appairage.
+    /// Id assigned by Verrou at pairing.
     pub client: String,
-    /// Clé du canal (base64).
+    /// Channel key (base64).
     pub key: String,
-    /// Horodatage Unix de l'appairage.
+    /// Unix timestamp of the pairing.
     pub linked: i64,
 }
 
 impl Config {
     pub fn channel_key(&self) -> Result<ChannelKey, String> {
         ChannelKey::from_base64(&self.key)
-            .map_err(|_| "fichier de liaison abîmé : relancez « verrou link »".to_owned())
+            .map_err(|_| "link file is damaged: run `verrou link` again".to_owned())
     }
 
-    /// Chemin du fichier : `$VERROU_CLI_CONFIG`, sinon `~/.config/verrou/cli.json`.
+    /// File path: `$VERROU_CLI_CONFIG`, otherwise `~/.config/verrou/cli.json`.
     pub fn default_path() -> Result<PathBuf, String> {
         if let Some(path) = std::env::var_os("VERROU_CLI_CONFIG") {
             return Ok(PathBuf::from(path));
         }
-        let home = std::env::var_os("HOME").ok_or("HOME n'est pas défini")?;
+        let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
         Ok(PathBuf::from(home).join(".config/verrou/cli.json"))
     }
 
-    /// `Ok(None)` : ce terminal n'est pas relié.
+    /// `Ok(None)`: this terminal is not linked.
     pub fn load(path: &Path) -> Result<Option<Self>, String> {
         match fs::read(path) {
-            Ok(data) => serde_json::from_slice(&data).map(Some).map_err(|_| {
-                format!(
-                    "{} est illisible : relancez « verrou link »",
-                    path.display()
-                )
-            }),
+            Ok(data) => serde_json::from_slice(&data)
+                .map(Some)
+                .map_err(|_| format!("{} is unreadable: run `verrou link` again", path.display())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!("{} : {e}", path.display())),
+            Err(e) => Err(format!("{}: {e}", path.display())),
         }
     }
 
-    /// Écriture atomique, mode 600 ; le dossier créé l'est en 700.
+    /// Atomic write, mode 600; a created directory gets 700.
     pub fn save(&self, path: &Path) -> Result<(), String> {
-        let error = |e: std::io::Error| format!("{} : {e}", path.display());
+        let error = |e: std::io::Error| format!("{}: {e}", path.display());
         if let Some(dir) = path
             .parent()
             .filter(|d| !d.as_os_str().is_empty() && !d.exists())
@@ -75,8 +72,8 @@ impl Config {
         file.write_all(&data)
             .and_then(|()| file.sync_all())
             .map_err(error)?;
-        // Un fichier temporaire laissé par une écriture interrompue a pu
-        // être créé avec d'autres droits.
+        // A temporary file left by an interrupted write may have been
+        // created with other permissions.
         set_mode(&temp, 0o600).map_err(error)?;
         fs::rename(&temp, path).map_err(error)
     }
@@ -85,7 +82,7 @@ impl Config {
         match fs::remove_file(path) {
             Ok(()) => Ok(true),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-            Err(e) => Err(format!("{} : {e}", path.display())),
+            Err(e) => Err(format!("{}: {e}", path.display())),
         }
     }
 }

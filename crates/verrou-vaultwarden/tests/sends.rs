@@ -1,10 +1,9 @@
-//! Envois (Bitwarden Send) contre un vrai Vaultwarden : voir `server.rs`
-//! pour lancer le serveur. Sans `VERROU_TEST_SERVER`, les tests ne font rien.
+//! Sends (Bitwarden Send) against a real Vaultwarden: see `server.rs` to
+//! start the server. Without `VERROU_TEST_SERVER`, the tests do nothing.
 //!
-//! Un seul compte et peu d'ouvertures de lien : inscription, prélogin et
-//! jeton d'accès à un envoi puisent dans la même limite de Vaultwarden pour
-//! les requêtes anonymes (50 d'affilée par adresse IP), partagée avec les
-//! autres tests.
+//! A single account and few link openings: sign-up, prelogin and a send's
+//! access token draw from the same Vaultwarden limit for anonymous
+//! requests (50 in a row per IP address), shared with the other tests.
 
 use std::num::NonZeroU32;
 
@@ -22,12 +21,12 @@ const ITERATIONS: u32 = 600_000;
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
 
-/// Un compte neuf, ouvert par Verrou.
+/// A new account, opened by Verrou.
 async fn account(server: &str) -> Connection {
     let email = format!("{}@verrou.test", uuid::Uuid::new_v4().simple());
     let kdf = Kdf::PBKDF2 {
@@ -66,7 +65,7 @@ async fn account(server: &str) -> Connection {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "sign-up refused");
     let store =
         Store::new(std::env::temp_dir().join(format!("verrou-it-{}", uuid::Uuid::new_v4())));
     match login(&store, server, &email, SecretString::new(PASSWORD))
@@ -74,7 +73,7 @@ async fn account(server: &str) -> Connection {
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => unlocked.connection,
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
@@ -84,7 +83,7 @@ async fn create_receive_edit_and_delete_sends() {
     let mut connection = account(&server).await;
     assert!(connection.sends().unwrap().is_empty());
 
-    // Création, avec un mot de passe et deux accès au plus.
+    // Creation, with a password and two accesses at most.
     let now = Utc::now();
     let mut draft = SendDraft::text(
         "Wi-Fi du chalet",
@@ -99,7 +98,7 @@ async fn create_receive_edit_and_delete_sends() {
     let link = link.expose().to_owned();
     assert!(link.starts_with(&format!("{server}/#/send/")), "{link}");
 
-    // La liste (depuis la synchronisation) ne porte ni texte ni lien.
+    // The list (from the sync) carries neither text nor link.
     let sends = connection.sends().unwrap();
     assert_eq!(sends.len(), 1);
     let info = &sends[0];
@@ -112,8 +111,8 @@ async fn create_receive_edit_and_delete_sends() {
     assert!((info.deletion_date - (now + Duration::days(7)).timestamp()).abs() <= 1);
     assert_eq!(connection.send_link(&id).unwrap().expose(), link);
 
-    // Le destinataire : mauvais mot de passe, refusé ; le bon, le texte,
-    // déchiffré avec la clé du lien.
+    // The recipient: wrong password, refused; the right one, the text,
+    // decrypted with the link key.
     assert!(matches!(
         send::receive(&link, Some(&SecretString::new("faux"))).await,
         Err(Error::Invalid(_))
@@ -127,10 +126,10 @@ async fn create_receive_edit_and_delete_sends() {
         Some("mot de passe du Wi-Fi")
     );
     assert!(received.hidden);
-    assert!(received.creator.is_some(), "adresse visible par défaut");
+    assert!(received.creator.is_some(), "address visible by default");
 
-    // Modification : le texte change, le mot de passe reste, l'adresse est
-    // masquée. Le lien ne change pas.
+    // Edit: the text changes, the password stays, the address is hidden.
+    // The link does not change.
     let mut edited = connection.send_draft(&id).unwrap();
     assert_eq!(edited.text.expose(), "mot de passe du Wi-Fi");
     assert_eq!(edited.notes.as_deref(), Some("pour Antonin"));
@@ -139,7 +138,7 @@ async fn create_receive_edit_and_delete_sends() {
     connection.update_send(&id, edited).await.unwrap();
     assert_eq!(connection.send_link(&id).unwrap().expose(), link);
     let info = &connection.sends().unwrap()[0];
-    assert!(info.has_password, "mot de passe gardé");
+    assert!(info.has_password, "password kept");
     assert!(info.hide_email);
     assert_eq!(info.access_count, 1);
     let received = send::receive(&link, Some(&SecretString::new("ouvre-toi")))
@@ -151,26 +150,29 @@ async fn create_receive_edit_and_delete_sends() {
     );
     assert!(received.creator.is_none());
 
-    // Deux accès consommés : le lien ne mène plus à rien.
+    // Two accesses used: the link no longer leads anywhere.
     assert!(
         send::receive(&link, Some(&SecretString::new("ouvre-toi")))
             .await
             .is_err()
     );
 
-    // Retrait du mot de passe, puis suppression.
+    // Password removal, then deletion.
     connection.remove_send_password(&id).await.unwrap();
     let info = &connection.sends().unwrap()[0];
     assert!(!info.has_password);
-    assert!(!info.is_available(Utc::now().timestamp()), "accès épuisés");
+    assert!(
+        !info.is_available(Utc::now().timestamp()),
+        "accesses used up"
+    );
     connection.delete_send(&id).await.unwrap();
     assert!(connection.sends().unwrap().is_empty());
 
     open_send_forged_key_and_invalid_drafts(&mut connection).await;
 }
 
-/// Un envoi sans mot de passe ; une clé altérée ; désactivé ; une date
-/// refusée avant tout envoi.
+/// A send without a password; a tampered key; disabled; a date refused
+/// before anything is sent.
 async fn open_send_forged_key_and_invalid_drafts(connection: &mut Connection) {
     let now = Utc::now();
     let (id, link, _) = connection
@@ -184,7 +186,7 @@ async fn open_send_forged_key_and_invalid_drafts(connection: &mut Connection) {
     );
     assert!(!received.hidden);
 
-    // Un lien à la clé altérée ne se déchiffre pas.
+    // A link with a tampered key does not decrypt.
     let (base, _) = link.expose().rsplit_once('/').unwrap();
     let forged = format!("{base}/AAAAAAAAAAAAAAAAAAAAAA");
     assert!(matches!(
@@ -192,7 +194,7 @@ async fn open_send_forged_key_and_invalid_drafts(connection: &mut Connection) {
         Err(Error::Crypto(_))
     ));
 
-    // Désactivé : il reste dans la liste, marqué comme tel.
+    // Disabled: it stays in the list, marked as such.
     let mut draft = connection.send_draft(&id).unwrap();
     draft.disabled = true;
     connection.update_send(&id, draft).await.unwrap();
@@ -209,7 +211,7 @@ async fn open_send_forged_key_and_invalid_drafts(connection: &mut Connection) {
     connection.delete_send(&id).await.unwrap();
 }
 
-/// Un contenu binaire reconnaissable (tous les octets, pas que du texte).
+/// Recognizable binary content (all bytes, not just text).
 fn file_contents(len: usize) -> Vec<u8> {
     (0..len)
         .map(|i| (i.wrapping_mul(31) ^ (i >> 8)) as u8)
@@ -221,7 +223,7 @@ async fn file_sends_round_trip() {
     let Some(server) = server() else { return };
     let mut connection = account(&server).await;
 
-    // Création, avec un mot de passe et trois accès au plus.
+    // Creation, with a password and three accesses at most.
     let contents = file_contents(300 * 1024 + 7);
     let mut draft = SendDraft::file("Bail signé", Utc::now());
     draft.max_access_count = Some(3);
@@ -238,14 +240,14 @@ async fn file_sends_round_trip() {
     assert_eq!(info.id, id);
     assert_eq!(info.kind, SendKind::File);
     assert_eq!(info.file_name.as_deref(), Some("bail signé.pdf"));
-    let encrypted_size = info.file_size.expect("taille du fichier");
+    let encrypted_size = info.file_size.expect("file size");
     assert!(encrypted_size > contents.len() as u64);
     assert!(encrypted_size <= contents.len() as u64 + 65);
     assert!(info.has_password);
     assert_eq!(info.access_count, 0);
 
-    // Le destinataire : sans mot de passe, refusé ; avec, le fichier
-    // identique, déchiffré avec la clé du lien. Un accès compté.
+    // The recipient: without password, refused; with it, the identical
+    // file, decrypted with the link key. One access counted.
     assert!(matches!(
         send::receive_file(&link, None).await,
         Err(Error::Invalid(_))
@@ -261,7 +263,7 @@ async fn file_sends_round_trip() {
     connection.sync().await.unwrap();
     assert_eq!(connection.sends().unwrap()[0].access_count, 1);
 
-    // Modification des réglages : le fichier ne change pas, le lien non plus.
+    // Settings edit: the file does not change, nor does the link.
     let mut edited = connection.send_draft(&id).unwrap();
     assert_eq!(edited.notes.as_deref(), Some("pour Antonin"));
     edited.name = "Bail (copie)".to_owned();
@@ -275,8 +277,8 @@ async fn file_sends_round_trip() {
     assert_eq!(info.file_size, Some(encrypted_size));
     assert!(info.has_password && info.hide_email);
 
-    // Second téléchargement : identique, adresse masquée ; puis le lien est
-    // épuisé (deux accès au plus).
+    // Second download: identical, address hidden; then the link is used
+    // up (two accesses at most).
     let (received, bytes) = send::receive_file(&link, Some(&SecretString::new("ouvre-toi")))
         .await
         .unwrap();
@@ -294,13 +296,13 @@ async fn file_sends_round_trip() {
 
     connection.delete_send(&id).await.unwrap();
     assert!(connection.sends().unwrap().is_empty());
-    assert!(send::receive(&link, None).await.is_err(), "supprimé");
+    assert!(send::receive(&link, None).await.is_err(), "deleted");
 
     open_file_send_and_send_an_attachment(&mut connection).await;
 }
 
-/// Un envoi de fichier sans mot de passe ; un texte n'a pas de fichier ;
-/// une pièce jointe envoyée telle quelle ; un fichier vide refusé.
+/// A file send without a password; a text has no file; an attachment
+/// sent as is; an empty file refused.
 async fn open_file_send_and_send_an_attachment(connection: &mut Connection) {
     let contents = file_contents(4096);
     let (id, link, _) = connection
@@ -309,7 +311,7 @@ async fn open_file_send_and_send_an_attachment(connection: &mut Connection) {
         .unwrap();
     let (_, bytes) = send::receive_file(link.expose(), None).await.unwrap();
     assert_eq!(bytes.as_slice(), contents.as_slice());
-    // `receive` ne télécharge pas : pas d'accès compté.
+    // `receive` does not download: no access counted.
     let received = send::receive(link.expose(), None).await.unwrap();
     assert_eq!(received.file_name.as_deref(), Some("plan.png"));
     connection.sync().await.unwrap();
@@ -330,8 +332,8 @@ async fn open_file_send_and_send_an_attachment(connection: &mut Connection) {
     ));
     connection.delete_send(&text_id).await.unwrap();
 
-    // Pièce jointe d'un élément : déchiffrée puis chiffrée par la clé de
-    // l'envoi, le destinataire reçoit les mêmes octets.
+    // An item's attachment: decrypted then encrypted with the send key,
+    // the recipient gets the same bytes.
     let attachment = file_contents(70_000);
     let (item_id, _) = connection
         .create_document("passeport.pdf", &attachment, None)

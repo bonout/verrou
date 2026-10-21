@@ -1,8 +1,8 @@
-//! Accès d'urgence contre un vrai Vaultwarden : voir `server.rs` pour lancer
-//! le serveur. Sans `VERROU_TEST_SERVER`, les tests ne font rien.
+//! Emergency access against a real Vaultwarden: see `server.rs` to start
+//! the server. Without `VERROU_TEST_SERVER`, the tests do nothing.
 //!
-//! Le serveur de test n'a pas de courrier : Vaultwarden accepte alors
-//! aussitôt l'invitation d'un compte existant.
+//! The test server has no mail: Vaultwarden then accepts the invitation
+//! of an existing account immediately.
 
 use std::num::NonZeroU32;
 
@@ -19,12 +19,12 @@ const ITERATIONS: u32 = 600_000;
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
 
-/// Un compte neuf, ouvert par Verrou ; rend aussi son adresse.
+/// A new account, opened by Verrou; also returns its address.
 async fn account(server: &str, name: &str) -> (Connection, String) {
     let email = format!("{}@verrou.test", uuid::Uuid::new_v4().simple());
     let kdf = Kdf::PBKDF2 {
@@ -63,7 +63,7 @@ async fn account(server: &str, name: &str) -> (Connection, String) {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "registration refused");
     let store =
         Store::new(std::env::temp_dir().join(format!("verrou-it-{}", uuid::Uuid::new_v4())));
     let connection = match login(&store, server, &email, SecretString::new(PASSWORD))
@@ -71,12 +71,12 @@ async fn account(server: &str, name: &str) -> (Connection, String) {
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => unlocked.connection,
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     };
     (connection, email)
 }
 
-/// Un identifiant dans le coffre, et un élément à la corbeille.
+/// A login in the vault, and an item in the trash.
 async fn fill(camille: &mut Connection) {
     let (_, _) = camille
         .create(Draft {
@@ -101,7 +101,7 @@ async fn fill(camille: &mut Connection) {
         .await
         .unwrap();
     camille.trash(&trashed).await.unwrap();
-    // Les écritures partent en arrière-plan : ici, tout de suite.
+    // Writes go out in the background: here, right away.
     camille.sync().await.unwrap();
 }
 
@@ -113,7 +113,7 @@ async fn invite_confirm_request_approve_and_view() {
 
     fill(&mut camille).await;
 
-    // Invitation : sans courrier, acceptée aussitôt.
+    // Invitation: without mail, accepted immediately.
     assert!(matches!(
         camille
             .invite_emergency_contact(&camille_email, EmergencyKind::View, 1)
@@ -131,10 +131,10 @@ async fn invite_confirm_request_approve_and_view() {
     assert_eq!(contact.status, EmergencyStatus::Accepted);
     assert_eq!(contact.kind, EmergencyKind::View);
     assert_eq!(contact.wait_time_days, 1);
-    let grantee_id = contact.user_id.clone().expect("contact accepté");
+    let grantee_id = contact.user_id.clone().expect("contact accepted");
     assert_eq!(grantee_id, antonin.account().user_id);
 
-    // Pas encore confirmé : pas de demande possible.
+    // Not confirmed yet: no request possible.
     let granted = antonin.emergency_access().await.unwrap().granted;
     assert_eq!(granted.len(), 1);
     assert_eq!(granted[0].email.as_deref(), Some(camille_email.as_str()));
@@ -145,8 +145,8 @@ async fn invite_confirm_request_approve_and_view() {
             .is_err()
     );
 
-    // Confirmation, après vérification de l'empreinte. Une autre empreinte
-    // est refusée sans rien envoyer.
+    // Confirmation, after checking the fingerprint. Another fingerprint is
+    // refused without sending anything.
     let fingerprint = camille
         .emergency_contact_fingerprint(&grantee_id)
         .await
@@ -167,7 +167,7 @@ async fn invite_confirm_request_approve_and_view() {
         .await
         .unwrap();
 
-    // Demande, refusée par Camille ; nouvelle demande, approuvée.
+    // Request, rejected by Camille; new request, approved.
     let id = granted[0].id.clone();
     antonin.request_emergency_access(&id).await.unwrap();
     assert_eq!(
@@ -176,7 +176,7 @@ async fn invite_confirm_request_approve_and_view() {
     );
     assert!(
         antonin.open_grantor_vault(&id).await.is_err(),
-        "pas encore accordé"
+        "not granted yet"
     );
     camille.reject_emergency_access(&id).await.unwrap();
     assert_eq!(
@@ -190,10 +190,10 @@ async fn invite_confirm_request_approve_and_view() {
         EmergencyStatus::RecoveryApproved
     );
 
-    // Lecture seule : les éléments de Camille, déchiffrés par Antonin.
+    // Read only: Camille's items, decrypted by Antonin.
     let vault = antonin.open_grantor_vault(&id).await.unwrap();
     assert_eq!(vault.failures, 0);
-    assert_eq!(vault.items.len(), 1, "la corbeille reste chez Camille");
+    assert_eq!(vault.items.len(), 1, "the trash stays with Camille");
     let item = &vault.items[0];
     assert_eq!(item.title, "Banque");
     assert_eq!(
@@ -205,7 +205,7 @@ async fn invite_confirm_request_approve_and_view() {
         Some("code agence 0042")
     );
 
-    // Camille retire l'accès : Antonin n'a plus rien.
+    // Camille removes the access: Antonin has nothing left.
     camille.delete_emergency_access(&id).await.unwrap();
     assert!(antonin.emergency_access().await.unwrap().granted.is_empty());
     assert!(antonin.open_grantor_vault(&id).await.is_err());
@@ -233,11 +233,11 @@ async fn takeover_contact_cannot_view_and_settings_change() {
         .unwrap();
     lea.request_emergency_access(&contact.id).await.unwrap();
     camille.approve_emergency_access(&contact.id).await.unwrap();
-    // Prise de contrôle accordée : la lecture seule n'en fait pas partie
-    // (Vaultwarden), et Verrou ne fait pas la prise de contrôle.
+    // Takeover granted: read only is not part of it (Vaultwarden), and
+    // Verrou does not do the takeover.
     assert!(lea.open_grantor_vault(&contact.id).await.is_err());
 
-    // Le concédant change le type et le délai.
+    // The grantor changes the type and the wait time.
     camille
         .update_emergency_contact(&contact.id, EmergencyKind::View, 3)
         .await

@@ -1,6 +1,6 @@
-//! Membres d'une organisation et création de compte sur invitation, contre
-//! un vrai Vaultwarden jetable configuré comme un serveur familial :
-//! inscriptions fermées, invitations permises.
+//! Organization members and account creation by invitation, against a
+//! real throwaway Vaultwarden configured like a family server: sign-ups
+//! closed, invitations allowed.
 //!
 //! ```sh
 //! docker run -d --name verrou-vw-members -p 127.0.0.1:8119:80 \
@@ -13,17 +13,17 @@
 //!   cargo test -p verrou-vaultwarden --test members
 //! ```
 //!
-//! Avec courriel (comme un vrai serveur), un Mailpit reçoit les invitations
-//! et le test y lit le lien : ajouter `SMTP_HOST=<mailpit> SMTP_PORT=1025
-//! SMTP_SECURITY=off SMTP_FROM=vault@verrou.test` au conteneur (même réseau
-//! Docker que `axllent/mailpit`, port web publié en 8125) et
-//! `VERROU_TEST_MAILPIT=http://localhost:8125` au test.
+//! With email (like a real server), a Mailpit receives the invitations
+//! and the test reads the link there: add `SMTP_HOST=<mailpit> SMTP_PORT=1025
+//! SMTP_SECURITY=off SMTP_FROM=vault@verrou.test` to the container (same
+//! Docker network as `axllent/mailpit`, web port published on 8125) and
+//! `VERROU_TEST_MAILPIT=http://localhost:8125` to the test.
 //!
-//! `DISABLE_ADMIN_TOKEN=true` n'est là que pour **amorcer** ce serveur
-//! jetable : le premier compte (la propriétaire) ne peut pas s'inscrire
-//! seul, inscriptions fermées ; le test l'invite par l'API
-//! d'administration (`POST /admin/invite`), puis tout le reste passe par
-//! le code de Verrou, sans administration. Jamais sur un vrai serveur.
+//! `DISABLE_ADMIN_TOKEN=true` is only there to **bootstrap** this
+//! throwaway server: the first account (the owner) cannot sign up on its
+//! own, sign-ups being closed; the test invites it through the admin API
+//! (`POST /admin/invite`), then everything else goes through Verrou's
+//! code, without admin. Never on a real server.
 
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -46,7 +46,7 @@ const MEMBER_PASSWORD: &str = "pivoine-monceaux-couteau-fixe";
 
 struct Server {
     url: String,
-    /// Boîte de réception de test (Mailpit), si le serveur envoie des courriels.
+    /// Test inbox (Mailpit), if the server sends emails.
     mailpit: Option<String>,
     http: reqwest::Client,
 }
@@ -54,7 +54,7 @@ struct Server {
 impl Server {
     fn from_env() -> Option<Self> {
         let Ok(url) = std::env::var("VERROU_TEST_MEMBERS_SERVER") else {
-            eprintln!("VERROU_TEST_MEMBERS_SERVER absent : test ignoré");
+            eprintln!("VERROU_TEST_MEMBERS_SERVER not set: test skipped");
             return None;
         };
         Some(Self {
@@ -64,7 +64,7 @@ impl Server {
         })
     }
 
-    /// Amorçage seulement : invitation au serveur par l'API d'administration.
+    /// Bootstrap only: server invitation through the admin API.
     async fn admin_invite(&self, email: &str) {
         let response = self
             .http
@@ -75,11 +75,11 @@ impl Server {
             .unwrap();
         assert!(
             response.status().is_success(),
-            "invitation d'amorçage refusée : le conteneur a-t-il DISABLE_ADMIN_TOKEN=true ?"
+            "bootstrap invitation refused: does the container have DISABLE_ADMIN_TOKEN=true?"
         );
     }
 
-    /// Le lien « Rejoindre » du dernier courriel reçu par cette adresse.
+    /// The "Join" link of the last email received by this address.
     async fn invite_link(&self, email: &str, after: usize) -> Option<String> {
         let mailpit = self.mailpit.as_ref()?;
         for _ in 0..50 {
@@ -95,7 +95,7 @@ impl Server {
                 .unwrap();
             let messages = found["messages"].as_array().cloned().unwrap_or_default();
             if messages.len() > after {
-                // Le plus récent d'abord.
+                // Most recent first.
                 let id = messages[0]["ID"].as_str().unwrap();
                 let message: Value = self
                     .http
@@ -114,7 +114,7 @@ impl Server {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        panic!("aucun courriel d'invitation pour {email}");
+        panic!("no invitation email for {email}");
     }
 
     async fn mails_for(&self, email: &str) -> usize {
@@ -134,10 +134,10 @@ impl Server {
         found["messages"].as_array().map_or(0, Vec::len)
     }
 
-    /// Crée le compte avec le code d'inscription de Verrou, comme l'écran
-    /// « Créer un compte » : avec le lien s'il y en a un (serveur avec
-    /// courriel), sinon par le jeton de vérification que le serveur sans
-    /// courriel rend aux adresses invitées.
+    /// Creates the account with Verrou's sign-up code, like the "Create an
+    /// account" screen: with the link if there is one (server with email),
+    /// otherwise with the verification token that the server without email
+    /// returns to invited addresses.
     async fn register(
         &self,
         email: &str,
@@ -166,12 +166,12 @@ impl Server {
             .unwrap()
         {
             LoginStep::Unlocked(unlocked) => (unlocked.connection, unlocked.vault),
-            LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+            LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
         }
     }
 
-    /// Jeton d'accès hors de Verrou (création de l'organisation, comme le
-    /// coffre web).
+    /// Access token outside Verrou (organization creation, like the web
+    /// vault).
     async fn token(&self, email: &str, password: &str, kdf: &Kdf) -> String {
         let auth = MasterPasswordAuthenticationData::derive(password, kdf, email)
             .unwrap()
@@ -210,7 +210,7 @@ impl Server {
             .unwrap();
         let status = response.status();
         let text = response.text().await.unwrap();
-        assert!(status.is_success(), "{path} : {status} {text}");
+        assert!(status.is_success(), "{path}: {status} {text}");
         serde_json::from_str(&text).unwrap_or(Value::Null)
     }
 }
@@ -222,7 +222,7 @@ fn unique_email(prefix: &str) -> String {
     )
 }
 
-/// La clé de l'organisation chiffrée pour un compte (RSA-OAEP).
+/// The organization key encrypted for an account (RSA-OAEP).
 #[allow(deprecated)]
 fn wrap_for(org_key: &SymmetricCryptoKey, public_key: &str) -> String {
     let der = data_encoding::BASE64.decode(public_key.as_bytes()).unwrap();
@@ -232,7 +232,7 @@ fn wrap_for(org_key: &SymmetricCryptoKey, public_key: &str) -> String {
         .to_string()
 }
 
-/// Une organisation et deux collections, créées comme le fait le coffre web.
+/// An organization and two collections, created the way the web vault does.
 async fn create_organization(server: &Server, owner: &str) -> (String, String, String) {
     let kdf = Kdf::PBKDF2 {
         iterations: NonZeroU32::new(register::PBKDF2_ITERATIONS).unwrap(),
@@ -328,15 +328,15 @@ async fn status_of(connection: &mut Connection, org: &str, email: &str) -> Optio
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a full walkthrough, readable in one go
 async fn invite_register_confirm_and_manage_members() {
     let Some(server) = Server::from_env() else {
         return;
     };
     let with_mail = server.mailpit.is_some();
 
-    // Amorçage : la propriétaire, invitée au serveur, crée son compte avec
-    // le code de Verrou (lien du courriel, ou jeton de vérification).
+    // Bootstrap: the owner, invited to the server, creates her account with
+    // Verrou's code (email link, or verification token).
     let owner = unique_email("proprietaire");
     server.admin_invite(&owner).await;
     let link = server.invite_link(&owner, 0).await;
@@ -374,17 +374,17 @@ async fn invite_register_confirm_and_manage_members() {
         .await
         .unwrap();
 
-    // Inscriptions fermées : sans invitation, pas de compte.
+    // Sign-ups closed: no invitation, no account.
     let stranger = unique_email("inconnu");
     let refused = server
         .register(&stranger, MEMBER_PASSWORD, NewAccountKdf::Pbkdf2, None)
         .await;
     assert!(
-        matches!(&refused, Err(Error::Invalid(m)) if m.contains("n'accepte pas")),
+        matches!(&refused, Err(Error::Invalid(m)) if m.contains("does not accept")),
         "{refused:?}"
     );
 
-    // La propriétaire invite une adresse inconnue du serveur.
+    // The owner invites an address unknown to the server.
     let newcomer = unique_email("lea");
     let invited = admin
         .invite_members(
@@ -403,10 +403,10 @@ async fn invite_register_confirm_and_manage_members() {
     let pending = members.iter().find(|m| m.email == newcomer).unwrap();
     assert_eq!(pending.status, MemberStatus::Invited);
     assert_eq!(pending.role, MemberRole::User);
-    assert!(!pending.has_account, "pas encore de compte");
+    assert!(!pending.has_account, "no account yet");
     assert_eq!(pending.collections.len(), 2);
     let member_id = pending.id.clone();
-    // Déjà membre : refusé par le serveur.
+    // Already a member: refused by the server.
     assert!(
         admin
             .invite_members(&org, &newcomer, MemberRole::User, &[])
@@ -414,10 +414,10 @@ async fn invite_register_confirm_and_manage_members() {
             .is_err()
     );
 
-    // Lea crée son compte dans Verrou (Argon2id), avec le lien reçu.
+    // Lea creates her account in Verrou (Argon2id), with the received link.
     let link = server.invite_link(&newcomer, 0).await;
     if with_mail {
-        // Le lien ne vaut que pour son adresse.
+        // The link is only valid for her address.
         let wrong = server
             .register(
                 &stranger,
@@ -437,7 +437,7 @@ async fn invite_register_confirm_and_manage_members() {
         )
         .await
         .unwrap();
-    // Une seconde inscription est refusée.
+    // A second sign-up is refused.
     assert!(
         server
             .register(
@@ -452,35 +452,35 @@ async fn invite_register_confirm_and_manage_members() {
     let (mut lea, _) = server.verrou(&newcomer, MEMBER_PASSWORD).await;
     if let Some(link) = &link {
         let SignupLink::Invite(invite) = register::parse_link(link).unwrap() else {
-            panic!("lien d'invitation attendu");
+            panic!("invitation link expected");
         };
         assert_eq!(invite.organization_id, org);
-        // Le serveur avec courriel ne l'accepte qu'avec le jeton.
+        // The server with email only accepts her with the token.
         assert_eq!(
             status_of(&mut admin, &org, &newcomer).await,
             Some(MemberStatus::Invited)
         );
         lea.accept_invitation(&invite).await.unwrap();
     }
-    // Sans courriel, l'inscription d'une adresse invitée l'accepte d'office.
+    // Without email, signing up an invited address accepts it automatically.
     assert_eq!(
         status_of(&mut admin, &org, &newcomer).await,
         Some(MemberStatus::Accepted),
-        "à confirmer"
+        "to be confirmed"
     );
-    // Un simple utilisateur ne voit pas les membres.
+    // A plain user does not see the members.
     lea.sync().await.unwrap();
     assert!(matches!(
         lea.organization_members(&org).await,
         Err(Error::Invalid(_) | Error::NotFound)
     ));
 
-    // Confirmation : l'empreinte que voit la propriétaire est celle que Lea
-    // lit dans son compte (Réglages → Compte de Verrou).
+    // Confirmation: the fingerprint the owner sees is the one Lea reads in
+    // her account (Settings → Verrou account).
     let fingerprint = admin.member_fingerprint(&org, &member_id).await.unwrap();
     assert_eq!(fingerprint, lea.own_fingerprint().unwrap());
     assert_eq!(fingerprint.split('-').count(), 5);
-    // Une autre empreinte (clé substituée entre-temps) : rien n'est envoyé.
+    // Another fingerprint (key swapped in the meantime): nothing is sent.
     let refused = admin
         .confirm_member(&org, &member_id, "turban-deftly-anime-chatroom-unselfish")
         .await;
@@ -497,10 +497,10 @@ async fn invite_register_confirm_and_manage_members() {
         status_of(&mut admin, &org, &newcomer).await,
         Some(MemberStatus::Confirmed)
     );
-    // Déjà confirmée : plus d'empreinte à vérifier.
+    // Already confirmed: no fingerprint left to check.
     assert!(admin.member_fingerprint(&org, &member_id).await.is_err());
 
-    // Lea déchiffre l'élément partagé avec la clé de l'organisation.
+    // Lea decrypts the shared item with the organization key.
     let vault = lea.sync().await.unwrap().unwrap();
     assert_eq!(vault.failures, 0);
     let shared = vault.items.iter().find(|i| i.id == netflix).unwrap();
@@ -510,7 +510,7 @@ async fn invite_register_confirm_and_manage_members() {
     );
     assert!(shared.is_writable());
 
-    // Rôle et collections : seulement les archives, en lecture seule.
+    // Role and collections: only the archives, read-only.
     admin
         .edit_member(
             &org,
@@ -531,9 +531,9 @@ async fn invite_register_confirm_and_manage_members() {
     let vault = lea.sync().await.unwrap().unwrap();
     assert!(
         !vault.items.iter().any(|i| i.id == netflix),
-        "plus d'accès à « Comptes communs »"
+        "no more access to \"Comptes communs\""
     );
-    // Gestionnaire, puis administratrice (toutes les collections).
+    // Manager, then admin (all collections).
     admin
         .edit_member(&org, &member_id, MemberRole::Admin, &[])
         .await
@@ -552,7 +552,7 @@ async fn invite_register_confirm_and_manage_members() {
     let as_admin = vault.organizations.iter().find(|o| o.id == org).unwrap();
     let rights = as_admin.member_rights();
     assert!(rights.view && rights.manage && !rights.owner);
-    // Administratrice : elle voit les membres, mais ne retire pas la propriétaire.
+    // Admin: she sees the members, but does not remove the owner.
     let owner_member = lea
         .organization_members(&org)
         .await
@@ -574,25 +574,28 @@ async fn invite_register_confirm_and_manage_members() {
         .await
         .unwrap();
 
-    // Révoquer, puis restaurer.
+    // Revoke, then restore.
     admin.revoke_member(&org, &member_id).await.unwrap();
     assert_eq!(
         status_of(&mut admin, &org, &newcomer).await,
         Some(MemberStatus::Revoked)
     );
     let vault = lea.sync().await.unwrap().unwrap();
-    assert!(!vault.items.iter().any(|i| i.id == netflix), "accès retiré");
+    assert!(
+        !vault.items.iter().any(|i| i.id == netflix),
+        "access removed"
+    );
     assert!(admin.revoke_member(&org, &member_id).await.is_err());
     admin.restore_member(&org, &member_id).await.unwrap();
     assert_eq!(
         status_of(&mut admin, &org, &newcomer).await,
         Some(MemberStatus::Confirmed),
-        "restauré dans son état d'avant"
+        "restored to its previous state"
     );
     let vault = lea.sync().await.unwrap().unwrap();
     assert!(vault.items.iter().any(|i| i.id == netflix));
 
-    // Renvoyer une invitation : seulement à qui ne l'a pas acceptée.
+    // Resend an invitation: only to someone who has not accepted it.
     assert!(matches!(
         admin.reinvite_member(&org, &member_id).await,
         Err(Error::Invalid(_))
@@ -617,17 +620,17 @@ async fn invite_register_confirm_and_manage_members() {
         .unwrap();
     admin.reinvite_member(&org, &tom.id).await.unwrap();
     if with_mail {
-        // Un second courriel, avec un lien qui marche aussi.
+        // A second email, with a link that works too.
         let link = server.invite_link(&later, before).await.unwrap();
         assert!(register::parse_link(&link).is_ok());
     }
 
-    // Retirer : le membre disparaît de la liste, son compte reste.
+    // Remove: the member disappears from the list, their account stays.
     admin.remove_member(&org, &tom.id).await.unwrap();
     admin.remove_member(&org, &member_id).await.unwrap();
     let left = admin.organization_members(&org).await.unwrap();
     assert!(left.iter().all(|m| m.email != newcomer && m.email != later));
-    assert_eq!(left.len(), 1, "la propriétaire seule");
+    assert_eq!(left.len(), 1, "the owner alone");
     let vault = lea.sync().await.unwrap().unwrap();
     assert!(vault.organizations.iter().all(|o| o.id != org));
 }

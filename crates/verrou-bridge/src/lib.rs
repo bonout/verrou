@@ -1,20 +1,20 @@
-//! Pont entre Verrou et ses clients : l'extension de navigateur et le
-//! terminal (`verrou`, et son agent SSH).
+//! Bridge between Verrou and its clients: the browser extension and the
+//! terminal (`verrou`, and its SSH agent).
 //!
 //! ```text
 //! extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1──▶ Verrou (Bridge)
 //! verrou (terminal, agent SSH) ─────────────────────────TCP 127.0.0.1──▶ Verrou (Bridge)
 //! ```
 //!
-//! - L'hôte (`verrou-native-host`) est lancé par le navigateur ; il relaie les
-//!   octets sans les lire, et ouvre Verrou s'il ne tourne pas.
-//! - Le canal est chiffré de bout en bout entre l'extension et Verrou
-//!   ([`crypto`]) ; l'hôte et quiconque écoute le port ne voient que des
-//!   messages chiffrés.
-//! - Ce que chaque client peut obtenir est borné par [`access`] : pour
-//!   l'extension, les identifiants de la page en cours, en HTTPS ; pour le
-//!   terminal, des résultats sans secret, et un secret ou une signature SSH
-//!   ([`ssh`]) seulement avec l'accord de l'utilisateur dans Verrou.
+//! - The host (`verrou-native-host`) is launched by the browser; it relays the
+//!   bytes without reading them, and opens Verrou if it is not running.
+//! - The channel is end-to-end encrypted between the extension and Verrou
+//!   ([`crypto`]); the host and anyone listening on the port only see
+//!   encrypted messages.
+//! - What each client can get is bounded by [`access`]: for the
+//!   extension, the logins for the current page, over HTTPS; for the
+//!   terminal, results without secrets, and a secret or an SSH signature
+//!   ([`ssh`]) only with the user's approval in Verrou.
 
 pub mod access;
 mod clients;
@@ -33,32 +33,32 @@ pub use server::{
     APPROVAL_TTL, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan,
 };
 
-/// Identifiant de l'app, pour l'ouvrir (`open -b`).
+/// The app's identifier, to open it (`open -b`).
 pub const BUNDLE_ID: &str = "app.verrou.mac";
 
-/// Port d'écoute de Verrou. `VERROU_BRIDGE_PORT` le remplace (tests).
+/// Verrou's listening port. `VERROU_BRIDGE_PORT` overrides it (tests).
 pub const DEFAULT_PORT: u16 = 41_738;
 
-/// Nom de l'hôte Native Messaging, déclaré au navigateur.
+/// Name of the Native Messaging host, declared to the browser.
 pub const HOST_NAME: &str = "app.verrou.bridge";
 
-/// Identifiant de l'extension dans Brave et Chrome, fixé par la clé de
-/// `extension/manifest.json` (un test de l'extension vérifie la concordance).
+/// The extension's identifier in Brave and Chrome, set by the key in
+/// `extension/manifest.json` (an extension test checks they match).
 pub const CHROMIUM_EXTENSION_ID: &str = "pmdlgnpbjfdnmpeadbecmgfoojmocibg";
 
-/// Identifiant de l'extension dans Firefox (`browser_specific_settings.gecko.id`,
-/// écrit par `scripts/firefox-extension.sh`).
+/// The extension's identifier in Firefox (`browser_specific_settings.gecko.id`,
+/// written by `scripts/firefox-extension.sh`).
 pub const FIREFOX_EXTENSION_ID: &str = "verrou@verrou.app";
 
-/// Qui a lancé l'hôte Native Messaging, d'après ses arguments.
+/// Who launched the Native Messaging host, according to its arguments.
 ///
-/// - Brave, Chrome : un argument, l'origine de l'extension
-///   (`chrome-extension://<id>/`) ; sous Windows, s'y ajoute
-///   `--parent-window=…`.
-/// - Firefox : deux arguments, le chemin du manifeste de l'hôte
-///   (`…/NativeMessagingHosts/app.verrou.bridge.json`) puis l'identifiant de
-///   l'extension.
-/// - Sans argument reconnu (lancé à la main, tests) : inconnu.
+/// - Brave, Chrome: one argument, the extension's origin
+///   (`chrome-extension://<id>/`); on Windows, `--parent-window=…` is
+///   added.
+/// - Firefox: two arguments, the path of the host manifest
+///   (`…/NativeMessagingHosts/app.verrou.bridge.json`) then the extension's
+///   identifier.
+/// - No recognized argument (launched by hand, tests): unknown.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Launcher {
     Chromium {
@@ -72,7 +72,7 @@ pub enum Launcher {
 }
 
 impl Launcher {
-    /// Les arguments du processus, sans le nom du programme.
+    /// The process arguments, without the program name.
     pub fn from_args<I, S>(args: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -105,10 +105,10 @@ impl Launcher {
         }
     }
 
-    /// Le navigateur a lancé l'hôte pour une autre extension que celle de
-    /// Verrou. Il ne devrait pas (la déclaration de l'hôte n'autorise
-    /// qu'elle) : on refuse plutôt que relayer. Inconnu : accepté (le pont
-    /// exige de toute façon l'appairage).
+    /// The browser launched the host for an extension other than Verrou's.
+    /// It should not (the host declaration only allows that one): refuse
+    /// rather than relay. Unknown: accepted (the bridge requires pairing
+    /// anyway).
     pub fn is_foreign(&self) -> bool {
         match self {
             Self::Chromium { extension } => extension != CHROMIUM_EXTENSION_ID,
@@ -118,7 +118,7 @@ impl Launcher {
     }
 }
 
-/// Le port à utiliser, compte tenu de `VERROU_BRIDGE_PORT`.
+/// The port to use, taking `VERROU_BRIDGE_PORT` into account.
 pub fn port_from_env() -> u16 {
     std::env::var("VERROU_BRIDGE_PORT")
         .ok()
@@ -126,10 +126,10 @@ pub fn port_from_env() -> u16 {
         .unwrap_or(DEFAULT_PORT)
 }
 
-/// Connexion au pont de Verrou. S'il ne répond pas et que `launch` le
-/// permet, Verrou est ouvert sans passer au premier plan, puis attendu une
-/// dizaine de secondes. `VERROU_BRIDGE_NO_LAUNCH` interdit de l'ouvrir (les
-/// tests ne doivent pas lancer la vraie app).
+/// Connects to Verrou's bridge. If it does not answer and `launch` allows
+/// it, Verrou is opened without coming to the foreground, then waited for
+/// about ten seconds. `VERROU_BRIDGE_NO_LAUNCH` forbids opening it (tests
+/// must not launch the real app).
 pub fn connect_to_app(port: u16, launch: bool) -> Option<TcpStream> {
     if let Ok(stream) = TcpStream::connect(("127.0.0.1", port)) {
         return Some(stream);
@@ -149,8 +149,8 @@ pub fn connect_to_app(port: u16, launch: bool) -> Option<TcpStream> {
     None
 }
 
-/// Version (`"version"`) d'un `manifest.json` d'extension, si elle a la forme
-/// qu'accepte Chrome : un à quatre entiers de 0 à 65535, séparés par des points.
+/// Version (`"version"`) of an extension `manifest.json`, if it has the form
+/// Chrome accepts: one to four integers from 0 to 65535, separated by dots.
 pub fn manifest_version(manifest: &str) -> Option<String> {
     let value: serde_json::Value = serde_json::from_str(manifest).ok()?;
     let version = value.get("version")?.as_str()?;
@@ -166,15 +166,15 @@ pub fn manifest_version(manifest: &str) -> Option<String> {
     valid.then(|| version.to_owned())
 }
 
-/// Version du `manifest.json` au chemin `path` (lu à chaque appel : le
-/// fichier change quand l'app est mise à jour).
+/// Version of the `manifest.json` at `path` (read on every call: the
+/// file changes when the app is updated).
 pub fn extension_version_at(path: &Path) -> Option<String> {
     let text = std::fs::read_to_string(path).ok()?;
     manifest_version(&text)
 }
 
-/// Le `manifest.json` de l'extension livrée dans le paquet de l'app qui
-/// tourne (`Verrou.app/Contents/Resources/extension/`), s'il existe.
+/// The `manifest.json` of the extension shipped in the bundle of the running
+/// app (`Verrou.app/Contents/Resources/extension/`), if it exists.
 pub fn bundled_extension_manifest() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let contents = exe.parent()?.parent()?;
@@ -197,7 +197,7 @@ mod tests {
             }
         );
         assert!(!brave.is_foreign());
-        // Windows : la fenêtre parente en plus.
+        // Windows: the parent window as well.
         assert_eq!(
             Launcher::from_args([
                 "chrome-extension://pmdlgnpbjfdnmpeadbecmgfoojmocibg/",
@@ -217,14 +217,14 @@ mod tests {
         );
         assert!(!firefox.is_foreign());
 
-        // Une autre extension : refusée.
+        // Another extension: refused.
         assert!(
             Launcher::from_args(["chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/"])
                 .is_foreign()
         );
         assert!(Launcher::from_args([manifest, "autre@exemple.org"]).is_foreign());
 
-        // À la main, ou autre chose : inconnu, accepté.
+        // By hand, or something else: unknown, accepted.
         for args in [vec![], vec!["--aide"], vec!["a", "b", "c"], vec![manifest]] {
             let launcher = Launcher::from_args(args.clone());
             assert_eq!(launcher, Launcher::Unknown, "{args:?}");

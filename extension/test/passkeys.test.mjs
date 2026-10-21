@@ -1,7 +1,7 @@
-// Passkeys : le passage des options WebAuthn aux messages de Verrou
-// (passkey-codec.js), puis création et connexion contre le vrai pont, à
-// travers le vrai hôte Native Messaging. Les signatures sont vérifiées ici
-// avec WebCrypto, comme le ferait un site.
+// Passkeys: the conversion of WebAuthn options to Verrou's messages
+// (passkey-codec.js), then creation and sign-in against the real bridge,
+// through the real Native Messaging host. The signatures are checked here
+// with WebCrypto, as a site would.
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node --test extension/test/passkeys.test.mjs
@@ -29,19 +29,19 @@ const bytes = (buffer) => [...new Uint8Array(buffer)];
 
 // MARK: Codec
 
-test("base64url aller-retour, sans remplissage", () => {
+test("base64url round trip, without padding", () => {
   for (const length of [0, 1, 2, 3, 16, 31, 32, 33]) {
     const input = Uint8Array.from({ length }, (_, i) => (i * 37 + 250) % 256);
     const encoded = codec.encode(input);
     assert.doesNotMatch(encoded, /[+/=]/);
     assert.deepEqual(bytes(codec.decode(encoded)), [...input]);
   }
-  // Une vue partielle d'un tampon : seuls ses octets.
+  // A partial view of a buffer: only its bytes.
   const view = new Uint8Array([9, 1, 2, 3, 9]).subarray(1, 4);
   assert.equal(codec.encode(view), "AQID");
 });
 
-test("les options de la page deviennent une requête pour Verrou", () => {
+test("the page's options become a request for Verrou", () => {
   const create = codec.createRequest({
     rp: { id: "github.com", name: "GitHub" },
     user: { id: new Uint8Array([1, 2, 3]), name: "camille", displayName: "Camille" },
@@ -56,22 +56,22 @@ test("les options de la page deviennent une requête pour Verrou", () => {
     user_display_name: "Camille", challenge: codec.encode(new Uint8Array(32).fill(7)),
     algorithms: [-8, -7], exclude: ["BAU"], uv: false, attestation: "direct", prf: null,
   });
-  // Valeurs par défaut de WebAuthn : rpId absent, vérification « preferred ».
+  // WebAuthn defaults: rpId absent, "preferred" verification.
   const get = codec.getRequest({ challenge: new Uint8Array(16) });
   assert.equal(get.rp_id, null);
   assert.equal(get.uv, true);
   assert.equal(get.allow.length, 0);
-  assert.throws(() => codec.createRequest({ rp: {}, user: { id: "pas un tampon" }, challenge: new Uint8Array(16) }));
+  assert.throws(() => codec.createRequest({ rp: {}, user: { id: "not a buffer" }, challenge: new Uint8Array(16) }));
 });
 
-test("extension PRF : entrées en base64url, vérification de l'utilisateur exigée", () => {
+test("PRF extension: inputs in base64url, user verification required", () => {
   const create = codec.createRequest({
     rp: { id: "github.com" }, user: { id: new Uint8Array([1]) }, challenge: new Uint8Array(16),
     authenticatorSelection: { userVerification: "discouraged" },
     extensions: { prf: { eval: { first: new Uint8Array([1, 2, 3]) }, evalByCredential: { AQ: { first: new Uint8Array([9]) } } } },
   });
   assert.equal(create.uv, true);
-  // `evalByCredential` n'a pas de sens à la création : ignoré.
+  // `evalByCredential` makes no sense at creation: ignored.
   assert.deepEqual(JSON.parse(JSON.stringify(create.prf)), { eval: { first: "AQID", second: null }, eval_by_credential: {} });
   const get = codec.getRequest({
     challenge: new Uint8Array(16), userVerification: "discouraged",
@@ -81,7 +81,7 @@ test("extension PRF : entrées en base64url, vérification de l'utilisateur exig
   assert.deepEqual(JSON.parse(JSON.stringify(get.prf)), { eval: null, eval_by_credential: { AQ: { first: "BA", second: "BQ" } } });
   assert.equal(codec.getRequest({ challenge: new Uint8Array(16) }).prf, null);
 
-  // Sorties de Verrou → `getClientExtensionResults().prf` (ArrayBuffer) et JSON.
+  // Outputs of Verrou → `getClientExtensionResults().prf` (ArrayBuffer) and JSON.
   const registration = codec.registrationCredential({
     credential: "AQ", client_data: "e30", attestation_object: "oA", authenticator_data: "AA",
     public_key: "AA", algorithm: -7, prf: { enabled: true, results: { first: "AQID" } },
@@ -97,7 +97,7 @@ test("extension PRF : entrées en base64url, vérification de l'utilisateur exig
   });
   const results = assertion.getClientExtensionResults().prf.results;
   assert.deepEqual([bytes(results.first), bytes(results.second)], [[1], [2]]);
-  // Une copie à chaque appel : la page ne modifie pas la suivante.
+  // A copy on each call: the page doesn't modify the next one.
   new Uint8Array(results.first)[0] = 42;
   assert.deepEqual(bytes(assertion.getClientExtensionResults().prf.results.first), [1]);
   assert.deepEqual(JSON.parse(JSON.stringify(assertion.toJSON().clientExtensionResults)), { prf: { results: { first: "AQ", second: "Ag" } } });
@@ -105,8 +105,8 @@ test("extension PRF : entrées en base64url, vérification de l'utilisateur exig
     .getClientExtensionResults()), []);
 });
 
-test("les réponses de Verrou deviennent des PublicKeyCredential", () => {
-  // Faux prototypes du navigateur : `instanceof` doit marcher.
+test("Verrou's replies become PublicKeyCredentials", () => {
+  // Fake browser prototypes: `instanceof` must work.
   class PublicKeyCredential {}
   class AuthenticatorAttestationResponse {}
   class AuthenticatorAssertionResponse {}
@@ -134,7 +134,7 @@ test("les réponses de Verrou deviennent des PublicKeyCredential", () => {
   assert.equal(used.toJSON().response.signature, "Ag");
 });
 
-// MARK: Contre le pont
+// MARK: Against the bridge
 
 const server = spawn(`${root}target/debug/examples/test_server`, {
   env: { ...process.env, VERROU_BRIDGE_PORT: "0" },
@@ -172,7 +172,7 @@ function hostTransport() {
       buffer = buffer.subarray(4 + length);
     }
   });
-  host.on("exit", () => onDisconnect("hôte arrêté"));
+  host.on("exit", () => onDisconnect("host stopped"));
   return {
     post(message) {
       const body = Buffer.from(JSON.stringify(message));
@@ -186,7 +186,7 @@ function hostTransport() {
   };
 }
 
-// Signature ECDSA DER → r ‖ s (64 octets), la forme qu'attend WebCrypto.
+// DER ECDSA signature → r ‖ s (64 bytes), the form WebCrypto expects.
 function derToRaw(der) {
   const integer = (offset) => {
     const length = der[offset + 1];
@@ -213,13 +213,13 @@ async function verify(publicKey, reply) {
 
 const counterOf = (reply) => Buffer.from(codec.decode(reply.authenticator_data)).readUInt32BE(33);
 
-test("création, puis connexions signées par Verrou", async () => {
+test("creation, then sign-ins signed by Verrou", async () => {
   const channel = new Channel(hostTransport);
   channel.setClient(await channel.pair("Brave", () => {}));
   const page = "https://github.com/settings/security";
   const challenge = codec.encode(crypto.getRandomValues(new Uint8Array(32)));
 
-  // Où l'enregistrer : l'identifiant GitHub du coffre, sans passkey.
+  // Where to save it: the vault's GitHub login, without a passkey.
   const targets = await channel.request({ cmd: "passkey_targets", url: page, rp_id: "github.com", exclude: [] });
   assert.equal(targets.result, "passkey_targets");
   assert.equal(targets.excluded, false);
@@ -233,14 +233,14 @@ test("création, puis connexions signées par Verrou", async () => {
   assert.equal(created.result, "registration", JSON.stringify(created));
   assert.equal(created.item, "github");
   await new Promise((resolve) => setTimeout(resolve, 200));
-  assert.ok(events.includes("CONFIRM passkey GitHub"), "vérification de l'utilisateur demandée à Verrou");
+  assert.ok(events.includes("CONFIRM passkey GitHub"), "user verification asked of Verrou");
   const clientData = JSON.parse(Buffer.from(codec.decode(created.client_data)).toString());
   assert.deepEqual(clientData, { type: "webauthn.create", challenge, origin: "https://github.com", crossOrigin: false });
-  // Attestation « none », et rien de la clé privée.
+  // "none" attestation, and nothing of the private key.
   assert.ok(Buffer.from(codec.decode(created.attestation_object)).includes(Buffer.from("none")));
   assert.equal(Object.keys(created).some((k) => /key_value|private/.test(k)), false);
 
-  // Connexion : la passkey est proposée sur le site, et seulement là.
+  // Sign-in: the passkey is offered on the site, and only there.
   const list = await channel.request({ cmd: "passkey_list", url: "https://github.com/login", allow: [] });
   assert.deepEqual(list.items.map((p) => [p.item, p.credential, p.user_name]), [["github", created.credential, "camille"]]);
   const elsewhere = await channel.request({ cmd: "passkey_list", url: "https://gitlab.com/login", rp_id: null, allow: [] });
@@ -254,23 +254,23 @@ test("création, puis connexions signées par Verrou", async () => {
       credential: created.credential, challenge, uv: false,
     });
     assert.equal(used.result, "assertion", JSON.stringify(used));
-    assert.equal(counterOf(used), expected, "le compteur avance");
-    assert.equal(await verify(created.public_key, used), true, "signature ES256 valide");
+    assert.equal(counterOf(used), expected, "the counter moves forward");
+    assert.equal(await verify(created.public_key, used), true, "valid ES256 signature");
     assert.equal(Buffer.from(codec.decode(used.user_handle)).toString(), "id-camille");
     assert.equal(JSON.parse(Buffer.from(codec.decode(used.client_data)).toString()).type, "webauthn.get");
-    // Le credential rendu à la page, à partir de la réponse.
+    // The credential returned to the page, from the reply.
     const credential = codec.assertionCredential(used);
     assert.equal(credential.id, created.credential);
   }
 
-  // Une autre page ne la fait pas signer.
+  // Another page can't get it to sign.
   const stolen = await channel.request({
     cmd: "passkey_get", url: "https://github.com.evil.example/", rp_id: null, item: "github",
     credential: created.credential, challenge, uv: false,
   });
   assert.equal(stolen.result, "denied");
 
-  // Le site l'exclut : elle est déjà là.
+  // The site excludes it: it is already there.
   const again = await channel.request({ cmd: "passkey_targets", url: page, exclude: [created.credential] });
   assert.equal(again.excluded, true);
   assert.equal(again.logins[0].has_passkey, true);
@@ -278,9 +278,9 @@ test("création, puis connexions signées par Verrou", async () => {
     cmd: "passkey_create", url: page, user_id: "AQID", challenge, exclude: [created.credential],
   });
   assert.equal(duplicate.result, "denied");
-  assert.equal(duplicate.reason, "cette passkey est déjà dans Verrou");
+  assert.equal(duplicate.reason, "this passkey is already in Verrou");
 
-  // Nouvel identifiant, pour un site que le coffre ne connaît pas.
+  // New login, for a site the vault doesn't know.
   const fresh = await channel.request({
     cmd: "passkey_create", url: "http://localhost:8000/inscription", user_id: "AQID",
     user_name: "dominique", challenge, algorithms: [], uv: false,
@@ -288,8 +288,8 @@ test("création, puis connexions signées par Verrou", async () => {
   assert.equal(fresh.result, "registration", JSON.stringify(fresh));
   assert.match(fresh.item, /^nouveau-/);
 
-  // PRF : sorties à la création, les mêmes à la connexion pour la même
-  // entrée, d'autres pour une autre entrée.
+  // PRF: outputs at creation, the same at sign-in for the same input,
+  // others for another input.
   const salt = (text) => codec.encode(new TextEncoder().encode(text));
   const withPrf = await channel.request({
     cmd: "passkey_create", url: "https://prf.example/inscription", user_id: "Ag", user_name: "prf",
@@ -305,12 +305,12 @@ test("création, puis connexions signées par Verrou", async () => {
   });
   const same = await prfGet({ eval: { first: salt("sel-1") } });
   assert.equal(same.result, "assertion", JSON.stringify(same));
-  assert.equal(same.prf.first, withPrf.prf.results.first, "même entrée, même sortie");
+  assert.equal(same.prf.first, withPrf.prf.results.first, "same input, same output");
   assert.equal(same.prf.second, undefined);
   const byCredential = await prfGet({
     eval: { first: salt("sel-1") }, eval_by_credential: { [withPrf.credential]: { first: salt("sel-3") } },
   });
-  assert.notEqual(byCredential.prf.first, withPrf.prf.results.first, "evalByCredential prioritaire");
+  assert.notEqual(byCredential.prf.first, withPrf.prf.results.first, "evalByCredential takes precedence");
   const plain = await prfGet(undefined);
   assert.equal(plain.prf, undefined);
   const local = await channel.request({ cmd: "passkey_list", url: "http://localhost:8000/connexion", allow: [fresh.credential] });

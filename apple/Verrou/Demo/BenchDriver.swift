@@ -1,12 +1,12 @@
 #if DEBUG || BENCH
 import AppKit
 
-/// Mesure de l'interface sur un coffre fictif (`VERROU_BENCH=1`, taille
-/// `VERROU_MOCK_SIZE`) : déverrouillage jusqu'à la liste affichée, puis une
-/// recherche tapée lettre à lettre. Annonce `BENCH …` puis quitte.
+/// Measure of the interface on a mock vault (`VERROU_BENCH=1`, size
+/// `VERROU_MOCK_SIZE`): unlock until the list is displayed, then a search
+/// typed letter by letter. Announces `BENCH …` then quits.
 @MainActor
 final class BenchDriver {
-    /// Lignes de la liste construites par SwiftUI depuis la dernière remise à zéro.
+    /// List rows built by SwiftUI since the last reset.
     static var rowsBuilt = 0
 
     private let model: AppModel
@@ -24,8 +24,8 @@ final class BenchDriver {
         fflush(stdout)
     }
 
-    /// Temps jusqu'au prochain tour de la boucle principale : SwiftUI a
-    /// recalculé et mis en page ce que `change` a invalidé.
+    /// Time until the next turn of the main run loop: SwiftUI has recomputed
+    /// and laid out what `change` invalidated.
     private func timed(_ label: String, _ change: () -> Void) async {
         Self.rowsBuilt = 0
         let start = ContinuousClock.now
@@ -36,40 +36,40 @@ final class BenchDriver {
             DispatchQueue.main.async { continuation.resume() }
         }
         let busy = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - cpu) / 1_000_000
-        report("\(label) : \(Perf.ms(since: start)) ms (modèle \(changed) ms, CPU du fil principal \(busy) ms), \(Self.rowsBuilt) lignes construites")
+        report("\(label): \(Perf.ms(since: start)) ms (model \(changed) ms, main thread CPU \(busy) ms), \(Self.rowsBuilt) rows built")
     }
 
     private func run() async {
         try? await Task.sleep(for: .seconds(1.5))
-        // Icônes demandées à un serveur (le Vaultwarden de test s'il est là).
+        // Icons requested from a server (the test Vaultwarden if it's there).
         model.showSiteIcons = true
         let generation = ContinuousClock.now
         model.session.unlockMock(size: model.mockSize, seed: 42)
-        report("coffre fictif généré (Rust) : \(Perf.ms(since: generation)) ms")
+        report("mock vault generated (Rust): \(Perf.ms(since: generation)) ms")
         model.session.lock()
-        await timed("déverrouillage → liste") { model.openVault() }
-        await timed("verrouillage") { model.lock() }
-        await timed("déverrouillage → liste, deuxième fois") { model.openVault() }
+        await timed("unlock → list") { model.openVault() }
+        await timed("lock") { model.lock() }
+        await timed("unlock → list, second time") { model.openVault() }
         if ProcessInfo.processInfo.environment["VERROU_BENCH_LOOP"] == "1" {
-            // Pour le profileur : la bascule répétée.
+            // For the profiler: the repeated toggle.
             for _ in 0..<15 {
-                await timed("verrouillage") { model.lock() }
+                await timed("lock") { model.lock() }
                 try? await Task.sleep(for: .milliseconds(400))
-                await timed("déverrouillage → liste") { model.openVault() }
+                await timed("unlock → list") { model.openVault() }
                 try? await Task.sleep(for: .milliseconds(400))
             }
         }
-        await timed("serveur d'icônes branché") {
+        await timed("icon server plugged in") {
             model.siteIcons.server = ProcessInfo.processInfo.environment["VERROU_BENCH_ICONS"]
         }
         try? await Task.sleep(for: .seconds(1))
-        report("icônes demandées au serveur : \(model.siteIcons.requestedCount)")
+        report("icons requested from the server: \(model.siteIcons.requestedCount)")
         for (index, _) in "github".enumerated() {
             let prefix = String("github".prefix(index + 1))
-            await timed("frappe « \(prefix) »") { model.query = prefix }
+            await timed("keystroke \"\(prefix)\"") { model.query = prefix }
         }
-        await timed("effacement") { model.query = "" }
-        await timed("sélection suivante") { model.moveSelection(by: 1) }
+        await timed("clearing") { model.query = "" }
+        await timed("next selection") { model.moveSelection(by: 1) }
         report("DONE")
         NSApp.terminate(nil)
     }

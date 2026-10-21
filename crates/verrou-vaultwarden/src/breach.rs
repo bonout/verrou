@@ -1,10 +1,10 @@
-//! Mots de passe fuités, par l'API « Pwned Passwords » de Have I Been Pwned.
+//! Leaked passwords, through the "Pwned Passwords" API of Have I Been Pwned.
 //!
-//! Anonymat par k-anonymat : seuls les 5 premiers caractères hexadécimaux du
-//! SHA-1 d'un mot de passe partent ; le service renvoie tous les suffixes
-//! connus qui commencent ainsi (avec du remplissage, `Add-Padding`), et la
-//! comparaison se fait ici. Ni le mot de passe ni son empreinte complète ne
-//! quittent le Mac. Seulement sur demande de l'utilisateur.
+//! Anonymity through k-anonymity: only the first 5 hex characters of a
+//! password's SHA-1 are sent; the service returns every known suffix that
+//! starts that way (with padding, `Add-Padding`), and the comparison happens
+//! here. Neither the password nor its full hash leaves the Mac. Only on the
+//! user's request.
 
 use std::collections::HashMap;
 
@@ -14,18 +14,18 @@ use sha1::{Digest as _, Sha1};
 use crate::Error;
 
 const API: &str = "https://api.pwnedpasswords.com/range/";
-/// Requêtes simultanées : le service est rapide, inutile de l'assaillir.
+/// Concurrent requests: the service is fast, no need to hammer it.
 const CONCURRENCY: usize = 8;
 
-/// SHA-1 en hexadécimal majuscule, coupé en préfixe (5) et suffixe (35).
+/// SHA-1 in upper-case hex, split into prefix (5) and suffix (35).
 fn split_hash(password: &str) -> (String, String) {
     let hex = data_encoding::HEXUPPER.encode(&Sha1::digest(password.as_bytes()));
     let (prefix, suffix) = hex.split_at(5);
     (prefix.to_owned(), suffix.to_owned())
 }
 
-/// Nombre d'apparitions de `suffix` dans une réponse de l'API (`SUFFIXE:N`
-/// par ligne ; les lignes de remplissage valent 0).
+/// Number of occurrences of `suffix` in an API response (`SUFFIX:N`
+/// per line; padding lines are 0).
 fn count_in(body: &str, suffix: &str) -> u64 {
     body.lines()
         .filter_map(|line| line.trim().split_once(':'))
@@ -34,11 +34,11 @@ fn count_in(body: &str, suffix: &str) -> u64 {
         .unwrap_or(0)
 }
 
-/// Pour chaque mot de passe, le nombre de fois où il apparaît dans des
-/// fuites connues (0 : jamais vu). Une seule requête par préfixe.
+/// For each password, the number of times it appears in known leaks
+/// (0: never seen). A single request per prefix.
 pub async fn pwned_counts(passwords: &[&str]) -> Result<Vec<u64>, Error> {
     let hashes: Vec<(String, String)> = passwords.iter().map(|p| split_hash(p)).collect();
-    // Préfixes possédés : le futur doit pouvoir changer de fil (`Send`).
+    // Owned prefixes: the future must be able to move between threads (`Send`).
     let mut prefixes: Vec<String> = hashes.iter().map(|(p, _)| p.clone()).collect();
     prefixes.sort_unstable();
     prefixes.dedup();
@@ -85,9 +85,9 @@ mod tests {
         assert_eq!(suffix, "1E4C9B93F3F0682250B6CF8331B7EE68FD8");
     }
 
-    /// Contre le vrai service (réseau) : `cargo test -p verrou-vaultwarden -- --ignored breach`.
+    /// Against the real service (network): `cargo test -p verrou-vaultwarden -- --ignored breach`.
     #[tokio::test]
-    #[ignore = "réseau : api.pwnedpasswords.com"]
+    #[ignore = "network: api.pwnedpasswords.com"]
     async fn real_service_knows_password() {
         let counts = pwned_counts(&["password", "Xk7#pQ2!vL9@mZ4$wR8&-verrou-jamais-vu"])
             .await

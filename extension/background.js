@@ -1,21 +1,21 @@
-// Service worker de l'extension (page d'arrière-plan dans Firefox) : la
-// seule partie qui parle à Verrou.
+// The extension's service worker (background page in Firefox): the only
+// part that talks to Verrou.
 //
-// Les pages (content.js) ne demandent que pour elles-mêmes : l'adresse
-// envoyée à Verrou est celle que le navigateur attribue à l'expéditeur
-// (`sender.url`), jamais une adresse fournie par la page.
+// Pages (content.js) only ask for themselves: the address sent to Verrou is
+// the one the browser assigns to the sender (`sender.url`), never an
+// address provided by the page.
 
 import { Channel } from "./bridge.js";
-import { browserName, ext, firefox } from "./browser.js";
+import { browserName, ext, firefox, t } from "./browser.js";
 import { passkeyCommand, passkeyResult } from "./passkey-bridge.js";
 import { ATTEMPT_KEY, createUpdater } from "./update.js";
 
 const HOST = "app.verrou.bridge";
-// Le réglage de Verrou qui active le pont (SettingsView.swift).
-const SETTING = "Brave, Firefox et le terminal";
+// The Verrou setting that turns the bridge on (SettingsView.swift):
+// `settingBridge` in _locales.
 const IDLE_MS = 60_000;
 
-// MARK: Appairage enregistré (IndexedDB : la clé AES y reste non exportable)
+// MARK: Saved pairing (IndexedDB: the AES key stays non-exportable there)
 
 function database() {
   return new Promise((resolve, reject) => {
@@ -40,16 +40,16 @@ const loadClient = () => stored("readonly", (store) => store.get("client"));
 const saveClient = (client) => stored("readwrite", (store) => store.put(client, "client"));
 const forgetClient = () => stored("readwrite", (store) => store.delete("client"));
 
-// MARK: Canal
+// MARK: Channel
 
 function nativeTransport() {
   const port = ext.runtime.connectNative(HOST);
   return {
     post: (message) => port.postMessage(message),
     onMessage: (callback) => port.onMessage.addListener(callback),
-    // Firefox donne l'erreur sur le port, Brave dans `runtime.lastError`.
+    // Firefox gives the error on the port, Brave in `runtime.lastError`.
     onDisconnect: (callback) => port.onDisconnect.addListener(
-      (closed) => callback(closed?.error?.message ?? ext.runtime.lastError?.message ?? "déconnecté")),
+      (closed) => callback(closed?.error?.message ?? ext.runtime.lastError?.message ?? "disconnected")),
     close: () => port.disconnect(),
   };
 }
@@ -70,7 +70,7 @@ function keepAlive() {
 async function call(command) {
   await ready;
   keepAlive();
-  // Nouvelle connexion à Verrou : l'occasion de comparer les versions.
+  // New connection to Verrou: the occasion to compare the versions.
   const connecting = !channel.transport;
   try {
     const reply = await channel.request(command);
@@ -78,7 +78,7 @@ async function call(command) {
     return reply;
   } catch (error) {
     if (error.code === "unknown_client") {
-      // Révoqué dans Verrou : il faudra appairer de nouveau.
+      // Revoked in Verrou: pairing will be needed again.
       channel.setClient(null);
       await forgetClient();
     }
@@ -101,21 +101,21 @@ async function status() {
   }
 }
 
-// MARK: Mise à jour (extension chargée depuis Verrou.app)
+// MARK: Update (extension loaded from Verrou.app)
 //
-// Au démarrage, à chaque connexion à Verrou, et toutes les dix minutes : si
-// l'extension sur le disque (ou celle que Verrou livre) n'est plus celle qui
-// tourne, elle se recharge (voir update.js).
+// At startup, on each connection to Verrou, and every ten minutes: if the
+// extension on disk (or the one Verrou ships) is no longer the one running,
+// it reloads (see update.js).
 
 async function diskVersion() {
   const response = await fetch(ext.runtime.getURL("manifest.json"), { cache: "no-store" });
   return (await response.json()).version;
 }
 
-// Firefox : une extension temporaire se recharge depuis son dossier, mais un
-// module signé (.xpi) ne change pas en se rechargeant. On ne recharge donc
-// que si le manifeste sur le disque a changé ; une version différente chez
-// Verrou ne donne que l'avertissement de la fenêtre de l'extension.
+// Firefox: a temporary extension reloads from its folder, but a signed
+// add-on (.xpi) doesn't change when it reloads. So we only reload if the
+// manifest on disk changed; a different version from Verrou only gives the
+// warning in the extension's popup.
 const updater = createUpdater({
   running: ext.runtime.getManifest().version,
   reloadForBundled: !firefox,
@@ -128,7 +128,7 @@ const updater = createUpdater({
   busy: () => Boolean(channel.pairing),
 });
 
-// La version annoncée par Verrou, sans le lancer : seulement s'il est relié.
+// The version announced by Verrou, without launching it: only if linked.
 async function checkWithBridge() {
   if (!channel.client) return updater.check();
   try {
@@ -140,14 +140,14 @@ async function checkWithBridge() {
 }
 
 const UPDATE_ALARM = "verrou-update";
-// Recréer l'alarme à chaque réveil du service worker la repousserait sans fin.
+// Recreating the alarm on each service worker wake-up would postpone it forever.
 ext.alarms.get(UPDATE_ALARM)
   .then((alarm) => alarm ?? ext.alarms.create(UPDATE_ALARM, { periodInMinutes: 10 }))
   .catch(() => {});
 ext.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== UPDATE_ALARM) return;
-  // Connexion déjà ouverte : demander aussi à Verrou ; sinon le disque seul
-  // (ouvrir la connexion lancerait l'app).
+  // Connection already open: ask Verrou too; otherwise the disk only
+  // (opening the connection would launch the app).
   (channel.transport ? checkWithBridge() : updater.check()).catch(() => {});
 });
 updater.check().catch(() => {});
@@ -168,14 +168,14 @@ async function fill(url, item) {
     if (reply.result === "credentials") {
       return { ok: true, username: reply.username, password: reply.password, totp: reply.totp };
     }
-    // « confirm » : élément protégé, Verrou demande Touch ID ; on réessaie.
+    // "confirm": protected item, Verrou asks for Touch ID; we try again.
     return { ok: false, state: reply.result, reason: reply.reason };
   } catch (error) {
     return { ok: false, state: stateOf(error) };
   }
 }
 
-// MARK: Appairage (piloté par la fenêtre de l'extension)
+// MARK: Pairing (driven by the extension's popup)
 
 let pairing = { state: "idle" };
 
@@ -195,18 +195,18 @@ function startPairing() {
     })
     .catch((error) => publish({
       state: "failed",
-      error: error.code === "refused" ? "Appairage refusé dans Verrou."
-        : error.code === "busy" ? "Un appairage est déjà en cours : réessayez dans un instant."
-        : `Verrou ne répond pas. Est-il installé, et « ${SETTING} » activé dans ses réglages ? (${error.message})`,
+      error: error.code === "refused" ? t("pairRefused")
+        : error.code === "busy" ? t("pairBusy")
+        : t("pairNoAnswer", t("settingBridge"), error.message),
     }));
   return pairing;
 }
 
-// MARK: Enregistrement après l'envoi d'un formulaire
+// MARK: Saving after a form is submitted
 //
-// Le mot de passe capté attend la réponse de l'utilisateur dans
-// `storage.session` (en mémoire, hors de portée des pages), deux
-// minutes au plus, pour l'onglet où le formulaire est parti.
+// The captured password waits for the user's answer in `storage.session`
+// (in memory, out of reach of the pages), two minutes at most, for the tab
+// where the form was submitted.
 
 const PENDING_MS = 2 * 60_000;
 const USERNAME_MS = 5 * 60_000;
@@ -241,7 +241,7 @@ async function capture(sender, message) {
   if ((await neverList()).includes(site)) return;
   let username = String(message.username ?? "").slice(0, 512);
   if (!username) {
-    // Deuxième étape d'une connexion : l'identifiant de l'étape précédente.
+    // Second step of a sign-in: the username from the previous step.
     const remembered = await sessionGet(usernameKey(tabId));
     if (remembered && Date.now() - remembered.at < USERNAME_MS) username = remembered.username;
   }
@@ -265,8 +265,8 @@ async function capture(sender, message) {
     return;
   }
   await ext.storage.session.set({ [pendingKey(tabId)]: pending });
-  // Application monopage : la page reste, on lui dit de proposer. Sinon, la
-  // page suivante le demandera elle-même.
+  // Single-page application: the page stays, we tell it to offer. Otherwise,
+  // the next page will ask for it itself.
   setTimeout(() => ext.tabs.sendMessage(tabId, { kind: "offerSave" }, { frameId: 0 }).catch(() => {}), 600);
 }
 
@@ -276,7 +276,7 @@ async function pendingFor(sender) {
   const pending = await sessionGet(pendingKey(tabId));
   if (!pending || Date.now() - pending.at > PENDING_MS) return null;
   if (pending.action === "locked") {
-    // Verrou vient peut-être d'être déverrouillé : la vraie réponse.
+    // Verrou may just have been unlocked: the real answer.
     try {
       const reply = await call({ cmd: "check", url: pending.url, username: pending.username,
         password: pending.password, current: pending.current });
@@ -289,7 +289,7 @@ async function pendingFor(sender) {
         await ext.storage.session.set({ [pendingKey(tabId)]: pending });
       }
     } catch {
-      // Hors ligne : on garde la proposition telle quelle.
+      // Offline: we keep the offer as it is.
     }
   }
   return pending;
@@ -297,17 +297,17 @@ async function pendingFor(sender) {
 
 async function confirmSave(sender) {
   const pending = await pendingFor(sender);
-  if (!pending || pending.action === "locked") return { ok: false, reason: "Verrou est verrouillé" };
+  if (!pending || pending.action === "locked") return { ok: false, reason: t("verrouLocked") };
   try {
     const reply = await call({ cmd: "save", url: pending.url, username: pending.username,
       password: pending.password, item: pending.action === "update" ? pending.item : null });
     if (reply.result !== "saved") {
-      return { ok: false, reason: reply.result === "locked" ? "Verrou est verrouillé" : reply.reason };
+      return { ok: false, reason: reply.result === "locked" ? t("verrouLocked") : reply.reason };
     }
     await ext.storage.session.remove(pendingKey(sender.tab.id));
     return { ok: true };
   } catch (error) {
-    return { ok: false, reason: `Verrou ne répond pas (${error.message})` };
+    return { ok: false, reason: t("verrouNotRespondingDetail", error.message) };
   }
 }
 
@@ -324,21 +324,21 @@ ext.tabs.onRemoved.addListener((tabId) => {
   ext.storage.session.remove([pendingKey(tabId), usernameKey(tabId)]).catch(() => {});
 });
 
-// MARK: Code de vérification (QR code)
+// MARK: Verification code (QR code)
 
 async function setTotp(url, totp, item) {
   try {
     const reply = await call({ cmd: "set_totp", url, totp, item: item ?? null });
     if (reply.result === "saved") return { ok: true };
-    return { ok: false, reason: reply.result === "locked" ? "Verrou est verrouillé" : reply.reason };
+    return { ok: false, reason: reply.result === "locked" ? t("verrouLocked") : reply.reason };
   } catch (error) {
-    return { ok: false, reason: `Verrou ne répond pas (${error.message})` };
+    return { ok: false, reason: t("verrouNotRespondingDetail", error.message) };
   }
 }
 
 // MARK: Messages
 
-// MARK: Cartes et adresses
+// MARK: Cards and addresses
 
 async function forms(url) {
   try {
@@ -365,13 +365,13 @@ async function fillForm(url, item) {
 
 // MARK: Passkeys
 //
-// Demandes de passkeys.js (cadre principal seulement), pour l'adresse de
-// l'onglet (voir passkey-bridge.js).
+// Requests from passkeys.js (main frame only), for the tab's address (see
+// passkey-bridge.js).
 
 async function passkey(message, sender) {
   if (sender.frameId !== 0 || !sender.url) return { state: "offline" };
   const command = passkeyCommand(message, sender.url);
-  if (!command) return { error: "commande inconnue" };
+  if (!command) return { error: "unknown command" };
   try {
     return passkeyResult(await call(command));
   } catch (error) {
@@ -379,12 +379,12 @@ async function passkey(message, sender) {
   }
 }
 
-// MARK: Relier un site à un identifiant
+// MARK: Link a site to a login
 //
-// « Remplir avec un autre identifiant… » de la pastille (content.js) ouvre
-// la fenêtre de l'extension sur ce choix, pour le cadre d'où vient la
-// demande. Le choix et l'avertissement restent dans la fenêtre : la page ne
-// voit ni la recherche ni les identifiants.
+// "Fill with another login…" in the pill (content.js) opens the extension's
+// popup on this choice, for the frame the request comes from. The choice
+// and the warning stay in the popup: the page sees neither the search nor
+// the logins.
 
 const LINK_INTENT = "linkIntent";
 
@@ -394,13 +394,13 @@ async function openLinkSite(sender) {
   await ext.storage.session.set({
     [LINK_INTENT]: { tabId, frameId: sender.frameId ?? 0, url: sender.url, at: Date.now() },
   });
-  // La fenêtre de l'extension sous son icône (Brave) ; sinon (Firefox
-  // l'interdit hors d'un clic sur l'extension elle-même) une petite fenêtre.
+  // The extension's popup under its icon (Brave); otherwise (Firefox forbids
+  // it outside a click on the extension itself) a small window.
   try {
     await ext.action.openPopup();
     return { ok: true };
   } catch {
-    // Repli ci-dessous.
+    // Fallback below.
   }
   try {
     await ext.windows.create({ url: ext.runtime.getURL("popup.html"), type: "popup", width: 360, height: 560 });
@@ -410,8 +410,8 @@ async function openLinkSite(sender) {
   }
 }
 
-// L'onglet (et le cadre) à relier : celui de la demande de la pastille, sinon
-// l'onglet actif.
+// The tab (and frame) to link: the one of the pill's request, otherwise the
+// active tab.
 async function linkTarget(target) {
   if (target && Number.isInteger(target.tabId) && typeof target.url === "string") {
     return { tabId: target.tabId, frameId: Number.isInteger(target.frameId) ? target.frameId : 0, url: target.url };
@@ -440,14 +440,14 @@ async function activeTab() {
 }
 
 async function handle(message, sender) {
-  if (sender.id !== ext.runtime.id) return { error: "expéditeur inconnu" };
-  // Une page de l'extension (fenêtre ou onglet) ; un script de page a
-  // l'adresse de la page.
+  if (sender.id !== ext.runtime.id) return { error: "unknown sender" };
+  // A page of the extension (popup or tab); a page script has the page's
+  // address.
   const fromExtensionPage = sender.url?.startsWith(ext.runtime.getURL("")) ?? false;
-  if (!fromExtensionPage && !fromPage.has(message.kind)) return { error: "commande refusée" };
+  if (!fromExtensionPage && !fromPage.has(message.kind)) return { error: "command refused" };
 
   switch (message.kind) {
-    // Depuis une page : pour l'adresse de la page (ou du cadre) seulement.
+    // From a page: for the address of the page (or frame) only.
     case "suggest":
       return suggest(sender.url);
     case "fill":
@@ -469,7 +469,7 @@ async function handle(message, sender) {
       return { ok: true };
     case "pendingSave": {
       const pending = await pendingFor(sender);
-      // Pas de mot de passe vers la page : le bandeau n'en a pas besoin.
+      // No password to the page: the banner doesn't need it.
       return pending
         ? { action: pending.action, username: pending.username, site: pending.site, title: pending.title ?? "" }
         : {};
@@ -488,7 +488,7 @@ async function handle(message, sender) {
     case "passkeyCreate":
       return passkey(message, sender);
 
-    // Depuis la fenêtre de l'extension.
+    // From the extension's popup.
     case "status":
       await ready;
       return channel.client ? status() : { state: "unpaired", extension: updater.state() };
@@ -513,12 +513,12 @@ async function handle(message, sender) {
     }
     case "setTotpTab": {
       const tab = await activeTab();
-      if (!tab?.url) return { ok: false, reason: "aucun onglet" };
+      if (!tab?.url) return { ok: false, reason: t("noTab") };
       return setTotp(tab.url, String(message.totp ?? ""), message.item);
     }
     case "captureTab": {
-      // Image de l'onglet, pour y lire un QR code (droit « activeTab » :
-      // seulement après un clic sur l'icône de l'extension).
+      // Image of the tab, to read a QR code in it ("activeTab" permission:
+      // only after a click on the extension's icon).
       const tab = await activeTab();
       if (!tab) return { ok: false };
       try {
@@ -536,11 +536,10 @@ async function handle(message, sender) {
       }
     }
     case "linkSiteTab": {
-      // Choisi dans la fenêtre de l'extension : rattacher le site de l'onglet
-      // (ou du cadre de la pastille) à cet identifiant, puis remplir comme
-      // d'habitude.
+      // Chosen in the extension's popup: attach the site of the tab (or of
+      // the pill's frame) to this login, then fill as usual.
       const target = await linkTarget(message.target);
-      if (!target) return { ok: false, reason: "aucun onglet" };
+      if (!target) return { ok: false, reason: t("noTab") };
       try {
         const reply = await call({ cmd: "link_site", url: target.url, item: message.item });
         if (reply.result !== "saved") return { ok: false, reason: reply.reason ?? reply.result };
@@ -560,7 +559,7 @@ async function handle(message, sender) {
       await ext.storage.local.set({ never: (await neverList()).filter((s) => s !== message.site) });
       return { ok: true };
     default:
-      return { error: "commande inconnue" };
+      return { error: "unknown command" };
   }
 }
 

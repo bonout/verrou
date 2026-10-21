@@ -1,22 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Un envoi en cours de composition : texte, ou fichier choisi.
+/// A Send being composed: text, or a chosen file.
 struct SendComposer: Identifiable {
     let id = UUID()
     var fields: SendFields
-    /// Fichier à chiffrer et envoyer (`nil` : envoi de texte).
+    /// File to encrypt and send (`nil`: text Send).
     var file: URL?
 }
 
 extension PhoneModel {
-    /// Les envois du compte, d'après la dernière synchronisation.
+    /// The account's Sends, from the last sync.
     func reloadSends() async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         do {
             sharing.sends = try await session.sends()
         } catch {
-            toast = Toast(message: "Envois illisibles", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not read Sends"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
@@ -28,8 +28,8 @@ extension PhoneModel {
         sharing.sendComposer = SendComposer(fields: fields, file: file)
     }
 
-    /// Crée l'envoi (chiffré dans le cœur Rust) ; le lien, qui porte la
-    /// clé, va dans le presse-papiers (effacé après le délai réglé).
+    /// Creates the Send (encrypted in the Rust core); the link, which carries
+    /// the key, goes to the clipboard (cleared after the set delay).
     func createSend(_ composer: SendComposer) async -> Bool {
         await sharingAction {
             let created: CreatedSend
@@ -38,7 +38,7 @@ extension PhoneModel {
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(UInt64.init) ?? 0
                 guard size <= self.session.maxSendFileSize() else {
-                    throw VerrouError.Invalid(message: "fichier trop gros pour un envoi (100 Mo au plus)")
+                    throw VerrouError.Invalid(message: String(localized: "file too big for a Send (100 MB at most)"))
                 }
                 let data = try Data(contentsOf: url)
                 created = try await self.session.createFileSend(fields: composer.fields,
@@ -46,7 +46,7 @@ extension PhoneModel {
             } else {
                 created = try await self.session.createSend(fields: composer.fields)
             }
-            self.copy(created.link, label: "Lien de l'envoi", secret: true)
+            self.copy(created.link, label: String(localized: "Send link"), secret: true)
             self.sharing.createdLink = created.link
             await self.reloadSends()
         }
@@ -54,25 +54,25 @@ extension PhoneModel {
 
     func copySendLink(_ send: SendSummary) async {
         do {
-            copy(try await session.sendLink(id: send.id), label: "Lien de l'envoi", secret: true)
+            copy(try await session.sendLink(id: send.id), label: String(localized: "Send link"), secret: true)
         } catch {
-            toast = Toast(message: "Lien indisponible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Link unavailable"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
     func deleteSend(_ send: SendSummary) async {
         do {
             try await session.deleteSend(id: send.id)
-            toast = Toast(message: "Envoi « \(send.name) » supprimé", detail: nil)
+            toast = Toast(message: String(localized: "Send “\(send.name)” deleted"), detail: nil)
             await reloadSends()
         } catch {
-            toast = Toast(message: "Suppression impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not delete"), detail: ErrorText.describe(error), failure: true)
         }
     }
 }
 
-/// Les envois (Bitwarden Send) : un texte ou un fichier chiffré, ouvert par
-/// un lien qui expire. Le serveur ne voit ni le contenu ni la clé.
+/// Sends (Bitwarden Send): a text or an encrypted file, opened by a link
+/// that expires. The server sees neither the content nor the key.
 struct SendsScreen: View {
     @Environment(PhoneModel.self) private var model
     @State private var importing = false
@@ -82,30 +82,30 @@ struct SendsScreen: View {
         List {
             if let sends = model.sharing.sends {
                 if sends.isEmpty {
-                    ContentUnavailableView("Aucun envoi", systemImage: "paperplane",
-                                           description: Text("Partagez un texte ou un fichier par un lien chiffré qui expire."))
+                    ContentUnavailableView("No Sends", systemImage: "paperplane",
+                                           description: Text("Share a text or a file through an encrypted link that expires."))
                         .listRowBackground(Color.clear)
                 }
                 Section {
                     ForEach(sends, id: \.id) { send in
                         SendRow(send: send)
                             .contextMenu {
-                                Button("Copier le lien", systemImage: "link") { Task { await model.copySendLink(send) } }
-                                Button("Supprimer", systemImage: "trash", role: .destructive) { deleting = send }
+                                Button("Copy link", systemImage: "link") { Task { await model.copySendLink(send) } }
+                                Button("Delete", systemImage: "trash", role: .destructive) { deleting = send }
                             }
                             .swipeActions {
                                 Button(role: .destructive) { deleting = send } label: {
-                                    Label("Supprimer", systemImage: "trash")
+                                    Label("Delete", systemImage: "trash")
                                 }
                                 Button { Task { await model.copySendLink(send) } } label: {
-                                    Label("Lien", systemImage: "link")
+                                    Label("Link", systemImage: "link")
                                 }
                                 .tint(.indigo)
                             }
                     }
                 } footer: {
                     if !sends.isEmpty {
-                        Text("Touchez longuement un envoi pour copier son lien. Le lien porte la clé : ne le donnez qu'à son destinataire.")
+                        Text("Touch and hold a Send to copy its link. The link carries the key: only give it to its recipient.")
                     }
                 }
             } else {
@@ -113,16 +113,16 @@ struct SendsScreen: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Envois")
+        .navigationTitle("Sends")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("Texte", systemImage: "text.alignleft") { model.newSend() }
-                    Button("Fichier…", systemImage: "doc") { importing = true }
+                    Button("Text", systemImage: "text.alignleft") { model.newSend() }
+                    Button("File…", systemImage: "doc") { importing = true }
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Nouvel envoi")
+                .accessibilityLabel("New Send")
                 .disabled(!model.canEdit)
             }
         }
@@ -134,12 +134,12 @@ struct SendsScreen: View {
             await model.reloadSends()
         }
         .task { await model.reloadSends() }
-        .confirmationDialog("Supprimer « \(deleting?.name ?? "") » ?",
+        .confirmationDialog("Delete “\(deleting?.name ?? "")”?",
                             isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible, presenting: deleting) { send in
-            Button("Supprimer", role: .destructive) { Task { await model.deleteSend(send) } }
+            Button("Delete", role: .destructive) { Task { await model.deleteSend(send) } }
         } message: { _ in
-            Text("Le lien ne fonctionnera plus.")
+            Text("The link will stop working.")
         }
     }
 }
@@ -157,25 +157,25 @@ private struct SendRow: View {
             }
             Spacer()
             if send.hasPassword { Image(systemName: "key.fill").foregroundStyle(.secondary) }
-            if !send.available { Badge(text: "Inactif", tint: nil) }
+            if !send.available { Badge(text: String(localized: "Inactive"), tint: nil) }
         }
     }
 
     private var detail: String {
         var parts: [String] = []
         let deletion = Date(timeIntervalSince1970: TimeInterval(send.deletionDate))
-        parts.append("supprimé \(deletion.formatted(.relative(presentation: .named)))")
+        parts.append(String(localized: "deleted \(deletion.formatted(.relative(presentation: .named)))"))
         if let max = send.maxAccessCount {
-            parts.append("\(send.accessCount)/\(max) accès")
+            parts.append(String(localized: "\(send.accessCount)/\(max) accesses"))
         } else if send.accessCount > 0 {
-            parts.append("\(send.accessCount) accès")
+            parts.append(String(localized: "\(send.accessCount) accesses"))
         }
         return parts.joined(separator: " · ")
     }
 }
 
-/// Composition d'un envoi : contenu, durée de vie, nombre d'accès, mot de
-/// passe. À la création, le lien est copié et peut être partagé.
+/// Composing a Send: content, lifetime, number of accesses, password. On
+/// creation, the link is copied and can be shared.
 struct NewSendSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -194,60 +194,60 @@ struct NewSendSheet: View {
             Form {
                 if let link = model.sharing.createdLink {
                     Section {
-                        Label("Envoi créé : lien copié", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        ShareLink(item: link) { Label("Partager le lien", systemImage: "square.and.arrow.up") }
+                        Label("Send created: link copied", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        ShareLink(item: link) { Label("Share link", systemImage: "square.and.arrow.up") }
                     } footer: {
-                        Text("Le lien porte la clé de l'envoi : ne le donnez qu'à son destinataire. Il est effacé du presse-papiers après le délai réglé.")
+                        Text("The link carries the Send's key: only give it to its recipient. It is cleared from the clipboard after the set delay.")
                     }
                 } else {
                     Section {
-                        TextField("Nom", text: $composer.fields.name, prompt: Text("Code du portail"))
+                        TextField("Name", text: $composer.fields.name, prompt: Text("Gate code"))
                         if let file = composer.file {
-                            LabeledContent("Fichier", value: file.lastPathComponent)
+                            LabeledContent("File", value: file.lastPathComponent)
                         } else {
-                            TextField("Texte", text: $composer.fields.text, axis: .vertical)
+                            TextField("Text", text: $composer.fields.text, axis: .vertical)
                                 .lineLimit(3...8)
                                 .accessibilityIdentifier("send-text")
-                            Toggle("Masquer le texte à l'ouverture", isOn: $composer.fields.hidden)
+                            Toggle("Hide the text when opened", isOn: $composer.fields.hidden)
                         }
                     }
                     Section {
-                        Picker("Supprimé après", selection: $days) {
-                            Text("1 jour").tag(1)
-                            Text("2 jours").tag(2)
-                            Text("3 jours").tag(3)
-                            Text("7 jours").tag(7)
-                            Text("14 jours").tag(14)
-                            Text("30 jours").tag(30)
+                        Picker("Deleted after", selection: $days) {
+                            Text("1 day").tag(1)
+                            Text("2 days").tag(2)
+                            Text("3 days").tag(3)
+                            Text("7 days").tag(7)
+                            Text("14 days").tag(14)
+                            Text("30 days").tag(30)
                         }
-                        Toggle("Limiter le nombre d'accès", isOn: $limitAccess)
+                        Toggle("Limit the number of accesses", isOn: $limitAccess)
                         if limitAccess {
-                            Stepper("\(maxAccess) accès au plus", value: $maxAccess, in: 1...100)
+                            Stepper("\(maxAccess) accesses at most", value: $maxAccess, in: 1...100)
                         }
-                        SecureField("Mot de passe (facultatif)", text: $password)
-                        Toggle("Cacher mon adresse", isOn: $composer.fields.hideEmail)
+                        SecureField("Password (optional)", text: $password)
+                        Toggle("Hide my email address", isOn: $composer.fields.hideEmail)
                     } header: {
-                        SectionHeader("Accès")
+                        SectionHeader("Access")
                     } footer: {
-                        Text("Chiffré sur cet iPhone avant l'envoi : le serveur ne voit ni le contenu ni la clé.")
+                        Text("Encrypted on this iPhone before sending: the server sees neither the content nor the key.")
                     }
                 }
                 if let error = model.sharing.error {
                     Section { Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red) }
                 }
             }
-            .navigationTitle(composer.file == nil ? "Envoi de texte" : "Envoi de fichier")
+            .navigationTitle(composer.file == nil ? "Text Send" : "File Send")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if model.sharing.createdLink != nil {
                     ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } }
                 } else {
-                    ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                     ToolbarItem(placement: .confirmationAction) {
                         if model.sharing.busy {
                             ProgressView()
                         } else {
-                            Button("Créer") { create() }
+                            Button("Create") { create() }
                                 .fontWeight(.semibold)
                                 .disabled(composer.fields.name.trimmingCharacters(in: .whitespaces).isEmpty
                                           || (composer.file == nil && composer.fields.text.isEmpty))

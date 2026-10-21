@@ -1,7 +1,7 @@
-//! Audit du coffre : mots de passe réutilisés, faibles, sites en HTTP.
+//! Vault audit: reused and weak passwords, sites over HTTP.
 //!
-//! Tout se calcule localement, sur le coffre déverrouillé. La recherche des
-//! mots de passe fuités, qui demande le réseau, vit dans
+//! Everything is computed locally, on the unlocked vault. The lookup of
+//! breached passwords, which needs the network, lives in
 //! `verrou-vaultwarden` (`breach`).
 
 use std::collections::HashMap;
@@ -9,21 +9,21 @@ use std::collections::HashMap;
 use crate::generator::entropy_bits;
 use crate::{FieldKind, Item, ItemKind, Vault};
 
-/// En dessous, un mot de passe est jugé faible (12 caractères mêlant
-/// minuscules, majuscules et chiffres en donnent environ 71).
+/// Below this, a password is considered weak (12 characters mixing
+/// lowercase, uppercase and digits give about 71).
 pub const WEAK_BITS: f64 = 60.0;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Report {
-    /// Groupes d'éléments qui partagent un même mot de passe (2 au moins),
-    /// le plus grand d'abord.
+    /// Groups of items that share the same password (2 at least),
+    /// largest first.
     pub reused: Vec<Vec<String>>,
-    /// Éléments au mot de passe faible et leur entropie estimée, le plus
-    /// faible d'abord.
+    /// Items with a weak password and their estimated entropy, weakest
+    /// first.
     pub weak: Vec<(String, f64)>,
-    /// Identifiants dont un site est en HTTP (hors machine locale).
+    /// Logins with a site over HTTP (excluding the local machine).
     pub insecure: Vec<String>,
-    /// Identifiants examinés (ceux qui ont un mot de passe).
+    /// Logins examined (those that have a password).
     pub checked: usize,
 }
 
@@ -33,7 +33,7 @@ impl Report {
     }
 }
 
-/// Mot de passe d'un identifiant, s'il en a un.
+/// A login's password, if it has one.
 pub fn password_of(item: &Item) -> Option<&str> {
     if item.kind != ItemKind::Login {
         return None;

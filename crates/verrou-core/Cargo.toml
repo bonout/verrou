@@ -1,6 +1,6 @@
 [package]
 name = "verrou-core"
-description = "Cœur de Verrou : modèle du coffre, recherche locale, codes TOTP, générateur."
+description = "Verrou core: vault model, local search, TOTP codes, generator."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,7 +24,7 @@ unicode-normalization.workspace = true
 serde_json.workspace = true
 csv.workspace = true
 zip.workspace = true
-# Passkeys : clés ECDSA P-256 (PKCS#8, comme Bitwarden), signatures ES256.
+# Passkeys: ECDSA P-256 keys (PKCS#8, like Bitwarden), ES256 signatures.
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 
 [lints]

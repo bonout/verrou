@@ -1,12 +1,12 @@
 import Observation
 import SwiftUI
 
-// Partage avec d'autres comptes : les brouillons et les libellés communs aux
-// apps Mac et iPhone (droits sur une collection, invitation, collection,
-// groupe). Les actions passent par le cœur Rust (`VaultSession`), qui
-// vérifie les droits et chiffre avec la clé de l'organisation.
+// Sharing with other accounts: the drafts and labels shared by the Mac and
+// iPhone apps (permissions on a collection, invitation, collection, group).
+// Actions go through the Rust core (`VaultSession`), which checks the
+// permissions and encrypts with the organization's key.
 
-/// Droits sur une collection, comme dans le coffre web.
+/// Permissions on a collection, as in the web vault.
 enum CollectionPermission: String, CaseIterable, Identifiable {
     case view, viewExceptPasswords, edit, editExceptPasswords, manage
 
@@ -14,11 +14,11 @@ enum CollectionPermission: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .view: "Voir"
-        case .viewExceptPasswords: "Voir, sans les mots de passe"
-        case .edit: "Modifier"
-        case .editExceptPasswords: "Modifier, sans les mots de passe"
-        case .manage: "Gérer"
+        case .view: String(localized: "View")
+        case .viewExceptPasswords: String(localized: "View, without passwords")
+        case .edit: String(localized: "Edit")
+        case .editExceptPasswords: String(localized: "Edit, without passwords")
+        case .manage: String(localized: "Manage")
         }
     }
 
@@ -40,19 +40,19 @@ enum CollectionPermission: String, CaseIterable, Identifiable {
     }
 }
 
-/// Invitation (une ou plusieurs adresses) ou modification d'un membre.
+/// Invitation (one or more addresses) or edit of a member.
 struct MemberDraft: Identifiable {
     let id = UUID()
-    /// `nil` : nouvelle invitation.
+    /// `nil`: new invitation.
     let member: OrganizationMember?
     var emails: String
     var role: OrganizationMemberRole
-    /// Collections accordées, et le droit sur chacune.
+    /// Granted collections, and the permission on each.
     var access: [String: CollectionPermission]
 
     var isNew: Bool { member == nil }
 
-    /// Propriétaires et administrateurs voient toutes les collections.
+    /// Owners and administrators see all collections.
     var seesAll: Bool { role == .owner || role == .admin }
 
     var collections: [MemberCollectionAccess] {
@@ -60,23 +60,23 @@ struct MemberDraft: Identifiable {
     }
 }
 
-/// Création ou modification d'une collection : son nom, et qui y accède.
+/// Creating or editing a collection: its name, and who has access.
 struct CollectionDraft {
     let organizationID: String
-    /// `nil` : nouvelle collection.
+    /// `nil`: new collection.
     let collectionID: String?
     var name: String
-    /// Membres de l'organisation (si le compte peut les voir).
+    /// The organization's members (if the account can see them).
     var members: [OrganizationMember] = []
-    /// Groupes de l'organisation (si le serveur les active).
+    /// The organization's groups (if the server enables them).
     var groups: [OrganizationGroup] = []
-    /// Accès accordés : identifiant d'adhésion → droit.
+    /// Granted access: membership ID → permission.
     var memberAccess: [String: CollectionPermission] = [:]
-    /// Accès accordés : identifiant de groupe → droit.
+    /// Granted access: group ID → permission.
     var groupAccess: [String: CollectionPermission] = [:]
     var loading = true
-    /// Les membres n'ont pas pu être lus : seul le nom est modifiable, les
-    /// accès restent comme ils sont.
+    /// The members could not be read: only the name can be edited, access
+    /// stays as it is.
     var accessUnavailable: String?
 
     var isNew: Bool { collectionID == nil }
@@ -88,7 +88,7 @@ struct CollectionDraft {
     }
 }
 
-/// Les groupes d'une organisation, et celui en cours de modification.
+/// An organization's groups, and the one being edited.
 struct GroupsDraft {
     let organizationID: String
     var groups: [OrganizationGroup] = []
@@ -98,7 +98,7 @@ struct GroupsDraft {
 }
 
 struct GroupDraft {
-    /// `nil` : nouveau groupe.
+    /// `nil`: new group.
     let id: String?
     var name: String
     var members: Set<String>
@@ -130,22 +130,21 @@ extension GroupDraft {
     }
 }
 
-/// Bilan d'un partage de plusieurs éléments, pour le message affiché :
-/// « 12 éléments partagés dans Famille, 2 ignorés (déjà partagés) ».
+/// Outcome of sharing several items, for the message shown:
+/// "12 items shared in Family, 2 skipped (already shared)".
 extension ShareResult {
     func toast(organization: String?) -> Toast {
         let n = Int(shared)
-        var message = "\(n) élément\(n > 1 ? "s" : "") partagé\(n > 1 ? "s" : "")"
-        if let organization { message += " dans \(organization)" }
+        var message = n > 1 ? String(localized: "\(n) items shared") : String(localized: "\(n) item shared")
+        if let organization { message += " " + String(localized: "in \(organization)") }
         var ignored: [String] = []
-        let plural = { (count: UInt32) in count > 1 ? "s" : "" }
-        if alreadyShared > 0 { ignored.append("\(alreadyShared) ignoré\(plural(alreadyShared)) (déjà partagé\(plural(alreadyShared)))") }
-        if readOnly > 0 { ignored.append("\(readOnly) ignoré\(plural(readOnly)) (lecture seule)") }
-        if inTrash > 0 { ignored.append("\(inTrash) ignoré\(plural(inTrash)) (dans la corbeille)") }
-        if notFound > 0 { ignored.append("\(notFound) introuvable\(plural(notFound))") }
+        if alreadyShared > 0 { ignored.append(alreadyShared > 1 ? String(localized: "\(alreadyShared) skipped items (already shared)") : String(localized: "\(alreadyShared) skipped item (already shared)")) }
+        if readOnly > 0 { ignored.append(readOnly > 1 ? String(localized: "\(readOnly) skipped items (read-only)") : String(localized: "\(readOnly) skipped item (read-only)")) }
+        if inTrash > 0 { ignored.append(inTrash > 1 ? String(localized: "\(inTrash) skipped items (in the trash)") : String(localized: "\(inTrash) skipped item (in the trash)")) }
+        if notFound > 0 { ignored.append(notFound > 1 ? String(localized: "\(notFound) items not found") : String(localized: "\(notFound) item not found")) }
         if !ignored.isEmpty { message += ", " + ignored.joined(separator: ", ") }
         if !failures.isEmpty {
-            return Toast(message: message + ", \(failures.count) refusé\(failures.count > 1 ? "s" : "")",
+            return Toast(message: message + ", " + (failures.count > 1 ? String(localized: "\(failures.count) refused items") : String(localized: "\(failures.count) refused item")),
                          detail: failures.joined(separator: "\n"), failure: true, seconds: 6)
         }
         return Toast(message: message, detail: nil, seconds: ignored.isEmpty ? 2.5 : 4)
@@ -159,10 +158,10 @@ extension OrganizationMember {
 extension OrganizationMemberRole {
     var label: String {
         switch self {
-        case .owner: "Propriétaire"
-        case .admin: "Administrateur"
-        case .user: "Utilisateur"
-        case .manager: "Gestionnaire"
+        case .owner: String(localized: "Owner")
+        case .admin: String(localized: "Administrator")
+        case .user: String(localized: "User")
+        case .manager: String(localized: "Manager")
         }
     }
 
@@ -177,10 +176,10 @@ extension OrganizationMemberRole {
 
     var explanation: String {
         switch self {
-        case .owner: "Tous les droits, y compris sur les autres propriétaires et administrateurs."
-        case .admin: "Voit toutes les collections, invite, confirme et gère les utilisateurs."
-        case .user: "Accède aux collections qui lui sont attribuées."
-        case .manager: "Gère les collections qui lui sont attribuées (et leurs accès)."
+        case .owner: String(localized: "All rights, including over the other owners and administrators.")
+        case .admin: String(localized: "Sees all collections, invites, confirms and manages users.")
+        case .user: String(localized: "Accesses the collections assigned to them.")
+        case .manager: String(localized: "Manages the collections assigned to them (and their access).")
         }
     }
 }
@@ -188,10 +187,10 @@ extension OrganizationMemberRole {
 extension OrganizationMemberStatus {
     var label: String {
         switch self {
-        case .invited: "Invité"
-        case .accepted: "Accepté — à confirmer"
-        case .confirmed: "Confirmé"
-        case .revoked: "Révoqué"
+        case .invited: String(localized: "Invited")
+        case .accepted: String(localized: "Accepted — to confirm")
+        case .confirmed: String(localized: "Confirmed")
+        case .revoked: String(localized: "Revoked")
         }
     }
 
@@ -205,22 +204,22 @@ extension OrganizationMemberStatus {
     }
 }
 
-/// « Partager… » (un ou plusieurs éléments personnels) ou « Collections… »
-/// (élément déjà partagé) : la feuille garde son état, le modèle l'exécute.
+/// "Share…" (one or more personal items) or "Collections…" (item already
+/// shared): the sheet keeps its state, the model runs it.
 @MainActor
 @Observable
 final class SharingFlow: Identifiable {
     let id = UUID()
-    /// Éléments à partager (un seul pour « Collections… »).
+    /// Items to share (only one for "Collections…").
     let itemIDs: [String]
     let title: String
-    /// Déjà dans une organisation : on ne change que ses collections.
+    /// Already in an organization: only its collections change.
     let current: ItemSharing?
     var organizationID: String
     var collectionIDs: Set<String>
     var busy = false
     var error: String?
-    /// Avancement d'un partage groupé.
+    /// Progress of a bulk share.
     var progress: (done: Int, total: Int)?
 
     var itemID: String { itemIDs.first ?? "" }
@@ -235,7 +234,7 @@ final class SharingFlow: Identifiable {
     }
 }
 
-/// Avancement d'un partage groupé, envoyé par Rust depuis son fil.
+/// Progress of a bulk share, sent by Rust from its thread.
 final class ShareProgressRelay: BulkProgress, @unchecked Sendable {
     private weak var flow: SharingFlow?
 
@@ -254,12 +253,12 @@ final class ShareProgressRelay: BulkProgress, @unchecked Sendable {
 }
 
 extension VaultSession {
-    /// Le brouillon d'une collection, complété sur le serveur : membres de
-    /// l'organisation (si le rôle permet de les voir), groupes (si le
-    /// serveur les active), accès actuels de la collection (nouvelle :
-    /// celui qui la crée y a accès, sauf s'il voit déjà tout). En cas
-    /// d'échec, `accessUnavailable` dit pourquoi : seul le nom reste
-    /// modifiable, et les accès du serveur sont gardés tels quels.
+    /// A collection's draft, completed from the server: the organization's
+    /// members (if the role allows seeing them), groups (if the server
+    /// enables them), the collection's current access (new: whoever creates
+    /// it has access, unless they already see everything). On failure,
+    /// `accessUnavailable` says why: only the name stays editable, and the
+    /// server's access is kept as is.
     func loadCollectionDraft(_ draft: CollectionDraft, organization: OrganizationView,
                              accountEmail: String?) async -> CollectionDraft {
         var draft = draft
@@ -267,14 +266,14 @@ extension VaultSession {
             if organization.canViewMembers {
                 draft.members = try await organizationMembers(organizationId: organization.id)
             } else {
-                draft.accessUnavailable = "Votre rôle ne permet pas de voir les membres : seul le nom se modifie ici."
+                draft.accessUnavailable = String(localized: "Your role doesn't allow seeing the members: only the name can be edited here.")
             }
             if organization.useGroups {
                 draft.groups = try await organizationGroups(organizationId: organization.id)
             }
             if let collectionID = draft.collectionID, draft.accessUnavailable == nil {
                 let access = try await collectionAccess(organizationId: organization.id, collectionId: collectionID)
-                // Propriétaires et administrateurs voient tout de toute façon.
+                // Owners and administrators see everything anyway.
                 let seesAll = Set(draft.members.filter(\.accessAll).map(\.id))
                 for grant in access.members where !seesAll.contains(grant.id) {
                     draft.memberAccess[grant.id] = CollectionPermission(grant)

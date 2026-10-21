@@ -1,33 +1,33 @@
-//! Bitwarden Send : partager un texte ou un fichier par un lien, chiffré de
-//! bout en bout.
+//! Bitwarden Send: sharing a text or a file through a link, end-to-end
+//! encrypted.
 //!
-//! Toute la cryptographie vient du SDK (`bitwarden-send`), comme pour les
-//! éléments du coffre :
-//! - chaque envoi a sa clé, 16 octets tirés au hasard ; HKDF-SHA256 (sel
-//!   `bitwarden-send`, info `send`) en dérive la clé de 64 octets qui
-//!   chiffre le nom, les notes, le texte, le nom du fichier et son contenu ;
-//! - le contenu d'un fichier forme un seul « `EncArrayBuffer` » (type 2,
-//!   IV, MAC, texte chiffré), comme une pièce jointe, mais chiffré
-//!   directement par la clé de l'envoi : pas de clé de fichier à part ;
-//! - la clé de l'envoi est gardée sur le serveur chiffrée par la clé de
-//!   l'utilisateur (`key`), et part dans le lien, après le `#` : le
-//!   navigateur du destinataire ne l'envoie jamais au serveur ;
-//! - un mot de passe éventuel n'est envoyé qu'haché (PBKDF2-SHA256, 100 000
-//!   itérations, salé par la clé de l'envoi).
+//! All the cryptography comes from the SDK (`bitwarden-send`), as for the
+//! vault items:
+//! - each send has its own key, 16 random bytes; HKDF-SHA256 (salt
+//!   `bitwarden-send`, info `send`) derives from it the 64-byte key that
+//!   encrypts the name, the notes, the text, the file name and its contents;
+//! - a file's contents form a single `EncArrayBuffer` (type 2, IV, MAC,
+//!   ciphertext), like an attachment, but encrypted directly by the send's
+//!   key: no separate file key;
+//! - the send's key is kept on the server encrypted by the user key
+//!   (`key`), and goes into the link, after the `#`: the recipient's
+//!   browser never sends it to the server;
+//! - an optional password is only sent hashed (PBKDF2-SHA256, 100,000
+//!   iterations, salted by the send's key).
 //!
-//! Verrou fait le transport (`/api/sends`) et la mise en forme.
+//! Verrou does the transport (`/api/sends`) and the formatting.
 //!
-//! Envoi d'un fichier (Vaultwarden 1.37) : `POST /api/sends/file/v2` crée
-//! l'envoi (nom du fichier chiffré, taille du contenu chiffré) et rend
-//! l'adresse d'envoi des octets (`multipart/form-data`, nommés par le nom
-//! chiffré). Si ce second temps échoue, l'envoi est supprimé. Repli sur
-//! l'ancien `POST /api/sends/file` (tout en une requête) pour un serveur
-//! qui ne connaît pas la v2. Le fichier d'un envoi ne change jamais : une
-//! modification ne touche qu'aux réglages.
+//! Sending a file (Vaultwarden 1.37): `POST /api/sends/file/v2` creates the
+//! send (encrypted file name, size of the encrypted contents) and returns
+//! the upload address for the bytes (`multipart/form-data`, named by the
+//! encrypted name). If this second step fails, the send is deleted. Falls
+//! back to the old `POST /api/sends/file` (all in one request) for a server
+//! that doesn't know v2. A send's file never changes: an edit only touches
+//! the settings.
 //!
-//! Réception : jeton anonyme (`grant_type=send_access`), puis
-//! `POST /api/sends/access/file/{fichier}` rend une adresse de
-//! téléchargement signée (c'est elle qui compte un accès).
+//! Receiving: anonymous token (`grant_type=send_access`), then
+//! `POST /api/sends/access/file/{file}` returns a signed download address
+//! (that is what counts an access).
 
 use bitwarden_api_api::models::{
     SendAccessResponseModel, SendRequestModel, SendResponseModel, SendWithIdRequestModel,
@@ -51,39 +51,39 @@ use crate::api::{Api, write_response};
 use crate::attachments::{ENCRYPTION_OVERHEAD, TRANSFER_TIMEOUT, file_part};
 use crate::{Connection, Decrypted, Error};
 
-/// Durée de vie d'un nouvel envoi, comme les apps Bitwarden.
+/// Lifetime of a new send, like the Bitwarden apps.
 pub const DEFAULT_DELETION_DAYS: i64 = 7;
-/// Vaultwarden refuse une date de suppression à plus de 31 jours.
+/// Vaultwarden rejects a deletion date more than 31 days away.
 pub const MAX_DELETION_DAYS: i64 = 31;
-/// Taille maximale d'un fichier envoyé, avant chiffrement : la limite des
-/// pièces jointes (le serveur peut en imposer une plus basse, son quota).
+/// Maximum size of a sent file, before encryption: the attachment limit
+/// (the server may impose a lower one, its quota).
 pub const MAX_SEND_FILE_SIZE: u64 = MAX_ATTACHMENT_SIZE;
-/// Plafond de Vaultwarden pour un fichier reçu (500 Mo des apps Bitwarden,
-/// plus 5 %), chiffré.
+/// Vaultwarden's cap for a received file (the Bitwarden apps' 500 MB,
+/// plus 5%), encrypted.
 const SERVER_MAX_SEND_FILE_SIZE: u64 = 550_502_400;
 
-/// Ce que l'écran d'un envoi crée ou modifie.
+/// What a send's screen creates or edits.
 #[derive(Clone, Debug)]
 pub struct SendDraft {
     pub name: String,
-    /// Le texte partagé. Ignoré pour un envoi de fichier.
+    /// The shared text. Ignored for a file send.
     pub text: SecretString,
-    /// Texte masqué par défaut chez le destinataire.
+    /// Text hidden by default for the recipient.
     pub hidden: bool,
-    /// Notes privées, visibles du seul expéditeur.
+    /// Private notes, visible to the sender only.
     pub notes: Option<String>,
     pub deletion_date: DateTime<Utc>,
     pub expiration_date: Option<DateTime<Utc>>,
     pub max_access_count: Option<u32>,
-    /// Nouveau mot de passe. `None` : aucun (création) ou inchangé
-    /// (modification ; pour le retirer, `remove_send_password`).
+    /// New password. `None`: none (creation) or unchanged
+    /// (edit; to remove it, `remove_send_password`).
     pub password: Option<SecretString>,
     pub hide_email: bool,
     pub disabled: bool,
 }
 
 impl SendDraft {
-    /// Un envoi de texte avec les réglages par défaut (suppression dans 7 jours).
+    /// A text send with the default settings (deleted in 7 days).
     pub fn text(name: impl Into<String>, text: SecretString, now: DateTime<Utc>) -> Self {
         Self {
             name: name.into(),
@@ -99,26 +99,24 @@ impl SendDraft {
         }
     }
 
-    /// Un envoi de fichier avec les réglages par défaut : le fichier se
-    /// passe à `Connection::create_file_send`.
+    /// A file send with the default settings: the file is passed to
+    /// `Connection::create_file_send`.
     pub fn file(name: impl Into<String>, now: DateTime<Utc>) -> Self {
         Self::text(name, SecretString::default(), now)
     }
 
     fn validate(&self, now: DateTime<Utc>) -> Result<(), Error> {
         if self.name.trim().is_empty() {
-            return Err(Error::Invalid(
-                "le nom de l'envoi est obligatoire".to_owned(),
-            ));
+            return Err(Error::Invalid("the send's name is required".to_owned()));
         }
         if self.deletion_date <= now {
             return Err(Error::Invalid(
-                "la date de suppression doit être dans le futur".to_owned(),
+                "the deletion date must be in the future".to_owned(),
             ));
         }
         if self.deletion_date > now + Duration::days(MAX_DELETION_DAYS) {
             return Err(Error::Invalid(format!(
-                "la date de suppression ne peut pas dépasser {MAX_DELETION_DAYS} jours"
+                "the deletion date cannot be more than {MAX_DELETION_DAYS} days away"
             )));
         }
         if self
@@ -126,12 +124,12 @@ impl SendDraft {
             .is_some_and(|expiry| expiry > self.deletion_date)
         {
             return Err(Error::Invalid(
-                "l'expiration doit précéder la suppression".to_owned(),
+                "the expiration must come before the deletion".to_owned(),
             ));
         }
         if self.max_access_count == Some(0) {
             return Err(Error::Invalid(
-                "le nombre d'accès maximal doit être d'au moins 1".to_owned(),
+                "the maximum access count must be at least 1".to_owned(),
             ));
         }
         Ok(())
@@ -144,8 +142,8 @@ pub enum SendKind {
     File,
 }
 
-/// Ce que la liste des envois affiche. Ni le texte ni le lien (qui porte la
-/// clé) : ils se demandent à part.
+/// What the list of sends shows. Neither the text nor the link (which
+/// carries the key): they are requested separately.
 #[derive(Clone, Debug)]
 pub struct SendInfo {
     pub id: String,
@@ -153,14 +151,14 @@ pub struct SendInfo {
     pub name: String,
     pub kind: SendKind,
     pub file_name: Option<String>,
-    /// Taille du fichier chiffré, en octets (envoi de fichier).
+    /// Size of the encrypted file, in bytes (file send).
     pub file_size: Option<u64>,
     pub has_password: bool,
     pub access_count: u32,
     pub max_access_count: Option<u32>,
     pub disabled: bool,
     pub hide_email: bool,
-    /// Horodatages Unix.
+    /// Unix timestamps.
     pub deletion_date: i64,
     pub expiration_date: Option<i64>,
     pub revision_date: i64,
@@ -194,8 +192,8 @@ impl SendInfo {
         })
     }
 
-    /// Plus accessible (désactivé, expiré, accès épuisés) : le lien ne
-    /// mène plus à rien, mais l'envoi existe jusqu'à sa suppression.
+    /// No longer accessible (disabled, expired, accesses used up): the link
+    /// leads nowhere, but the send exists until it is deleted.
     pub fn is_available(&self, now: i64) -> bool {
         !self.disabled
             && self.expiration_date.is_none_or(|e| e > now)
@@ -204,8 +202,8 @@ impl SendInfo {
     }
 }
 
-/// Lien de partage, comme le coffre web : `<serveur>/#/send/<accès>/<clé>`.
-/// La clé suit le `#` : elle ne quitte jamais le navigateur du destinataire.
+/// Share link, like the web vault: `<server>/#/send/<access>/<key>`.
+/// The key follows the `#`: it never leaves the recipient's browser.
 pub fn share_link(server: &str, access_id: &str, key_b64url: &str) -> String {
     format!(
         "{}/#/send/{access_id}/{key_b64url}",
@@ -213,9 +211,9 @@ pub fn share_link(server: &str, access_id: &str, key_b64url: &str) -> String {
     )
 }
 
-/// Un lien d'envoi décomposé : serveur, identifiant d'accès, clé.
+/// A send link split up: server, access id, key.
 pub(crate) fn parse_link(link: &str) -> Result<(String, String, String), Error> {
-    let invalid = || Error::Invalid("lien d'envoi invalide".to_owned());
+    let invalid = || Error::Invalid("invalid send link".to_owned());
     let link = link.trim();
     let (server, rest) = link
         .split_once("/#/send/")
@@ -235,23 +233,23 @@ pub(crate) fn parse_link(link: &str) -> Result<(String, String, String), Error> 
     ))
 }
 
-/// Un envoi reçu par son lien, déchiffré.
+/// A send received through its link, decrypted.
 #[derive(Clone, Debug)]
 pub struct ReceivedSend {
     pub name: Option<String>,
     pub text: Option<SecretString>,
     pub hidden: bool,
     pub file_name: Option<String>,
-    /// Identifiant du fichier (envoi de fichier), pour le télécharger.
+    /// File id (file send), to download it.
     pub file_id: Option<String>,
-    /// Taille du fichier chiffré, en octets, annoncée par le serveur.
+    /// Size of the encrypted file, in bytes, announced by the server.
     pub file_size: Option<u64>,
     pub expiration_date: Option<i64>,
-    /// Adresse de l'expéditeur, s'il ne l'a pas masquée.
+    /// The sender's address, unless they hid it.
     pub creator: Option<String>,
 }
 
-/// Un envoi ouvert : le serveur, le jeton anonyme, la clé du lien.
+/// An opened send: the server, the anonymous token, the link's key.
 struct Opened {
     api: Api,
     token: String,
@@ -259,18 +257,17 @@ struct Opened {
     send: ReceivedSend,
 }
 
-/// Ouvre un envoi par son lien, comme le ferait le destinataire, sans
-/// compte : jeton anonyme (avec l'empreinte du mot de passe s'il y en a un),
-/// contenu chiffré, déchiffré avec la clé du lien. Compte un accès pour un
-/// texte ; pour un fichier, c'est le téléchargement qui compte
-/// (`receive_file`).
+/// Opens a send through its link, as the recipient would, without an
+/// account: anonymous token (with the password hash if there is one),
+/// encrypted contents, decrypted with the link's key. Counts an access for a
+/// text; for a file, the download is what counts (`receive_file`).
 pub async fn receive(link: &str, password: Option<&SecretString>) -> Result<ReceivedSend, Error> {
     Ok(open(link, password).await?.send)
 }
 
-/// ⚠️ Télécharge le fichier d'un envoi par son lien, comme le destinataire,
-/// et le déchiffre avec la clé du lien (MAC vérifié avant tout). Compte un
-/// accès. Le contenu n'existe qu'en mémoire, effacée à la libération.
+/// ⚠️ Downloads a send's file through its link, like the recipient, and
+/// decrypts it with the link's key (MAC checked first). Counts an access.
+/// The contents only exist in memory, erased when dropped.
 pub async fn receive_file(
     link: &str,
     password: Option<&SecretString>,
@@ -280,7 +277,7 @@ pub async fn receive_file(
         .send
         .file_id
         .as_deref()
-        .ok_or_else(|| Error::Invalid("cet envoi ne contient pas de fichier".to_owned()))?;
+        .ok_or_else(|| Error::Invalid("this send contains no file".to_owned()))?;
     let url = opened.api.send_file_url(&opened.token, file_id).await?;
     let encrypted = opened
         .api
@@ -292,26 +289,26 @@ pub async fn receive_file(
         .is_some_and(|size| size != encrypted.len() as u64)
     {
         return Err(Error::Crypto(
-            "fichier incomplet (taille inattendue)".to_owned(),
+            "incomplete file (unexpected size)".to_owned(),
         ));
     }
     let plain = opened
         .key
         .decrypt_file_buffer(&encrypted)
-        .map_err(|e| Error::Crypto(format!("fichier altéré ou illisible ({e})")))?;
+        .map_err(|e| Error::Crypto(format!("tampered or unreadable file ({e})")))?;
     Ok((opened.send, Zeroizing::new(plain)))
 }
 
 async fn open(link: &str, password: Option<&SecretString>) -> Result<Opened, Error> {
     let (server, access_id, key) = parse_link(link)?;
     let key = SendAccessKey::from_url_b64(&key)
-        .map_err(|_| Error::Invalid("lien d'envoi invalide (clé)".to_owned()))?;
+        .map_err(|_| Error::Invalid("invalid send link (key)".to_owned()))?;
     let api = Api::new(&server)?;
     let hash = password.map(|p| key.hash_password_b64(p.expose()));
     let token = api.send_access_token(&access_id, hash.as_deref()).await?;
     let body = api.send_access(&token).await?;
     let model: SendAccessResponseModel = serde_json::from_value(body)
-        .map_err(|e| Error::Server(format!("envoi illisible ({e})")))?;
+        .map_err(|e| Error::Server(format!("unreadable send ({e})")))?;
     let response = SendAccessResponse::try_from(model).map_err(Error::crypto)?;
     let view = key.decrypt_response(response).map_err(Error::crypto)?;
     let file = view.file;
@@ -336,25 +333,25 @@ async fn open(link: &str, password: Option<&SecretString>) -> Result<Opened, Err
     })
 }
 
-/// Nom sans espaces autour, non vide ; fichier non vide, sous la limite.
+/// Name without surrounding spaces, not empty; file not empty, under the limit.
 fn checked_file<'a>(file_name: &'a str, contents: &[u8]) -> Result<&'a str, Error> {
     let name = file_name.trim();
     if name.is_empty() {
-        return Err(Error::Invalid("le fichier n'a pas de nom".to_owned()));
+        return Err(Error::Invalid("the file has no name".to_owned()));
     }
     if contents.is_empty() {
-        return Err(Error::Invalid(format!("« {name} » est vide")));
+        return Err(Error::Invalid(format!("\"{name}\" is empty")));
     }
     if contents.len() as u64 > MAX_SEND_FILE_SIZE {
         return Err(Error::Invalid(format!(
-            "« {name} » dépasse 100 Mo, la taille maximale d'un envoi"
+            "\"{name}\" is larger than 100 MB, the maximum size of a send"
         )));
     }
     Ok(name)
 }
 
-/// La requête de création, chiffrée ensuite par le SDK (qui tire la clé de
-/// l'envoi et l'enveloppe dans celle de l'utilisateur).
+/// The creation request, then encrypted by the SDK (which draws the send's
+/// key and wraps it in the user's).
 fn add_request(draft: SendDraft, view_type: SendViewType) -> SendAddRequest {
     SendAddRequest {
         name: draft.name.trim().to_owned(),
@@ -374,9 +371,9 @@ fn add_request(draft: SendDraft, view_type: SendViewType) -> SendAddRequest {
     }
 }
 
-/// Chiffre le contenu d'un fichier avec la clé de l'envoi, telle que la
-/// requête de création l'enveloppe (`key`, chiffrée par la clé de
-/// l'utilisateur) : un `EncArrayBuffer` (type 2, IV, MAC, texte chiffré).
+/// Encrypts a file's contents with the send's key, as the creation request
+/// wraps it (`key`, encrypted by the user key): an `EncArrayBuffer`
+/// (type 2, IV, MAC, ciphertext).
 fn encrypt_file_with_send_key(
     store: &KeyStore<bitwarden_core::key_management::KeySlotIds>,
     wrapped_send_key: &str,
@@ -396,8 +393,8 @@ impl Connection {
         self.sdk.internal.get_key_store()
     }
 
-    /// Les envois du cache (dernière synchronisation), du plus récent au
-    /// plus ancien. Ceux qui ne se déchiffrent pas sont ignorés.
+    /// The cache's sends (last sync), newest first. Those that don't
+    /// decrypt are ignored.
     pub fn sends(&self) -> Result<Vec<SendInfo>, Error> {
         let mut sends: Vec<SendInfo> = self
             .cached_sends()?
@@ -409,7 +406,7 @@ impl Connection {
         Ok(sends)
     }
 
-    /// ⚠️ Lien de partage d'un envoi : il porte la clé, donc le contenu.
+    /// ⚠️ A send's share link: it carries the key, hence the contents.
     pub fn send_link(&self, id: &str) -> Result<SecretString, Error> {
         let view = self.send_view(id)?;
         let key = view.key.as_deref().ok_or(Error::NotFound)?;
@@ -421,7 +418,7 @@ impl Connection {
         )))
     }
 
-    /// ⚠️ Brouillon prérempli pour modifier un envoi, texte compris.
+    /// ⚠️ Prefilled draft to edit a send, text included.
     pub fn send_draft(&self, id: &str) -> Result<SendDraft, Error> {
         let view = self.send_view(id)?;
         let text = view.text.unwrap_or(SendTextView {
@@ -442,8 +439,8 @@ impl Connection {
         })
     }
 
-    /// Crée un envoi de texte ; rend son identifiant, son lien et le coffre
-    /// resynchronisé.
+    /// Creates a text send; returns its id, its link and the resynced
+    /// vault.
     pub async fn create_send(
         &mut self,
         draft: SendDraft,
@@ -472,10 +469,10 @@ impl Connection {
         Ok((id, SecretString::new(link), vault))
     }
 
-    /// Crée un envoi de fichier : nom et contenu chiffrés par la clé de
-    /// l'envoi, puis envoyés en deux temps. Si le contenu ne part pas,
-    /// l'envoi est supprimé. Rend son identifiant, son lien et le coffre
-    /// resynchronisé.
+    /// Creates a file send: name and contents encrypted by the send's key,
+    /// then uploaded in two steps. If the contents don't go through, the
+    /// send is deleted. Returns its id, its link and the resynced
+    /// vault.
     pub async fn create_file_send(
         &mut self,
         draft: SendDraft,
@@ -498,13 +495,13 @@ impl Connection {
         let encrypted = encrypt_file_with_send_key(self.key_store(), &body.key, contents)?;
         body.file_length = Some(
             i64::try_from(encrypted.len())
-                .map_err(|_| Error::Invalid("fichier trop volumineux".to_owned()))?,
+                .map_err(|_| Error::Invalid("file too large".to_owned()))?,
         );
         let encrypted_name = body
             .file
             .as_ref()
             .and_then(|f| f.file_name.clone())
-            .ok_or_else(|| Error::Crypto("nom de fichier non chiffré".to_owned()))?;
+            .ok_or_else(|| Error::Crypto("file name not encrypted".to_owned()))?;
         let body = serde_json::to_value(body).map_err(Error::crypto)?;
         let access = self.access_token().await?;
         let created = self
@@ -522,10 +519,10 @@ impl Connection {
         Ok((id, SecretString::new(link), vault))
     }
 
-    /// Crée un envoi de fichier avec une pièce jointe d'un élément :
-    /// téléchargée et déchiffrée (clé de la pièce jointe), puis chiffrée de
-    /// nouveau par la clé de l'envoi. Le contenu en clair ne quitte pas la
-    /// mémoire de Rust, effacée à la libération.
+    /// Creates a file send from an item's attachment: downloaded and
+    /// decrypted (attachment key), then encrypted again by the send's key.
+    /// The plaintext contents don't leave Rust's memory, erased when
+    /// dropped.
     pub async fn create_send_from_attachment(
         &mut self,
         draft: SendDraft,
@@ -537,10 +534,10 @@ impl Connection {
         self.create_file_send(draft, &file_name, &contents).await
     }
 
-    /// Modifie un envoi : nom, texte (envoi de texte), notes, dates,
-    /// limites, et le mot de passe s'il est fourni. La clé ne change pas : le
-    /// lien déjà partagé reste valable. Le fichier d'un envoi de fichier ne
-    /// change pas (le serveur l'ignore, comme Bitwarden).
+    /// Edits a send: name, text (text send), notes, dates, limits, and the
+    /// password if given. The key doesn't change: the link already shared
+    /// stays valid. A file send's file doesn't change (the server ignores
+    /// it, like Bitwarden).
     pub async fn update_send(&mut self, id: &str, draft: SendDraft) -> Result<Decrypted, Error> {
         draft.validate(Utc::now())?;
         let mut view = self.send_view(id)?;
@@ -571,7 +568,7 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Supprime l'envoi du serveur : le lien ne mène plus à rien.
+    /// Deletes the send from the server: the link leads nowhere anymore.
     pub async fn delete_send(&mut self, id: &str) -> Result<Decrypted, Error> {
         self.send_view(id)?;
         let access = self.access_token().await?;
@@ -581,7 +578,7 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Retire le mot de passe d'un envoi.
+    /// Removes a send's password.
     pub async fn remove_send_password(&mut self, id: &str) -> Result<Decrypted, Error> {
         self.send_view(id)?;
         let access = self.access_token().await?;
@@ -601,7 +598,7 @@ impl Connection {
             return Ok(Vec::new());
         };
         let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
+            .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?;
         Ok(sync
             .sends
             .unwrap_or_default()
@@ -621,16 +618,16 @@ impl Connection {
 
     fn decrypt_response(&self, body: Value) -> Result<SendView, Error> {
         let model: SendResponseModel = serde_json::from_value(body)
-            .map_err(|e| Error::Server(format!("envoi illisible ({e})")))?;
+            .map_err(|e| Error::Server(format!("unreadable send ({e})")))?;
         let send = Send::try_from(model).map_err(Error::crypto)?;
         self.sdk.sends().decrypt(send).map_err(Error::crypto)
     }
 }
 
 impl Api {
-    /// Crée un envoi de fichier : réservation (v2) puis contenu ; l'ancien
-    /// envoi en une fois si le serveur ne connaît pas la v2. Rend l'envoi
-    /// créé (chiffré).
+    /// Creates a file send: reservation (v2) then contents; the old
+    /// one-shot upload if the server doesn't know v2. Returns the created
+    /// send (encrypted).
     async fn create_file_send(
         &self,
         access_token: &str,
@@ -657,17 +654,17 @@ impl Api {
         let send = reservation
             .get("sendResponse")
             .cloned()
-            .ok_or_else(|| Error::Server("réservation sans envoi".to_owned()))?;
+            .ok_or_else(|| Error::Server("reservation without a send".to_owned()))?;
         let id = send
             .get("id")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("réservation sans identifiant".to_owned()))?
+            .ok_or_else(|| Error::Server("reservation without an id".to_owned()))?
             .to_owned();
         let uploaded = self
             .upload_reserved(access_token, &reservation, encrypted_name, contents)
             .await;
         if let Err(error) = uploaded {
-            // Pas d'envoi vide laissé sur le serveur.
+            // No empty send left on the server.
             let _ = self
                 .call(Method::DELETE, access_token, &format!("sends/{id}"), None)
                 .await;
@@ -676,8 +673,8 @@ impl Api {
         Ok(send)
     }
 
-    /// Ancien envoi, en une requête : la description (`model`, JSON) et le
-    /// contenu ensemble.
+    /// Old upload, in one request: the description (`model`, JSON) and the
+    /// contents together.
     async fn create_file_send_legacy(
         &self,
         access_token: &str,
@@ -699,8 +696,8 @@ impl Api {
         write_response(response).await
     }
 
-    /// Adresse de téléchargement du fichier d'un envoi, avec le jeton
-    /// anonyme du destinataire. Le serveur compte un accès.
+    /// Download address of a send's file, with the recipient's anonymous
+    /// token. The server counts an access.
     async fn send_file_url(&self, token: &str, file_id: &str) -> Result<String, Error> {
         let response = self
             .http
@@ -712,7 +709,7 @@ impl Api {
         let url = body
             .get("url")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("envoi sans adresse de fichier".to_owned()))?;
+            .ok_or_else(|| Error::Server("send without a file address".to_owned()))?;
         crate::attachments::resolve(url, &self.base)
     }
 }
@@ -771,18 +768,18 @@ mod tests {
         assert!(unnamed.validate(now).is_err());
     }
 
-    /// Vecteur de Bitwarden : une clé d'envoi connue et le texte qu'elle
-    /// chiffre (`Send::derive_shareable_key`, HKDF-SHA256, sel
-    /// `bitwarden-send`, info `send`). Vérifie, indépendamment du SDK, la
-    /// dérivation que le lien impose au destinataire.
+    /// Bitwarden vector: a known send key and the text it encrypts
+    /// (`Send::derive_shareable_key`, HKDF-SHA256, salt `bitwarden-send`,
+    /// info `send`). Checks, independently of the SDK, the derivation the
+    /// link imposes on the recipient.
     #[test]
     fn send_key_derivation_matches_the_bitwarden_recipe() {
         use hkdf::Hkdf;
         use sha2::Sha256;
 
         let raw = [7u8; 16];
-        // HKDF-SHA256 : extraction salée par « bitwarden-send », expansion
-        // avec l'info « send », 64 octets (clé AES-256 puis clé HMAC).
+        // HKDF-SHA256: extraction salted by "bitwarden-send", expansion
+        // with info "send", 64 bytes (AES-256 key then HMAC key).
         let hkdf = Hkdf::<Sha256>::new(Some(b"bitwarden-send"), &raw);
         let mut expected = [0u8; 64];
         hkdf.expand(b"send", &mut expected).unwrap();
@@ -794,7 +791,7 @@ mod tests {
         ));
         assert_eq!(derived.to_encoded().as_ref(), &expected[..]);
 
-        // Et la clé du lien (base64url) déchiffre ce que la clé dérivée chiffre.
+        // And the link's key (base64url) decrypts what the derived key encrypts.
         let store: KeyStore<bitwarden_core::key_management::KeySlotIds> = KeyStore::default();
         let mut ctx = store.context_mut();
         let slot: SymmetricKeySlotId = ctx.add_local_symmetric_key(derived);
@@ -816,14 +813,14 @@ mod tests {
         assert_eq!(view.name.as_deref(), Some("mot de passe du Wi-Fi"));
     }
 
-    /// Clé d'utilisateur des tests du SDK de Bitwarden.
+    /// User key from the Bitwarden SDK's tests.
     const USER_KEY: &str =
         "w2LO+nwV4oxwswVYCxlOfRUseXfvU03VzvKQHrqeklPgiMZrspUe6sOBToCnDn9Ay0tuCBn8ykVVRb7PWhub2Q==";
 
-    /// Envoi de fichier, de bout en bout sans serveur : la requête de
-    /// création (clé de l'envoi enveloppée par celle de l'utilisateur, nom
-    /// chiffré), le contenu chiffré par la clé de l'envoi, puis le
-    /// destinataire qui n'a que le lien. Un octet altéré fait tout refuser.
+    /// File send, end to end without a server: the creation request (send
+    /// key wrapped by the user's, encrypted name), the contents encrypted
+    /// by the send's key, then the recipient who only has the link. One
+    /// altered byte gets everything rejected.
     #[test]
     fn file_send_round_trip_with_the_link_key() {
         let user_key: SymmetricCryptoKey = USER_KEY.to_owned().try_into().unwrap();
@@ -843,15 +840,18 @@ mod tests {
         let contents = "Bail signé — page 1/3\n".repeat(700).into_bytes();
         let encrypted = encrypt_file_with_send_key(&store, &body.key, &contents).unwrap();
 
-        // Format `EncArrayBuffer` : type 2 | IV (16) | MAC (32) | texte
-        // chiffré (AES-CBC, bourrage PKCS#7 : un bloc de plus au plus).
+        // `EncArrayBuffer` format: type 2 | IV (16) | MAC (32) | ciphertext
+        // (AES-CBC, PKCS#7 padding: at most one more block).
         assert_eq!(encrypted[0], 2, "AES-256-CBC + HMAC-SHA256");
         let padded = (contents.len() / 16 + 1) * 16;
         assert_eq!(encrypted.len(), 1 + 16 + 32 + padded);
         assert!(encrypted.len() as u64 <= contents.len() as u64 + ENCRYPTION_OVERHEAD);
-        assert!(!encrypted.windows(4).any(|w| w == b"Bail"), "rien en clair");
+        assert!(
+            !encrypted.windows(4).any(|w| w == b"Bail"),
+            "nothing in the clear"
+        );
 
-        // Le lien porte la clé brute de l'envoi (16 octets, base64url).
+        // The link carries the send's raw key (16 bytes, base64url).
         let raw: Vec<u8> = {
             let wrapped: EncString = body.key.parse().unwrap();
             let mut ctx = store.context();
@@ -888,7 +888,7 @@ mod tests {
             altered[position] ^= 1;
             assert!(
                 access.decrypt_file_buffer(&altered).is_err(),
-                "octet {position} modifié"
+                "byte {position} altered"
             );
         }
         assert!(
@@ -896,7 +896,7 @@ mod tests {
                 .decrypt_file_buffer(&encrypted[..encrypted.len() - 16])
                 .is_err()
         );
-        // Une autre clé de lien ne déchiffre rien.
+        // Another link key decrypts nothing.
         let other = SendAccessKey::from_url_b64(&BASE64URL_NOPAD.encode(&[9u8; 16])).unwrap();
         assert!(other.decrypt_file_buffer(&encrypted).is_err());
     }
@@ -913,16 +913,16 @@ mod tests {
         ));
     }
 
-    /// Mot de passe d'un envoi : PBKDF2-SHA256, 100 000 itérations, salé par
-    /// la clé brute de l'envoi, en base64 (ce que le serveur compare).
+    /// A send's password: PBKDF2-SHA256, 100,000 iterations, salted by the
+    /// send's raw key, in base64 (what the server compares).
     #[test]
     fn send_password_hash_is_pbkdf2_of_the_send_key() {
         use data_encoding::BASE64;
 
         use hmac::{Hmac, Mac};
 
-        // PBKDF2 sur un seul bloc (32 octets) : U1 = HMAC(mdp, sel ‖ 1),
-        // Ui = HMAC(mdp, Ui-1), résultat = U1 ⊕ … ⊕ U100000.
+        // PBKDF2 over a single block (32 bytes): U1 = HMAC(pwd, salt ‖ 1),
+        // Ui = HMAC(pwd, Ui-1), result = U1 ⊕ … ⊕ U100000.
         let raw = [42u8; 16];
         let hmac = |message: &[u8]| {
             let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"ouvre-toi").unwrap();

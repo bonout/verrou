@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: Icône d'élément
+// MARK: Item icon
 
 struct ItemIcon: View {
     @Environment(AppModel.self) private var model
@@ -11,17 +11,17 @@ struct ItemIcon: View {
         ItemIconContent(summary: summary, image: siteImage, size: size)
     }
 
-    /// L'icône du site, servie par le Vaultwarden du compte (identifiants seulement).
+    /// The site's icon, served by the account's Vaultwarden (logins only).
     private var siteImage: PlatformImage? {
         guard summary.category == .login, summary.template == nil, let host = summary.host else { return nil }
         return model.siteIcons.image(for: host)
     }
 }
 
-/// Raccourci clavier affiché en pied de liste ou dans l'accès rapide.
+/// Keyboard shortcut shown at the bottom of the list or in quick access.
 struct KeyHint: View {
     let keys: String
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         HStack(spacing: 5) {

@@ -1,29 +1,29 @@
-//! Pièces jointes, au format de Bitwarden.
+//! Attachments, in Bitwarden's format.
 //!
-//! Chaque fichier a sa propre clé (AES-256-CBC + HMAC-SHA256, 64 octets),
-//! elle-même chiffrée par la clé de l'élément (ou, à défaut, celle de
-//! l'utilisateur ou de l'organisation). Le nom du fichier est chiffré comme
-//! un champ de l'élément ; le contenu forme un « `EncArrayBuffer` » : un
-//! octet de type (2), le vecteur d'initialisation (16), le MAC (32), puis
-//! le texte chiffré. Le SDK fait toute cette cryptographie, MAC vérifié
-//! avant tout déchiffrement ; ce module ne fait que le transport.
+//! Each file has its own key (AES-256-CBC + HMAC-SHA256, 64 bytes), itself
+//! encrypted by the item key (or, failing that, the user's or the
+//! organization's). The file name is encrypted like a field of the item;
+//! the contents form an "`EncArrayBuffer`": a type byte (2), the
+//! initialisation vector (16), the MAC (32), then the ciphertext. The SDK
+//! does all this cryptography, MAC checked before any decryption; this
+//! module only does the transport.
 //!
-//! Échanges avec Vaultwarden (1.37) :
-//! - ajout, en deux temps (« v2 ») : `POST /api/ciphers/{id}/attachment/v2`
-//!   (nom et clé chiffrés, taille du contenu chiffré) réserve la pièce
-//!   jointe et rend l'adresse d'envoi, où partent les octets chiffrés
-//!   (`multipart/form-data`). Si le second temps échoue, la réservation est
-//!   supprimée. Repli sur l'ancien envoi en une fois
-//!   (`POST /api/ciphers/{id}/attachment`) pour un serveur qui ne connaît
-//!   pas la v2 ;
-//! - lecture : `GET /api/ciphers/{id}/attachment/{pièce}` rend une adresse
-//!   de téléchargement (signée, valable quelques minutes) ;
-//! - suppression : `DELETE /api/ciphers/{id}/attachment/{pièce}`.
+//! Exchanges with Vaultwarden (1.37):
+//! - adding, in two steps ("v2"): `POST /api/ciphers/{id}/attachment/v2`
+//!   (encrypted name and key, size of the encrypted contents) reserves the
+//!   attachment and returns the upload address, where the encrypted bytes
+//!   go (`multipart/form-data`). If the second step fails, the reservation
+//!   is deleted. Falls back to the old one-shot upload
+//!   (`POST /api/ciphers/{id}/attachment`) for a server that doesn't know
+//!   v2;
+//! - reading: `GET /api/ciphers/{id}/attachment/{attachment}` returns a
+//!   download address (signed, valid for a few minutes);
+//! - deletion: `DELETE /api/ciphers/{id}/attachment/{attachment}`.
 //!
-//! Rien n'est gardé hors ligne : une pièce jointe se télécharge à chaque
-//! ouverture, et son contenu déchiffré n'est rendu qu'en mémoire (effacée à
-//! la libération). Le cache du coffre ne contient que les métadonnées
-//! chiffrées, comme le reste de la synchronisation.
+//! Nothing is kept offline: an attachment is downloaded at each opening,
+//! and its decrypted contents are only returned in memory (wiped when
+//! freed). The vault cache only holds the encrypted metadata, like the rest
+//! of the sync.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -42,27 +42,27 @@ use crate::api::{Api, write_response};
 use crate::edit::new_view;
 use crate::{Connection, Decrypted, Draft, Error};
 
-/// Envoi ou téléchargement d'un gros fichier : bien plus long qu'une écriture.
+/// Upload or download of a big file: much longer than a write.
 pub(crate) const TRANSFER_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 
-/// Surcoût du chiffrement : type, IV, MAC et bourrage (au plus un bloc).
+/// Encryption overhead: type, IV, MAC and padding (at most one block).
 pub(crate) const ENCRYPTION_OVERHEAD: u64 = 1 + 16 + 32 + 16;
 
-/// Une pièce jointe d'un élément, telle que l'interface la montre. Aucun
-/// secret : le nom, déchiffré, et la taille annoncée par le serveur.
+/// An item's attachment, as the interface shows it. No secret: the name,
+/// decrypted, and the size announced by the server.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachmentInfo {
     pub id: String,
-    /// Nom du fichier ; `None` si le SDK n'a pas pu le déchiffrer.
+    /// File name; `None` if the SDK couldn't decrypt it.
     pub file_name: Option<String>,
-    /// Taille du fichier chiffré, en octets.
+    /// Size of the encrypted file, in bytes.
     pub size: u64,
-    /// Taille lisible (« 1,4 MB »), calculée par le serveur.
+    /// Readable size ("1.4 MB"), computed by the server.
     pub size_name: String,
 }
 
 impl Connection {
-    /// Pièces jointes d'un élément, d'après le cache (sans réseau).
+    /// An item's attachments, from the cache (without network).
     pub async fn attachments(&self, item_id: &str) -> Result<Vec<AttachmentInfo>, Error> {
         let view = self.cached_view(item_id).await?;
         let readable = view
@@ -81,8 +81,8 @@ impl Connection {
             .collect())
     }
 
-    /// Nombre de pièces jointes de chaque élément qui en a, d'après le cache
-    /// et sans rien déchiffrer : pour choisir quel doublon garder.
+    /// Number of attachments of each item that has some, from the cache and
+    /// without decrypting anything: to choose which duplicate to keep.
     pub fn attachment_counts(&self) -> Result<HashMap<String, usize>, Error> {
         Ok(self
             .cached_ciphers()?
@@ -95,8 +95,8 @@ impl Connection {
             .collect())
     }
 
-    /// Télécharge une pièce jointe et la déchiffre. Le contenu n'existe
-    /// qu'en mémoire, effacée à la libération.
+    /// Downloads an attachment and decrypts it. The contents only exist in
+    /// memory, wiped when freed.
     pub async fn download_attachment(
         &mut self,
         item_id: &str,
@@ -113,14 +113,14 @@ impl Connection {
         let name = attachment
             .file_name
             .clone()
-            .unwrap_or_else(|| "pièce jointe".to_owned());
+            .unwrap_or_else(|| "attachment".to_owned());
         let access = self.access_token().await?;
         let plain = Box::pin(self.fetch_attachment(&access, item_id, cipher, attachment)).await?;
         Ok((name, plain))
     }
 
-    /// Télécharge et déchiffre une pièce jointe d'un élément chiffré
-    /// (`cipher`) : vérifie sa taille, puis la déchiffre par le SDK.
+    /// Downloads and decrypts an attachment of an encrypted item (`cipher`):
+    /// checks its size, then decrypts it with the SDK.
     pub(crate) async fn fetch_attachment(
         &self,
         access: &str,
@@ -143,7 +143,7 @@ impl Connection {
             .await?;
         if expected.is_some_and(|size| size != encrypted.len() as u64) {
             return Err(Error::Crypto(
-                "pièce jointe incomplète (taille inattendue)".to_owned(),
+                "incomplete attachment (unexpected size)".to_owned(),
             ));
         }
         let plain = self
@@ -155,7 +155,7 @@ impl Connection {
         Ok(Zeroizing::new(plain))
     }
 
-    /// Ajoute un fichier à un élément modifiable, puis synchronise.
+    /// Adds a file to an editable item, then syncs.
     pub async fn add_attachment(
         &mut self,
         item_id: &str,
@@ -163,9 +163,9 @@ impl Connection {
         contents: &[u8],
     ) -> Result<Decrypted, Error> {
         let file_name = checked_name(file_name, contents)?;
-        let access = self.require_online("L'ajout d'une pièce jointe").await?;
+        let access = self.require_online("Adding an attachment").await?;
         let item_id = &self.resolve(item_id);
-        // Refuse un élément en lecture seule ou à la corbeille.
+        // Refuses a read-only or trashed item.
         self.editable_view(item_id).await?;
         let cipher = self.cached_cipher(item_id)?;
         let encrypted = self.encrypt_file(cipher, file_name, contents)?;
@@ -175,15 +175,13 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Retire une pièce jointe (définitivement), puis synchronise.
+    /// Removes an attachment (permanently), then syncs.
     pub async fn delete_attachment(
         &mut self,
         item_id: &str,
         attachment_id: &str,
     ) -> Result<Decrypted, Error> {
-        let access = self
-            .require_online("La suppression d'une pièce jointe")
-            .await?;
+        let access = self.require_online("Deleting an attachment").await?;
         let item_id = &self.resolve(item_id);
         let view = self.editable_view(item_id).await?;
         if !view
@@ -201,9 +199,9 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// « Document » : une note sécurisée au nom du fichier (sans son
-    /// extension), avec le fichier en pièce jointe. Si l'envoi du fichier
-    /// échoue, la note est supprimée.
+    /// "Document": a secure note named after the file (without its
+    /// extension), with the file as an attachment. If the file upload fails,
+    /// the note is deleted.
     pub async fn create_document(
         &mut self,
         file_name: &str,
@@ -211,7 +209,7 @@ impl Connection {
         folder_id: Option<String>,
     ) -> Result<(String, Decrypted), Error> {
         let file_name = checked_name(file_name, contents)?;
-        self.require_online("L'ajout d'un document").await?;
+        self.require_online("Adding a document").await?;
         let draft = Draft {
             name: document_title(file_name),
             folder_id,
@@ -226,9 +224,9 @@ impl Connection {
         Ok((id, vault))
     }
 
-    /// Crée un élément (chiffré par le SDK) puis lui joint `files`. Si un
-    /// fichier ne part pas, l'élément est supprimé et l'erreur rendue : pas
-    /// d'élément à moitié importé. Ne synchronise pas.
+    /// Creates an item (encrypted by the SDK) then attaches `files` to it. If
+    /// a file doesn't go through, the item is deleted and the error returned:
+    /// no half-imported item. Doesn't sync.
     pub(crate) async fn create_with_files(
         &mut self,
         view: CipherView,
@@ -287,7 +285,7 @@ impl Connection {
     }
 
     pub(crate) async fn decrypt_view(&self, cipher: Cipher) -> Result<CipherView, Error> {
-        // Sur le tas : la tâche du SDK est volumineuse (plus de 20 Ko).
+        // On the heap: the SDK's future is large (over 20 KB).
         Box::pin(self.sdk.vault().ciphers().decrypt(cipher))
             .await
             .map_err(Error::crypto)
@@ -308,7 +306,7 @@ fn info(attachment: &AttachmentView, file_name: Option<String>) -> AttachmentInf
     }
 }
 
-/// Pièce jointe à créer : le SDK lui tire sa clé au chiffrement.
+/// Attachment to create: the SDK draws its key when encrypting.
 fn new_attachment(file_name: &str) -> AttachmentView {
     AttachmentView {
         id: None,
@@ -320,15 +318,15 @@ fn new_attachment(file_name: &str) -> AttachmentView {
     }
 }
 
-/// Nom sans espaces autour, non vide ; fichier sous la limite.
+/// Name without surrounding spaces, non-empty; file under the limit.
 fn checked_name<'a>(file_name: &'a str, contents: &[u8]) -> Result<&'a str, Error> {
     let name = file_name.trim();
     if name.is_empty() {
-        return Err(Error::Invalid("le fichier n'a pas de nom".to_owned()));
+        return Err(Error::Invalid("the file has no name".to_owned()));
     }
     if contents.len() as u64 > MAX_ATTACHMENT_SIZE {
         return Err(Error::Invalid(format!(
-            "« {name} » dépasse 100 Mo, la taille maximale d'une pièce jointe"
+            "\"{name}\" is over 100 MB, the maximum size of an attachment"
         )));
     }
     Ok(name)
@@ -346,36 +344,34 @@ fn draft_view(draft: Draft) -> Result<CipherView, Error> {
     new_view(draft, Utc::now())
 }
 
-/// Un MAC faux ou un contenu tronqué : le fichier a été altéré (ou la clé
-/// n'est pas la bonne). Rien n'est rendu.
+/// A wrong MAC or truncated contents: the file was tampered with (or the
+/// key is not the right one). Nothing is returned.
 fn attachment_error(error: &DecryptError) -> Error {
-    Error::Crypto(format!("pièce jointe altérée ou illisible ({error})"))
+    Error::Crypto(format!("attachment tampered with or unreadable ({error})"))
 }
 
-/// Adresse donnée par le serveur : absolue, ou relative à `base`.
+/// Address given by the server: absolute, or relative to `base`.
 pub(crate) fn resolve(url: &str, base: &str) -> Result<String, Error> {
     let absolute = if url.starts_with("http://") || url.starts_with("https://") {
         url.to_owned()
     } else if url.starts_with('/') {
         format!("{base}{url}")
     } else {
-        return Err(Error::Server(format!(
-            "adresse de fichier inattendue ({url})"
-        )));
+        return Err(Error::Server(format!("unexpected file address ({url})")));
     };
     let parsed = reqwest::Url::parse(&absolute)
-        .map_err(|e| Error::Server(format!("adresse de fichier invalide ({e})")))?;
+        .map_err(|e| Error::Server(format!("invalid file address ({e})")))?;
     let local = matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"));
     if parsed.scheme() != "https" && !local {
         return Err(Error::Server(
-            "adresse de fichier en clair (HTTP) refusée".to_owned(),
+            "plain-text (HTTP) file address refused".to_owned(),
         ));
     }
     Ok(absolute)
 }
 
 impl Api {
-    /// Adresse de téléchargement d'une pièce jointe (signée, de courte durée).
+    /// Download address of an attachment (signed, short-lived).
     pub(crate) async fn attachment_url(
         &self,
         access_token: &str,
@@ -395,12 +391,12 @@ impl Api {
         let url = body
             .get("url")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("pièce jointe sans adresse".to_owned()))?;
+            .ok_or_else(|| Error::Server("attachment without an address".to_owned()))?;
         resolve(url, &self.base)
     }
 
-    /// Le fichier chiffré, sans en-tête d'authentification : l'adresse porte
-    /// sa propre signature (et peut viser un stockage externe).
+    /// The encrypted file, without authentication header: the address
+    /// carries its own signature (and may point to external storage).
     pub(crate) async fn download(&self, url: &str, limit: u64) -> Result<Vec<u8>, Error> {
         let mut response = self.http.get(url).timeout(TRANSFER_TIMEOUT).send().await?;
         let status = response.status();
@@ -412,20 +408,20 @@ impl Api {
             });
         }
         if response.content_length().is_some_and(|l| l > limit) {
-            return Err(Error::Server("pièce jointe trop volumineuse".to_owned()));
+            return Err(Error::Server("attachment is too large".to_owned()));
         }
         let mut bytes = Vec::new();
         while let Some(chunk) = response.chunk().await? {
             if (bytes.len() + chunk.len()) as u64 > limit {
-                return Err(Error::Server("pièce jointe trop volumineuse".to_owned()));
+                return Err(Error::Server("attachment is too large".to_owned()));
             }
             bytes.extend_from_slice(&chunk);
         }
         Ok(bytes)
     }
 
-    /// Envoie une pièce jointe chiffrée : réservation (v2) puis contenu ;
-    /// l'ancien envoi en une fois si le serveur ne connaît pas la v2.
+    /// Uploads an encrypted attachment: reservation (v2) then contents; the
+    /// old one-shot upload if the server doesn't know v2.
     pub(crate) async fn upload_attachment(
         &self,
         access_token: &str,
@@ -436,13 +432,13 @@ impl Api {
             .attachment
             .file_name
             .as_ref()
-            .ok_or_else(|| Error::Crypto("nom de fichier non chiffré".to_owned()))?
+            .ok_or_else(|| Error::Crypto("file name not encrypted".to_owned()))?
             .to_string();
         let key = attachment
             .attachment
             .key
             .as_ref()
-            .ok_or_else(|| Error::Crypto("clé de pièce jointe absente".to_owned()))?
+            .ok_or_else(|| Error::Crypto("attachment key missing".to_owned()))?
             .to_string();
         let contents = attachment.contents;
         let response = self
@@ -472,13 +468,13 @@ impl Api {
         let attachment_id = body
             .get("attachmentId")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("réservation sans identifiant".to_owned()))?
+            .ok_or_else(|| Error::Server("reservation without an id".to_owned()))?
             .to_owned();
         let sent = self
             .upload_reserved(access_token, &body, &file_name, contents)
             .await;
         if sent.is_err() {
-            // Pas de pièce jointe vide laissée sur le serveur.
+            // No empty attachment left on the server.
             let _ = self
                 .delete_attachment(access_token, cipher_id, &attachment_id)
                 .await;
@@ -493,21 +489,21 @@ impl Api {
         file_name: &str,
         contents: Vec<u8>,
     ) -> Result<(), Error> {
-        // 0 : envoi direct au serveur ; 1 : Azure (serveur officiel seulement).
+        // 0: direct upload to the server; 1: Azure (official server only).
         if reservation.get("fileUploadType").and_then(Value::as_i64) != Some(0) {
             return Err(Error::Server(
-                "envoi vers un stockage externe non pris en charge".to_owned(),
+                "upload to external storage is not supported".to_owned(),
             ));
         }
         let url = reservation
             .get("url")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("réservation sans adresse".to_owned()))?;
-        // Vaultwarden rend une adresse relative à l'API.
+            .ok_or_else(|| Error::Server("reservation without an address".to_owned()))?;
+        // Vaultwarden returns an address relative to the API.
         let url = resolve(url, &format!("{}/api", self.base))?;
         if !url.starts_with(&self.base) {
             return Err(Error::Server(
-                "adresse d'envoi hors du serveur du compte".to_owned(),
+                "upload address outside the account's server".to_owned(),
             ));
         }
         let form = Form::new().part("data", file_part(file_name, contents)?);
@@ -522,7 +518,7 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
-    /// Ancien envoi, en une requête : clé et contenu ensemble.
+    /// Old upload, in one request: key and contents together.
     async fn upload_legacy(
         &self,
         access_token: &str,
@@ -563,7 +559,7 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
-    /// Supprime définitivement un élément (sans passer par la corbeille).
+    /// Deletes an item permanently (without going through the trash).
     pub(crate) async fn delete_cipher(&self, access_token: &str, id: &str) -> Result<(), Error> {
         let response = self
             .http
@@ -575,8 +571,8 @@ impl Api {
     }
 }
 
-/// Le contenu chiffré, nommé par le nom de fichier chiffré (comme les apps
-/// Bitwarden) : le serveur ne voit jamais le vrai nom.
+/// The encrypted contents, named by the encrypted file name (like the
+/// Bitwarden apps): the server never sees the real name.
 pub(crate) fn file_part(encrypted_name: &str, contents: Vec<u8>) -> Result<Part, Error> {
     Part::bytes(contents)
         .file_name(encrypted_name.to_owned())
@@ -592,8 +588,8 @@ mod tests {
 
     use super::*;
 
-    /// Clé d'utilisateur et vecteurs tirés des tests du SDK de Bitwarden :
-    /// un fichier chiffré par une app officielle, à relire tel quel.
+    /// User key and vectors taken from the Bitwarden SDK's tests: a file
+    /// encrypted by an official app, to be read back as is.
     const USER_KEY: &str =
         "w2LO+nwV4oxwswVYCxlOfRUseXfvU03VzvKQHrqeklPgiMZrspUe6sOBToCnDn9Ay0tuCBn8ykVVRb7PWhub2Q==";
     const CIPHER_KEY: &str = "2.Gg8yCM4IIgykCZyq0O4+cA==|GJLBtfvSJTDJh/F7X4cJPkzI6ccnzJm5DYl3yxOW2iUn7DgkkmzoOe61sUhC5dgVdV0kFqsZPcQ0yehlN1DDsFIFtrb4x7LwzJNIkMgxNyg=|1rGkGJ8zcM5o5D0aIIwAyLsjMLrPsP3EWm3CctBO3Fw=";
@@ -626,12 +622,12 @@ mod tests {
         create_test_crypto_with_user_key(key)
     }
 
-    /// Un fichier chiffré par Bitwarden (clé de pièce jointe chiffrée par la
-    /// clé de l'élément) se relit à l'identique.
+    /// A file encrypted by Bitwarden (attachment key encrypted by the item
+    /// key) reads back identically.
     #[test]
     fn known_bitwarden_file_decrypts() {
         let store = store();
-        // La clé de la pièce jointe, telle que la synchronisation la donne.
+        // The attachment key, as the sync gives it.
         let attachment = bitwarden_vault::Attachment {
             id: Some("a1".to_owned()),
             url: None,
@@ -645,11 +641,11 @@ mod tests {
             key: Some(ATTACHMENT_KEY.parse().unwrap()),
         };
         let encrypted = base64(ENCRYPTED_FILE);
-        assert_eq!(encrypted[0], 2, "type 2 : AES-CBC-256 + HMAC-SHA256");
+        assert_eq!(encrypted[0], 2, "type 2: AES-CBC-256 + HMAC-SHA256");
         assert_eq!(
             encrypted.len(),
             1 + 16 + 32 + 112,
-            "type | IV | MAC | texte chiffré"
+            "type | IV | MAC | ciphertext"
         );
         let cipher = cipher(Some(CIPHER_KEY));
         let view = attachment_view(&store, &cipher, &attachment);
@@ -663,8 +659,8 @@ mod tests {
         assert_eq!(plain, base64(ORIGINAL));
     }
 
-    /// La clé de pièce jointe se déchiffre avec celle de l'élément, comme
-    /// le fait `CipherView` à la synchronisation.
+    /// The attachment key decrypts with the item's, as `CipherView` does at
+    /// sync.
     fn attachment_view(
         store: &bitwarden_crypto::KeyStore<bitwarden_core::key_management::KeySlotIds>,
         cipher: &Cipher,
@@ -673,8 +669,8 @@ mod tests {
         let mut with_attachment = cipher.clone();
         with_attachment.attachments = Some(vec![attachment.clone()]);
         let view: CipherView = store.decrypt(&with_attachment).unwrap();
-        // Nom illisible (vecteur sans nom chiffré connu) : la clé, elle,
-        // est quand même rendue.
+        // Unreadable name (vector without a known encrypted name): the key
+        // is still returned.
         view.attachments
             .into_iter()
             .chain(view.attachment_decryption_failures)
@@ -683,8 +679,8 @@ mod tests {
             .unwrap()
     }
 
-    /// Aller-retour : chiffré avec une clé neuve, enveloppée par la clé de
-    /// l'élément ; un octet changé (contenu ou MAC) fait tout refuser.
+    /// Round trip: encrypted with a fresh key, wrapped by the item key; one
+    /// changed byte (contents or MAC) makes everything refused.
     #[test]
     fn round_trip_and_tampering() {
         let store = store();
@@ -706,7 +702,7 @@ mod tests {
             assert!(result.contents.len() as u64 <= contents.len() as u64 + ENCRYPTION_OVERHEAD);
             assert!(
                 !result.contents.windows(4).any(|w| w == b"Bail"),
-                "rien en clair"
+                "nothing in clear"
             );
             let view = attachment_view(&store, &cipher, &result.attachment);
             assert_eq!(view.file_name.as_deref(), Some("bail.txt"));
@@ -721,7 +717,7 @@ mod tests {
             for position in [20, 60, result.contents.len() - 1] {
                 let mut altered = result.contents.clone();
                 altered[position] ^= 1;
-                assert!(decrypt(&altered).is_err(), "octet {position} modifié");
+                assert!(decrypt(&altered).is_err(), "byte {position} modified");
             }
             assert!(decrypt(&result.contents[..result.contents.len() - 16]).is_err());
         }

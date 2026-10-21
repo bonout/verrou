@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Feuilles et confirmations de la gestion des coffres partagés, posées sur
-/// la fenêtre principale.
+/// Sheets and confirmations of shared vault management, attached to the main
+/// window.
 struct OrganizationPresentations: ViewModifier {
     @Environment(AppModel.self) private var model
 
@@ -20,28 +20,28 @@ struct OrganizationPresentations: ViewModifier {
                 }
                 .environment(model)
             }
-            .confirmationDialog("Quitter \(admin.confirmLeave?.name ?? "l'organisation") ?",
+            .confirmationDialog("Leave \(admin.confirmLeave?.name ?? String(localized: "the organization"))?",
                                 isPresented: Binding(get: { admin.confirmLeave != nil },
                                                      set: { if !$0 { admin.confirmLeave = nil } }),
                                 presenting: admin.confirmLeave) { organization in
-                Button("Quitter", role: .destructive) { Task { await model.leaveOrganization(organization) } }
-                Button("Annuler", role: .cancel) { admin.confirmLeave = nil }
+                Button("Leave", role: .destructive) { Task { await model.leaveOrganization(organization) } }
+                Button("Cancel", role: .cancel) { admin.confirmLeave = nil }
             } message: { _ in
-                Text("Ses éléments disparaîtront de votre coffre (ils restent dans l'organisation). Pour revenir, il faudra une nouvelle invitation.")
+                Text("Its items will disappear from your vault (they stay in the organization). To come back, a new invitation will be needed.")
             }
-            .confirmationDialog("Supprimer la collection « \(admin.confirmDelete?.collection.name ?? "") » ?",
+            .confirmationDialog("Delete the collection “\(admin.confirmDelete?.collection.name ?? "")”?",
                                 isPresented: Binding(get: { admin.confirmDelete != nil },
                                                      set: { if !$0 { admin.confirmDelete = nil } }),
                                 presenting: admin.confirmDelete) { target in
-                Button("Supprimer", role: .destructive) { Task { await model.deleteCollection(target) } }
-                Button("Annuler", role: .cancel) { admin.confirmDelete = nil }
+                Button("Delete", role: .destructive) { Task { await model.deleteCollection(target) } }
+                Button("Cancel", role: .cancel) { admin.confirmDelete = nil }
             } message: { _ in
-                Text("Ses éléments restent dans l'organisation : les administrateurs les voient toujours, les autres membres seulement par leurs autres collections.")
+                Text("Its items stay in the organization: administrators still see them, the other members only through their other collections.")
             }
     }
 }
 
-/// En-tête commun des feuilles : symbole, titre, explication.
+/// Common header of the sheets: symbol, title, explanation.
 private struct SheetHeader: View {
     let symbol: String
     let title: String
@@ -66,10 +66,10 @@ private struct SheetHeader: View {
     }
 }
 
-/// Bas de feuille : erreur éventuelle, attente, Annuler et l'action.
+/// Bottom of a sheet: possible error, waiting, Cancel and the action.
 private struct SheetFooter: View {
     @Environment(AppModel.self) private var model
-    let action: String
+    let action: LocalizedStringKey
     var enabled = true
     var destructive = false
     let perform: () -> Void
@@ -78,7 +78,7 @@ private struct SheetFooter: View {
         HStack {
             Spacer()
             if model.organizationAdmin.busy { ProgressView().controlSize(.small) }
-            Button("Annuler") { model.organizationAdmin.sheet = nil }
+            Button("Cancel") { model.organizationAdmin.sheet = nil }
                 .keyboardShortcut(.cancelAction)
             Button(action, role: destructive ? .destructive : nil, action: perform)
                 .keyboardShortcut(.defaultAction)
@@ -101,30 +101,30 @@ private struct ErrorSection: View {
     }
 }
 
-/// « Nouvelle organisation… » : un coffre partagé dont on est propriétaire.
+/// "New Organization…": a shared vault you own.
 struct NewOrganizationView: View {
     @Environment(AppModel.self) private var model
     @State private var name = ""
-    @State private var collection = "Général"
+    @State private var collection = String(localized: "General")
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "person.2.badge.plus", title: "Nouvelle organisation",
-                        subtitle: "Un coffre partagé dont vous êtes propriétaire. Sa clé est créée ici et chiffrée pour votre compte : le serveur ne la voit jamais.")
+            SheetHeader(symbol: "person.2.badge.plus", title: String(localized: "New Organization"),
+                        subtitle: String(localized: "A shared vault you own. Its key is created here and encrypted for your account: the server never sees it."))
             Divider()
             Form {
                 Section {
-                    TextField("Nom", text: $name, prompt: Text("Famille Martin"))
-                    TextField("Première collection", text: $collection, prompt: Text("Général"))
+                    TextField("Name", text: $name, prompt: Text("Martin Family"))
+                    TextField("First collection", text: $collection, prompt: Text("General"))
                 } footer: {
-                    Text("Les collections rangent les éléments partagés ; chaque membre accède à celles que vous lui ouvrez. Le serveur peut réserver la création d'organisations à certains comptes (ORG_CREATION_USERS).")
+                    Text("Collections organize the shared items; each member accesses the ones you open to them. The server can restrict organization creation to some accounts (ORG_CREATION_USERS).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ErrorSection()
             }
             .formStyle(.grouped)
             Divider()
-            SheetFooter(action: "Créer", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) {
+            SheetFooter(action: "Create", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty) {
                 Task { await model.createOrganization(name: name, collection: collection) }
             }
         }
@@ -134,7 +134,7 @@ struct NewOrganizationView: View {
     }
 }
 
-/// Renommer l'organisation (propriétaire).
+/// Rename the organization (owner).
 struct RenameOrganizationView: View {
     @Environment(AppModel.self) private var model
     let organization: OrganizationView
@@ -147,16 +147,16 @@ struct RenameOrganizationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "pencil", title: "Renommer « \(organization.name) »",
-                        subtitle: "Le nouveau nom s'affiche chez tous les membres à leur prochaine synchronisation.")
+            SheetHeader(symbol: "pencil", title: String(localized: "Rename “\(organization.name)”"),
+                        subtitle: String(localized: "The new name shows for all members at their next sync."))
             Divider()
             Form {
-                TextField("Nom", text: $name)
+                TextField("Name", text: $name)
                 ErrorSection()
             }
             .formStyle(.grouped)
             Divider()
-            SheetFooter(action: "Renommer",
+            SheetFooter(action: "Rename",
                         enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty && name != organization.name) {
                 Task { await model.renameOrganization(organization, to: name) }
             }
@@ -167,8 +167,8 @@ struct RenameOrganizationView: View {
     }
 }
 
-/// Création ou modification d'une collection : nom, membres et groupes qui
-/// y accèdent, avec leurs droits.
+/// Creation or edit of a collection: name, members and groups who access
+/// it, with their rights.
 struct CollectionEditorView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: CollectionDraft
@@ -184,33 +184,34 @@ struct CollectionEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             SheetHeader(symbol: draft.isNew ? "folder.badge.plus" : "square.stack",
-                        title: draft.isNew ? "Nouvelle collection dans \(organization?.name ?? "l'organisation")"
-                                           : "Collection « \(draft.name) »",
-                        subtitle: "Son nom est chiffré avec la clé de l'organisation. Propriétaires et administrateurs voient toutes les collections.")
+                        title: draft.isNew
+                            ? String(localized: "New collection in \(organization?.name ?? String(localized: "the organization"))")
+                            : String(localized: "Collection “\(draft.name)”"),
+                        subtitle: String(localized: "Its name is encrypted with the organization's key. Owners and administrators see all collections."))
             Divider()
             Form {
                 Section {
-                    TextField("Nom", text: $draft.name, prompt: Text("Banque"))
+                    TextField("Name", text: $draft.name, prompt: Text("Bank"))
                 }
                 if draft.loading {
                     Section { ProgressView().frame(maxWidth: .infinity) }
                 } else if let unavailable = draft.accessUnavailable {
-                    Section("Accès") {
+                    Section("Access") {
                         Label(unavailable, systemImage: "info.circle").foregroundStyle(.secondary)
                     }
                 } else {
-                    Section("Membres") {
+                    Section("Members") {
                         if draft.members.isEmpty {
-                            Text("Aucun membre.").foregroundStyle(.secondary)
+                            Text("No members.").foregroundStyle(.secondary)
                         }
                         ForEach(draft.members.filter { $0.status != .revoked }, id: \.id) { member in
                             memberRow(member)
                         }
                     }
                     if organization?.useGroups == true {
-                        Section("Groupes") {
+                        Section("Groups") {
                             if draft.groups.isEmpty {
-                                Text("Aucun groupe.").foregroundStyle(.secondary)
+                                Text("No groups.").foregroundStyle(.secondary)
                             }
                             ForEach(draft.groups, id: \.id) { group in
                                 accessRow(group.name, systemImage: "person.3",
@@ -223,7 +224,7 @@ struct CollectionEditorView: View {
             }
             .formStyle(.grouped)
             Divider()
-            SheetFooter(action: draft.isNew ? "Créer" : "Enregistrer",
+            SheetFooter(action: draft.isNew ? "Create" : "Save",
                         enabled: !draft.name.trimmingCharacters(in: .whitespaces).isEmpty && !draft.loading) {
                 Task { await model.saveCollection(draft) }
             }
@@ -232,8 +233,8 @@ struct CollectionEditorView: View {
         .frame(minHeight: 420, maxHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
         .task {
-            // Membres, groupes et accès lus ici, une fois la feuille ouverte ;
-            // le nom déjà saisi est gardé.
+            // Members, groups and access read here, once the sheet is open;
+            // the name already entered is kept.
             guard draft.loading, let org = organization else { return }
             var loaded = await model.session.loadCollectionDraft(draft, organization: org,
                                                                  accountEmail: model.account?.email)
@@ -248,7 +249,7 @@ struct CollectionEditorView: View {
             HStack {
                 Label(member.displayName, systemImage: member.role.symbol)
                 Spacer()
-                Text("\(member.role.label) : toutes les collections")
+                Text("\(member.role.label): all collections")
                     .font(.caption).foregroundStyle(.secondary)
             }
         } else {
@@ -278,7 +279,7 @@ struct CollectionEditorView: View {
             }
             .toggleStyle(.checkbox)
             Spacer()
-            Picker("Droits", selection: permission) {
+            Picker("Rights", selection: permission) {
                 ForEach(CollectionPermission.allCases) { level in
                     Text(level.label).tag(level)
                 }
@@ -290,8 +291,8 @@ struct CollectionEditorView: View {
     }
 }
 
-/// Groupes de membres (si le serveur les active) : liste, création,
-/// modification, suppression.
+/// Member groups (if the server turns them on): list, creation, edit,
+/// deletion.
 struct GroupsView: View {
     @Environment(AppModel.self) private var model
     let draft: GroupsDraft
@@ -308,8 +309,8 @@ struct GroupsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "person.3", title: "Groupes de \(organization?.name ?? "l'organisation")",
-                        subtitle: "Un groupe donne les mêmes accès à plusieurs membres. Ses collections et leurs droits s'ajoutent à ceux de chaque membre.")
+            SheetHeader(symbol: "person.3", title: String(localized: "Groups of \(organization?.name ?? String(localized: "the organization"))"),
+                        subtitle: String(localized: "A group gives the same access to several members. Its collections and their rights add to those of each member."))
             Divider()
             if let group = Binding($editing) {
                 GroupEditorForm(group: group, members: draft.members, collections: organization?.collections ?? [])
@@ -317,9 +318,9 @@ struct GroupsView: View {
                 HStack {
                     Spacer()
                     if model.organizationAdmin.busy { ProgressView().controlSize(.small) }
-                    Button("Retour") { editing = nil }
+                    Button("Back") { editing = nil }
                         .keyboardShortcut(.cancelAction)
-                    Button(group.wrappedValue.id == nil ? "Créer le groupe" : "Enregistrer") {
+                    Button(group.wrappedValue.id == nil ? "Create Group" : "Save") {
                         let saved = group.wrappedValue
                         Task {
                             await model.saveGroup(saved, in: draft.organizationID)
@@ -338,23 +339,23 @@ struct GroupsView: View {
                         if draft.loading {
                             ProgressView().frame(maxWidth: .infinity)
                         } else if draft.groups.isEmpty {
-                            Text("Aucun groupe pour l'instant.").foregroundStyle(.secondary)
+                            Text("No groups yet.").foregroundStyle(.secondary)
                         }
                         ForEach(draft.groups, id: \.id) { group in
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(group.name)
-                                    Text("\(group.members.count) membre\(group.members.count > 1 ? "s" : ""), \(group.collections.count) collection\(group.collections.count > 1 ? "s" : "")")
+                                    Text(memberCount(group.members.count) + ", " + collectionCount(group.collections.count))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Button("Modifier…") { editing = GroupDraft(group) }
+                                Button("Edit…") { editing = GroupDraft(group) }
                                 Button(role: .destructive) {
                                     Task { await model.deleteGroup(group, in: draft.organizationID) }
                                 } label: {
                                     Image(systemName: "trash")
                                 }
-                                .help("Supprimer le groupe (ses membres gardent leurs accès directs)")
+                                .help("Delete the group (its members keep their direct access)")
                             }
                         }
                     }
@@ -363,13 +364,13 @@ struct GroupsView: View {
                 .formStyle(.grouped)
                 Divider()
                 HStack {
-                    Button("Nouveau groupe…", systemImage: "plus") {
+                    Button("New Group…", systemImage: "plus") {
                         editing = GroupDraft(id: nil, name: "", members: [], access: [:])
                     }
                     .disabled(draft.loading)
                     Spacer()
                     if model.organizationAdmin.busy { ProgressView().controlSize(.small) }
-                    Button("Fermer") { model.organizationAdmin.sheet = nil }
+                    Button("Close") { model.organizationAdmin.sheet = nil }
                         .keyboardShortcut(.defaultAction)
                         .layoutMark("sheet-primary")
                 }
@@ -379,6 +380,14 @@ struct GroupsView: View {
         .frame(width: 560)
         .frame(minHeight: 400, maxHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private func memberCount(_ count: Int) -> String {
+        count > 1 ? String(localized: "\(count) members") : String(localized: "\(count) member")
+    }
+
+    private func collectionCount(_ count: Int) -> String {
+        count > 1 ? String(localized: "\(count) collections") : String(localized: "\(count) collection")
     }
 }
 
@@ -390,9 +399,9 @@ private struct GroupEditorForm: View {
     var body: some View {
         Form {
             Section {
-                TextField("Nom du groupe", text: $group.name, prompt: Text("Parents"))
+                TextField("Group name", text: $group.name, prompt: Text("Parents"))
             }
-            Section("Membres") {
+            Section("Members") {
                 ForEach(members.filter { $0.status != .revoked }, id: \.id) { member in
                     Toggle(isOn: Binding(
                         get: { group.members.contains(member.id) },
@@ -413,7 +422,7 @@ private struct GroupEditorForm: View {
                     HStack {
                         Toggle(collection.name, isOn: granted).toggleStyle(.checkbox)
                         Spacer()
-                        Picker("Droits", selection: Binding(
+                        Picker("Rights", selection: Binding(
                             get: { group.access[collection.id] ?? .edit },
                             set: { group.access[collection.id] = $0 })) {
                             ForEach(CollectionPermission.allCases) { Text($0.label).tag($0) }
@@ -430,8 +439,8 @@ private struct GroupEditorForm: View {
     }
 }
 
-/// « Rejoindre une organisation… » : le lien d'invitation reçu par courriel,
-/// collé ici, avec un compte qui existe déjà.
+/// "Join an Organization…": the invitation link received by email, pasted
+/// here, with an account that already exists.
 struct JoinOrganizationView: View {
     @Environment(AppModel.self) private var model
     @State private var link: String
@@ -448,12 +457,12 @@ struct JoinOrganizationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "envelope.open", title: "Rejoindre une organisation",
+            SheetHeader(symbol: "envelope.open", title: String(localized: "Join an Organization"),
                         subtitle: InvitationHelp.join(server: model.account?.server))
             Divider()
             Form {
                 Section {
-                    TextField("Lien d'invitation", text: $link,
+                    TextField("Invitation link", text: $link,
                               prompt: Text("https://…/#/accept-organization/?…"), axis: .vertical)
                         .lineLimit(2...4)
                 } footer: {
@@ -467,10 +476,10 @@ struct JoinOrganizationView: View {
                     Section {
                         switch info {
                         case .success(let invitation):
-                            LabeledContent("Invitation de", value: invitation.organizationName ?? "une organisation")
-                            LabeledContent("Pour", value: invitation.email)
+                            LabeledContent("Invitation from", value: invitation.organizationName ?? String(localized: "an organization"))
+                            LabeledContent("For", value: invitation.email)
                             if !invitation.forThisAccount && !model.organizationAdmin.preview {
-                                Label("Cette invitation est destinée à une autre adresse que celle de ce compte.",
+                                Label("This invitation is meant for another address than this account's.",
                                       systemImage: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.orange)
                             }
@@ -479,7 +488,7 @@ struct JoinOrganizationView: View {
                                 .foregroundStyle(.orange)
                         }
                     } footer: {
-                        Text("Une fois l'invitation acceptée, un administrateur vous confirme en comparant votre phrase d'empreinte : la clé de l'organisation est alors chiffrée pour votre compte.")
+                        Text("Once the invitation is accepted, an administrator confirms you by comparing your fingerprint phrase: the organization's key is then encrypted for your account.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }
@@ -487,7 +496,7 @@ struct JoinOrganizationView: View {
             }
             .formStyle(.grouped)
             Divider()
-            SheetFooter(action: "Rejoindre",
+            SheetFooter(action: "Join",
                         enabled: (try? info?.get())?.forThisAccount == true || model.organizationAdmin.preview) {
                 Task { await model.joinOrganization(link: link.trimmingCharacters(in: .whitespacesAndNewlines)) }
             }
@@ -498,8 +507,8 @@ struct JoinOrganizationView: View {
     }
 }
 
-/// Barre latérale : une organisation rejointe, qui attend la confirmation
-/// d'un administrateur. La phrase d'empreinte, à lui lire, est à un clic.
+/// Sidebar: an organization joined, waiting for an administrator's
+/// confirmation. The fingerprint phrase, to read to them, is one click away.
 struct PendingMembershipRow: View {
     @Environment(AppModel.self) private var model
     let pending: PendingMembershipView
@@ -512,7 +521,7 @@ struct PendingMembershipRow: View {
             Label {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(pending.name).lineLimit(1)
-                    Text("En attente de confirmation").font(.caption).foregroundStyle(.orange)
+                    Text("Waiting for confirmation").font(.caption).foregroundStyle(.orange)
                 }
             } icon: {
                 Image(systemName: "hourglass").foregroundStyle(.orange)
@@ -520,7 +529,7 @@ struct PendingMembershipRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Invitation acceptée : un administrateur de \(pending.name) doit vous confirmer")
+        .help("Invitation accepted: an administrator of \(pending.name) must confirm you")
         .popover(isPresented: $showFingerprint, arrowEdge: .trailing) {
             PendingFingerprintView(pending: pending)
                 .environment(model)
@@ -535,8 +544,8 @@ struct PendingFingerprintView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("En attente de \(pending.name)").font(.headline)
-            Text("Lisez cette phrase d'empreinte à l'administrateur qui vous confirme : il doit voir la même. Elle garantit que la clé de l'organisation sera chiffrée pour vous, et pour personne d'autre.")
+            Text("Waiting for \(pending.name)").font(.headline)
+            Text("Read this fingerprint phrase to the administrator who confirms you: they must see the same one. It guarantees that the organization's key will be encrypted for you, and for nobody else.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             FingerprintText(phrase: fingerprint, alignment: .leading)
@@ -547,7 +556,7 @@ struct PendingFingerprintView: View {
     }
 }
 
-/// Barre latérale : « N membres à confirmer » (administrateurs).
+/// Sidebar: "N members to confirm" (administrators).
 struct MembersToConfirmRow: View {
     @Environment(AppModel.self) private var model
 
@@ -557,13 +566,13 @@ struct MembersToConfirmRow: View {
             model.openFirstMembersToConfirm()
         } label: {
             Label {
-                Text("\(total) membre\(total > 1 ? "s" : "") à confirmer").lineLimit(1)
+                Text(total > 1 ? "\(total) members to confirm" : "\(total) member to confirm").lineLimit(1)
             } icon: {
                 Image(systemName: "person.badge.clock").foregroundStyle(.orange)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Ils ont accepté l'invitation : vérifiez leur phrase d'empreinte pour leur donner accès")
+        .help("They accepted the invitation: check their fingerprint phrase to give them access")
     }
 }

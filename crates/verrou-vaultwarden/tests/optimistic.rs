@@ -1,10 +1,10 @@
-//! Écritures locales d'abord, envoyées ensuite, contre un vrai Vaultwarden
-//! (voir `server.rs` pour lancer le serveur ; sans `VERROU_TEST_SERVER`, les
-//! tests ne font rien).
+//! Local writes first, sent afterwards, against a real Vaultwarden (see
+//! `server.rs` to start the server; without `VERROU_TEST_SERVER`, the
+//! tests do nothing).
 //!
-//! Le serveur est joint à travers un mandataire qui ajoute de la latence à
-//! chaque aller-retour : une écriture doit rendre la main sans l'attendre,
-//! l'envoi (`sync_shared`) la paie en arrière-plan.
+//! The server is reached through a proxy that adds latency to every round
+//! trip: a write must return without waiting for it, the send
+//! (`sync_shared`) pays for it in the background.
 
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
@@ -25,15 +25,15 @@ use verrou_vaultwarden::{
 
 const PASSWORD: &str = "cheval correct pile agrafe";
 const ITERATIONS: u32 = 600_000;
-/// Latence ajoutée à chaque aller-retour avec le serveur.
+/// Latency added to every round trip with the server.
 const LATENCY: Duration = Duration::from_millis(400);
-/// Une écriture locale : bien moins qu'un aller-retour.
+/// A local write: well under a round trip.
 const LOCAL: Duration = Duration::from_millis(250);
 
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
@@ -80,7 +80,7 @@ async fn register(server: &str) -> String {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "sign-up refused");
     email
 }
 
@@ -90,11 +90,11 @@ async fn sign_in(store: &Store, server: &str, email: &str) -> (Connection, Decry
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => (unlocked.connection, unlocked.vault),
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
-/// Ce qu'un autre appareil voit sur le serveur.
+/// What another device sees on the server.
 async fn seen_elsewhere(server: &str, email: &str) -> Decrypted {
     let other = temp_store();
     let (_, seen) = sign_in(&other, server, email).await;
@@ -102,8 +102,8 @@ async fn seen_elsewhere(server: &str, email: &str) -> Decrypted {
     seen
 }
 
-/// Un mandataire TCP vers `server` qui retarde chaque octet de `delay / 2`
-/// dans chaque sens : `delay` de plus par aller-retour.
+/// A TCP proxy to `server` that delays every byte by `delay / 2` in each
+/// direction: `delay` more per round trip.
 async fn slow(server: &str, delay: Duration) -> String {
     let port: u16 = server.rsplit(':').next().unwrap().parse().unwrap();
     let target: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
@@ -181,11 +181,11 @@ fn password(vault: &Decrypted, id: &str) -> String {
         .to_owned()
 }
 
-/// L'envoi en arrière-plan, comme l'app après une écriture.
+/// The background send, like the app after a write.
 async fn drained(connection: &Arc<Mutex<Connection>>) -> Decrypted {
     match sync_shared(connection, false).await.unwrap() {
         Synced::Changed(vault) => vault,
-        Synced::Unchanged | Synced::Joined => panic!("le coffre aurait dû changer"),
+        Synced::Unchanged | Synced::Joined => panic!("the vault should have changed"),
     }
 }
 
@@ -197,7 +197,7 @@ async fn writes_apply_at_once_and_reach_the_server_in_the_background() {
     let (connection, _) = sign_in(&store, &slow(&server, LATENCY).await, &email).await;
     let connection = Arc::new(Mutex::new(connection));
 
-    // Créer : un identifiant provisoire, tout de suite dans le coffre affiché.
+    // Create: a temporary id, right away in the displayed vault.
     let start = Instant::now();
     let (temporary, vault) = connection
         .lock()
@@ -210,7 +210,7 @@ async fn writes_apply_at_once_and_reach_the_server_in_the_background() {
     assert_eq!(vault.pending_items, std::slice::from_ref(&temporary));
     assert_eq!(seen_elsewhere(&server, &email).await.items.len(), 0);
 
-    // L'envoi : l'identifiant du serveur remplace le provisoire.
+    // The send: the server id replaces the temporary one.
     let vault = drained(&connection).await;
     let mut open = connection.lock().await;
     let id = open.resolve(&temporary);
@@ -221,13 +221,13 @@ async fn writes_apply_at_once_and_reach_the_server_in_the_background() {
     assert!(vault.remapped.contains(&(temporary.clone(), id.clone())));
     let report = open.take_report();
     assert_eq!(report.remapped, [(temporary.clone(), id.clone())]);
-    assert_eq!(report.sent, 0, "envoyée aussitôt : rien à annoncer");
-    // L'identifiant provisoire reste utilisable (éditeur ouvert avant).
+    assert_eq!(report.sent, 0, "sent right away: nothing to report");
+    // The temporary id stays usable (editor opened before).
     let mut draft = open.draft(&temporary).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("second"));
 
-    // Modifier, archiver, modifier encore : appliqué tout de suite, envoyé
-    // dans l'ordre (les modifications avant l'archive).
+    // Edit, archive, edit again: applied right away, sent in order (the
+    // edits before the archive).
     let start = Instant::now();
     open.update(&temporary, draft).await.unwrap();
     open.set_archived(&id, true).await.unwrap();
@@ -237,7 +237,7 @@ async fn writes_apply_at_once_and_reach_the_server_in_the_background() {
     assert!(start.elapsed() < LOCAL * 3, "{:?}", start.elapsed());
     assert_eq!(find(&vault, &id).unwrap().state, ItemState::Archived);
     assert_eq!(password(&vault, &id), "second");
-    assert_eq!(vault.pending_changes, 2, "une modification, une archive");
+    assert_eq!(vault.pending_changes, 2, "one edit, one archive");
     drop(open);
 
     let vault = drained(&connection).await;
@@ -252,9 +252,9 @@ async fn writes_apply_at_once_and_reach_the_server_in_the_background() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Une écriture faite pendant l'envoi de la précédente n'attend pas le
-/// réseau, et ne passe pas pour périmée : elle repart de la date de
-/// révision que le serveur vient de rendre (modification, puis archive).
+/// A write made while the previous one is being sent does not wait for
+/// the network, and is not taken as stale: it starts from the revision
+/// date the server just returned (edit, then archive).
 #[tokio::test(flavor = "multi_thread")]
 async fn a_write_made_during_a_send_neither_waits_nor_conflicts() {
     let Some(server) = server() else { return };
@@ -270,7 +270,7 @@ async fn a_write_made_during_a_send_neither_waits_nor_conflicts() {
     let connection = Arc::new(Mutex::new(connection));
 
     for step in 1..=2 {
-        // 1 : une modification part ; 2 : une archive part.
+        // 1: an edit goes out; 2: an archive goes out.
         {
             let mut open = connection.lock().await;
             if step == 1 {
@@ -285,7 +285,7 @@ async fn a_write_made_during_a_send_neither_waits_nor_conflicts() {
             let connection = Arc::clone(&connection);
             async move { sync_shared(&connection, false).await.map(|_| ()) }
         });
-        // Jeton renouvelé (un aller-retour), la requête est en route.
+        // Token renewed (one round trip), the request is on its way.
         tokio::time::sleep(LATENCY + LATENCY / 2).await;
         let start = Instant::now();
         let mut open = connection.lock().await;
@@ -298,26 +298,26 @@ async fn a_write_made_during_a_send_neither_waits_nor_conflicts() {
         assert_eq!(password(&vault, &id), next);
         assert_eq!(
             vault.pending_changes, 2,
-            "pas fusionnée avec l'écriture en cours d'envoi"
+            "not merged with the write being sent"
         );
-        assert!(!sending.is_finished(), "l'envoi était toujours en cours");
-        // L'envoi en cours emporte aussi la nouvelle modification, derrière.
+        assert!(!sending.is_finished(), "the send was still in progress");
+        // The ongoing send also carries the new edit, after it.
         sending.await.unwrap().unwrap();
         assert_eq!(connection.lock().await.pending_changes(), 0);
         let report = connection.lock().await.take_report();
         assert!(
             report.conflicts.is_empty() && report.rejected.is_empty(),
-            "étape {step} : {report:?}"
+            "step {step}: {report:?}"
         );
         let seen = seen_elsewhere(&server, &email).await;
         assert_eq!(password(&seen, &id), next);
-        assert_eq!(seen.items.len(), 1, "aucune copie de conflit");
+        assert_eq!(seen.items.len(), 1, "no conflict copy");
     }
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Refusé par le serveur (pas une erreur réseau) : la modification est
-/// retirée, signalée, et le coffre affiché revient à la version du serveur.
+/// Refused by the server (not a network error): the change is dropped,
+/// reported, and the displayed vault goes back to the server version.
 #[tokio::test]
 async fn a_refused_write_is_rolled_back_and_reported() {
     let Some(server) = server() else { return };
@@ -333,8 +333,8 @@ async fn a_refused_write_is_rolled_back_and_reported() {
     let kept = open.resolve(&kept);
     open.take_report();
 
-    // Un dossier qui n'existe pas sur le serveur : il refuse la création,
-    // puis la modification (et sa copie).
+    // A folder that does not exist on the server: it refuses the creation,
+    // then the edit (and its copy).
     let nowhere = uuid::Uuid::new_v4().to_string();
     let (refused, vault) = open
         .create(Draft {
@@ -343,7 +343,7 @@ async fn a_refused_write_is_rolled_back_and_reported() {
         })
         .await
         .unwrap();
-    assert!(find(&vault, &refused).is_some(), "affiché tout de suite");
+    assert!(find(&vault, &refused).is_some(), "shown right away");
     let mut draft = open.draft(&kept).await.unwrap();
     draft.name = "Gardé, renommé".to_owned();
     draft.folder_id = Some(nowhere);
@@ -352,11 +352,11 @@ async fn a_refused_write_is_rolled_back_and_reported() {
     drop(open);
 
     let vault = drained(&connection).await;
-    assert!(find(&vault, &refused).is_none(), "création retirée");
+    assert!(find(&vault, &refused).is_none(), "creation dropped");
     assert_eq!(
         find(&vault, &kept).unwrap().title,
         "Gardé",
-        "version du serveur"
+        "server version"
     );
     assert_eq!(vault.pending_changes, 0);
     assert!(
@@ -372,8 +372,8 @@ async fn a_refused_write_is_rolled_back_and_reported() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Des demandes de synchronisation simultanées : une en cours, une seule
-/// après elle pour toutes les autres.
+/// Simultaneous sync requests: one in progress, a single one after it
+/// for all the others.
 #[tokio::test(flavor = "multi_thread")]
 async fn concurrent_syncs_are_coalesced() {
     let Some(server) = server() else { return };
@@ -401,18 +401,15 @@ async fn concurrent_syncs_are_coalesced() {
             ran += 1;
         }
     }
-    assert!(
-        (1..=2).contains(&ran),
-        "{ran} synchronisations pour 6 demandes"
-    );
-    // Une synchronisation : jeton, envoi, téléchargement ; deux au plus.
+    assert!((1..=2).contains(&ran), "{ran} syncs for 6 requests");
+    // One sync: token, send, download; two at most.
     assert!(start.elapsed() < LATENCY * 8, "{:?}", start.elapsed());
     assert_eq!(seen_elsewhere(&server, &email).await.items.len(), 1);
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Déconnecté pendant un envoi : plus rien n'est écrit sur le disque, la
-/// file effacée ne revient pas.
+/// Logged out during a send: nothing more is written to disk, the erased
+/// queue does not come back.
 #[tokio::test]
 async fn nothing_is_written_after_logout() {
     let Some(server) = server() else { return };
@@ -429,7 +426,7 @@ async fn nothing_is_written_after_logout() {
     let _ = std::fs::remove_dir_all(store.dir());
 }
 
-/// Verrouillé : l'envoi s'arrête, la file attend le déverrouillage suivant.
+/// Locked: the send stops, the queue waits for the next unlock.
 #[tokio::test]
 async fn locking_stops_the_send() {
     let Some(server) = server() else { return };
@@ -444,7 +441,7 @@ async fn locking_stops_the_send() {
         Synced::Unchanged
     ));
     assert_eq!(connection.lock().await.pending_changes(), 1);
-    assert_eq!(store.pending_changes(), 1, "gardée sur le disque");
+    assert_eq!(store.pending_changes(), 1, "kept on disk");
     assert_eq!(seen_elsewhere(&server, &email).await.items.len(), 0);
     std::fs::remove_dir_all(store.dir()).unwrap();
 }

@@ -1,21 +1,20 @@
 import SwiftUI
 
-/// Création ou modification d'un élément. Pour un identifiant : titre,
-/// identifiant, mot de passe (avec le générateur), code à usage unique,
-/// sites. Pour tous les types : titre, champs personnalisés, dossier, favori
-/// et notes ; le reste de l'élément (carte, identité, champs réservés à
-/// Verrou…) repart tel quel. Un modèle (Wi-Fi, passeport…) arrive avec ses
-/// champs prédéfinis.
+/// Creation or edit of an item. For a login: title, username, password
+/// (with the generator), one-time code, sites. For all types: title, custom
+/// fields, folder, favorite and notes; the rest of the item (card, identity,
+/// fields reserved for Verrou…) goes back as is. A template (Wi-Fi,
+/// passport…) comes with its predefined fields.
 struct EditItemView: View {
     @Environment(AppModel.self) private var model
     let editor: AppModel.Editor
     @State private var draft: ItemDraft
-    /// Création : coffre personnel (`nil`) ou collection d'une organisation.
+    /// Creation: personal vault (`nil`) or an organization's collection.
     @State private var destination: SharedDestination?
     @State private var showPassword = false
     @State private var showGenerator = false
-    /// Entropie exacte de la dernière phrase de passe générée : les
-    /// caractères la surestimeraient de beaucoup.
+    /// Exact entropy of the last generated passphrase: the characters would
+    /// overestimate it by a lot.
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
     @FocusState private var titleFocused: Bool
@@ -33,17 +32,17 @@ struct EditItemView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
+                    TextField("Title", text: $draft.name, prompt: Text(titlePrompt))
                         .focused($titleFocused)
                         .layoutMark("edit-title")
                     if isLogin {
-                        TextField("Identifiant", text: loginText(\.username), prompt: Text("e-mail ou nom d'utilisateur"))
+                        TextField("Username", text: loginText(\.username), prompt: Text("email or username"))
                             .textContentType(.username)
                         passwordRow
                         if let password = draft.login?.password, !password.isEmpty {
                             StrengthMeter(password: password, bits: generated?.value == password ? generated?.bits : nil)
                         }
-                        TextField("Code à usage unique", text: loginText(\.totp), prompt: Text("graine ou lien otpauth://"))
+                        TextField("One-time code", text: loginText(\.totp), prompt: Text("seed or otpauth:// link"))
                     }
                 }
 
@@ -51,10 +50,10 @@ struct EditItemView: View {
                     Section {
                         ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
                             HStack {
-                                TextField("Site", text: urlBinding(index), prompt: Text("https://exemple.fr"))
+                                TextField("Website", text: urlBinding(index), prompt: Text("https://example.com"))
                                     .labelsHidden()
-                                Picker("Correspondance", selection: matchBinding(index)) {
-                                    Text("Par défaut (\(fallbackRule.label))").tag(UriMatchRule?.none)
+                                Picker("Matching", selection: matchBinding(index)) {
+                                    Text("Default (\(fallbackRule.label))").tag(UriMatchRule?.none)
                                     Divider()
                                     ForEach(UriMatchRule.all) { rule in
                                         Text(rule.label).tag(Optional(rule))
@@ -63,7 +62,7 @@ struct EditItemView: View {
                                 .labelsHidden()
                                 .fixedSize()
                                 .help(draft.login?.matchRule(at: index)?.explanation
-                                      ?? "Règle de ce Mac : \(fallbackRule.explanation)")
+                                      ?? String(localized: "This Mac's rule: \(fallbackRule.explanation)"))
                                 .layoutMark("match-picker-\(index)")
                                 Button {
                                     draft.login?.removeURL(at: index)
@@ -71,35 +70,35 @@ struct EditItemView: View {
                                     Image(systemName: "minus.circle.fill").foregroundStyle(.red)
                                 }
                                 .buttonStyle(.plain)
-                                .help("Retirer ce site")
+                                .help("Remove this website")
                             }
                         }
                         Button {
                             draft.login?.appendURL()
                         } label: {
-                            Label("Ajouter un site", systemImage: "plus.circle.fill")
+                            Label("Add a Website", systemImage: "plus.circle.fill")
                         }
                         .buttonStyle(.borderless)
                     } header: {
-                        Text("Sites")
+                        Text("Websites")
                     } footer: {
-                        Text("La correspondance décide des pages où Verrou propose l'identifiant ; elle est enregistrée avec l'élément, comme dans Bitwarden.")
+                        Text("Matching decides on which pages Verrou offers the login; it is saved with the item, as in Bitwarden.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 vaultSection
-                CustomFieldsSection(fields: $draft.fields)
+                CustomFieldsSection(fields: $draft.fields, template: draft.template)
 
                 Section {
-                    Picker("Dossier", selection: $draft.folderId) {
-                        Text("Aucun").tag(String?.none)
+                    Picker("Folder", selection: $draft.folderId) {
+                        Text("No folder").tag(String?.none)
                         ForEach(model.folders, id: \.id) { folder in
                             Text(folder.name).tag(Optional(folder.id))
                         }
                     }
-                    Toggle("Favori", isOn: $draft.favorite)
+                    Toggle("Favorite", isOn: $draft.favorite)
                 }
 
                 Section("Notes") {
@@ -121,16 +120,16 @@ struct EditItemView: View {
             Divider()
             HStack(spacing: 10) {
                 if !isNew {
-                    Button("Mettre à la corbeille…", role: .destructive) { confirmTrash = true }
+                    Button("Move to Trash…", role: .destructive) { confirmTrash = true }
                         .disabled(model.editorBusy)
                 }
                 Spacer()
                 if model.editorBusy {
                     ProgressView().controlSize(.small)
                 }
-                Button("Annuler") { model.editor = nil }
+                Button("Cancel") { model.editor = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(isNew ? "Créer" : "Enregistrer") { save() }
+                Button(isNew ? "Create" : "Save") { save() }
                     .keyboardShortcut("s", modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .layoutMark("sheet-primary")
@@ -142,22 +141,22 @@ struct EditItemView: View {
         .frame(minHeight: isLogin ? 640 : 520, maxHeight: 700)
         .navigationTitle(windowTitle)
         .onAppear { titleFocused = isNew }
-        .confirmationDialog("Mettre « \(draft.name) » à la corbeille ?", isPresented: $confirmTrash) {
-            Button("Mettre à la corbeille", role: .destructive) {
+        .confirmationDialog("Move “\(draft.name)” to the trash?", isPresented: $confirmTrash) {
+            Button("Move to Trash", role: .destructive) {
                 if let id = editor.itemID { Task { await model.trash(id) } }
             }
         } message: {
-            Text("L'élément reste restaurable depuis le coffre web pendant 30 jours.")
+            Text("The item stays restorable from the web vault for 30 days.")
         }
     }
 
-    /// Coffre de l'élément : choisi à la création, rappelé ensuite (les
-    /// collections se changent par « Collections… »).
+    /// The item's vault: chosen at creation, recalled afterwards (the
+    /// collections are changed through "Collections…").
     @ViewBuilder private var vaultSection: some View {
         if isNew, !model.writableOrganizations.isEmpty {
             Section {
-                Picker("Coffre", selection: $destination) {
-                    Text("Personnel").tag(SharedDestination?.none)
+                Picker("Vault", selection: $destination) {
+                    Text("Personal").tag(SharedDestination?.none)
                     ForEach(model.writableOrganizations, id: \.id) { org in
                         ForEach(org.collections.filter { !$0.readOnly }, id: \.id) { collection in
                             Text("\(org.name) › \(collection.name)")
@@ -167,36 +166,36 @@ struct EditItemView: View {
                 }
             } footer: {
                 if destination != nil {
-                    Text("Chiffré avec la clé de l'organisation : les membres de la collection le verront.")
+                    Text("Encrypted with the organization's key: the members of the collection will see it.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
         } else if let id = editor.itemID, let sharing = model.summaries.first(where: { $0.id == id })?.sharing {
             Section {
-                LabeledContent("Coffre partagé", value: sharing.label)
+                LabeledContent("Shared vault", value: sharing.label)
             }
         }
     }
 
     private var titlePrompt: String {
         if let template = draft.template { return template.titlePrompt }
-        return isLogin ? "GitHub, Banque…" : "Digicode, Wi-Fi…"
+        return isLogin ? String(localized: "GitHub, Bank…") : String(localized: "Door code, Wi-Fi…")
     }
 
     private var windowTitle: String {
-        guard isNew else { return "Modifier" }
-        if let template = draft.template { return "Nouveau : \(template.singular)" }
-        return isLogin ? "Nouvel identifiant" : "Nouvelle note sécurisée"
+        guard isNew else { return String(localized: "Edit") }
+        if let template = draft.template { return String(localized: "New: \(template.singular)") }
+        return isLogin ? String(localized: "New Login") : String(localized: "New Secure Note")
     }
 
     private var passwordRow: some View {
         HStack(spacing: 8) {
             Group {
                 if showPassword {
-                    TextField("Mot de passe", text: loginText(\.password))
+                    TextField("Password", text: loginText(\.password))
                         .font(.system(.body, design: .monospaced))
                 } else {
-                    SecureField("Mot de passe", text: loginText(\.password))
+                    SecureField("Password", text: loginText(\.password))
                 }
             }
             .textContentType(.password)
@@ -206,14 +205,14 @@ struct EditItemView: View {
                 Image(systemName: showPassword ? "eye.slash" : "eye")
             }
             .buttonStyle(.borderless)
-            .help(showPassword ? "Masquer" : "Afficher")
+            .help(showPassword ? "Hide" : "Show")
             Button {
                 showGenerator = true
             } label: {
                 Image(systemName: "wand.and.stars")
             }
             .buttonStyle(.borderless)
-            .help("Générer un mot de passe ou une phrase de passe")
+            .help("Generate a password or a passphrase")
             .popover(isPresented: $showGenerator, arrowEdge: .trailing) {
                 GeneratorView { password, bits in
                     draft.login?.password = password
@@ -226,9 +225,9 @@ struct EditItemView: View {
     }
 
     private func save() {
-        // Les sites laissés vides ne partent pas.
+        // Sites left empty are not sent.
         draft.login?.dropEmptyURLs()
-        // Un champ ajouté puis laissé sans nom ni valeur ne part pas.
+        // A field added then left without name or value is not sent.
         draft.fields.removeAll { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.value ?? "").isEmpty
             && $0.fieldType != .linked }
         Task { await model.saveEditor(draft, destination: isNew ? destination : nil) }
@@ -246,8 +245,8 @@ struct EditItemView: View {
             set: { if draft.login?.urls.indices.contains(index) == true { draft.login?.urls[index] = $0 } })
     }
 
-    /// Règle des sites sans règle propre : celle du dossier choisi, sinon
-    /// celle de ce Mac.
+    /// Rule of the sites without their own rule: the chosen folder's,
+    /// otherwise this Mac's.
     private var fallbackRule: UriMatchRule {
         model.matchSettings?.fallback(folderID: draft.folderId) ?? .domain
     }
@@ -265,10 +264,10 @@ struct EditItemView: View {
     }
 }
 
-/// Générateur : mot de passe (longueur, chiffres, symboles) ou phrase de
-/// passe (mots tirés dans une liste de 7 776, séparateur, majuscules,
-/// chiffre) ; aperçu coloré et robustesse. `use` reçoit la valeur et, pour
-/// une phrase de passe, son entropie exacte.
+/// Generator: password (length, digits, symbols) or passphrase (words drawn
+/// from a list of 7,776, separator, capitals, digit); colored preview and
+/// strength. `use` receives the value and, for a passphrase, its exact
+/// entropy.
 struct GeneratorView: View {
     let use: (String, Double?) -> Void
     @AppStorage("generatorMode") private var mode = GeneratorMode.password
@@ -285,7 +284,7 @@ struct GeneratorView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Générateur").font(.headline)
+            Text("Generator").font(.headline)
             Picker("Type", selection: $mode) {
                 ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
@@ -305,10 +304,10 @@ struct GeneratorView: View {
                 Button {
                     regenerate()
                 } label: {
-                    Label("Autre", systemImage: "arrow.clockwise")
+                    Label("Another", systemImage: "arrow.clockwise")
                 }
                 Spacer()
-                Button("Utiliser") { use(password, bits) }
+                Button("Use") { use(password, bits) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             }
@@ -329,28 +328,28 @@ struct GeneratorView: View {
 
     @ViewBuilder private var passwordOptions: some View {
         HStack {
-            Text("Longueur")
+            Text("Length")
             Slider(value: $length, in: 8...64, step: 1)
             Text("\(Int(length))").monospacedDigit().frame(width: 24, alignment: .trailing)
         }
-        Toggle("Chiffres", isOn: $digits)
-        Toggle("Symboles", isOn: $symbols)
+        Toggle("Digits", isOn: $digits)
+        Toggle("Symbols", isOn: $symbols)
     }
 
     @ViewBuilder private var passphraseOptions: some View {
         HStack {
-            Text("Mots")
+            Text("Words")
             Slider(value: $words, in: 3...20, step: 1)
             Text("\(Int(words))").monospacedDigit().frame(width: 24, alignment: .trailing)
         }
-        Picker("Séparateur", selection: $separator) {
+        Picker("Separator", selection: $separator) {
             ForEach(PassphraseSeparatorChoice.allCases, id: \.self) { Text($0.label).tag($0) }
         }
-        Picker("Langue", selection: $language) {
+        Picker("Language", selection: $language) {
             ForEach(PassphraseLanguageChoice.allCases, id: \.self) { Text($0.label).tag($0) }
         }
-        Toggle("Majuscules", isOn: $capitalize)
-        Toggle("Ajouter un chiffre", isOn: $number)
+        Toggle("Capitals", isOn: $capitalize)
+        Toggle("Add a digit", isOn: $number)
     }
 
     private func regenerate() {

@@ -1,6 +1,6 @@
-//! Outils des tests contre un vrai Vaultwarden (`VERROU_TEST_SERVER`) :
-//! compte jetable, session connectée, et un mandataire qui ajoute de la
-//! latence à chaque aller-retour avec le serveur.
+//! Helpers for tests against a real Vaultwarden (`VERROU_TEST_SERVER`):
+//! throwaway account, signed-in session, and a proxy that adds latency to
+//! every round trip with the server.
 
 #![allow(dead_code)]
 
@@ -19,16 +19,16 @@ use verrou_ffi::{LoginResult, VaultSession};
 pub const PASSWORD: &str = "cheval correct pile agrafe";
 const ITERATIONS: u32 = 600_000;
 
-/// Le serveur des tests, s'il y en a un.
+/// The test server, if there is one.
 pub fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
 
-/// Un compte jetable ; rend son adresse e-mail.
+/// A throwaway account; returns its email address.
 pub async fn register(server: &str) -> String {
     let email = format!("{}@verrou.test", uuid::Uuid::new_v4().simple());
     let kdf = Kdf::PBKDF2 {
@@ -67,11 +67,11 @@ pub async fn register(server: &str) -> String {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "registration refused");
     email
 }
 
-/// Une session de l'app, connectée à `server` dans un dossier jetable.
+/// An app session, signed in to `server` in a throwaway folder.
 pub async fn signed_in(server: String, email: &str) -> Arc<VaultSession> {
     let dir = std::env::temp_dir().join(format!("verrou-ffi-{}", uuid::Uuid::new_v4()));
     let session = VaultSession::with_storage(dir.display().to_string());
@@ -83,9 +83,9 @@ pub async fn signed_in(server: String, email: &str) -> Arc<VaultSession> {
     session
 }
 
-/// Un mandataire TCP vers `server` (`http://hôte:port`) qui retarde chaque
-/// octet de `delay / 2` dans chaque sens : `delay` de plus par aller-retour,
-/// sans limiter le débit. Rend l'adresse à utiliser à la place.
+/// A TCP proxy to `server` (`http://host:port`) that delays every byte by
+/// `delay / 2` in each direction: `delay` more per round trip, without
+/// limiting throughput. Returns the address to use instead.
 pub async fn slow(server: &str, delay: Duration) -> String {
     let port: u16 = server.rsplit(':').next().unwrap().parse().unwrap();
     let target: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();

@@ -1,17 +1,17 @@
 import SwiftUI
 
-// MARK: Accueil
+// MARK: Home
 
-/// Section « Coffres partagés » de l'accueil : membres à confirmer,
-/// invitations en attente, chaque organisation (vers son écran) et ses
-/// collections (créer ou rejoindre : menu « + » de l'accueil).
+/// The home screen's "Shared vaults" section: members to confirm, pending
+/// invitations, each organization (to its screen) and its collections
+/// (create or join: the home screen's "+" menu).
 struct SharedVaultsHomeSection: View {
     @Environment(PhoneModel.self) private var model
 
     var body: some View {
         let sharing = model.sharing
-        // Sans coffre partagé, rien à construire : créer ou rejoindre une
-        // organisation passe par le menu « + » de l'accueil.
+        // Without a shared vault, nothing to build: creating or joining an
+        // organization goes through the home screen's "+" menu.
         if !model.organizations.isEmpty {
             Section {
                 ForEach(model.organizations, id: \.id) { org in
@@ -40,15 +40,15 @@ struct SharedVaultsHomeSection: View {
                     }
                 }
             } header: {
-                SectionHeader("Coffres partagés")
+                SectionHeader("Shared vaults")
             }
         }
     }
 }
 
-/// En tête de l'accueil, comme les modifications en attente : les membres
-/// à confirmer (administrateurs) et les invitations acceptées qui attendent
-/// leur confirmation.
+/// At the top of the home screen, like the pending changes: the members to
+/// confirm (administrators) and the accepted invitations awaiting their
+/// confirmation.
 struct SharingBanners: View {
     @Environment(PhoneModel.self) private var model
 
@@ -63,7 +63,7 @@ struct SharingBanners: View {
                         HStack(spacing: 12) {
                             TintedSymbol(symbol: "person.badge.clock.fill", tint: .orange)
                             let n = sharing.totalToConfirm
-                            Text("\(n) membre\(n > 1 ? "s" : "") à confirmer").foregroundStyle(.primary)
+                            Text(n > 1 ? "\(n) members to confirm" : "\(n) member to confirm").foregroundStyle(.primary)
                             Spacer()
                             Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary)
                         }
@@ -79,7 +79,7 @@ struct SharingBanners: View {
                             TintedSymbol(symbol: "hourglass", tint: .orange)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(pending.name).foregroundStyle(.primary)
-                                Text("En attente de confirmation").font(.caption).foregroundStyle(.orange)
+                                Text("Awaiting confirmation").font(.caption).foregroundStyle(.orange)
                             }
                             Spacer()
                             Image(systemName: "info.circle").foregroundStyle(.secondary)
@@ -93,10 +93,10 @@ struct SharingBanners: View {
     }
 }
 
-// MARK: Organisation
+// MARK: Organization
 
-/// Un coffre partagé : ses éléments, ses collections (gérées selon les
-/// droits), ses membres, ses groupes, et de quoi le renommer ou le quitter.
+/// A shared vault: its items, its collections (managed according to the
+/// permissions), its members, its groups, and a way to rename or leave it.
 struct OrganizationScreen: View {
     @Environment(PhoneModel.self) private var model
     let organizationID: String
@@ -105,8 +105,8 @@ struct OrganizationScreen: View {
         if let org = model.organization(organizationID) {
             content(org)
         } else {
-            ContentUnavailableView("Organisation indisponible", systemImage: "person.2.slash",
-                                   description: Text("Vous ne faites plus partie de ce coffre partagé."))
+            ContentUnavailableView("Organization unavailable", systemImage: "person.2.slash",
+                                   description: Text("You are no longer part of this shared vault."))
         }
     }
 
@@ -116,7 +116,7 @@ struct OrganizationScreen: View {
                 NavigationLink(value: PhoneModel.Route.list(.organization(id: org.id))) {
                     HStack(spacing: 12) {
                         TintedSymbol(symbol: "square.grid.2x2.fill", tint: .indigo)
-                        Text("Tous ses éléments")
+                        Text("All its items")
                         Spacer()
                         Text("\(org.count)").foregroundStyle(.secondary).monospacedDigit()
                     }
@@ -145,22 +145,22 @@ struct OrganizationScreen: View {
                             Button(role: .destructive) {
                                 model.sharing.confirmDelete = CollectionTarget(organization: org, collection: collection)
                             } label: {
-                                Label("Supprimer", systemImage: "trash")
+                                Label("Delete", systemImage: "trash")
                             }
                             Button {
                                 model.openCollectionEditor(org, collection: collection)
                             } label: {
-                                Label("Modifier", systemImage: "slider.horizontal.3")
+                                Label("Edit", systemImage: "slider.horizontal.3")
                             }
                             .tint(.indigo)
                         }
                     }
                     .contextMenu {
                         if model.canEdit && collection.canManage {
-                            Button("Modifier la collection…", systemImage: "slider.horizontal.3") {
+                            Button("Edit collection…", systemImage: "slider.horizontal.3") {
                                 model.openCollectionEditor(org, collection: collection)
                             }
-                            Button("Supprimer la collection…", systemImage: "trash", role: .destructive) {
+                            Button("Delete collection…", systemImage: "trash", role: .destructive) {
                                 model.sharing.confirmDelete = CollectionTarget(organization: org, collection: collection)
                             }
                         }
@@ -170,7 +170,7 @@ struct OrganizationScreen: View {
                     Button {
                         model.openCollectionEditor(org, collection: nil)
                     } label: {
-                        Label("Nouvelle collection…", systemImage: "plus.circle.fill")
+                        Label("New collection…", systemImage: "plus.circle.fill")
                     }
                     .accessibilityIdentifier("new-collection")
                 }
@@ -178,7 +178,7 @@ struct OrganizationScreen: View {
                 SectionHeader("Collections")
             } footer: {
                 if org.hasManagedCollections {
-                    Text("Balayez une collection vers la gauche pour la modifier ou la supprimer.")
+                    Text("Swipe a collection to the left to edit or delete it.")
                 }
             }
             if org.canViewMembers || org.canManageGroups {
@@ -187,10 +187,10 @@ struct OrganizationScreen: View {
                         NavigationLink(value: PhoneModel.Route.members(org.id)) {
                             HStack(spacing: 12) {
                                 TintedSymbol(symbol: "person.3.fill", tint: .teal)
-                                Text("Membres")
+                                Text("Members")
                                 Spacer()
                                 if let pending = model.sharing.toConfirm[org.id], pending > 0 {
-                                    Badge(text: "\(pending) à confirmer", tint: .orange)
+                                    Badge(text: String(localized: "\(pending) to confirm"), tint: .orange)
                                 }
                             }
                         }
@@ -200,20 +200,20 @@ struct OrganizationScreen: View {
                         NavigationLink(value: PhoneModel.Route.groups(org.id)) {
                             HStack(spacing: 12) {
                                 TintedSymbol(symbol: "person.2.circle.fill", tint: .mint)
-                                Text("Groupes")
+                                Text("Groups")
                             }
                         }
                     }
                 } header: {
-                    SectionHeader("Personnes")
+                    SectionHeader("People")
                 }
             }
             if model.canEdit {
                 Section {
                     if org.canRename {
-                        Button("Renommer l'organisation…", systemImage: "pencil") { model.sharing.sheet = .rename(org) }
+                        Button("Rename organization…", systemImage: "pencil") { model.sharing.sheet = .rename(org) }
                     }
-                    Button("Quitter l'organisation…", systemImage: "rectangle.portrait.and.arrow.right",
+                    Button("Leave organization…", systemImage: "rectangle.portrait.and.arrow.right",
                            role: .destructive) {
                         model.sharing.confirmLeave = org
                     }
@@ -227,15 +227,15 @@ struct OrganizationScreen: View {
     }
 
     private func roleLine(_ org: OrganizationView) -> String {
-        let role = org.role?.label ?? "Membre"
-        return "Votre rôle : \(role). Les éléments partagés ici sont chiffrés avec la clé de l'organisation."
+        let role = org.role?.label ?? String(localized: "Member")
+        return String(localized: "Your role: \(role). The items shared here are encrypted with the organization's key.")
     }
 
     private func rights(_ collection: CollectionView) -> String? {
         var rights: [String] = []
-        if collection.readOnly { rights.append("lecture seule") }
-        if collection.hidePasswords { rights.append("mots de passe masqués") }
-        if collection.canManage { rights.append("vous la gérez") }
+        if collection.readOnly { rights.append(String(localized: "read-only")) }
+        if collection.hidePasswords { rights.append(String(localized: "passwords hidden")) }
+        if collection.canManage { rights.append(String(localized: "you manage it")) }
         return rights.isEmpty ? nil : rights.joined(separator: " · ")
     }
 }
@@ -244,11 +244,10 @@ private extension OrganizationView {
     var hasManagedCollections: Bool { collections.contains(where: \.canManage) }
 }
 
-// MARK: Membres
+// MARK: Members
 
-/// Les membres d'une organisation, groupés par état ; un appui ouvre leurs
-/// actions (confirmer après vérification de l'empreinte, modifier,
-/// révoquer, retirer).
+/// An organization's members, grouped by state; a tap opens their actions
+/// (confirm after verifying the fingerprint, edit, revoke, remove).
 struct MembersScreen: View {
     @Environment(PhoneModel.self) private var model
     let organizationID: String
@@ -259,10 +258,10 @@ struct MembersScreen: View {
         let members = model.sharing.members[organizationID]
         List {
             if let members {
-                section("À confirmer", members.filter { $0.status == .accepted },
-                        footer: "Ils ont accepté l'invitation : vérifiez leur phrase d'empreinte avec eux pour leur donner la clé de l'organisation.")
+                section("To confirm", members.filter { $0.status == .accepted },
+                        footer: "They accepted the invitation: verify their fingerprint phrase with them to give them the organization's key.")
                 let invited = members.filter { $0.status == .invited }
-                section("Invitations en attente", invited)
+                section("Pending invitations", invited)
                 if !invited.isEmpty, org?.canManageMembers == true {
                     Section {
                         InvitationNextSteps(email: invited.count == 1 ? invited[0].email : nil,
@@ -271,14 +270,14 @@ struct MembersScreen: View {
                             .accessibilityIdentifier("invitation-next-steps")
                     }
                 }
-                section("Membres", members.filter { $0.status == .confirmed })
-                section("Révoqués", members.filter { $0.status == .revoked })
+                section("Members", members.filter { $0.status == .confirmed })
+                section("Revoked members", members.filter { $0.status == .revoked })
             } else {
                 ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Membres")
+        .navigationTitle("Members")
         .navigationSubtitleIfAvailable(org?.name ?? "")
         .toolbar {
             if org?.canManageMembers == true, model.canEdit {
@@ -288,7 +287,7 @@ struct MembersScreen: View {
                     } label: {
                         Image(systemName: "person.badge.plus")
                     }
-                    .accessibilityLabel("Inviter")
+                    .accessibilityLabel("Invite")
                     .accessibilityIdentifier("invite-members")
                 }
             }
@@ -305,7 +304,7 @@ struct MembersScreen: View {
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ members: [OrganizationMember], footer: String? = nil) -> some View {
+    private func section(_ title: LocalizedStringKey, _ members: [OrganizationMember], footer: LocalizedStringKey? = nil) -> some View {
         if !members.isEmpty {
             Section {
                 ForEach(members, id: \.id) { member in
@@ -330,22 +329,22 @@ struct MembersScreen: View {
         if org?.canManageMembers == true, model.canEdit {
             switch member.status {
             case .accepted:
-                Button("Vérifier l'empreinte et confirmer…") {
+                Button("Verify fingerprint and confirm…") {
                     Task { await model.prepareConfirmation(member, in: organizationID) }
                 }
             case .invited:
-                Button("Renvoyer l'invitation") {
+                Button("Resend invitation") {
                     Task {
-                        await model.memberAction("Invitation renvoyée à \(member.email)", in: organizationID) {
+                        await model.memberAction(String(localized: "Invitation resent to \(member.email)"), in: organizationID) {
                             try await model.session.reinviteOrganizationMember(organizationId: organizationID,
                                                                                memberId: member.id)
                         }
                     }
                 }
             case .revoked:
-                Button("Restaurer l'accès") {
+                Button("Restore access") {
                     Task {
-                        await model.memberAction("Accès de \(member.displayName) restauré", in: organizationID) {
+                        await model.memberAction(String(localized: "Access for \(member.displayName) restored"), in: organizationID) {
                             try await model.session.restoreOrganizationMember(organizationId: organizationID,
                                                                               memberId: member.id)
                         }
@@ -354,17 +353,17 @@ struct MembersScreen: View {
             case .confirmed:
                 EmptyView()
             }
-            Button("Modifier le rôle et les collections…") { model.editMember(member, in: organizationID) }
+            Button("Edit role and collections…") { model.editMember(member, in: organizationID) }
             if member.status != .revoked {
-                Button("Révoquer l'accès…", role: .destructive) {
+                Button("Revoke access…", role: .destructive) {
                     model.sharing.confirmRevoke = MemberTarget(organizationID: organizationID, member: member)
                 }
             }
-            Button("Retirer de l'organisation…", role: .destructive) {
+            Button("Remove from organization…", role: .destructive) {
                 model.sharing.confirmRemove = MemberTarget(organizationID: organizationID, member: member)
             }
         }
-        Button("Copier l'adresse") { model.copy(member.email, label: "Adresse", secret: false) }
+        Button("Copy address") { model.copy(member.email, label: String(localized: "Address"), secret: false) }
     }
 }
 
@@ -384,16 +383,16 @@ private struct MemberRow: View {
             }
             Spacer()
             if member.status == .accepted {
-                Badge(text: "À confirmer", tint: .orange)
+                Badge(text: String(localized: "To confirm"), tint: .orange)
             } else if member.twoFactorEnabled {
-                Image(systemName: "lock.shield").foregroundStyle(.green).accessibilityLabel("Double authentification")
+                Image(systemName: "lock.shield").foregroundStyle(.green).accessibilityLabel("Two-factor authentication")
             }
         }
         .contentShape(Rectangle())
     }
 }
 
-// MARK: Groupes
+// MARK: Groups
 
 struct GroupsScreen: View {
     @Environment(PhoneModel.self) private var model
@@ -404,7 +403,7 @@ struct GroupsScreen: View {
         List {
             Section {
                 if groups.isEmpty {
-                    Text("Aucun groupe pour l'instant.").foregroundStyle(.secondary)
+                    Text("No groups yet.").foregroundStyle(.secondary)
                 }
                 ForEach(groups, id: \.id) { group in
                     Button {
@@ -413,7 +412,7 @@ struct GroupsScreen: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(group.name).foregroundStyle(.primary)
-                            Text("\(group.members.count) membre\(group.members.count > 1 ? "s" : ""), \(group.collections.count) collection\(group.collections.count > 1 ? "s" : "")")
+                            Text((group.members.count > 1 ? String(localized: "\(group.members.count) members") : String(localized: "\(group.members.count) member")) + ", " + (group.collections.count > 1 ? String(localized: "\(group.collections.count) collections") : String(localized: "\(group.collections.count) collection")))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -421,16 +420,16 @@ struct GroupsScreen: View {
                         Button(role: .destructive) {
                             Task { await model.deleteGroup(group, in: organizationID) }
                         } label: {
-                            Label("Supprimer", systemImage: "trash")
+                            Label("Delete", systemImage: "trash")
                         }
                     }
                 }
             } footer: {
-                Text("Un groupe donne les mêmes accès à plusieurs membres. Ses collections s'ajoutent à celles de chaque membre.")
+                Text("A group gives the same access to several members. Its collections add to each member's.")
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Groupes")
+        .navigationTitle("Groups")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -440,7 +439,7 @@ struct GroupsScreen: View {
                 } label: {
                     Image(systemName: "plus")
                 }
-                .accessibilityLabel("Nouveau groupe")
+                .accessibilityLabel("New group")
                 .disabled(!model.canEdit)
             }
         }
@@ -448,9 +447,9 @@ struct GroupsScreen: View {
     }
 }
 
-// MARK: Présentations
+// MARK: Presentations
 
-/// Feuilles, confirmations et alertes du partage, posées sur les onglets.
+/// Sharing sheets, confirmations and alerts, placed on the tabs.
 struct SharingPresentations: ViewModifier {
     @Environment(PhoneModel.self) private var model
 
@@ -479,53 +478,53 @@ struct SharingPresentations: ViewModifier {
                 }
                 .interactiveDismissDisabled(model.sharing.busy)
             }
-            .alert("Vérifier l'empreinte de \(sharing.confirmation?.member.displayName ?? "")",
+            .alert("Verify \(sharing.confirmation?.member.displayName ?? "")'s fingerprint",
                    isPresented: Binding(get: { sharing.confirmation != nil },
                                         set: { if !$0 { sharing.confirmation = nil } }),
                    presenting: sharing.confirmation) { confirmation in
-                Button("Confirmer") { Task { await model.confirmMember(confirmation) } }
-                Button("Annuler", role: .cancel) { sharing.confirmation = nil }
+                Button("Confirm") { Task { await model.confirmMember(confirmation) } }
+                Button("Cancel", role: .cancel) { sharing.confirmation = nil }
             } message: { confirmation in
-                Text("« \(confirmation.fingerprint) »\n\nDemandez à \(confirmation.member.displayName) la phrase d'empreinte de son compte (Verrou : Réglages → Compte ; coffre web : Paramètres → Mon compte). Confirmez seulement si elle est identique : la clé de l'organisation sera chiffrée pour cette personne.")
+                Text("“\(confirmation.fingerprint)”\n\nAsk \(confirmation.member.displayName) for their account's fingerprint phrase (Verrou: Settings → Account; web vault: Settings → My account). Confirm only if it is identical: the organization's key will be encrypted for this person.")
             }
-            .confirmationDialog("Quitter \(sharing.confirmLeave?.name ?? "l'organisation") ?",
+            .confirmationDialog("Leave \(sharing.confirmLeave?.name ?? String(localized: "the organization"))?",
                                 isPresented: Binding(get: { sharing.confirmLeave != nil },
                                                      set: { if !$0 { sharing.confirmLeave = nil } }),
                                 titleVisibility: .visible, presenting: sharing.confirmLeave) { org in
-                Button("Quitter", role: .destructive) { Task { await model.leaveOrganization(org) } }
+                Button("Leave", role: .destructive) { Task { await model.leaveOrganization(org) } }
             } message: { _ in
-                Text("Ses éléments disparaîtront de votre coffre (ils restent dans l'organisation). Pour revenir, il faudra une nouvelle invitation.")
+                Text("Its items will disappear from your vault (they stay in the organization). To come back, a new invitation will be needed.")
             }
-            .confirmationDialog("Supprimer la collection « \(sharing.confirmDelete?.collection.name ?? "") » ?",
+            .confirmationDialog("Delete the collection “\(sharing.confirmDelete?.collection.name ?? "")”?",
                                 isPresented: Binding(get: { sharing.confirmDelete != nil },
                                                      set: { if !$0 { sharing.confirmDelete = nil } }),
                                 titleVisibility: .visible, presenting: sharing.confirmDelete) { target in
-                Button("Supprimer", role: .destructive) { Task { await model.deleteCollection(target) } }
+                Button("Delete", role: .destructive) { Task { await model.deleteCollection(target) } }
             } message: { _ in
-                Text("Ses éléments restent dans l'organisation : les administrateurs les voient toujours.")
+                Text("Its items stay in the organization: the administrators still see them.")
             }
-            .confirmationDialog("Révoquer l'accès de \(sharing.confirmRevoke?.member.displayName ?? "") ?",
+            .confirmationDialog("Revoke access for \(sharing.confirmRevoke?.member.displayName ?? "")?",
                                 isPresented: Binding(get: { sharing.confirmRevoke != nil },
                                                      set: { if !$0 { sharing.confirmRevoke = nil } }),
                                 titleVisibility: .visible, presenting: sharing.confirmRevoke) { target in
-                Button("Révoquer", role: .destructive) {
+                Button("Revoke", role: .destructive) {
                     Task {
-                        await model.memberAction("Accès de \(target.member.displayName) révoqué", in: target.organizationID) {
+                        await model.memberAction(String(localized: "Access for \(target.member.displayName) revoked"), in: target.organizationID) {
                             try await model.session.revokeOrganizationMember(organizationId: target.organizationID,
                                                                              memberId: target.member.id)
                         }
                     }
                 }
             } message: { _ in
-                Text("Il ne voit plus rien de l'organisation ; vous pourrez restaurer son accès.")
+                Text("They no longer see anything of the organization; you can restore their access.")
             }
-            .confirmationDialog("Retirer \(sharing.confirmRemove?.member.displayName ?? "") de l'organisation ?",
+            .confirmationDialog("Remove \(sharing.confirmRemove?.member.displayName ?? "") from the organization?",
                                 isPresented: Binding(get: { sharing.confirmRemove != nil },
                                                      set: { if !$0 { sharing.confirmRemove = nil } }),
                                 titleVisibility: .visible, presenting: sharing.confirmRemove) { target in
-                Button("Retirer", role: .destructive) {
+                Button("Remove", role: .destructive) {
                     Task {
-                        await model.memberAction("\(target.member.displayName) ne fait plus partie de l'organisation",
+                        await model.memberAction(String(localized: "\(target.member.displayName) is no longer part of the organization"),
                                                  in: target.organizationID) {
                             try await model.session.removeOrganizationMember(organizationId: target.organizationID,
                                                                              memberId: target.member.id)
@@ -533,16 +532,16 @@ struct SharingPresentations: ViewModifier {
                     }
                 }
             } message: { _ in
-                Text("Son compte reste sur le serveur. Pour revenir, il lui faudra une nouvelle invitation.")
+                Text("Their account stays on the server. To come back, they will need a new invitation.")
             }
     }
 }
 
-// MARK: Feuilles
+// MARK: Sheets
 
-/// Barre d'une feuille : Annuler, et l'action (en attente pendant l'envoi).
+/// A sheet's bar: Cancel, and the action (pending while sending).
 private struct SheetToolbar: ToolbarContent {
-    let action: String
+    let action: LocalizedStringKey
     let enabled: Bool
     let busy: Bool
     let cancel: () -> Void
@@ -550,7 +549,7 @@ private struct SheetToolbar: ToolbarContent {
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
-            Button("Annuler", action: cancel).disabled(busy)
+            Button("Cancel", action: cancel).disabled(busy)
         }
         ToolbarItem(placement: .confirmationAction) {
             if busy {
@@ -577,7 +576,7 @@ private struct ErrorRow: View {
     }
 }
 
-/// Droits sur une collection, au choix dans un menu, ou pas d'accès.
+/// Permissions on a collection, chosen in a menu, or no access.
 private struct PermissionPicker: View {
     let title: String
     var subtitle: String?
@@ -586,7 +585,7 @@ private struct PermissionPicker: View {
 
     var body: some View {
         Picker(selection: $permission) {
-            Text("Aucun accès").tag(CollectionPermission?.none)
+            Text("No access").tag(CollectionPermission?.none)
             ForEach(CollectionPermission.allCases) { level in
                 Text(level.label).tag(Optional(level))
             }
@@ -607,8 +606,8 @@ private struct PermissionPicker: View {
     }
 }
 
-/// « Partager… » : un ou plusieurs éléments vers les collections d'une
-/// organisation ; « Collections… » pour un élément déjà partagé.
+/// "Share…": one or more items to an organization's collections;
+/// "Collections…" for an item already shared.
 struct ShareToVaultSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -621,7 +620,7 @@ struct ShareToVaultSheet: View {
             Form {
                 Section {
                     if flow.current == nil {
-                        Picker("Organisation", selection: $flow.organizationID) {
+                        Picker("Organization", selection: $flow.organizationID) {
                             ForEach(model.writableOrganizations, id: \.id) { org in
                                 Text(org.name).tag(org.id)
                             }
@@ -631,14 +630,14 @@ struct ShareToVaultSheet: View {
                             flow.collectionIDs = Set(first.map { [$0.id] } ?? [])
                         }
                     } else {
-                        LabeledContent("Organisation", value: flow.current?.organization ?? "")
+                        LabeledContent("Organization", value: flow.current?.organization ?? "")
                     }
                 } footer: {
                     Text(flow.current != nil
-                         ? "Les membres de chaque collection cochée voient l'élément."
+                         ? "The members of each checked collection see the item."
                          : flow.isBulk
-                         ? "Ces éléments quittent votre coffre personnel : chacun est rechiffré avec la clé de l'organisation (pièces jointes comprises)."
-                         : "L'élément quitte votre coffre personnel : il est rechiffré avec la clé de l'organisation, et ses membres le voient selon leurs droits.")
+                         ? "These items leave your personal vault: each one is re-encrypted with the organization's key (attachments included)."
+                         : "The item leaves your personal vault: it is re-encrypted with the organization's key, and its members see it according to their permissions.")
                 }
                 Section {
                     ForEach(organization?.collections ?? [], id: \.id) { collection in
@@ -646,7 +645,7 @@ struct ShareToVaultSheet: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(collection.name)
                                 if collection.readOnly {
-                                    Text("lecture seule").font(.caption).foregroundStyle(.secondary)
+                                    Text("read-only").font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -658,7 +657,7 @@ struct ShareToVaultSheet: View {
                 if let progress = flow.progress {
                     Section {
                         ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1))) {
-                            Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                            Text("\(progress.done) of \(progress.total)").font(.caption).monospacedDigit()
                         }
                     }
                 }
@@ -667,7 +666,7 @@ struct ShareToVaultSheet: View {
             .navigationTitle(heading)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: flow.current == nil ? "Partager" : "Enregistrer",
+                SheetToolbar(action: flow.current == nil ? "Share" : "Save",
                              enabled: !flow.collectionIDs.isEmpty, busy: flow.busy,
                              cancel: { dismiss() },
                              perform: { Task { await model.applySharing(flow) } })
@@ -677,8 +676,8 @@ struct ShareToVaultSheet: View {
     }
 
     private var heading: String {
-        if flow.current != nil { return "Collections" }
-        return flow.isBulk ? "Partager (\(flow.itemIDs.count))" : "Partager"
+        if flow.current != nil { return String(localized: "Collections") }
+        return flow.isBulk ? String(localized: "Share (\(flow.itemIDs.count))") : String(localized: "Share")
     }
 
     private func binding(_ id: String) -> Binding<Bool> {
@@ -691,24 +690,24 @@ struct NewOrganizationSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var collection = "Général"
+    @State private var collection = String(localized: "General")
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nom", text: $name, prompt: Text("Famille Martin"))
+                    TextField("Name", text: $name, prompt: Text("Smith family"))
                         .accessibilityIdentifier("organization-name")
-                    TextField("Première collection", text: $collection, prompt: Text("Général"))
+                    TextField("First collection", text: $collection, prompt: Text("General"))
                 } footer: {
-                    Text("Un coffre partagé dont vous êtes propriétaire. Sa clé est créée sur cet iPhone et chiffrée pour votre compte : le serveur ne la voit jamais. Le serveur peut réserver la création d'organisations à certains comptes.")
+                    Text("A shared vault you own. Its key is created on this iPhone and encrypted for your account: the server never sees it. The server may restrict creating organizations to some accounts.")
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle("Nouvelle organisation")
+            .navigationTitle("New organization")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: "Créer", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                SheetToolbar(action: "Create", enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty,
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.createOrganization(name: name, collection: collection) { dismiss() } }
                 }
@@ -732,16 +731,16 @@ struct RenameOrganizationSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nom", text: $name)
+                    TextField("Name", text: $name)
                 } footer: {
-                    Text("Le nouveau nom s'affiche chez tous les membres à leur prochaine synchronisation.")
+                    Text("The new name shows for all members at their next sync.")
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle("Renommer")
+            .navigationTitle("Rename")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: "Renommer",
+                SheetToolbar(action: "Rename",
                              enabled: !name.trimmingCharacters(in: .whitespaces).isEmpty && name != organization.name,
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.renameOrganization(organization, to: name) { dismiss() } }
@@ -752,8 +751,8 @@ struct RenameOrganizationSheet: View {
     }
 }
 
-/// Création ou modification d'une collection : nom, et droits de chaque
-/// membre et de chaque groupe.
+/// Creating or editing a collection: name, and the permissions of each
+/// member and each group.
 struct CollectionEditorSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -767,10 +766,10 @@ struct CollectionEditorSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nom", text: $draft.name, prompt: Text("Banque"))
+                    TextField("Name", text: $draft.name, prompt: Text("Bank"))
                         .accessibilityIdentifier("collection-name")
                 } footer: {
-                    Text("Son nom est chiffré avec la clé de l'organisation. Propriétaires et administrateurs voient toutes les collections.")
+                    Text("Its name is encrypted with the organization's key. Owners and administrators see all collections.")
                 }
                 if draft.loading {
                     Section { ProgressView().frame(maxWidth: .infinity) }
@@ -778,14 +777,14 @@ struct CollectionEditorSheet: View {
                     Section {
                         Label(unavailable, systemImage: "info.circle").foregroundStyle(.secondary)
                     } header: {
-                        SectionHeader("Accès")
+                        SectionHeader("Access")
                     }
                 } else {
                     Section {
                         ForEach(draft.members.filter { $0.status != .revoked }, id: \.id) { member in
                             if member.accessAll {
                                 LabeledContent {
-                                    Text("toutes").foregroundStyle(.secondary)
+                                    Text("all").foregroundStyle(.secondary)
                                 } label: {
                                     Label(member.displayName, systemImage: member.role.symbol)
                                 }
@@ -797,28 +796,28 @@ struct CollectionEditorSheet: View {
                             }
                         }
                     } header: {
-                        SectionHeader("Membres")
+                        SectionHeader("Members")
                     }
                     if model.organization(draft.organizationID)?.useGroups == true {
                         Section {
                             if draft.groups.isEmpty {
-                                Text("Aucun groupe.").foregroundStyle(.secondary)
+                                Text("No groups.").foregroundStyle(.secondary)
                             }
                             ForEach(draft.groups, id: \.id) { group in
                                 PermissionPicker(title: group.name, symbol: "person.3",
                                                  permission: $draft.groupAccess[group.id])
                             }
                         } header: {
-                            SectionHeader("Groupes")
+                            SectionHeader("Groups")
                         }
                     }
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle(draft.isNew ? "Nouvelle collection" : "Collection")
+            .navigationTitle(draft.isNew ? "New collection" : "Collection")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: draft.isNew ? "Créer" : "Enregistrer",
+                SheetToolbar(action: draft.isNew ? "Create" : "Save",
                              enabled: !draft.name.trimmingCharacters(in: .whitespaces).isEmpty && !draft.loading,
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.saveCollection(draft) { dismiss() } }
@@ -826,9 +825,9 @@ struct CollectionEditorSheet: View {
             }
         }
         .task {
-            // Membres, groupes et accès lus ici, une fois la feuille ouverte ;
-            // le nom déjà saisi est gardé. Un échec s'affiche à la place des
-            // accès (le nom reste modifiable).
+            // Members, groups and access read here, once the sheet is open;
+            // the name already typed is kept. A failure shows in place of
+            // the access (the name stays editable).
             guard draft.loading, let org = model.organization(draft.organizationID) else { return }
             var loaded = await model.session.loadCollectionDraft(draft, organization: org,
                                                                  accountEmail: model.account?.email)
@@ -838,7 +837,7 @@ struct CollectionEditorSheet: View {
     }
 }
 
-/// Invitation (une ou plusieurs adresses) ou modification d'un membre.
+/// Invitation (one or more addresses) or edit of a member.
 struct MemberEditorSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -861,17 +860,17 @@ struct MemberEditorSheet: View {
             Form {
                 Section {
                     if draft.isNew {
-                        TextField("Adresses e-mail", text: $draft.emails,
-                                  prompt: Text("lea@exemple.fr, tom@exemple.fr"), axis: .vertical)
+                        TextField("Email addresses", text: $draft.emails,
+                                  prompt: Text("lea@example.com, tom@example.com"), axis: .vertical)
                             .keyboardType(.emailAddress)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .lineLimit(1...4)
                             .accessibilityIdentifier("invite-emails")
                     } else {
-                        LabeledContent("E-mail", value: draft.emails)
+                        LabeledContent("Email", value: draft.emails)
                     }
-                    Picker("Rôle", selection: $draft.role) {
+                    Picker("Role", selection: $draft.role) {
                         ForEach(roles, id: \.self) { role in
                             Text(role.label).tag(role)
                         }
@@ -879,11 +878,11 @@ struct MemberEditorSheet: View {
                     .disabled(roles.count == 1)
                 } footer: {
                     Text(draft.role.explanation + (organization?.isOwner == true ? ""
-                         : " Seul un propriétaire donne les rôles de gestionnaire, d'administrateur ou de propriétaire."))
+                         : " " + String(localized: "Only an owner gives the manager, administrator or owner roles.")))
                 }
                 Section {
                     if draft.seesAll {
-                        Text("Toutes les collections, avec tous les droits.").foregroundStyle(.secondary)
+                        Text("All collections, with all permissions.").foregroundStyle(.secondary)
                     } else {
                         ForEach(organization?.collections ?? [], id: \.id) { collection in
                             PermissionPicker(title: collection.name, symbol: "tray.full",
@@ -894,15 +893,15 @@ struct MemberEditorSheet: View {
                     SectionHeader("Collections")
                 } footer: {
                     if draft.isNew {
-                        Text("Sans compte, la personne le crée avec le lien reçu (Verrou : « Créer un compte » à la connexion). Avec un compte, elle colle le lien dans « Rejoindre une organisation ». Vous la confirmerez ensuite en vérifiant son empreinte.")
+                        Text("Without an account, the person creates one with the link received (Verrou: “Create an account” at sign-in). With an account, they paste the link into “Join an organization”. You will then confirm them by verifying their fingerprint.")
                     }
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle(draft.isNew ? "Inviter" : draft.member?.displayName ?? "Membre")
+            .navigationTitle(draft.isNew ? String(localized: "Invite") : draft.member?.displayName ?? String(localized: "Member"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: draft.isNew ? "Inviter" : "Enregistrer", enabled: draft.emails.contains("@"),
+                SheetToolbar(action: draft.isNew ? "Invite" : "Save", enabled: draft.emails.contains("@"),
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.saveMember(draft, in: organizationID) { dismiss() } }
                 }
@@ -927,7 +926,7 @@ struct GroupEditorSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nom du groupe", text: $draft.name, prompt: Text("Parents"))
+                    TextField("Group name", text: $draft.name, prompt: Text("Parents"))
                 }
                 Section {
                     ForEach(members, id: \.id) { member in
@@ -941,7 +940,7 @@ struct GroupEditorSheet: View {
                         }
                     }
                 } header: {
-                    SectionHeader("Membres")
+                    SectionHeader("Members")
                 }
                 Section {
                     ForEach(model.organization(organizationID)?.collections ?? [], id: \.id) { collection in
@@ -953,10 +952,10 @@ struct GroupEditorSheet: View {
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle(draft.id == nil ? "Nouveau groupe" : draft.name)
+            .navigationTitle(draft.id == nil ? String(localized: "New group") : draft.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: draft.id == nil ? "Créer" : "Enregistrer",
+                SheetToolbar(action: draft.id == nil ? "Create" : "Save",
                              enabled: !draft.name.trimmingCharacters(in: .whitespaces).isEmpty,
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.saveGroup(draft, in: organizationID) { dismiss() } }
@@ -966,8 +965,8 @@ struct GroupEditorSheet: View {
     }
 }
 
-/// « Rejoindre une organisation » : le lien du courriel d'invitation, collé
-/// ici, avec un compte qui existe déjà.
+/// "Join an organization": the link from the invitation email, pasted here,
+/// with an account that already exists.
 struct JoinOrganizationSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -988,7 +987,7 @@ struct JoinOrganizationSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Lien d'invitation", text: $link,
+                    TextField("Invitation link", text: $link,
                               prompt: Text("https://…/#/accept-organization/?…"), axis: .vertical)
                         .lineLimit(2...5)
                         .textInputAutocapitalization(.never)
@@ -1009,10 +1008,10 @@ struct JoinOrganizationSheet: View {
                     Section {
                         switch info {
                         case .success(let invitation):
-                            LabeledContent("Invitation de", value: invitation.organizationName ?? "une organisation")
-                            LabeledContent("Pour", value: invitation.email)
+                            LabeledContent("Invitation from", value: invitation.organizationName ?? String(localized: "an organization"))
+                            LabeledContent("For", value: invitation.email)
                             if !invitation.forThisAccount && model.mode == .vaultwarden {
-                                Label("Cette invitation vise une autre adresse que celle de ce compte.",
+                                Label("This invitation is for an address other than this account's.",
                                       systemImage: "exclamationmark.triangle.fill")
                                     .foregroundStyle(.orange)
                             }
@@ -1021,15 +1020,15 @@ struct JoinOrganizationSheet: View {
                                 .foregroundStyle(.orange)
                         }
                     } footer: {
-                        Text("Une fois l'invitation acceptée, un administrateur vous confirme en comparant votre phrase d'empreinte : la clé de l'organisation est alors chiffrée pour votre compte.")
+                        Text("Once the invitation is accepted, an administrator confirms you by comparing your fingerprint phrase: the organization's key is then encrypted for your account.")
                     }
                 }
                 ErrorRow(error: model.sharing.error)
             }
-            .navigationTitle("Rejoindre")
+            .navigationTitle("Join")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                SheetToolbar(action: "Rejoindre", enabled: (try? info?.get())?.forThisAccount == true,
+                SheetToolbar(action: "Join", enabled: (try? info?.get())?.forThisAccount == true,
                              busy: model.sharing.busy, cancel: { dismiss() }) {
                     Task { if await model.joinOrganization(link: trimmed) { dismiss() } }
                 }
@@ -1038,8 +1037,8 @@ struct JoinOrganizationSheet: View {
     }
 }
 
-/// Ma phrase d'empreinte, à lire à l'administrateur qui me confirme (ou au
-/// contact d'urgence).
+/// My fingerprint phrase, to read to the administrator who confirms me (or
+/// to the emergency contact).
 struct FingerprintSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -1057,7 +1056,7 @@ struct FingerprintSheet: View {
                             .foregroundStyle(.indigo)
                             .accessibilityHidden(true)
                     }
-                    Text(pending.map { "En attente de \($0.name)" } ?? "Phrase d'empreinte")
+                    Text(pending.map { String(localized: "Waiting for \($0.name)") } ?? String(localized: "Fingerprint phrase"))
                         .font(.title3.weight(.semibold))
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1066,7 +1065,7 @@ struct FingerprintSheet: View {
                         .frame(maxWidth: .infinity)
                         .glassSurface(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
                         .accessibilityIdentifier("own-fingerprint")
-                    Text("Lisez cette phrase à la personne qui vous confirme : elle doit voir la même, mot pour mot. Elle garantit que la clé de l'organisation sera chiffrée pour vous, et pour personne d'autre.")
+                    Text("Read this phrase to the person who confirms you: they must see the same one, word for word. It guarantees that the organization's key will be encrypted for you, and for no one else.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1080,8 +1079,8 @@ struct FingerprintSheet: View {
             }
             .task { fingerprint = try? await model.session.ownFingerprint() }
         }
-        // Grandes tailles de texte : la feuille entière, la phrase visible
-        // sans défiler.
+        // Large text sizes: the full sheet, the phrase visible without
+        // scrolling.
         .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.medium, .large])
     }
 }

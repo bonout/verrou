@@ -1,16 +1,16 @@
 import SwiftUI
 
-/// Génération d'une clé SSH en cours : la fenêtre « Nouvelle clé SSH ».
+/// SSH key generation in progress: the "New SSH Key" window.
 struct SshKeyGenerator: Identifiable {
     let id = UUID()
-    /// Dossier affiché à l'ouverture : la clé y est rangée.
+    /// Folder displayed when opened: the key goes there.
     let folderID: String?
 }
 
 extension AppModel {
-    /// « Nouvelle clé SSH… » : Ed25519 par défaut, RSA 4096 au choix. La clé
-    /// est tirée par le cœur Rust et rangée dans le coffre ; la clé privée ne
-    /// passe jamais par Swift.
+    /// "New SSH Key…": Ed25519 by default, RSA 4096 as an option. The key is
+    /// drawn by the Rust core and stored in the vault; the private key never
+    /// goes through Swift.
     func newSshKey() {
         guard canEdit else { return }
         var folderID: String?
@@ -20,24 +20,26 @@ extension AppModel {
         sshKeyGenerator = SshKeyGenerator(folderID: folderID)
     }
 
-    /// Génère la clé, l'enregistre, puis la sélectionne.
+    /// Generates the key, saves it, then selects it.
     func createSshKey(name: String, type: SshKeyType, folderID: String?) async throws {
         guard canEdit else { return }
         let id = try await session.createSshKey(name: name, folderId: folderID, keyType: type)
         afterWrite(select: id)
         sshKeyGenerator = nil
-        toast = writeToast("Clé SSH créée", detail: "« Copier la clé publique » pour l'installer sur un serveur")
+        toast = writeToast(String(localized: "SSH key created"),
+                           detail: String(localized: "“Copy Public Key” to install it on a server"))
     }
 
-    /// La clé publique (`ssh-ed25519 AAAA…`) : pas un secret, copiée telle quelle.
+    /// The public key (`ssh-ed25519 AAAA…`): not a secret, copied as is.
     func copyPublicKey(of itemID: String) {
         guard let detail = try? session.detail(id: itemID),
               let key = detail.fields.first(where: { $0.id == "public_key" })?.value,
               !key.isEmpty
         else {
-            toast = Toast(message: "Pas de clé publique", detail: "Cet élément n'a pas de clé publique", failure: true)
+            toast = Toast(message: String(localized: "No public key"),
+                          detail: String(localized: "This item has no public key"), failure: true)
             return
         }
-        copy(key.trimmingCharacters(in: .whitespacesAndNewlines), label: "Clé publique", secret: false)
+        copy(key.trimmingCharacters(in: .whitespacesAndNewlines), label: String(localized: "Public key"), secret: false)
     }
 }

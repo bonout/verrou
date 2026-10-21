@@ -1,28 +1,28 @@
-//! Membres d'une organisation : inviter, confirmer, gérer les rôles et les
-//! accès aux collections, sans jeton d'administration du serveur.
+//! Members of an organization: invite, confirm, manage roles and
+//! collection access, without a server admin token.
 //!
-//! Le parcours d'un nouveau membre, sur Vaultwarden 1.37 :
-//! 1. un propriétaire ou un administrateur l'**invite** par son adresse
-//!    (`POST /api/organizations/{org}/users/invite`) ; si le serveur envoie
-//!    des courriels, le lien d'invitation porte un jeton signé par le
-//!    serveur, sinon le serveur garde une invitation à son nom ;
-//! 2. la personne crée son compte (voir `register`) ou se connecte, puis
-//!    **accepte** (`…/users/{membre}/accept`, avec le jeton) ;
-//! 3. un propriétaire ou un administrateur la **confirme** : la clé de
-//!    l'organisation est chiffrée pour sa clé publique (RSA-OAEP-SHA1, par
-//!    le SDK) et confiée au serveur, qui ne peut pas la lire.
+//! A new member's journey, on Vaultwarden 1.37:
+//! 1. an owner or an admin **invites** them by address
+//!    (`POST /api/organizations/{org}/users/invite`); if the server sends
+//!    emails, the invitation link carries a token signed by the
+//!    server, otherwise the server keeps an invitation in their name;
+//! 2. the person creates their account (see `register`) or logs in, then
+//!    **accepts** (`…/users/{member}/accept`, with the token);
+//! 3. an owner or an admin **confirms** them: the organization's
+//!    key is encrypted for their public key (RSA-OAEP-SHA1, by
+//!    the SDK) and handed to the server, which cannot read it.
 //!
-//! Comme pour l'accès d'urgence, la clé publique vient du serveur : avant de
-//! confirmer, l'utilisateur compare son **empreinte** (phrase de 5 mots) avec
-//! celle que le membre lit dans son compte ; à l'envoi, la clé est relue et
-//! refusée si son empreinte a changé.
+//! As for emergency access, the public key comes from the server: before
+//! confirming, the user compares its **fingerprint** (5-word phrase) with
+//! the one the member reads in their account; when sending, the key is read again and
+//! refused if its fingerprint changed.
 //!
-//! Les droits sont ceux de Vaultwarden, vérifiés ici avant tout envoi pour
-//! un message clair (le serveur les vérifie de toute façon) : voir la liste
-//! (propriétaire, administrateur, gestionnaire avec accès à toutes les
-//! collections) ; gérer (propriétaire, administrateur) ; inviter, confirmer,
-//! retirer un gestionnaire, un administrateur ou un propriétaire, ou donner
-//! ces rôles (propriétaire seulement).
+//! The rights are Vaultwarden's, checked here before any request for
+//! a clear message (the server checks them anyway): view the list
+//! (owner, admin, manager with access to all
+//! collections); manage (owner, admin); invite, confirm,
+//! remove a manager, an admin or an owner, or grant
+//! these roles (owner only).
 
 use bitwarden_core::OrganizationId;
 use bitwarden_core::key_management::SymmetricKeySlotId;
@@ -33,22 +33,22 @@ use serde_json::{Value, json};
 use crate::emergency::key_fingerprint;
 use crate::{Connection, Error, Organization};
 
-/// Nombre d'adresses par invitation (limite du coffre web).
+/// Number of addresses per invitation (web vault limit).
 pub const MAX_INVITES: usize = 20;
 
-/// Rôle d'un membre dans l'organisation.
+/// Role of a member in the organization.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MemberRole {
     Owner,
     Admin,
     User,
-    /// Gestionnaire (le rôle « personnalisé » des apps Bitwarden, que
-    /// Vaultwarden traite comme un gestionnaire).
+    /// Manager (the "custom" role of the Bitwarden apps, which
+    /// Vaultwarden treats as a manager).
     Manager,
 }
 
 impl MemberRole {
-    /// Numéro du rôle dans l'API (`type`).
+    /// Role number in the API (`type`).
     pub fn code(self) -> u8 {
         match self {
             Self::Owner => 0,
@@ -58,7 +58,7 @@ impl MemberRole {
         }
     }
 
-    /// `4` (personnalisé) est le gestionnaire de Vaultwarden.
+    /// `4` (custom) is Vaultwarden's manager.
     pub fn from_code(code: i64) -> Option<Self> {
         match code {
             0 => Some(Self::Owner),
@@ -69,36 +69,36 @@ impl MemberRole {
         }
     }
 
-    /// Propriétaires et administrateurs voient toutes les collections : le
-    /// serveur ignore alors la liste envoyée.
+    /// Owners and admins see all collections: the
+    /// server then ignores the list sent.
     pub fn sees_all_collections(self) -> bool {
         matches!(self, Self::Owner | Self::Admin)
     }
 
-    /// Rôles au-dessus de « utilisateur » : seul un propriétaire les donne,
-    /// les retire, invite ou confirme ceux qui les ont.
+    /// Roles above "user": only an owner grants them,
+    /// removes them, invites or confirms those who have them.
     fn is_privileged(self) -> bool {
         self != Self::User
     }
 }
 
-/// État d'un membre.
+/// Status of a member.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MemberStatus {
-    /// Accès retiré (restaurable).
+    /// Access revoked (restorable).
     Revoked,
-    /// Invitation envoyée, pas encore acceptée.
+    /// Invitation sent, not accepted yet.
     Invited,
-    /// Invitation acceptée : à confirmer (empreinte).
+    /// Invitation accepted: to be confirmed (fingerprint).
     Accepted,
-    /// Confirmé : il a la clé de l'organisation.
+    /// Confirmed: they have the organization's key.
     Confirmed,
 }
 
 impl MemberStatus {
     fn from_code(code: i64) -> Option<Self> {
         match code {
-            // Vaultwarden décale l'état d'un membre révoqué ; l'API rend -1.
+            // Vaultwarden shifts a revoked member's status; the API returns -1.
             i64::MIN..=-1 => Some(Self::Revoked),
             0 => Some(Self::Invited),
             1 => Some(Self::Accepted),
@@ -108,15 +108,15 @@ impl MemberStatus {
     }
 }
 
-/// Accès d'un membre à une collection.
+/// A member's access to a collection.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CollectionAccess {
     pub id: String,
-    /// Voir sans modifier.
+    /// View without modifying.
     pub read_only: bool,
-    /// Remplir sans voir les mots de passe.
+    /// Fill without seeing the passwords.
     pub hide_passwords: bool,
-    /// Gérer la collection (membres, droits).
+    /// Manage the collection (members, rights).
     pub manage: bool,
 }
 
@@ -131,30 +131,30 @@ impl CollectionAccess {
     }
 }
 
-/// Un membre de l'organisation, tel que le serveur le décrit à un
-/// administrateur.
+/// A member of the organization, as the server describes them to an
+/// admin.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Member {
-    /// Identifiant de l'adhésion (pas du compte).
+    /// Id of the membership (not of the account).
     pub id: String,
-    /// Compte du membre.
+    /// The member's account.
     pub user_id: String,
-    /// Nom choisi par le membre (une fois l'invitation acceptée).
+    /// Name chosen by the member (once the invitation is accepted).
     pub name: Option<String>,
     pub email: String,
     pub role: MemberRole,
     pub status: MemberStatus,
-    /// Toutes les collections (propriétaire, administrateur, ou
-    /// gestionnaire avec accès complet).
+    /// All collections (owner, admin, or
+    /// manager with full access).
     pub access_all: bool,
-    /// Accès donnés collection par collection (vide si `access_all`).
+    /// Access granted collection by collection (empty if `access_all`).
     pub collections: Vec<CollectionAccess>,
-    /// Groupes (gardés tels quels quand on modifie le membre).
+    /// Groups (kept as is when the member is modified).
     pub groups: Vec<String>,
-    /// Double authentification activée sur son compte.
+    /// Two-step login enabled on their account.
     pub two_factor_enabled: bool,
-    /// Le compte existe déjà (mot de passe principal choisi) ; sinon
-    /// l'invité doit d'abord créer son compte.
+    /// The account already exists (master password chosen); otherwise
+    /// the invitee must create their account first.
     pub has_account: bool,
 }
 
@@ -207,7 +207,7 @@ impl Member {
             collections,
             groups,
             two_factor_enabled: flag("twoFactorEnabled"),
-            // Absent des anciennes versions : on suppose le compte créé.
+            // Missing from older versions: assume the account is created.
             has_account: value
                 .get("hasMasterPassword")
                 .and_then(Value::as_bool)
@@ -215,7 +215,7 @@ impl Member {
         })
     }
 
-    /// Nom à afficher : son nom, sinon son adresse.
+    /// Name to display: their name, otherwise their address.
     pub fn display_name(&self) -> &str {
         self.name.as_deref().unwrap_or(&self.email)
     }
@@ -233,24 +233,24 @@ fn parse_members(body: &Value) -> Vec<Member> {
     members
 }
 
-/// Ce que le compte peut faire des membres d'une organisation.
+/// What the account can do with the members of an organization.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MemberRights {
-    /// Voir la liste des membres.
+    /// View the member list.
     pub view: bool,
-    /// Inviter, confirmer, modifier, révoquer, retirer.
+    /// Invite, confirm, modify, revoke, remove.
     pub manage: bool,
-    /// Propriétaire : les rôles au-dessus d'« utilisateur » aussi.
+    /// Owner: the roles above "user" too.
     pub owner: bool,
 }
 
 impl Organization {
-    /// Les droits du compte sur les membres de cette organisation.
+    /// The account's rights over the members of this organization.
     pub fn member_rights(&self) -> MemberRights {
         let manage = matches!(self.role, Some(MemberRole::Owner | MemberRole::Admin));
         MemberRights {
-            // Gestionnaire : seulement avec l'accès à toutes les collections
-            // (sinon le serveur répond 404).
+            // Manager: only with access to all collections
+            // (otherwise the server answers 404).
             view: self.admin,
             manage,
             owner: self.role == Some(MemberRole::Owner),
@@ -258,11 +258,11 @@ impl Organization {
     }
 }
 
-/// Ce qu'on veut faire d'un membre, pour vérifier les droits avant l'envoi.
+/// What we want to do with a member, to check the rights before sending.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MemberAction {
     Invite(MemberRole),
-    /// Nouveau rôle ; le rôle actuel est celui du membre.
+    /// New role; the current role is the member's.
     Edit(MemberRole),
     Reinvite,
     Confirm,
@@ -271,7 +271,7 @@ pub enum MemberAction {
     Remove,
 }
 
-/// Les règles de Vaultwarden, avec un message qui dit quoi faire.
+/// Vaultwarden's rules, with a message that says what to do.
 pub fn check_rights(
     rights: MemberRights,
     action: MemberAction,
@@ -279,43 +279,41 @@ pub fn check_rights(
 ) -> Result<(), Error> {
     let refuse = |message: &str| Err(Error::Invalid(message.to_owned()));
     if !rights.manage {
-        return refuse(
-            "seuls les propriétaires et les administrateurs de l'organisation gèrent ses membres",
-        );
+        return refuse("only the organization's owners and admins manage its members");
     }
     if rights.owner {
         return Ok(());
     }
     let current = member.map(|m| m.role);
     match action {
-        MemberAction::Invite(role) if role.is_privileged() => refuse(
-            "seul un propriétaire peut inviter un gestionnaire, un administrateur ou un propriétaire",
-        ),
+        MemberAction::Invite(role) if role.is_privileged() => {
+            refuse("only an owner can invite a manager, an admin or an owner")
+        }
         MemberAction::Edit(_) if current == Some(MemberRole::Owner) => {
-            refuse("seul un propriétaire peut modifier un propriétaire")
+            refuse("only an owner can modify an owner")
         }
         MemberAction::Edit(role)
             if Some(role) != current
                 && (role.sees_all_collections()
                     || current.is_some_and(MemberRole::sees_all_collections)) =>
         {
-            refuse("seul un propriétaire peut donner ou retirer le rôle d'administrateur")
+            refuse("only an owner can grant or remove the admin role")
         }
-        MemberAction::Confirm if current.is_some_and(MemberRole::is_privileged) => refuse(
-            "seul un propriétaire peut confirmer un gestionnaire, un administrateur ou un propriétaire",
-        ),
-        MemberAction::Remove if current.is_some_and(MemberRole::is_privileged) => refuse(
-            "seul un propriétaire peut retirer un gestionnaire, un administrateur ou un propriétaire",
-        ),
+        MemberAction::Confirm if current.is_some_and(MemberRole::is_privileged) => {
+            refuse("only an owner can confirm a manager, an admin or an owner")
+        }
+        MemberAction::Remove if current.is_some_and(MemberRole::is_privileged) => {
+            refuse("only an owner can remove a manager, an admin or an owner")
+        }
         MemberAction::Revoke | MemberAction::Restore if current == Some(MemberRole::Owner) => {
-            refuse("seul un propriétaire peut révoquer ou restaurer un propriétaire")
+            refuse("only an owner can revoke or restore an owner")
         }
         _ => Ok(()),
     }
 }
 
-/// Les adresses saisies (séparées par des virgules, points-virgules,
-/// espaces ou retours à la ligne), sans doublon, en minuscules.
+/// The typed addresses (separated by commas, semicolons,
+/// spaces or line breaks), without duplicates, lower-cased.
 pub fn parse_emails(text: &str) -> Result<Vec<String>, Error> {
     let mut emails: Vec<String> = Vec::new();
     for raw in text.split(|c: char| c == ',' || c == ';' || c.is_whitespace()) {
@@ -333,7 +331,7 @@ pub fn parse_emails(text: &str) -> Result<Vec<String>, Error> {
                 && !domain.ends_with('.')
         }) && email.matches('@').count() == 1;
         if !valid {
-            return Err(Error::Invalid(format!("adresse e-mail invalide : {email}")));
+            return Err(Error::Invalid(format!("invalid email address: {email}")));
         }
         if !emails.contains(&email) {
             emails.push(email);
@@ -341,18 +339,18 @@ pub fn parse_emails(text: &str) -> Result<Vec<String>, Error> {
     }
     if emails.is_empty() {
         return Err(Error::Invalid(
-            "saisissez au moins une adresse e-mail".to_owned(),
+            "enter at least one email address".to_owned(),
         ));
     }
     if emails.len() > MAX_INVITES {
         return Err(Error::Invalid(format!(
-            "{MAX_INVITES} adresses au plus par invitation"
+            "at most {MAX_INVITES} addresses per invitation"
         )));
     }
     Ok(emails)
 }
 
-/// Le corps de `POST /api/organizations/{org}/users/invite`.
+/// The body of `POST /api/organizations/{org}/users/invite`.
 pub fn invite_body(emails: &[String], role: MemberRole, collections: &[CollectionAccess]) -> Value {
     json!({
         "emails": emails,
@@ -364,8 +362,8 @@ pub fn invite_body(emails: &[String], role: MemberRole, collections: &[Collectio
     })
 }
 
-/// Le corps de `PUT /api/organizations/{org}/users/{membre}` : le rôle et
-/// les collections remplacent les précédents ; les groupes sont gardés.
+/// The body of `PUT /api/organizations/{org}/users/{member}`: the role and
+/// the collections replace the previous ones; the groups are kept.
 pub fn edit_body(role: MemberRole, collections: &[CollectionAccess], groups: &[String]) -> Value {
     json!({
         "type": role.code(),
@@ -385,19 +383,19 @@ fn access_list(role: MemberRole, collections: &[CollectionAccess]) -> Vec<Value>
 }
 
 impl Connection {
-    /// L'organisation, d'après le cache (le compte doit en être membre confirmé).
+    /// The organization, from the cache (the account must be a confirmed member).
     pub(crate) fn organization(&self, organization_id: &str) -> Result<Organization, Error> {
         let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
         let sync = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
+            .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?;
         self.decrypt_directory(&sync)
             .organizations
             .into_iter()
             .find(|o| o.id == organization_id)
-            .ok_or_else(|| Error::Invalid("organisation inconnue".to_owned()))
+            .ok_or_else(|| Error::Invalid("unknown organization".to_owned()))
     }
 
-    /// Vérifie les droits du compte pour cette action, d'après le cache.
+    /// Checks the account's rights for this action, from the cache.
     fn require_rights(
         &self,
         organization_id: &str,
@@ -408,14 +406,14 @@ impl Connection {
         check_rights(rights, action, member)
     }
 
-    /// Les membres de l'organisation, triés par nom.
+    /// The organization's members, sorted by name.
     pub async fn organization_members(
         &mut self,
         organization_id: &str,
     ) -> Result<Vec<Member>, Error> {
         if !self.organization(organization_id)?.member_rights().view {
             return Err(Error::Invalid(
-                "votre rôle ne permet pas de voir les membres de cette organisation".to_owned(),
+                "your role does not allow viewing the members of this organization".to_owned(),
             ));
         }
         let access = self.access_token().await?;
@@ -433,8 +431,8 @@ impl Connection {
         Ok(parse_members(&body))
     }
 
-    /// Un membre, relu sur le serveur (son état et son compte font foi, pas
-    /// ce que l'interface affiche).
+    /// A member, read again from the server (their status and account are authoritative, not
+    /// what the interface shows).
     async fn member(&mut self, organization_id: &str, member_id: &str) -> Result<Member, Error> {
         let access = self.access_token().await?;
         let body = self
@@ -448,12 +446,12 @@ impl Connection {
                 None,
             )
             .await?;
-        Member::parse(&body).ok_or_else(|| Error::Server("membre illisible".to_owned()))
+        Member::parse(&body).ok_or_else(|| Error::Server("unreadable member".to_owned()))
     }
 
-    /// Invite une ou plusieurs adresses. Le serveur envoie le lien
-    /// d'invitation par courriel (sans courriel, il garde une invitation au
-    /// nom de l'adresse, et un compte existant l'accepte d'office).
+    /// Invites one or more addresses. The server sends the invitation
+    /// link by email (without email, it keeps an invitation in the
+    /// address's name, and an existing account accepts it automatically).
     pub async fn invite_members(
         &mut self,
         organization_id: &str,
@@ -464,7 +462,7 @@ impl Connection {
         let emails = parse_emails(emails)?;
         if emails.contains(&self.account.email.to_lowercase()) {
             return Err(Error::Invalid(
-                "vous êtes déjà membre de cette organisation".to_owned(),
+                "you are already a member of this organization".to_owned(),
             ));
         }
         self.require_rights(organization_id, MemberAction::Invite(role), None)?;
@@ -478,7 +476,7 @@ impl Connection {
         Ok(emails)
     }
 
-    /// Renvoie l'invitation (courriel) d'un membre qui ne l'a pas acceptée.
+    /// Resends the invitation (email) of a member who has not accepted it.
     pub async fn reinvite_member(
         &mut self,
         organization_id: &str,
@@ -488,7 +486,7 @@ impl Connection {
         self.require_rights(organization_id, MemberAction::Reinvite, Some(&member))?;
         if member.status != MemberStatus::Invited {
             return Err(Error::Invalid(
-                "ce membre a déjà accepté l'invitation".to_owned(),
+                "this member has already accepted the invitation".to_owned(),
             ));
         }
         self.org_call(
@@ -499,7 +497,7 @@ impl Connection {
         .await
     }
 
-    /// Change le rôle et les accès aux collections d'un membre.
+    /// Changes a member's role and collection access.
     pub async fn edit_member(
         &mut self,
         organization_id: &str,
@@ -518,7 +516,7 @@ impl Connection {
         .await
     }
 
-    /// Retire l'accès d'un membre sans le supprimer (restaurable).
+    /// Revokes a member's access without deleting them (restorable).
     pub async fn revoke_member(
         &mut self,
         organization_id: &str,
@@ -528,7 +526,7 @@ impl Connection {
         self.require_rights(organization_id, MemberAction::Revoke, Some(&member))?;
         if member.user_id == self.account.user_id {
             return Err(Error::Invalid(
-                "vous ne pouvez pas révoquer votre propre accès".to_owned(),
+                "you cannot revoke your own access".to_owned(),
             ));
         }
         self.org_call(
@@ -539,7 +537,7 @@ impl Connection {
         .await
     }
 
-    /// Rend son accès à un membre révoqué (dans l'état d'avant).
+    /// Gives a revoked member their access back (in the previous state).
     pub async fn restore_member(
         &mut self,
         organization_id: &str,
@@ -555,7 +553,7 @@ impl Connection {
         .await
     }
 
-    /// Retire un membre de l'organisation (son compte reste sur le serveur).
+    /// Removes a member from the organization (their account stays on the server).
     pub async fn remove_member(
         &mut self,
         organization_id: &str,
@@ -565,7 +563,7 @@ impl Connection {
         self.require_rights(organization_id, MemberAction::Remove, Some(&member))?;
         if member.user_id == self.account.user_id {
             return Err(Error::Invalid(
-                "pour quitter l'organisation, passez par le coffre web".to_owned(),
+                "to leave the organization, use the web vault".to_owned(),
             ));
         }
         self.org_call(
@@ -576,8 +574,8 @@ impl Connection {
         .await
     }
 
-    /// Empreinte de la clé publique d'un membre qui a accepté l'invitation,
-    /// à comparer avec la sienne avant de le confirmer.
+    /// Fingerprint of the public key of a member who accepted the invitation,
+    /// to compare with theirs before confirming them.
     pub async fn member_fingerprint(
         &mut self,
         organization_id: &str,
@@ -587,17 +585,17 @@ impl Connection {
         self.require_rights(organization_id, MemberAction::Confirm, Some(&member))?;
         if member.status != MemberStatus::Accepted {
             return Err(Error::Invalid(
-                "seul un membre qui a accepté l'invitation peut être confirmé".to_owned(),
+                "only a member who accepted the invitation can be confirmed".to_owned(),
             ));
         }
         let der = self.public_key(&member.user_id).await?;
         key_fingerprint(&member.user_id, &der)
     }
 
-    /// Confirme un membre : la clé de l'organisation est chiffrée pour sa
-    /// clé publique (RSA-OAEP-SHA1, par le SDK). `fingerprint` est
-    /// l'empreinte que l'utilisateur a vérifiée : si la clé du serveur ne
-    /// lui correspond plus, rien n'est envoyé.
+    /// Confirms a member: the organization's key is encrypted for their
+    /// public key (RSA-OAEP-SHA1, by the SDK). `fingerprint` is
+    /// the fingerprint the user checked: if the server's key no longer
+    /// matches it, nothing is sent.
     pub async fn confirm_member(
         &mut self,
         organization_id: &str,
@@ -608,13 +606,13 @@ impl Connection {
         self.require_rights(organization_id, MemberAction::Confirm, Some(&member))?;
         if member.status != MemberStatus::Accepted {
             return Err(Error::Invalid(
-                "seul un membre qui a accepté l'invitation peut être confirmé".to_owned(),
+                "only a member who accepted the invitation can be confirmed".to_owned(),
             ));
         }
         let der = self.public_key(&member.user_id).await?;
         if key_fingerprint(&member.user_id, &der)? != fingerprint {
             return Err(Error::Crypto(
-                "la clé du membre a changé depuis la vérification : rien n'a été envoyé".to_owned(),
+                "the member's key changed since it was checked: nothing was sent".to_owned(),
             ));
         }
         let public_key =
@@ -626,7 +624,7 @@ impl Connection {
             &public_key,
             &key_store.context(),
         )
-        .map_err(|_| Error::Crypto("clé de l'organisation indisponible".to_owned()))?;
+        .map_err(|_| Error::Crypto("organization key unavailable".to_owned()))?;
         let body = json!({ "key": wrapped.to_string() });
         self.org_call(
             Method::POST,
@@ -636,8 +634,8 @@ impl Connection {
         .await
     }
 
-    /// L'empreinte de ma propre clé publique (« Phrase d'empreinte » du
-    /// coffre web), que je lis à celui qui me confirme.
+    /// The fingerprint of my own public key ("Fingerprint phrase" in the
+    /// web vault), which I read to the person confirming me.
     pub fn own_fingerprint(&self) -> Result<String, Error> {
         self.sdk
             .platform()
@@ -691,13 +689,13 @@ mod tests {
             { "id": "m4", "userId": "u4", "email": "x@exemple.fr", "status": 1, "type": 9 },
         ]});
         let members = parse_members(&body);
-        assert_eq!(members.len(), 3, "rôle inconnu ignoré");
-        // Triés par nom affiché.
+        assert_eq!(members.len(), 3, "unknown role ignored");
+        // Sorted by display name.
         assert_eq!(members[0].display_name(), "Bob");
         assert_eq!(members[1].display_name(), "invite@exemple.fr");
         assert_eq!(members[2].display_name(), "Zoé");
         let bob = &members[0];
-        assert_eq!(bob.role, MemberRole::Manager, "personnalisé = gestionnaire");
+        assert_eq!(bob.role, MemberRole::Manager, "custom = manager");
         assert_eq!(bob.status, MemberStatus::Revoked);
         assert!(bob.access_all);
         let invited = &members[1];
@@ -735,7 +733,7 @@ mod tests {
                 "groups": [], "accessAll": false, "permissions": {},
             })
         );
-        // Un administrateur voit tout : pas de liste.
+        // An admin sees everything: no list.
         let admin = invite_body(&emails, MemberRole::Admin, &collections);
         assert_eq!(admin["type"], 1);
         assert_eq!(admin["accessAll"], true);
@@ -791,9 +789,9 @@ mod tests {
         let other_owner = member(MemberRole::Owner);
         let other_manager = member(MemberRole::Manager);
 
-        // Gestionnaire : lecture seule.
+        // Manager: read-only.
         assert!(check_rights(manager, MemberAction::Invite(MemberRole::User), None).is_err());
-        // Propriétaire : tout.
+        // Owner: everything.
         for action in [
             MemberAction::Invite(MemberRole::Owner),
             MemberAction::Edit(MemberRole::Admin),
@@ -803,7 +801,7 @@ mod tests {
         ] {
             assert!(check_rights(owner, action, Some(&other_owner)).is_ok());
         }
-        // Administrateur : les utilisateurs, et les gestionnaires sans les promouvoir.
+        // Admin: users, and managers without promoting them.
         assert!(check_rights(admin, MemberAction::Invite(MemberRole::User), None).is_ok());
         assert!(check_rights(admin, MemberAction::Invite(MemberRole::Manager), None).is_err());
         assert!(check_rights(admin, MemberAction::Invite(MemberRole::Admin), None).is_err());

@@ -1,29 +1,26 @@
-//! « Retirer du partage » : ramener un élément d'organisation dans le coffre
-//! personnel.
+//! "Unshare": bring an organization item back into the personal vault.
 //!
-//! Bitwarden n'a pas de chemin inverse au partage : le serveur refuse de
-//! changer l'organisation d'un élément existant (« Organization mismatch »
-//! dans Vaultwarden, `update_cipher_from_data`), et les apps officielles ne
-//! proposent que de cloner l'élément vers « Mon coffre » puis de supprimer
-//! l'original. Verrou fait la même chose, en une action :
+//! Bitwarden has no reverse path to sharing: the server refuses to change
+//! the organization of an existing item ("Organization mismatch" in
+//! Vaultwarden, `update_cipher_from_data`), and the official apps only offer
+//! to clone the item to "My vault" then delete the original. Verrou does
+//! the same, in one action:
 //!
-//! 1. l'élément est déchiffré (clé de l'organisation) ;
-//! 2. ses pièces jointes sont téléchargées et déchiffrées, en mémoire ;
-//! 3. une copie personnelle est chiffrée par le SDK sous la clé de
-//!    l'utilisateur, avec une **nouvelle** clé d'élément : l'organisation ne
-//!    connaît pas la clé de la copie. Historique des mots de passe,
-//!    passkeys, TOTP, champs et notes suivent ; les pièces jointes sont
-//!    rechiffrées sous de nouvelles clés et envoyées à nouveau ;
-//! 4. la copie de l'organisation est supprimée définitivement
-//!    (`DELETE /api/ciphers/{id}`). Si la suppression échoue, la copie
-//!    personnelle est retirée : pas de doublon.
+//! 1. the item is decrypted (organization key);
+//! 2. its attachments are downloaded and decrypted, in memory;
+//! 3. a personal copy is encrypted by the SDK under the user's key, with a
+//!    **new** item key: the organization doesn't know the copy's key.
+//!    Password history, passkeys, TOTP, fields and notes come along; the
+//!    attachments are re-encrypted under new keys and uploaded again;
+//! 4. the organization's copy is deleted permanently
+//!    (`DELETE /api/ciphers/{id}`). If the deletion fails, the personal copy
+//!    is removed: no duplicate.
 //!
-//! Il faut pouvoir modifier et supprimer l'élément dans l'organisation, et
-//! en voir les mots de passe : sinon la copie révélerait ce que
-//! l'organisation cache (Vaultwarden ne laisse modifier une collection où
-//! les mots de passe sont masqués qu'avec le droit « gérer »). L'action
-//! demande le serveur : elle ne passe pas par la file hors ligne (comme le
-//! partage).
+//! The item must be editable and deletable in the organization, and its
+//! passwords visible: otherwise the copy would reveal what the organization
+//! hides (Vaultwarden only lets a collection with hidden passwords be edited
+//! with the "manage" right). The action needs the server: it doesn't go
+//! through the offline queue (like sharing).
 
 use std::collections::{HashMap, HashSet};
 
@@ -32,21 +29,20 @@ use verrou_core::import::ImportedFile;
 
 use crate::{Connection, Decrypted, Error, Progress, Skipped};
 
-/// Bilan d'un retrait du partage.
+/// Outcome of an unshare.
 pub struct UnshareOutcome {
-    /// Éléments ramenés : (identifiant d'organisation, nouvel identifiant
-    /// personnel).
+    /// Items brought back: (organization id, new personal id).
     pub moved: Vec<(String, String)>,
-    /// Écartés avant tout envoi : (identifiant, raison).
+    /// Set aside before anything is sent: (id, reason).
     pub skipped: Vec<(String, Skipped)>,
-    /// Refusés (pièce jointe illisible, serveur) : (titre, raison).
+    /// Refused (unreadable attachment, server): (title, reason).
     pub failed: Vec<(String, String)>,
     pub vault: Decrypted,
 }
 
-/// La copie personnelle d'un élément d'organisation : sans organisation ni
-/// collections, sans clé d'élément (le SDK en tire une nouvelle au
-/// chiffrement), sans pièces jointes (elles sont renvoyées à part).
+/// The personal copy of an organization item: without organization or
+/// collections, without item key (the SDK draws a new one when encrypting),
+/// without attachments (they are uploaded again separately).
 pub(crate) fn personal_copy(mut view: CipherView) -> CipherView {
     view.id = None;
     view.organization_id = None;
@@ -59,14 +55,13 @@ pub(crate) fn personal_copy(mut view: CipherView) -> CipherView {
     view.permissions = None;
     view.organization_use_totp = false;
     view.local_data = None;
-    // Une date ancienne serait prise pour une copie périmée par le serveur
+    // An old date would be taken for a stale copy by the server
     // (`lastKnownRevisionDate`).
     view.revision_date = chrono::Utc::now();
     view
 }
 
-/// Pourquoi un élément ne peut pas quitter son organisation (`None` : il le
-/// peut).
+/// Why an item can't leave its organization (`None`: it can).
 pub(crate) fn refusal(view: &CipherView) -> Option<Skipped> {
     if view.organization_id.is_none() {
         Some(Skipped::NotShared)
@@ -82,14 +77,14 @@ pub(crate) fn refusal(view: &CipherView) -> Option<Skipped> {
 }
 
 impl Connection {
-    /// Ramène des éléments d'organisation dans le coffre personnel (voir le
-    /// module). Un élément à la fois : chacun réussit ou échoue en entier.
+    /// Brings organization items back into the personal vault (see the
+    /// module). One item at a time: each one succeeds or fails as a whole.
     pub async fn unshare(
         &mut self,
         ids: &[String],
         progress: Progress<'_>,
     ) -> Result<UnshareOutcome, Error> {
-        let access = self.require_online("Le retrait d'un partage").await?;
+        let access = self.require_online("Unsharing").await?;
         let mut ciphers: HashMap<String, _> = self
             .cached_ciphers()?
             .into_iter()
@@ -120,18 +115,17 @@ impl Connection {
                 .as_ref()
                 .is_some_and(|f| !f.is_empty())
             {
-                failed.push((title, "une pièce jointe est illisible".to_owned()));
+                failed.push((title, "an attachment is unreadable".to_owned()));
                 continue;
             }
-            // Les pièces jointes, déchiffrées en mémoire (effacée à la
-            // libération).
+            // The attachments, decrypted in memory (wiped when freed).
             let mut files = Vec::new();
             let mut unreadable = None;
             for attachment in view.attachments.iter().flatten() {
                 let name = attachment
                     .file_name
                     .clone()
-                    .unwrap_or_else(|| "pièce jointe".to_owned());
+                    .unwrap_or_else(|| "attachment".to_owned());
                 match Box::pin(self.fetch_attachment(
                     &access,
                     &id,
@@ -146,7 +140,7 @@ impl Connection {
                         return Err(Error::Network(message));
                     }
                     Err(error) => {
-                        unreadable = Some(format!("pièce jointe « {name} » : {error}"));
+                        unreadable = Some(format!("attachment \"{name}\": {error}"));
                         break;
                     }
                 }
@@ -170,7 +164,7 @@ impl Connection {
             match self.api.delete_cipher(&access, &id).await {
                 Ok(()) => moved.push((id, new_id)),
                 Err(error) => {
-                    // Pas de doublon : la copie personnelle repart.
+                    // No duplicate: the personal copy goes away.
                     let _ = self.api.delete_cipher(&access, &new_id).await;
                     failed.push((title, error.to_string()));
                 }

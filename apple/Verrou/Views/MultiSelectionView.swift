@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Colonne de détail quand plusieurs éléments sont sélectionnés : leur
-/// nombre et les actions qui valent pour tous.
+/// Detail column when several items are selected: their number and the
+/// actions that apply to all of them.
 struct MultiSelectionView: View {
     @Environment(AppModel.self) private var model
 
@@ -13,32 +13,32 @@ struct MultiSelectionView: View {
                 .font(.system(size: 46))
                 .foregroundStyle(Theme.accent)
             VStack(spacing: 4) {
-                Text("\(ids.count) éléments sélectionnés")
+                Text("\(ids.count) items selected")
                     .font(.title2.weight(.semibold))
                     .monospacedDigit()
                 if available.readOnly > 0 {
-                    Text("dont \(available.readOnly) en lecture seule, qui seront ignorés")
+                    Text("including \(available.readOnly) read-only, which will be skipped")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
             }
             if let progress = model.bulkProgress {
                 ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1))) {
-                    Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                    Text("\(progress.done) of \(progress.total)").font(.caption).monospacedDigit()
                 }
                 .frame(maxWidth: 260)
             }
             VStack(spacing: 8) {
                 BulkActions(ids: ids, style: .buttons)
                 Divider().frame(maxWidth: 260).padding(.vertical, 4)
-                Button("Tout désélectionner") { model.applySelection(.collapse) }
+                Button("Deselect All") { model.applySelection(.collapse) }
                     .buttonStyle(.borderless)
-                    .help("Revenir à un seul élément (Échap dans la liste)")
+                    .help("Go back to a single item (Esc in the list)")
             }
             .frame(maxWidth: 260)
             .disabled(model.bulkProgress != nil)
             if !model.canEdit {
-                Text("Coffre fictif : lecture seule").font(.caption).foregroundStyle(.secondary)
+                Text("Mock vault: read-only").font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(30)
@@ -46,8 +46,8 @@ struct MultiSelectionView: View {
     }
 }
 
-/// Les actions groupées : en gros boutons (résumé de la sélection) ou en
-/// entrées de menu (clic droit sur une ligne de la sélection).
+/// The bulk actions: as big buttons (summary of the selection) or as menu
+/// items (right-click on a row of the selection).
 struct BulkActions: View {
     enum Style {
         case buttons
@@ -63,33 +63,33 @@ struct BulkActions: View {
         let modifiable = a.active + a.archived + a.trashed
         if model.canEdit, modifiable > 0 {
             if a.trashed > 0 {
-                action("Restaurer", "arrow.uturn.backward", .restore)
+                action(String(localized: "Restore"), "arrow.uturn.backward", .restore)
             }
             if a.active > 0 {
-                action("Archiver", "archivebox", .archive)
+                action(String(localized: "Archive"), "archivebox", .archive)
             }
             if a.archived > 0 {
-                action("Désarchiver", "archivebox.fill", .unarchive)
+                action(String(localized: "Unarchive"), "archivebox.fill", .unarchive)
             }
             if a.notFavorite > 0 {
-                action("Ajouter aux favoris", "star", .favorite(favorite: true))
+                action(String(localized: "Add to Favorites"), "star", .favorite(favorite: true))
             } else if a.favorite > 0 {
-                action("Retirer des favoris", "star.slash", .favorite(favorite: false))
+                action(String(localized: "Remove from Favorites"), "star.slash", .favorite(favorite: false))
             }
             if a.active + a.archived > 0 {
-                item("Déplacer vers un dossier…", "folder") {
+                item(String(localized: "Move to Folder…"), "folder") {
                     model.moveRequest = MoveRequest(itemIDs: ids)
                 }
                 if !model.writableOrganizations.isEmpty, !model.shareableIDs(ids).isEmpty {
-                    item("Partager…", "person.2") { model.openSharing(items: ids) }
+                    item(String(localized: "Share…"), "person.2") { model.openSharing(items: ids) }
                 }
                 if !model.unshareableIDs(ids).isEmpty {
-                    item("Retirer du partage…", "person.2.slash") { model.requestUnshare(ids) }
+                    item(String(localized: "Remove from Sharing…"), "person.2.slash") { model.requestUnshare(ids) }
                 }
-                action("Mettre à la corbeille", "trash", .trash, destructive: true)
+                action(String(localized: "Move to Trash"), "trash", .trash, destructive: true)
             }
         } else if style == .menu {
-            Text(model.canEdit ? "Partagés en lecture seule" : "Coffre fictif : lecture seule")
+            Text(model.canEdit ? "These items are shared read-only" : "Mock vault: read-only")
         }
     }
 
@@ -120,7 +120,7 @@ struct BulkActions: View {
     }
 }
 
-/// « Déplacer vers un dossier… » : un dossier existant, aucun, ou un nouveau.
+/// "Move to Folder…": an existing folder, none, or a new one.
 struct MoveToFolderView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -130,10 +130,10 @@ struct MoveToFolderView: View {
     var body: some View {
         let count = request.itemIDs.count
         VStack(alignment: .leading, spacing: 12) {
-            Text(count > 1 ? "Déplacer \(count) éléments" : "Déplacer l'élément")
+            Text(count > 1 ? "Move \(count) Items" : "Move the Item")
                 .font(.title3.weight(.semibold))
             List {
-                row("Aucun dossier", symbol: "tray") { move(to: nil, name: nil) }
+                row(String(localized: "No folder"), symbol: "tray") { move(to: nil, name: nil) }
                 ForEach(model.folders, id: \.id) { folder in
                     row(folder.name, symbol: "folder") { move(to: folder.id, name: folder.name) }
                 }
@@ -141,14 +141,14 @@ struct MoveToFolderView: View {
             .listStyle(.bordered)
             .frame(minHeight: 180)
             HStack {
-                TextField("Nouveau dossier", text: $newFolder)
+                TextField("New folder", text: $newFolder)
                     .onSubmit(createAndMove)
-                Button("Créer et déplacer", action: createAndMove)
+                Button("Create and Move", action: createAndMove)
                     .disabled(newFolder.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             HStack {
                 Spacer()
-                Button("Annuler", role: .cancel) { dismiss() }
+                Button("Cancel", role: .cancel) { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
         }

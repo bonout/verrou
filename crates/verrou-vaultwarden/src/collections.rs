@@ -1,22 +1,21 @@
-//! Collections d'une organisation et groupes de membres : créer, renommer,
-//! supprimer une collection, et choisir qui y accède, avec quels droits.
+//! An organization's collections and member groups: create, rename, delete
+//! a collection, and choose who accesses it, with which rights.
 //!
-//! Le nom d'une collection est chiffré avec la clé de l'organisation (dans
-//! le magasin de clés du SDK) ; le serveur ne le lit pas. Les droits d'accès
-//! sont ceux de Bitwarden, posés membre par membre (ou groupe par groupe) :
-//! lecture seule, mots de passe masqués, gérer la collection.
+//! A collection's name is encrypted with the organization key (in the SDK's
+//! key store); the server doesn't read it. The access rights are
+//! Bitwarden's, set member by member (or group by group): read-only, hidden
+//! passwords, manage the collection.
 //!
-//! Les règles de Vaultwarden 1.37, vérifiées ici avant tout envoi pour un
-//! message clair (le serveur les vérifie de toute façon) :
-//! - créer : propriétaire, administrateur, ou gestionnaire avec accès à
-//!   toutes les collections ;
-//! - renommer, supprimer, changer les accès : propriétaire, administrateur,
-//!   ou gestionnaire qui gère cette collection ;
-//! - groupes : seulement si le serveur les active (`ORG_GROUPS_ENABLED`) ;
-//!   les créer et les modifier revient au propriétaire et à l'administrateur.
+//! Vaultwarden 1.37's rules, checked here before anything is sent for a
+//! clear message (the server checks them anyway):
+//! - create: owner, admin, or manager with access to all collections;
+//! - rename, delete, change access: owner, admin, or manager who manages
+//!   this collection;
+//! - groups: only if the server enables them (`ORG_GROUPS_ENABLED`);
+//!   creating and editing them is up to the owner and the admin.
 //!
-//! Les membres qui voient tout (propriétaires, administrateurs) n'ont pas
-//! besoin d'accès : le serveur les ignore dans les listes envoyées.
+//! Members who see everything (owners, admins) need no access: the server
+//! ignores them in the lists sent.
 
 use bitwarden_core::OrganizationId;
 use bitwarden_core::key_management::SymmetricKeySlotId;
@@ -27,22 +26,22 @@ use serde_json::{Value, json};
 use crate::members::{CollectionAccess, MemberRole};
 use crate::{Connection, Decrypted, Error, Organization};
 
-/// Qui accède à une collection : membres (identifiants d'adhésion) et
-/// groupes, avec leurs droits.
+/// Who accesses a collection: members (membership ids) and groups, with
+/// their rights.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CollectionMembers {
     pub users: Vec<CollectionAccess>,
     pub groups: Vec<CollectionAccess>,
 }
 
-/// Un groupe de membres (noms en clair, comme dans Bitwarden).
+/// A group of members (names in clear, as in Bitwarden).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Group {
     pub id: String,
     pub name: String,
-    /// Membres du groupe (identifiants d'adhésion).
+    /// The group's members (membership ids).
     pub members: Vec<String>,
-    /// Collections du groupe, avec ses droits.
+    /// The group's collections, with its rights.
     pub collections: Vec<CollectionAccess>,
 }
 
@@ -76,7 +75,7 @@ fn access_json(list: &[CollectionAccess]) -> Vec<Value> {
         .collect()
 }
 
-/// Le corps de `POST`/`PUT /api/organizations/{org}/collections[/{id}]`.
+/// The body of `POST`/`PUT /api/organizations/{org}/collections[/{id}]`.
 pub fn collection_body(encrypted_name: &str, members: &CollectionMembers) -> Value {
     json!({
         "name": encrypted_name,
@@ -86,7 +85,7 @@ pub fn collection_body(encrypted_name: &str, members: &CollectionMembers) -> Val
     })
 }
 
-/// Le corps de `POST`/`PUT /api/organizations/{org}/groups[/{id}]`.
+/// The body of `POST`/`PUT /api/organizations/{org}/groups[/{id}]`.
 pub fn group_body(name: &str, members: &[String], collections: &[CollectionAccess]) -> Value {
     json!({
         "name": name,
@@ -97,25 +96,25 @@ pub fn group_body(name: &str, members: &[String], collections: &[CollectionAcces
     })
 }
 
-/// Le nom, débarrassé des espaces, obligatoire.
+/// The name, trimmed, required.
 fn required_name(name: &str, what: &str) -> Result<String, Error> {
     let name = name.trim();
     if name.is_empty() {
-        return Err(Error::Invalid(format!("le nom {what} est obligatoire")));
+        return Err(Error::Invalid(format!("the {what} name is required")));
     }
     Ok(name.to_owned())
 }
 
 impl Organization {
-    /// Créer, modifier ou supprimer des groupes : propriétaire ou
-    /// administrateur, groupes activés.
+    /// Creating, editing or deleting groups: owner or admin, groups
+    /// enabled.
     pub fn can_manage_groups(&self) -> bool {
         self.use_groups && matches!(self.role, Some(MemberRole::Owner | MemberRole::Admin))
     }
 }
 
 impl Connection {
-    /// L'organisation et la collection, si le compte la gère.
+    /// The organization and the collection, if the account manages it.
     fn managed_collection(
         &self,
         organization_id: &str,
@@ -126,17 +125,17 @@ impl Connection {
             .collections
             .iter()
             .find(|c| c.id == collection_id)
-            .ok_or_else(|| Error::Invalid("collection inconnue".to_owned()))?;
+            .ok_or_else(|| Error::Invalid("unknown collection".to_owned()))?;
         if !organization.can_manage_collection(collection) {
             return Err(Error::Invalid(
-                "votre rôle ne permet pas de gérer cette collection".to_owned(),
+                "your role does not allow managing this collection".to_owned(),
             ));
         }
         Ok(organization)
     }
 
-    /// Chiffre le nom avec la clé de l'organisation (déjà dans le magasin
-    /// de clés du SDK, déchiffrée de la clé privée du compte).
+    /// Encrypts the name with the organization key (already in the SDK's key
+    /// store, decrypted from the account's private key).
     fn encrypt_for_organization(
         &self,
         organization_id: &str,
@@ -146,17 +145,17 @@ impl Connection {
         let key_store = self.sdk.internal.get_key_store();
         let mut ctx = key_store.context_mut();
         text.encrypt(&mut ctx, SymmetricKeySlotId::Organization(organization))
-            .map_err(|_| Error::Crypto("clé de l'organisation indisponible".to_owned()))
+            .map_err(|_| Error::Crypto("organization key unavailable".to_owned()))
     }
 
-    /// Qui accède à la collection (membres et groupes), pour la modifier.
+    /// Who accesses the collection (members and groups), to edit it.
     pub async fn collection_members(
         &mut self,
         organization_id: &str,
         collection_id: &str,
     ) -> Result<CollectionMembers, Error> {
         self.managed_collection(organization_id, collection_id)?;
-        let access = self.require_online("La gestion des collections").await?;
+        let access = self.require_online("Managing collections").await?;
         let body = self
             .api
             .call(
@@ -172,28 +171,27 @@ impl Connection {
         })
     }
 
-    /// Crée une collection ; rend son identifiant et le coffre resynchronisé.
+    /// Creates a collection; returns its id and the resynced vault.
     pub async fn create_collection(
         &mut self,
         organization_id: &str,
         name: &str,
         members: &CollectionMembers,
     ) -> Result<(String, Decrypted), Error> {
-        let name = required_name(name, "de la collection")?;
+        let name = required_name(name, "collection")?;
         let organization = self.organization(organization_id)?;
         if !organization.can_create_collections {
             return Err(Error::Invalid(
-                "votre rôle ne permet pas de créer des collections dans cette organisation"
-                    .to_owned(),
+                "your role does not allow creating collections in this organization".to_owned(),
             ));
         }
         if !organization.use_groups && !members.groups.is_empty() {
             return Err(Error::Invalid(
-                "les groupes ne sont pas activés sur ce serveur".to_owned(),
+                "groups are not enabled on this server".to_owned(),
             ));
         }
         let encrypted = self.encrypt_for_organization(organization_id, &name)?;
-        let access = self.require_online("La création d'une collection").await?;
+        let access = self.require_online("Creating a collection").await?;
         let created = self
             .api
             .call(
@@ -207,12 +205,12 @@ impl Connection {
             .get("id")
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .ok_or_else(|| Error::Server("collection créée sans identifiant".to_owned()))?;
+            .ok_or_else(|| Error::Server("collection created without an id".to_owned()))?;
         let vault = self.sync_with(&access).await?;
         Ok((id, vault))
     }
 
-    /// Renomme la collection et remplace ses accès (membres et groupes).
+    /// Renames the collection and replaces its access (members and groups).
     pub async fn update_collection(
         &mut self,
         organization_id: &str,
@@ -220,15 +218,15 @@ impl Connection {
         name: &str,
         members: &CollectionMembers,
     ) -> Result<Decrypted, Error> {
-        let name = required_name(name, "de la collection")?;
+        let name = required_name(name, "collection")?;
         let organization = self.managed_collection(organization_id, collection_id)?;
         if !organization.use_groups && !members.groups.is_empty() {
             return Err(Error::Invalid(
-                "les groupes ne sont pas activés sur ce serveur".to_owned(),
+                "groups are not enabled on this server".to_owned(),
             ));
         }
         let encrypted = self.encrypt_for_organization(organization_id, &name)?;
-        let access = self.require_online("La gestion des collections").await?;
+        let access = self.require_online("Managing collections").await?;
         self.api
             .call(
                 Method::PUT,
@@ -240,17 +238,15 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Supprime la collection. Ses éléments restent dans l'organisation
-    /// (visibles des administrateurs) s'ils n'ont plus d'autre collection.
+    /// Deletes the collection. Its items stay in the organization (visible to
+    /// admins) if they have no other collection left.
     pub async fn delete_collection(
         &mut self,
         organization_id: &str,
         collection_id: &str,
     ) -> Result<Decrypted, Error> {
         self.managed_collection(organization_id, collection_id)?;
-        let access = self
-            .require_online("La suppression d'une collection")
-            .await?;
+        let access = self.require_online("Deleting a collection").await?;
         self.api
             .call(
                 Method::DELETE,
@@ -262,8 +258,8 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Les groupes de l'organisation (vide si le serveur ne les active pas),
-    /// avec leurs membres et leurs collections, triés par nom.
+    /// The organization's groups (empty if the server doesn't enable them),
+    /// with their members and their collections, sorted by name.
     pub async fn organization_groups(
         &mut self,
         organization_id: &str,
@@ -272,7 +268,7 @@ impl Connection {
         if !organization.use_groups {
             return Ok(Vec::new());
         }
-        let access = self.require_online("La gestion des groupes").await?;
+        let access = self.require_online("Managing groups").await?;
         let details = organization.admin;
         let path = if details {
             format!("organizations/{organization_id}/groups/details")
@@ -322,8 +318,8 @@ impl Connection {
         Ok(groups)
     }
 
-    /// Crée (`id` absent) ou modifie un groupe : son nom, ses membres et
-    /// ses collections remplacent les précédents. Rend son identifiant.
+    /// Creates (no `id`) or edits a group: its name, its members and its
+    /// collections replace the previous ones. Returns its id.
     pub async fn save_group(
         &mut self,
         organization_id: &str,
@@ -332,15 +328,14 @@ impl Connection {
         members: &[String],
         collections: &[CollectionAccess],
     ) -> Result<String, Error> {
-        let name = required_name(name, "du groupe")?;
+        let name = required_name(name, "group")?;
         if !self.organization(organization_id)?.can_manage_groups() {
             return Err(Error::Invalid(
-                "seuls les propriétaires et les administrateurs gèrent les groupes, s'ils sont \
-                 activés sur le serveur"
+                "only owners and admins manage groups, if they are enabled on the server"
                     .to_owned(),
             ));
         }
-        let access = self.require_online("La gestion des groupes").await?;
+        let access = self.require_online("Managing groups").await?;
         let body = group_body(&name, members, collections);
         let (method, path) = match id {
             Some(id) => (
@@ -358,17 +353,17 @@ impl Connection {
             .and_then(Value::as_str)
             .map(str::to_owned)
             .or_else(|| id.map(str::to_owned))
-            .ok_or_else(|| Error::Server("groupe enregistré sans identifiant".to_owned()))
+            .ok_or_else(|| Error::Server("group saved without an id".to_owned()))
     }
 
-    /// Supprime un groupe (ses membres gardent leurs accès directs).
+    /// Deletes a group (its members keep their direct access).
     pub async fn delete_group(&mut self, organization_id: &str, id: &str) -> Result<(), Error> {
         if !self.organization(organization_id)?.can_manage_groups() {
             return Err(Error::Invalid(
-                "seuls les propriétaires et les administrateurs gèrent les groupes".to_owned(),
+                "only owners and admins manage groups".to_owned(),
             ));
         }
-        let access = self.require_online("La gestion des groupes").await?;
+        let access = self.require_online("Managing groups").await?;
         self.api
             .call(
                 Method::DELETE,
@@ -475,7 +470,7 @@ mod tests {
         let user = org(MemberRole::User, false);
         assert!(
             !user.can_manage_collection(&collection(true)),
-            "« gérer » demande un gestionnaire"
+            "\"manage\" requires a manager"
         );
         let mut no_groups = owner.clone();
         no_groups.use_groups = false;
@@ -484,7 +479,7 @@ mod tests {
 
     #[test]
     fn names_are_required() {
-        assert!(required_name("  ", "de la collection").is_err());
+        assert!(required_name("  ", "collection").is_err());
         assert_eq!(required_name(" Banque ", "x").unwrap(), "Banque");
     }
 }

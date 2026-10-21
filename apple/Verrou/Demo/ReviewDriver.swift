@@ -2,26 +2,26 @@
 import AppKit
 import SwiftUI
 
-/// Revue visuelle hors écran (`VERROU_REVIEW=1`, builds Debug) : chaque écran
-/// de l'app, rendu sur le coffre fictif dans une fenêtre jamais affichée, en
-/// clair et en sombre, puis écrit en PNG. Ni ScreenCaptureKit, ni activation :
-/// l'app n'a pas le droit d'avoir de fenêtre à l'écran (`.prohibited`), et
-/// la revue échoue si l'une d'elles devient visible.
+/// Offscreen visual review (`VERROU_REVIEW=1`, Debug builds): each screen of
+/// the app, rendered on the mock vault in a window never shown, in light and
+/// dark mode, then written as PNG. Neither ScreenCaptureKit nor activation:
+/// the app is not allowed to have a window on screen (`.prohibited`), and
+/// the review fails if one of them becomes visible.
 ///
-/// Annonce `REVIEW_OUT <dossier>`, `REVIEW_SNAP <nom>` par image,
-/// `REVIEW_OK`/`REVIEW_FAIL` pour l'audit de mise en page de chaque écran
-/// (`LayoutAudit`), puis `REVIEW_DONE`. Lancée par `scripts/review-capture.sh`.
+/// Announces `REVIEW_OUT <folder>`, `REVIEW_SNAP <name>` per image,
+/// `REVIEW_OK`/`REVIEW_FAIL` for the layout audit of each screen
+/// (`LayoutAudit`), then `REVIEW_DONE`. Launched by `scripts/review-capture.sh`.
 ///
-/// Ne lit ni n'écrit le compte : le coffre fictif vit en mémoire, et les
-/// préférences des vues (`@AppStorage`) vont dans un domaine à part, effacé
-/// à la fin.
+/// Neither reads nor writes the account: the mock vault lives in memory, and
+/// the views' preferences (`@AppStorage`) go to a separate domain, erased at
+/// the end.
 @MainActor
 final class ReviewDriver: NSObject, NSApplicationDelegate {
     private static var current: ReviewDriver?
 
     static func run() {
         let app = NSApplication.shared
-        // Ni Dock, ni fenêtre, ni activation.
+        // No Dock, no window, no activation.
         app.setActivationPolicy(.prohibited)
         let driver = ReviewDriver()
         current = driver
@@ -33,9 +33,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
     private let model = AppModel()
     private let defaults = UserDefaults(suiteName: ReviewDriver.defaultsSuite) ?? .standard
     private let output = FileManager.default.temporaryDirectory.appending(path: "verrou-review")
-    /// Fenêtre principale : 1280 × 800, comme les captures de la démonstration.
+    /// Main window: 1280 × 800, like the demo's captures.
     private let mainSize = NSSize(width: 1280, height: 800)
-    /// Zone de contenu de la fenêtre principale : la hauteur permise d'une feuille.
+    /// Content area of the main window: the allowed height of a sheet.
     private var sheetLimit: CGFloat = 740
     private var failures = 0
 
@@ -43,10 +43,10 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         Task {
             await run()
             defaults.removePersistentDomain(forName: Self.defaultsSuite)
-            // Le fichier vide du domaine reste sinon dans le conteneur.
+            // Otherwise the domain's empty file stays in the container.
             try? FileManager.default.removeItem(at: URL.libraryDirectory
                 .appending(path: "Preferences/\(Self.defaultsSuite).plist"))
-            log(failures == 0 ? "REVIEW_DONE" : "REVIEW_DONE \(failures) écran(s) en échec")
+            log(failures == 0 ? "REVIEW_DONE" : "REVIEW_DONE \(failures) failing screen(s)")
             exit(failures == 0 ? 0 : 1)
         }
     }
@@ -56,44 +56,44 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         fflush(stdout)
     }
 
-    // MARK: Parcours
+    // MARK: Walk
 
     private func run() async {
         try? FileManager.default.removeItem(at: output)
         try? FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         log("REVIEW_OUT \(output.path)")
         defaults.removePersistentDomain(forName: Self.defaultsSuite)
-        // Ni demande d'autorisation ni notification réelle pendant la revue.
+        // No permission request and no real notification during the review.
         ActivityNotifier.shared.silent = true
 
-        // Écrans d'avant le coffre.
-        await screen("01-verrouille", root: RootView(), expect: .init(identifiers: ["lock-title"]))
+        // Screens before the vault.
+        await screen("01-locked", root: RootView(), expect: .init(identifiers: ["lock-title"]))
         model.loginEmail = "camille.martin@exemple.fr"
         model.reviewLogin(true)
-        await screen("02-connexion", root: RootView(), expect: .init(identifiers: ["login-title"]))
+        await screen("02-login", root: RootView(), expect: .init(identifiers: ["login-title"]))
         model.reviewLogin(true, twoFactor: [.authenticator, .email])
-        await screen("03-second-facteur", root: RootView(), expect: .init(identifiers: ["login-title"]))
+        await screen("03-second-factor", root: RootView(), expect: .init(identifiers: ["login-title"]))
         model.reviewLogin(false)
-        // « Créer un compte », lien d'invitation collé (lu hors ligne).
+        // "Create an Account", invitation link pasted (read offline).
         let registration = RegistrationFlow(server: "", email: "")
         registration.link = Self.mockInviteLink
         registration.name = "Léa Martin"
         registration.password = "fixe-pivoine-monceaux-couteau"
         registration.confirmation = registration.password
-        await screen("04-creer-un-compte", root: LoginView(registration: registration),
+        await screen("04-create-account", root: LoginView(registration: registration),
                      expect: .init(identifiers: ["login-title"]))
         registration.reset()
 
-        // Coffre : une fiche de chaque sorte.
+        // Vault: a detail of each kind.
         model.openVault()
         let vault = LayoutAudit.Expectation(identifiers: ["search", "detail-title", "sidebar-footer"], columns: 3)
         let items: [(String, SidebarFilter, String, String)] = [
-            ("10-identifiant", .all, "", "GitHub"),
-            ("11-carte", .category(category: .card), "", "Visa Boursorama"),
-            ("12-identite", .category(category: .identity), "", "Camille Martin"),
+            ("10-login", .all, "", "GitHub"),
+            ("11-card", .category(category: .card), "", "Visa Boursorama"),
+            ("12-identity", .category(category: .identity), "", "Camille Martin"),
             ("13-wifi", .template(template: .wifi), "", "Wi-Fi maison"),
-            ("14-cle-ssh", .category(category: .sshKey), "", ""),
-            ("15-coffre-partage", .all, "famille", "Google — famille"),
+            ("14-ssh-key", .category(category: .sshKey), "", ""),
+            ("15-shared-vault", .all, "famille", "Google — famille"),
         ]
         for (name, filter, query, title) in items {
             model.filter = filter
@@ -102,11 +102,11 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             await screen(name, root: RootView(), expect: vault)
         }
         model.query = ""
-        // Passkeys : la vue filtrée, site et utilisateur de chaque passkey.
+        // Passkeys: the filtered view, site and user of each passkey.
         model.filter = .passkeys
         select("GitHub")
         await screen("17-passkeys", root: RootView(), expect: vault)
-        // Tri par dernière utilisation (registre de ce Mac).
+        // Sort by last use (this Mac's log).
         model.filter = .all
         for title in ["Netflix", "GitHub", "Impôts"] {
             if let id = id(of: title) { model.session.recordItemUse(id: id) }
@@ -114,18 +114,18 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         model.afterWrite(select: id(of: "Netflix"))
         model.sort = .lastUsed
         select("Netflix")
-        await screen("18-tri-derniere-utilisation", root: RootView(), expect: vault)
+        await screen("18-sort-last-used", root: RootView(), expect: vault)
         model.sort = .relevance
         select("GitHub")
 
-        // Volets de la barre latérale.
+        // Sidebar panes.
         let pane = LayoutAudit.Expectation(identifiers: ["pane-title", "sidebar-footer", "detail-title"], columns: 3)
         model.openAudit()
         await model.watchtower.loadPasskeys(model.session)
         await screen("20-audit", root: RootView(), expect: pane)
-        // « Passkey possible » : la section en haut du volet.
+        // "Passkey available": the section at the top of the pane.
         if model.watchtower.passkeys?.candidates.isEmpty ?? true {
-            fail("20b-audit-passkeys", "aucune passkey possible dans le coffre fictif")
+            fail("20b-audit-passkeys", "no passkey available in the mock vault")
         }
         model.watchtower.focus = "passkeys"
         await screen("20b-audit-passkeys", root: RootView(),
@@ -133,49 +133,49 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         model.watchtower.focus = nil
         model.sends.set(Self.mockSends())
         model.pane = .sends
-        await screen("21-envois", root: RootView(), expect: pane)
+        await screen("21-sends", root: RootView(), expect: pane)
         model.emergency.set(Self.mockEmergency())
         model.pane = .emergency
-        await screen("22-urgence", root: RootView(), expect: pane)
+        await screen("22-emergency", root: RootView(), expect: pane)
         if let organization = model.organizations.first {
             model.members.preview = true
             model.openMembers(organization.id)
             model.members.set(Self.mockMembers(collection: organization.collections.first?.id ?? ""),
                               organizationID: organization.id)
             model.members.selection = "mb-lea"
-            await screen("23-membres-a-confirmer", root: RootView(), expect: pane)
+            await screen("23-members-to-confirm", root: RootView(), expect: pane)
             model.members.selection = "mb-alex"
-            await screen("24-membre-confirme", root: RootView(), expect: pane)
-            // Invitation envoyée : « Et ensuite ? » (e-mail, réseau, confirmation).
+            await screen("24-member-confirmed", root: RootView(), expect: pane)
+            // Invitation sent: "What's next?" (email, network, confirmation).
             model.members.selection = "mb-tom"
             var invited = pane
             invited.identifiers.append("invitation-next-steps")
-            await screen("24b-membre-invite", root: RootView(), expect: invited)
+            await screen("24b-member-invited", root: RootView(), expect: invited)
         } else {
-            fail("23-membres-a-confirmer", "pas d'organisation dans le coffre fictif")
+            fail("23-members-to-confirm", "no organization in the mock vault")
         }
-        // Coffres partagés : une invitation acceptée en attente de
-        // confirmation, et des membres à confirmer dans l'organisation.
+        // Shared vaults: an accepted invitation waiting for confirmation,
+        // and members to confirm in the organization.
         if let organization = model.organizations.first {
             model.organizationAdmin.preview = true
             model.organizationAdmin.pending = [PendingMembershipView(organizationId: "org-escalade", name: "Club d'escalade")]
             model.organizationAdmin.toConfirm = [organization.id: 1]
             model.filter = .organization(id: organization.id)
             select("")
-            // Fenêtre plus haute : la section est sous les dossiers.
-            await screen("16-coffres-partages", root: RootView(), size: NSSize(width: 1280, height: 1400), expect: vault)
+            // Taller window: the section is under the folders.
+            await screen("16-shared-vaults", root: RootView(), size: NSSize(width: 1280, height: 1400), expect: vault)
         }
         model.filter = .all
 
-        // Feuilles, rendues seules à leur taille (comme posées sur la fenêtre).
+        // Sheets, rendered alone at their size (as if attached to the window).
         await sheets()
 
-        // Accès rapide.
+        // Quick access.
         model.quickQuery = "net"
-        await screen("40-acces-rapide", root: QuickAccessView(autofill: nil, close: {}), size: nil,
+        await screen("40-quick-access", root: QuickAccessView(autofill: nil, close: {}), size: nil,
                      expect: .init(), chrome: false)
         model.quickQuery = ""
-        // Préférences de l'appareil remises à leur valeur de départ.
+        // Device preferences put back to their initial value.
         model.sort = .relevance
         model.defaultFilter = .all
         model.lock()
@@ -183,14 +183,14 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
     private func sheets() async {
         let sheet = LayoutAudit.Expectation(identifiers: ["sheet-primary"], maxHeight: sheetLimit)
-        // Le coffre fictif est en lecture seule : brouillon composé ici, comme
-        // celui que le serveur donnerait pour GitHub.
+        // The mock vault is read-only: draft composed here, like the one the
+        // server would give for GitHub.
         if let github = id(of: "GitHub") {
             let draft = ItemDraft(name: "GitHub", folderId: nil, favorite: true, notes: "Codes de secours dans le coffre.",
                                   login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
                                                      totp: "JBSWY3DPEHPK3PXP", urls: ["https://github.com"]),
                                   fields: [], template: nil)
-            await screen("30-modification-identifiant",
+            await screen("30-edit-login",
                          root: EditItemView(editor: .init(itemID: github, draft: draft)),
                          size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
             var custom = draft
@@ -199,14 +199,14 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                 CustomField(name: "Question secrète", value: "Le nom du premier chat", fieldType: .text, linkedId: nil),
                 CustomField(name: "Double authentification", value: "true", fieldType: .boolean, linkedId: nil),
             ]
-            await screen("31-modification-champs",
+            await screen("31-edit-fields",
                          root: EditItemView(editor: .init(itemID: github, draft: custom)),
                          size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
         } else {
-            fail("30-modification-identifiant", "GitHub introuvable dans le coffre fictif")
+            fail("30-edit-login", "GitHub not found in the mock vault")
         }
         if let github = id(of: "GitHub") {
-            // Une règle par site : hôte pour le site, jamais pour l'ancienne adresse.
+            // One rule per site: host for the site, never for the old address.
             let draft = ItemDraft(name: "GitHub", folderId: "dossier-travail", favorite: true, notes: nil,
                                   login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
                                                      totp: nil,
@@ -214,35 +214,35 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                                                             "^https://([a-z]+\\.)?github\\.com/sso"],
                                                      urlMatches: [.host, .never, .regularExpression]),
                                   fields: [], template: nil)
-            await screen("30b-modification-correspondance",
+            await screen("30b-edit-matching",
                          root: EditItemView(editor: .init(itemID: github, draft: draft)),
                          size: nil, expect: withTitle(sheet, "edit-title"), chrome: false)
         }
-        await screen("32-generateur", root: GeneratorView(use: { _, _ in }), size: nil, expect: .init(), chrome: false)
+        await screen("32-generator", root: GeneratorView(use: { _, _ in }), size: nil, expect: .init(), chrome: false)
 
-        // Règle par dossier (Travail : hôte), pour l'onglet du remplissage.
+        // Per-folder rule (Work: host), for the filling tab.
         model.setFolderMatchRule("dossier-travail", .host)
         let tabs: [(String, SettingsTab)] = [
-            ("33-reglages-general", .general), ("34-reglages-securite", .security),
-            ("35-reglages-compte", .account), ("36-reglages-navigateurs", .integrations),
-            ("36b-reglages-remplissage", .filling),
+            ("33-settings-general", .general), ("34-settings-security", .security),
+            ("35-settings-account", .account), ("36-settings-browsers", .integrations),
+            ("36b-settings-filling", .filling),
         ]
         for (name, tab) in tabs {
             defaults.set(tab.rawValue, forKey: "settingsTab")
             await screen(name, root: SettingsView(), size: nil, expect: .init(), chrome: false)
         }
 
-        // Membres : invitation, puis modification d'un membre.
+        // Members: invitation, then edit of a member.
         if model.membersOrganization != nil {
             let collection = model.membersOrganization?.collections.first?.id ?? ""
-            await screen("39-inviter-membres",
+            await screen("39-invite-members",
                          root: MemberEditorView(draft: MemberDraft(member: nil, emails: "tom@exemple.fr, sam@exemple.fr",
                                                                    role: .user, access: [collection: .edit])),
                          size: nil, expect: withTitle(sheet, "sheet-title"), chrome: false)
             if let alex = model.members.members.first(where: { $0.id == "mb-alex" }) {
                 model.editMember(alex)
                 if let draft = model.members.draft {
-                    await screen("39-modifier-membre", root: MemberEditorView(draft: draft), size: nil,
+                    await screen("39-edit-member", root: MemberEditorView(draft: draft), size: nil,
                                  expect: withTitle(sheet, "sheet-title"), chrome: false)
                 }
                 model.members.draft = nil
@@ -251,48 +251,48 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
         await sharingSheets(sheet)
 
-        // Retirer du partage : la confirmation, avec ce qui va se passer.
+        // Remove from sharing: the confirmation, with what is going to happen.
         if let family = id(of: "Google — famille") {
             let request = UnshareRequest(itemIDs: [family], title: "Google — famille", organizations: ["Famille Martin"])
-            await screen("47-retirer-du-partage", root: UnshareView(request: request), size: nil,
+            await screen("47-remove-from-sharing", root: UnshareView(request: request), size: nil,
                          expect: withTitle(sheet, "sheet-title"), chrome: false)
         } else {
-            fail("47-retirer-du-partage", "élément partagé introuvable dans le coffre fictif")
+            fail("47-remove-from-sharing", "shared item not found in the mock vault")
         }
 
-        // Doublons fictifs (imports d'Apple, de 1Password, de Proton Pass) :
-        // le coffre fictif n'en a pas.
+        // Mock duplicates (imports from Apple, 1Password, Proton Pass): the
+        // mock vault has none.
         let duplicates = DuplicatesFlow(defaults: defaults)
         duplicates.load(demoDuplicates())
-        await screen("37-doublons", root: DuplicatesView(flow: duplicates), size: nil,
+        await screen("37-duplicates", root: DuplicatesView(flow: duplicates), size: nil,
                      expect: withTitle(sheet, "sheet-title"), chrome: false)
-        // Un groupe ignoré, un élément gardé à la main.
+        // An ignored group, an item kept by hand.
         if let google = duplicates.visible.first(where: { $0.label == "google.com" }),
            let routeur = duplicates.visible.first(where: { $0.members.count == 2 && $0.confidence == .probable }) {
             duplicates.ignore(routeur)
             duplicates.keep(google.members[2].item.id, in: google)
-            // Cocher l'élément gardé : il part à la corbeille, un autre est gardé.
+            // Checking the kept item: it goes to the trash, another one is kept.
             let first = google.members[2].item.id
             let before = duplicates.selected
             duplicates.toggle(first, true, in: google)
             if !duplicates.selected.contains(first) || duplicates.keptID(google) == first
                 || duplicates.selected.contains(duplicates.keptID(google)) {
-                fail("37b-doublons-ignores", "cocher l'élément gardé n'en garde pas un autre")
+                fail("37b-duplicates-ignored", "checking the kept item doesn't keep another one")
             }
-            // Tout cocher : le dernier élément non coché reste gardé.
+            // Checking everything: the last unchecked item stays kept.
             for member in google.members { duplicates.toggle(member.item.id, true, in: google) }
             if google.members.allSatisfy({ duplicates.selected.contains($0.item.id) }) {
-                fail("37b-doublons-ignores", "tous les éléments d'un groupe sont cochés")
+                fail("37b-duplicates-ignored", "all the items of a group are checked")
             }
             duplicates.selected = before
             duplicates.keep(first, in: google)
         }
-        await screen("37b-doublons-ignores", root: DuplicatesView(flow: duplicates), size: nil,
+        await screen("37b-duplicates-ignored", root: DuplicatesView(flow: duplicates), size: nil,
                      expect: withTitle(sheet, "sheet-title"), chrome: false)
         duplicates.clearIgnored()
 
-        // Import : un export d'Apple fictif, comparé au coffre fictif.
-        let csv = output.appending(path: "export-fictif.csv")
+        // Import: a mock Apple export, compared to the mock vault.
+        let csv = output.appending(path: "mock-export.csv")
         let lines = [
             "Title,URL,Username,Password,Notes,OTPAuth",
             "GitHub,https://github.com,camille.martin@exemple.fr,un-autre-mot-de-passe,,",
@@ -311,25 +311,25 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             await screen("38-import", root: ImportView(flow: flow), size: nil,
                          expect: withTitle(sheet, "sheet-title"), chrome: false)
         } else {
-            fail("38-import", "l'export fictif n'a pas été lu")
+            fail("38-import", "the mock export was not read")
         }
         model.session.cancelImport()
     }
 
-    /// Partage : plusieurs éléments, nouvelle organisation, collection et
-    /// ses accès, groupes, invitation collée.
+    /// Sharing: several items, new organization, collection and its access,
+    /// groups, pasted invitation.
     private func sharingSheets(_ sheet: LayoutAudit.Expectation) async {
         guard let organization = model.organizations.first,
               let collection = organization.collections.first else {
-            fail("41-partager-plusieurs", "pas d'organisation dans le coffre fictif")
+            fail("41-share-several", "no organization in the mock vault")
             return
         }
         let titled = withTitle(sheet, "sheet-title")
         let personal = model.summaries.filter { $0.sharing == nil && $0.state == .active }.prefix(3).map(\.id)
-        let flow = SharingFlow(itemIDs: Array(personal), title: "\(personal.count) éléments", current: nil,
+        let flow = SharingFlow(itemIDs: Array(personal), title: String(localized: "\(personal.count) items"), current: nil,
                                organizationID: organization.id, collectionIDs: [collection.id])
-        await screen("41-partager-plusieurs", root: SharingView(flow: flow), size: nil, expect: titled, chrome: false)
-        await screen("42-nouvelle-organisation", root: NewOrganizationView(), size: nil, expect: titled, chrome: false)
+        await screen("41-share-several", root: SharingView(flow: flow), size: nil, expect: titled, chrome: false)
+        await screen("42-new-organization", root: NewOrganizationView(), size: nil, expect: titled, chrome: false)
         let members = Self.mockMembers(collection: collection.id)
         var draft = CollectionDraft(organizationID: organization.id, collectionID: collection.id, name: collection.name)
         draft.members = members
@@ -345,15 +345,15 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                                                                    hidePasswords: true, manage: false)]),
         ]
         let groupsDraft = GroupsDraft(organizationID: organization.id, groups: groups, members: members, loading: false)
-        await screen("44-groupes", root: GroupsView(draft: groupsDraft), size: nil, expect: titled, chrome: false)
-        await screen("44b-groupe", root: GroupsView(draft: groupsDraft, editing: GroupDraft(groups[1])), size: nil,
+        await screen("44-groups", root: GroupsView(draft: groupsDraft), size: nil, expect: titled, chrome: false)
+        await screen("44b-group", root: GroupsView(draft: groupsDraft, editing: GroupDraft(groups[1])), size: nil,
                      expect: titled, chrome: false)
-        await screen("45-rejoindre", root: JoinOrganizationView(link: Self.mockInviteLink), size: nil,
+        await screen("45-join", root: JoinOrganizationView(link: Self.mockInviteLink), size: nil,
                      expect: titled, chrome: false)
-        // Rien de collé : où trouver le lien, et pourquoi l'invitation n'est
-        // pas listée avant d'être acceptée.
-        await screen("45b-rejoindre-vide", root: JoinOrganizationView(), size: nil, expect: titled, chrome: false)
-        await screen("46-renommer", root: RenameOrganizationView(organization: organization), size: nil,
+        // Nothing pasted: where to find the link, and why the invitation is
+        // not listed before being accepted.
+        await screen("45b-join-empty", root: JoinOrganizationView(), size: nil, expect: titled, chrome: false)
+        await screen("46-rename", root: RenameOrganizationView(organization: organization), size: nil,
                      expect: titled, chrome: false)
     }
 
@@ -367,7 +367,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         model.summaries.first { $0.title == title }?.id
     }
 
-    /// Sélectionne l'élément de ce titre parmi les résultats (le premier si vide).
+    /// Selects the item with this title among the results (the first if empty).
     private func select(_ title: String) {
         model.selection = title.isEmpty
             ? model.results.first?.id
@@ -376,14 +376,14 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
     private func fail(_ name: String, _ message: String) {
         failures += 1
-        log("REVIEW_FAIL \(name) : \(message)")
+        log("REVIEW_FAIL \(name): \(message)")
     }
 
-    // MARK: Rendu
+    // MARK: Rendering
 
-    /// Rend `root` en clair puis en sombre. `size` : taille de la fenêtre
-    /// (`nil` : celle que demande la vue, comme une feuille) ; `chrome` :
-    /// fenêtre à barre d'outils, comme la principale.
+    /// Renders `root` in light then dark mode. `size`: window size (`nil`:
+    /// the one the view asks for, like a sheet); `chrome`: window with a
+    /// toolbar, like the main one.
     private func screen<V: View>(_ name: String, root: V, size: NSSize? = nil, expect: LayoutAudit.Expectation,
                                  chrome: Bool = true) async {
         for dark in [false, true] {
@@ -396,7 +396,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             window.contentViewController = host
             let frame = chrome ? NSRect(origin: Self.offscreen, size: size ?? mainSize) : nil
             if let frame { window.setFrame(frame, display: false) }
-            // SwiftUI met à jour au tour de boucle suivant (tâches, `onAppear`).
+            // SwiftUI updates on the next run loop turn (tasks, `onAppear`).
             for _ in 0..<6 {
                 window.contentView?.layoutSubtreeIfNeeded()
                 try? await Task.sleep(for: .milliseconds(150))
@@ -410,7 +410,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
             let visible = NSApp.windows.filter(\.isVisible)
             if !visible.isEmpty {
-                fail(name, "une fenêtre est apparue à l'écran ("
+                fail(name, "a window appeared on screen ("
                     + visible.map { "\(type(of: $0)) \(Int($0.frame.minX)),\(Int($0.frame.minY)) \(Int($0.frame.width))×\(Int($0.frame.height))" }
                         .joined(separator: ", ") + ")")
                 visible.forEach { $0.orderOut(nil) }
@@ -420,12 +420,12 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
                 if chrome { expectation.size = frame?.size }
                 let problems = LayoutAudit.problems(in: window, expectation)
                 if problems.isEmpty {
-                    log("REVIEW_OK \(name) : mise en page")
+                    log("REVIEW_OK \(name): layout")
                 } else {
-                    fail(name, "mise en page cassée : " + problems.joined(separator: " ; "))
+                    fail(name, "broken layout: " + problems.joined(separator: "; "))
                 }
             }
-            write(window, chrome: chrome, to: "\(name)-\(dark ? "sombre" : "clair")")
+            write(window, chrome: chrome, to: "\(name)-\(dark ? "dark" : "light")")
             window.contentViewController = nil
             window.close()
         }
@@ -448,19 +448,19 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         return window
     }
 
-    /// Dessin de la fenêtre par AppKit (`cacheDisplay`), sans passer par
-    /// l'écran : barre de titre et barre d'outils comprises si `chrome`. Les
-    /// matériaux translucides (barre latérale) sont rendus opaques.
+    /// Drawing of the window by AppKit (`cacheDisplay`), without going through
+    /// the screen: title bar and toolbar included if `chrome`. The translucent
+    /// materials (sidebar) are rendered opaque.
     private func write(_ window: NSWindow, chrome: Bool, to name: String) {
         guard let content = window.contentView else { return }
         let view = chrome ? (content.superview ?? content) : content
         view.layoutSubtreeIfNeeded()
         guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            fail(name, "rendu impossible")
+            fail(name, "couldn't render")
             return
         }
-        // Bords de défilement (flou, miroir du contenu) : `cacheDisplay` ne
-        // sait pas les dessiner, on les retire le temps du rendu.
+        // Scroll edges (blur, mirror of the content): `cacheDisplay` can't
+        // draw them, they are removed for the time of the rendering.
         var hidden: [NSView] = []
         func hideEffects(_ inner: NSView) {
             let name = String(describing: type(of: inner))
@@ -480,18 +480,18 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             try data.write(to: output.appending(path: "\(name).png"))
             log("REVIEW_SNAP \(name)")
         } catch {
-            fail(name, "écriture : \(error.localizedDescription)")
+            fail(name, "writing: \(error.localizedDescription)")
         }
     }
 
-    /// `cacheDisplay` ne dessine ni les effets de verre (barre latérale,
-    /// groupes de la barre d'outils) ni ce qu'ils contiennent : on peint un
-    /// fond opaque à leur place, puis leur contenu par-dessus.
+    /// `cacheDisplay` draws neither the glass effects (sidebar, toolbar
+    /// groups) nor what they contain: an opaque background is painted in
+    /// their place, then their content on top.
     private func compositeGlass(in root: NSView, onto rep: NSBitmapImageRep) {
         var glasses: [NSView] = []
         func visit(_ view: NSView) {
             if view.isHidden { return }
-            // Vue transparente (le coffre monté derrière l'écran verrouillé) : rien à peindre.
+            // Transparent view (the vault mounted behind the lock screen): nothing to paint.
             if view.alphaValue < 0.01 || (view.layer?.opacity ?? 1) < 0.01 { return }
             if String(describing: type(of: view)).contains("GlassEffectView") {
                 glasses.append(view)
@@ -503,7 +503,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         guard !glasses.isEmpty, let context = NSGraphicsContext(bitmapImageRep: rep) else { return }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = context
-        // Le contexte du bitmap est déjà en points (`rep.size`).
+        // The bitmap's context is already in points (`rep.size`).
         if root.isFlipped {
             context.cgContext.translateBy(x: 0, y: root.bounds.height)
             context.cgContext.scaleBy(x: 1, y: -1)
@@ -515,16 +515,16 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             (dark ? NSColor(white: 0.16, alpha: 1) : NSColor(white: 0.95, alpha: 1)).setFill()
             NSBezierPath(roundedRect: frame, xRadius: radius, yRadius: radius).fill()
             for content in drawable(in: glass) {
-                // Seulement la partie visible : une cellule défilée hors de la
-                // liste ne doit pas recouvrir le pied de la barre latérale.
+                // Only the visible part: a cell scrolled out of the list must
+                // not cover the footer of the sidebar.
                 let shown = content.visibleRect
                 guard !shown.isEmpty,
                       let image = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { continue }
                 content.cacheDisplay(in: content.bounds, to: image)
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(rect: content.convert(shown, to: root)).setClip()
-                // …ni passer sous le pied (dessiné sur un matériau que
-                // `cacheDisplay` laisse transparent) : la zone utile de la liste.
+                // …nor go under the footer (drawn on a material that
+                // `cacheDisplay` leaves transparent): the useful area of the list.
                 if let scroll = content.enclosingScrollView, content !== scroll {
                     let insets = scroll.contentInsets
                     var useful = scroll.bounds
@@ -541,9 +541,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         NSGraphicsContext.restoreGraphicsState()
     }
 
-    /// Fenêtre de rendu : jamais clé, jamais de champ actif. Un champ de mot
-    /// de passe actif ferait apparaître le panneau de remplissage automatique
-    /// du système, une vraie fenêtre à l'écran.
+    /// Rendering window: never key, never an active field. An active password
+    /// field would bring up the system's autofill panel, a real window on
+    /// screen.
     private final class ReviewWindow: NSWindow {
         override var canBecomeKey: Bool { false }
         override var canBecomeMain: Bool { false }
@@ -552,8 +552,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Ce qu'un effet de verre contient et que `cacheDisplay` sait dessiner :
-    /// les vues SwiftUI et les éléments de la barre d'outils.
+    /// What a glass effect contains and `cacheDisplay` can draw: the SwiftUI
+    /// views and the toolbar items.
     private func drawable(in glass: NSView) -> [NSView] {
         var found: [NSView] = []
         func visit(_ view: NSView) {
@@ -561,8 +561,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
             let name = String(describing: type(of: view))
             if name.hasPrefix("NSHostingView") || name.hasPrefix("CellHostingView") || view is NSControl {
                 found.append(view)
-                // Les listes (tables AppKit) ne se dessinent pas avec la vue
-                // qui les porte : leurs cellules, par-dessus.
+                // Lists (AppKit tables) are not drawn with the view that carries
+                // them: their cells, on top.
                 var tables: [NSView] = []
                 func findTables(_ inner: NSView) {
                     if inner is NSTableView { tables.append(inner); return }
@@ -578,7 +578,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         return found
     }
 
-    // MARK: Données fictives
+    // MARK: Mock data
 
     private static func mockSends() -> [SendSummary] {
         let now = Int64(Date().timeIntervalSince1970)

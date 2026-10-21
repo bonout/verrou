@@ -1,24 +1,24 @@
-//! Ce que chaque client a le droit d'obtenir du coffre.
+//! What each client is allowed to get from the vault.
 //!
-//! **Commandes** : chaque nature de client a les siennes ([`allowed`]) ;
-//! l'extension ne peut pas chercher dans le coffre, le terminal ne peut pas
-//! remplir une page.
+//! **Commands**: each kind of client has its own ([`allowed`]);
+//! the extension cannot search the vault, the terminal cannot
+//! fill a page.
 //!
-//! **Extension** : un mot de passe ne sort que pour un identifiant qui
-//! correspond à la page demandée (même domaine enregistrable, comme
-//! Bitwarden), et seulement vers une page en HTTPS. L'adresse de la page,
-//! c'est l'extension qui l'affirme : contre une clé d'appairage volée, le
-//! serveur du pont demande l'accord de l'utilisateur au-delà de quelques
-//! éléments en peu de temps, pour chaque carte et pour chaque site ajouté à
-//! un identifiant (`server.rs`). Écrire suit la même règle : l'extension
-//! n'enregistre un identifiant, ou n'en modifie un, que pour le site de la
-//! page, après un clic de l'utilisateur dans le bandeau de Verrou.
+//! **Extension**: a password only leaves for a login that
+//! matches the requested page (same registrable domain, like
+//! Bitwarden), and only towards an HTTPS page. The page's address
+//! is asserted by the extension: against a stolen pairing key, the
+//! bridge server asks for the user's approval beyond a few
+//! items in a short time, for each card and for each site added to
+//! a login (`server.rs`). Writing follows the same rule: the extension
+//! only saves a login, or modifies one, for the page's
+//! site, after a click by the user in Verrou's banner.
 //!
-//! **Terminal** : il cherche dans tout le coffre, mais les résultats et les
-//! éléments ne portent aucun secret ([`item_view`]). Un secret (champ
-//! masqué, notes, code à usage unique) et chaque signature SSH demandent
-//! l'accord de l'utilisateur dans Verrou ([`field_needs_confirmation`]), gardé
-//! quelques minutes pour cet élément et ce client seulement.
+//! **Terminal**: it searches the whole vault, but results and
+//! items carry no secret ([`item_view`]). A secret (concealed
+//! field, notes, one-time code) and each SSH signature require
+//! the user's approval in Verrou ([`field_needs_confirmation`]), kept
+//! a few minutes for this item and this client only.
 
 use url::Url;
 use verrou_core::matching::host_of;
@@ -30,11 +30,11 @@ use crate::protocol::{
     SaveAction, Suggestion,
 };
 
-/// Résultats rendus au plus par une recherche du terminal.
+/// Maximum number of results returned by a terminal search.
 const MAX_RESULTS: usize = 200;
 
-/// La commande est-elle permise à ce client ? Les commandes communes : l'état
-/// et la demande de déverrouillage.
+/// Is the command allowed for this client? The common commands: the status
+/// and the unlock request.
 pub fn allowed(kind: ClientKind, command: &Command) -> bool {
     match command {
         Command::Status | Command::Unlock => true,
@@ -78,7 +78,7 @@ fn item_summary(item: &Item) -> ItemSummary {
     }
 }
 
-/// « Organisation › Collection, Collection » (ou l'organisation seule).
+/// "Organization › Collection, Collection" (or the organization alone).
 pub fn shared_label(sharing: &verrou_core::Sharing) -> String {
     if sharing.collections.is_empty() {
         return sharing.organization.clone();
@@ -91,7 +91,7 @@ pub fn shared_label(sharing: &verrou_core::Sharing) -> String {
     format!("{} › {}", sharing.organization, collections.join(", "))
 }
 
-/// Recherche du terminal : les `limit` premiers résultats et leur total.
+/// Terminal search: the first `limit` results and their total.
 pub fn search(
     vault: &Vault,
     query: &str,
@@ -114,7 +114,7 @@ pub fn search(
     (items, hits.len())
 }
 
-/// L'élément d'identifiant `query`, sinon le meilleur résultat de recherche.
+/// The item with identifier `query`, otherwise the best search result.
 pub fn find<'v>(vault: &'v Vault, query: &str) -> Result<&'v Item, String> {
     if let Some(item) = vault.get(query) {
         return Ok(item);
@@ -123,10 +123,10 @@ pub fn find<'v>(vault: &'v Vault, query: &str) -> Result<&'v Item, String> {
         .search(query, &Filter::All, Sort::Relevance)
         .first()
         .map(|hit| &vault.items()[hit.index])
-        .ok_or_else(|| format!("aucun élément pour « {query} »"))
+        .ok_or_else(|| format!("no item for \"{query}\""))
 }
 
-/// L'élément sans la valeur de ses champs secrets ni ses notes.
+/// The item without the value of its secret fields or its notes.
 pub fn item_view(item: &Item) -> ItemView {
     ItemView {
         summary: item_summary(item),
@@ -148,37 +148,37 @@ pub fn item_view(item: &Item) -> ItemView {
     }
 }
 
-/// Le champ `field` (ou `notes`) de l'élément demande-t-il l'accord de
-/// l'utilisateur ? `Err` : élément ou champ introuvable.
+/// Does the item's field `field` (or `notes`) require the user's
+/// approval? `Err`: item or field not found.
 pub fn field_needs_confirmation(vault: &Vault, item_id: &str, field: &str) -> Result<bool, String> {
     let item = vault
         .get(item_id)
-        .ok_or_else(|| "élément introuvable".to_owned())?;
+        .ok_or_else(|| "item not found".to_owned())?;
     if field == "notes" {
         return item
             .notes
             .as_ref()
             .map(|_| true)
-            .ok_or_else(|| format!("« {} » n'a pas de notes", item.title));
+            .ok_or_else(|| format!("\"{}\" has no notes", item.title));
     }
     match item.field(field) {
         Some(f) if item.hides(f) => Err(format!(
-            "l'organisation de « {} » masque ce champ",
+            "the organization of \"{}\" hides this field",
             item.title
         )),
         Some(f) => Ok(f.kind.is_secret()),
-        None => Err(format!("« {} » n'a pas de champ « {field} »", item.title)),
+        None => Err(format!("\"{}\" has no field \"{field}\"", item.title)),
     }
 }
 
-/// La valeur du champ `field` (ou des notes) de l'élément.
+/// The value of the item's field `field` (or of the notes).
 pub fn field_value(vault: &Vault, item_id: &str, field: &str) -> Result<String, String> {
     let item = vault
         .get(item_id)
-        .ok_or_else(|| "élément introuvable".to_owned())?;
+        .ok_or_else(|| "item not found".to_owned())?;
     if item.field(field).is_some_and(|f| item.hides(f)) {
         return Err(format!(
-            "l'organisation de « {} » masque ce champ",
+            "the organization of \"{}\" hides this field",
             item.title
         ));
     }
@@ -187,10 +187,10 @@ pub fn field_value(vault: &Vault, item_id: &str, field: &str) -> Result<String, 
     } else {
         item.field(field).map(|f| f.value.expose().to_owned())
     };
-    value.ok_or_else(|| format!("« {} » n'a pas de champ « {field} »", item.title))
+    value.ok_or_else(|| format!("\"{}\" has no field \"{field}\"", item.title))
 }
 
-/// Le code à usage unique du moment : code, période, secondes restantes.
+/// The current one-time code: code, period, seconds remaining.
 pub fn totp_code(
     vault: &Vault,
     item_id: &str,
@@ -198,29 +198,29 @@ pub fn totp_code(
 ) -> Result<(String, u64, u64), String> {
     let item = vault
         .get(item_id)
-        .ok_or_else(|| "élément introuvable".to_owned())?;
+        .ok_or_else(|| "item not found".to_owned())?;
     let field = item
         .field_of_kind(FieldKind::Totp)
-        .ok_or_else(|| format!("« {} » n'a pas de code à usage unique", item.title))?;
+        .ok_or_else(|| format!("\"{}\" has no one-time code", item.title))?;
     let code = Totp::parse(field.value.expose())
         .map_err(|e| e.to_string())?
         .generate(unix_time);
     Ok((code.code, code.period, code.remaining))
 }
 
-/// Titre de l'élément, pour la demande d'accord.
+/// The item's title, for the approval request.
 pub fn title_of(vault: &Vault, item_id: &str) -> Option<String> {
     vault.get(item_id).map(|i| i.title.clone())
 }
 
 // MARK: Extension
 
-/// Longueurs maximales acceptées depuis une page.
+/// Maximum lengths accepted from a page.
 const MAX_USERNAME: usize = 512;
 const MAX_PASSWORD: usize = 1024;
 const MAX_TOTP: usize = 2048;
 
-/// HTTPS, ou HTTP vers la machine elle-même (développement).
+/// HTTPS, or HTTP to the machine itself (development).
 pub fn page_allowed(page_url: &str) -> bool {
     let Ok(url) = Url::parse(page_url) else {
         return false;
@@ -264,7 +264,7 @@ fn password_of(item: &Item) -> Option<&str> {
         .map(|f| f.value.expose())
 }
 
-/// Identifiants de la page, seulement les connexions.
+/// The page's logins, only the login items.
 pub(crate) fn logins_for<'v>(vault: &'v Vault, page_url: &str) -> Vec<&'v Item> {
     vault
         .suggestions_for(page_url)
@@ -273,14 +273,14 @@ pub(crate) fn logins_for<'v>(vault: &'v Vault, page_url: &str) -> Vec<&'v Item> 
         .collect()
 }
 
-/// Ce que l'extension doit proposer après l'envoi d'un formulaire.
+/// What the extension should offer after a form is submitted.
 ///
-/// - Même identifiant et même mot de passe : rien (`Known`).
-/// - Même identifiant, autre mot de passe : mise à jour.
-/// - Identifiant absent (connexion en deux étapes, changement de mot de
-///   passe) : l'élément dont le mot de passe est l'ancien (`current`), ou le
-///   seul identifiant du site.
-/// - Sinon : un nouvel élément.
+/// - Same username and same password: nothing (`Known`).
+/// - Same username, other password: update.
+/// - No username (two-step sign-in, password
+///   change): the item whose password is the old one (`current`), or the
+///   site's only login.
+/// - Otherwise: a new item.
 pub fn check_save(
     vault: &Vault,
     page_url: &str,
@@ -320,7 +320,7 @@ pub fn check_save(
     };
     Ok(match found {
         Some(item) if same_password(item) => (SaveAction::Known, Some(suggestion(item))),
-        // Partagé en lecture seule : on propose plutôt un nouvel élément.
+        // Shared read-only: offer a new item instead.
         Some(item) if item.is_writable() => (SaveAction::Update, Some(suggestion(item))),
         _ => (SaveAction::New, None),
     })
@@ -328,19 +328,19 @@ pub fn check_save(
 
 fn check_input(page_url: &str, username: &str, password: &str) -> Result<(), String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     if password.is_empty() {
-        return Err("mot de passe vide".to_owned());
+        return Err("empty password".to_owned());
     }
     if username.len() > MAX_USERNAME || password.len() > MAX_PASSWORD {
-        return Err("identifiant ou mot de passe trop long".to_owned());
+        return Err("username or password too long".to_owned());
     }
     Ok(())
 }
 
-/// Écriture demandée par l'extension, vérifiée : l'app n'a plus qu'à
-/// l'exécuter.
+/// A write requested by the extension, checked: the app only has to
+/// carry it out.
 #[derive(Debug)]
 pub enum Write {
     Create {
@@ -352,15 +352,15 @@ pub enum Write {
     },
     Update {
         item: String,
-        /// Seulement si l'élément n'en a pas.
+        /// Only if the item has none.
         username: Option<String>,
         password: Option<SecretString>,
         totp: Option<SecretString>,
-        /// Site ajouté à l'élément (`LinkSite`).
+        /// Site added to the item (`LinkSite`).
         uri: Option<String>,
     },
-    /// Passkey créée pour la page ([`crate::passkeys::plan_creation`]) :
-    /// dans l'identifiant `item`, ou un nouvel identifiant (`title`, `uri`).
+    /// Passkey created for the page ([`crate::passkeys::plan_creation`]):
+    /// in the login `item`, or a new login (`title`, `uri`).
     Passkey {
         item: Option<String>,
         title: String,
@@ -368,7 +368,7 @@ pub enum Write {
         username: Option<String>,
         passkey: Box<verrou_core::Passkey>,
     },
-    /// Nouveau compteur d'une passkey, après une authentification.
+    /// New counter of a passkey, after an authentication.
     PasskeyCounter {
         item: String,
         credential_id: String,
@@ -376,31 +376,31 @@ pub enum Write {
     },
 }
 
-/// L'élément `item` s'il correspond à la page.
+/// The item `item` if it matches the page.
 fn matching_login<'v>(vault: &'v Vault, page_url: &str, item: &str) -> Result<&'v Item, String> {
     logins_for(vault, page_url)
         .into_iter()
         .find(|i| i.id == item)
-        .ok_or_else(|| "cet identifiant ne correspond pas à ce site".to_owned())
+        .ok_or_else(|| "this login does not match this site".to_owned())
         .and_then(writable)
 }
 
-/// Un élément partagé en lecture seule ne s'écrit pas.
+/// An item shared read-only is not written.
 fn writable(item: &Item) -> Result<&Item, String> {
     if item.is_writable() {
         Ok(item)
     } else {
         Err(format!(
-            "« {} » est partagé en lecture seule avec ce compte",
+            "\"{}\" is shared read-only with this account",
             item.title
         ))
     }
 }
 
-/// Titre et adresse d'un nouvel élément pour la page : le site, sans chemin.
+/// Title and address of a new item for the page: the site, without a path.
 pub(crate) fn new_site(page_url: &str) -> Result<(String, String), String> {
-    let url = Url::parse(page_url).map_err(|_| "adresse de page invalide".to_owned())?;
-    let title = host_of(page_url).ok_or_else(|| "adresse de page invalide".to_owned())?;
+    let url = Url::parse(page_url).map_err(|_| "invalid page address".to_owned())?;
+    let title = host_of(page_url).ok_or_else(|| "invalid page address".to_owned())?;
     Ok((title, url.origin().ascii_serialization()))
 }
 
@@ -435,7 +435,7 @@ pub fn plan_save(
     })
 }
 
-/// Graine TOTP lue sur la page (QR code ou clé collée).
+/// TOTP seed read on the page (QR code or pasted key).
 pub fn plan_totp(
     vault: &Vault,
     page_url: &str,
@@ -443,11 +443,11 @@ pub fn plan_totp(
     item: Option<&str>,
 ) -> Result<Write, String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     let totp = totp.trim();
     if totp.len() > MAX_TOTP {
-        return Err("code trop long".to_owned());
+        return Err("code too long".to_owned());
     }
     Totp::parse(totp).map_err(|e| e.to_string())?;
     let seed = Some(SecretString::new(totp));
@@ -470,7 +470,7 @@ pub fn plan_totp(
     })
 }
 
-/// Le compte annoncé par une URI `otpauth://totp/Émetteur:compte`.
+/// The account announced by an `otpauth://totp/Issuer:account` URI.
 fn otpauth_account(totp: &str) -> Option<String> {
     let url = Url::parse(totp).ok().filter(|u| u.scheme() == "otpauth")?;
     let label = url.path().trim_start_matches('/');
@@ -481,9 +481,9 @@ fn otpauth_account(totp: &str) -> Option<String> {
     (!account.is_empty()).then(|| account.to_owned())
 }
 
-/// Identifiant, mot de passe et code du moment, si l'élément correspond à
-/// la page. `Err` : la raison du refus, à afficher.
-/// L'élément `item` demande-t-il une confirmation avant de livrer ses secrets ?
+/// Username, password and current code, if the item matches
+/// the page. `Err`: the reason for the refusal, to display.
+/// Does the item `item` require a confirmation before releasing its secrets?
 pub fn needs_confirmation(vault: &Vault, item: &str) -> bool {
     vault.get(item).is_some_and(|i| i.reprompt)
 }
@@ -495,14 +495,14 @@ pub fn credentials(
     unix_time: u64,
 ) -> Result<Credentials, String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     let item = vault
         .suggestions_for(page_url)
         .into_iter()
         .find(|item| item.id == item_id)
         .filter(|item| item.kind == ItemKind::Login)
-        .ok_or_else(|| "cet identifiant ne correspond pas à ce site".to_owned())?;
+        .ok_or_else(|| "this login does not match this site".to_owned())?;
     let value = |kind| {
         item.field_of_kind(kind)
             .map(|f| f.value.expose().to_owned())
@@ -517,9 +517,9 @@ pub fn credentials(
     })
 }
 
-// MARK: Cartes et identités
+// MARK: Cards and identities
 
-/// Cartes et identités actives, proposées sur une page sûre ; aucun secret.
+/// Active cards and identities, offered on a secure page; no secrets.
 pub fn form_suggestions(
     vault: &Vault,
     page_url: &str,
@@ -544,15 +544,15 @@ pub fn form_suggestions(
     (of_kind(ItemKind::Card), of_kind(ItemKind::Identity))
 }
 
-/// La carte ou l'identité `item`, champ par champ, pour la page `url`.
+/// The card or identity `item`, field by field, for the page `url`.
 pub fn form_data(vault: &Vault, item_id: &str, page_url: &str) -> Result<FormData, String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     let item = vault
         .get(item_id)
         .filter(|i| i.is_active())
-        .ok_or_else(|| "élément introuvable".to_owned())?;
+        .ok_or_else(|| "item not found".to_owned())?;
     let value = |id: &str| {
         item.field(id)
             .map(|f| f.value.expose().trim().to_owned())
@@ -572,7 +572,7 @@ pub fn form_data(vault: &Vault, item_id: &str, page_url: &str) -> Result<FormDat
                     Some((format!("{:0>2}", m.trim()), year))
                 })
                 .unzip();
-            // Pas de `..Default::default()` : `FormData` s'efface à la libération.
+            // No `..Default::default()`: `FormData` is wiped when dropped.
             let mut data = FormData::default();
             "card".clone_into(&mut data.kind);
             data.cardholder = value("cardholder");
@@ -608,11 +608,11 @@ pub fn form_data(vault: &Vault, item_id: &str, page_url: &str) -> Result<FormDat
             data.country = value("part:country");
             Ok(data)
         }
-        _ => Err("ni une carte, ni une identité".to_owned()),
+        _ => Err("neither a card nor an identity".to_owned()),
     }
 }
 
-/// Identifiants qui répondent à `query` (20 au plus), sans secret.
+/// Logins matching `query` (20 at most), without secrets.
 pub fn search_logins(vault: &Vault, query: &str) -> Vec<Suggestion> {
     vault
         .search(query, &Filter::Kind(ItemKind::Login), Sort::Relevance)
@@ -622,19 +622,19 @@ pub fn search_logins(vault: &Vault, query: &str) -> Vec<Suggestion> {
         .collect()
 }
 
-/// Ajouter le site de la page à l'identifiant `item`, choisi par
-/// l'utilisateur dans la fenêtre de l'extension.
+/// Add the page's site to the login `item`, chosen by
+/// the user in the extension's popup.
 pub fn plan_link_site(vault: &Vault, page_url: &str, item_id: &str) -> Result<Write, String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     let item = vault
         .get(item_id)
         .filter(|i| i.kind == ItemKind::Login && i.is_active())
-        .ok_or_else(|| "identifiant introuvable".to_owned())
+        .ok_or_else(|| "login not found".to_owned())
         .and_then(writable)?;
     if logins_for(vault, page_url).iter().any(|i| i.id == item.id) {
-        return Err("cet identifiant correspond déjà à ce site".to_owned());
+        return Err("this login already matches this site".to_owned());
     }
     let (_, origin) = new_site(page_url)?;
     Ok(Write::Update {
@@ -646,8 +646,8 @@ pub fn plan_link_site(vault: &Vault, page_url: &str, item_id: &str) -> Result<Wr
     })
 }
 
-/// Exécute l'écriture sur un coffre en mémoire : pour les faux coffres (tests
-/// et serveur de test de l'extension). L'app, elle, écrit sur le serveur.
+/// Carries out the write on an in-memory vault: for fake vaults (tests
+/// and the extension's test server). The app itself writes to the server.
 pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, String) {
     use verrou_core::Field;
     let mut items = vault.items().to_vec();
@@ -690,14 +690,14 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
                 &mut item,
                 FieldKind::Username,
                 "username",
-                "Identifiant",
+                "Username",
                 username,
             );
             set(
                 &mut item,
                 FieldKind::Password,
                 "password",
-                "Mot de passe",
+                "Password",
                 expose(password),
             );
             set(&mut item, FieldKind::Totp, "totp", "Code", expose(totp));
@@ -718,18 +718,12 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
         } => {
             if let Some(item) = items.iter_mut().find(|i| i.id == id) {
                 item.urls.extend(uri);
-                set(
-                    item,
-                    FieldKind::Username,
-                    "username",
-                    "Identifiant",
-                    username,
-                );
+                set(item, FieldKind::Username, "username", "Username", username);
                 set(
                     item,
                     FieldKind::Password,
                     "password",
-                    "Mot de passe",
+                    "Password",
                     expose(password),
                 );
                 set(item, FieldKind::Totp, "totp", "Code", expose(totp));
@@ -803,9 +797,9 @@ mod tests {
         assert!(found[0].has_totp);
     }
 
-    /// Le chemin de l'extension (suggestions puis identifiants) suit la
-    /// règle de chaque site, celle de l'appareil et les domaines
-    /// équivalents.
+    /// The extension's path (suggestions then credentials) follows the
+    /// rule of each site, the device's rule and equivalent
+    /// domains.
     #[test]
     fn extension_fill_honours_match_rules() {
         use verrou_core::{MatchRules, UriMatch};
@@ -824,12 +818,12 @@ mod tests {
         };
         assert_eq!(ids("https://banque.fr/connexion"), ["exact"]);
         assert_eq!(ids("https://banque.fr/connexion?x=1"), Vec::<String>::new());
-        // Règle de l'appareil « hôte » : pas de sous-domaine.
+        // Device rule "host": no subdomain.
         assert_eq!(ids("https://gist.github.com"), Vec::<String>::new());
         assert_eq!(ids("https://github.com/login"), ["github"]);
         assert!(credentials(&v, "jamais", "https://banque.fr", 0).is_err());
         assert!(credentials(&v, "exact", "https://banque.fr/connexion", 0).is_ok());
-        // Domaines équivalents : seulement pour la règle « domaine ».
+        // Equivalent domains: only for the "domain" rule.
         let mut domain = item("domaine", "https://compte.exemple.fr");
         domain.url_matches = vec![Some(UriMatch::Domain)];
         let mut host = item("hote", "https://compte.exemple.fr");
@@ -856,9 +850,9 @@ mod tests {
         assert_eq!(action, SaveAction::Update);
         assert_eq!(item.unwrap().id, "github");
         assert_eq!(check("dominique", "x", None).0, SaveAction::New);
-        // Changement de mot de passe sans identifiant : l'ancien désigne l'élément.
+        // Password change without a username: the old one designates the item.
         assert_eq!(check("", "nouveau", Some("secret")).0, SaveAction::Update);
-        // Seul identifiant du site, deuxième étape d'une connexion.
+        // The site's only login, second step of a sign-in.
         assert_eq!(check("", "nouveau", None).0, SaveAction::Update);
         assert!(check_save(&v, "http://github.com/", "camille", "x", None).is_err());
         assert!(check_save(&v, page, "camille", "", None).is_err());
@@ -881,16 +875,16 @@ mod tests {
         )
         .unwrap()
         else {
-            panic!("mise à jour attendue");
+            panic!("expected an update");
         };
         assert_eq!(item, "github");
-        assert_eq!(username, None, "l'identifiant existant est gardé");
+        assert_eq!(username, None, "the existing username is kept");
         assert_eq!(password.unwrap().expose(), "nouveau");
         assert!(plan_save(&v, "https://github.com/", "c", "x", Some("banque")).is_err());
         let Write::Create { title, uri, .. } =
             plan_save(&v, "https://www.exemple.fr/inscription?x=1", "c", "x", None).unwrap()
         else {
-            panic!("création attendue");
+            panic!("expected a creation");
         };
         assert_eq!(
             (title.as_str(), uri.as_str()),
@@ -906,7 +900,7 @@ mod tests {
         let Write::Create { username, totp, .. } =
             plan_totp(&v, "https://exemple.fr/2fa", uri, None).unwrap()
         else {
-            panic!("création attendue");
+            panic!("expected a creation");
         };
         assert_eq!(username.as_deref(), Some("camille@exemple.fr"));
         assert_eq!(totp.unwrap().expose(), uri);
@@ -1012,7 +1006,7 @@ mod tests {
         assert!(!json.contains("note secrète"), "{json}");
         assert_eq!(view.fields[0].value.as_deref(), Some("camille"));
         assert!(view.has_notes);
-        // Le champ non secret sort sans accord ; mot de passe et notes, non.
+        // The non-secret field leaves without approval; password and notes do not.
         assert_eq!(
             field_needs_confirmation(&v, "github", "username"),
             Ok(false)
@@ -1048,7 +1042,7 @@ mod tests {
         });
         let vault = Vault::new(vec![item]);
         let page = "https://www.netflix.com/login";
-        // Le remplissage reste permis (comme Bitwarden), pas l'affichage.
+        // Filling stays allowed (like Bitwarden), displaying does not.
         assert!(credentials(&vault, "famille", page, 0).is_ok());
         assert!(field_value(&vault, "famille", "password").is_err());
         assert_eq!(
@@ -1059,7 +1053,7 @@ mod tests {
             search(&vault, "", None, false, None).0[0].shared.as_deref(),
             Some("Famille › Streaming")
         );
-        // Lecture seule : pas de mise à jour, l'extension propose un nouvel élément.
+        // Read-only: no update, the extension offers a new item.
         assert!(plan_save(&vault, page, "camille", "autre", Some("famille")).is_err());
         assert_eq!(
             check_save(&vault, page, "camille", "autre", None)

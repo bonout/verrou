@@ -1,36 +1,36 @@
-//! Messages échangés avec les clients du pont (extension, terminal).
+//! Messages exchanged with the bridge's clients (extension, terminal).
 //!
-//! En clair, l'enveloppe : demande d'appairage, ou requête chiffrée d'un
-//! client appairé. Chiffrés, la commande et sa réponse.
+//! In clear, the envelope: a pairing request, or an encrypted request from a
+//! paired client. Encrypted, the command and its response.
 
 use serde::{Deserialize, Serialize};
 use verrou_core::{FieldKind, ItemKind};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Taille maximale d'un message (Native Messaging limite à 1 Mio ce que
-/// l'hôte renvoie au navigateur).
+/// Maximum size of a message (Native Messaging limits what the host sends
+/// back to the browser to 1 MiB).
 pub const MAX_FRAME: usize = 1024 * 1024;
 
-/// Écart toléré entre l'horodatage d'une requête et l'horloge de Verrou.
+/// Tolerated gap between a request's timestamp and Verrou's clock.
 pub const MAX_CLOCK_SKEW_MS: i64 = 120_000;
 
-/// Nature d'un client : elle fixe les commandes qu'il peut envoyer
+/// A client's kind: it sets the commands it can send
 /// ([`crate::access::allowed`]).
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ClientKind {
-    /// L'extension de navigateur : les identifiants de la page en cours.
+    /// The browser extension: the logins for the current page.
     #[default]
     Browser,
-    /// Le terminal (`verrou`) : recherche, secrets après confirmation, agent SSH.
+    /// The terminal (`verrou`): search, secrets after confirmation, SSH agent.
     Cli,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Incoming {
-    /// `key` : clé publique P-256 du client (SEC1, base64). `kind` absent :
-    /// l'extension, qui ne l'envoie pas.
+    /// `key`: the client's P-256 public key (SEC1, base64). `kind` missing:
+    /// the extension, which does not send it.
     Pair {
         name: String,
         key: String,
@@ -47,8 +47,8 @@ pub enum Incoming {
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Outgoing {
-    /// Clé publique de Verrou et identifiant attribué : l'extension peut
-    /// calculer la clé du canal et afficher le code, en attendant l'accord.
+    /// Verrou's public key and the assigned identifier: the extension can
+    /// compute the channel key and show the code while awaiting approval.
     Pairing {
         client: String,
         key: String,
@@ -67,19 +67,19 @@ pub enum Outgoing {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
-    /// Client inconnu ou révoqué : il faut appairer de nouveau.
+    /// Unknown or revoked client: it must pair again.
     UnknownClient,
-    /// Message mal formé, illisible ou périmé.
+    /// Malformed, unreadable or stale message.
     BadRequest,
-    /// Un appairage est déjà en cours, ou trop rapproché du précédent.
+    /// A pairing is already in progress, or too close to the previous one.
     Busy,
 }
 
-/// Requête déchiffrée.
+/// Decrypted request.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Request {
     pub id: u64,
-    /// Horodatage Unix en millisecondes.
+    /// Unix timestamp in milliseconds.
     pub ts: i64,
     #[serde(flatten)]
     pub command: Command,
@@ -89,21 +89,21 @@ pub struct Request {
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
     Status,
-    /// Identifiants proposés pour la page `url`.
+    /// Logins suggested for the page `url`.
     Suggest {
         url: String,
     },
-    /// Identifiant, mot de passe et code de l'élément `item`, s'il correspond
-    /// à la page `url`.
+    /// Username, password and code of the item `item`, if it matches
+    /// the page `url`.
     Fill {
         url: String,
         item: String,
     },
-    /// Amène Verrou au premier plan pour le déverrouiller.
+    /// Brings Verrou to the foreground to unlock it.
     Unlock,
-    /// Identifiant saisi sur la page `url` : déjà dans le coffre, nouveau,
-    /// ou nouveau mot de passe d'un élément ? `current` : l'ancien mot de
-    /// passe d'un formulaire de changement.
+    /// Login typed on the page `url`: already in the vault, new,
+    /// or a new password for an item? `current`: the old password
+    /// of a change form.
     Check {
         url: String,
         username: String,
@@ -111,8 +111,8 @@ pub enum Command {
         #[serde(default)]
         current: Option<String>,
     },
-    /// Enregistre l'identifiant de la page : `item` absent, un nouvel
-    /// élément ; sinon le nouveau mot de passe de cet élément.
+    /// Saves the page's login: `item` missing, a new
+    /// item; otherwise the new password of that item.
     Save {
         url: String,
         username: String,
@@ -120,15 +120,15 @@ pub enum Command {
         #[serde(default)]
         item: Option<String>,
     },
-    /// Ajoute la graine TOTP (ou l'URI `otpauth://` d'un QR code) à
-    /// l'élément `item` de la page, ou à un nouvel élément.
+    /// Adds the TOTP seed (or the `otpauth://` URI of a QR code) to
+    /// the page's item `item`, or to a new item.
     SetTotp {
         url: String,
         totp: String,
         #[serde(default)]
         item: Option<String>,
     },
-    /// Terminal : éléments qui répondent à `query`, sans secret.
+    /// Terminal: items matching `query`, without secrets.
     VaultSearch {
         query: String,
         #[serde(default)]
@@ -138,58 +138,58 @@ pub enum Command {
         #[serde(default)]
         limit: Option<u32>,
     },
-    /// Terminal : un élément (identifiant, sinon meilleur résultat de
-    /// recherche), sans la valeur de ses champs secrets.
+    /// Terminal: one item (identifier, otherwise the best search
+    /// result), without the value of its secret fields.
     VaultItem {
         query: String,
     },
-    /// Terminal : la valeur d'un champ (`notes` compris) de l'élément `item`.
-    /// Un champ secret demande l'accord de l'utilisateur dans Verrou.
+    /// Terminal: the value of a field (`notes` included) of the item `item`.
+    /// A secret field requires the user's approval in Verrou.
     Reveal {
         item: String,
         field: String,
     },
-    /// Terminal : le code à usage unique de l'élément `item`, avec accord.
+    /// Terminal: the one-time code of the item `item`, with approval.
     Totp {
         item: String,
     },
-    /// Terminal : oublier ce client (`verrou unlink`).
+    /// Terminal: forget this client (`verrou unlink`).
     Unlink,
-    /// Agent SSH : les clés publiques des clés SSH du coffre.
+    /// SSH agent: the public keys of the vault's SSH keys.
     SshKeys,
-    /// Agent SSH : signer `data` (base64) avec la clé dont `public_key` est
-    /// la forme binaire SSH (base64). `flags` : ceux de l'agent OpenSSH
-    /// (`rsa-sha2-256` = 2, `rsa-sha2-512` = 4). La clé privée ne sort pas
-    /// de Verrou : seule la signature revient.
+    /// SSH agent: sign `data` (base64) with the key whose SSH binary form is
+    /// `public_key` (base64). `flags`: those of the OpenSSH agent
+    /// (`rsa-sha2-256` = 2, `rsa-sha2-512` = 4). The private key does not leave
+    /// Verrou: only the signature comes back.
     SshSign {
         public_key: String,
         data: String,
         #[serde(default)]
         flags: u32,
     },
-    /// Cartes et identités proposées pour un formulaire de paiement ou
-    /// d'adresse de la page `url` (titres et sous-titres masqués seulement).
+    /// Cards and identities suggested for a payment or address form
+    /// on the page `url` (titles and masked subtitles only).
     Forms {
         url: String,
     },
-    /// Les champs de la carte ou de l'identité `item`, pour la page `url`.
+    /// The fields of the card or identity `item`, for the page `url`.
     FillForm {
         url: String,
         item: String,
     },
-    /// Recherche parmi les identifiants (titre et identifiant affiché, aucun
-    /// secret), pour en rattacher un à un site qui n'en a pas.
+    /// Search among logins (title and displayed username, no
+    /// secret), to link one to a site that has none.
     SearchLogins {
         query: String,
     },
-    /// Ajoute le site de la page `url` à l'identifiant `item` (choisi par
-    /// l'utilisateur dans la fenêtre de l'extension) : il y correspond
-    /// ensuite, et se remplit comme les autres.
+    /// Adds the site of the page `url` to the login `item` (chosen by
+    /// the user in the extension's popup): it then matches it,
+    /// and fills like the others.
     LinkSite {
         url: String,
         item: String,
     },
-    /// Passkeys : voir [`crate::passkeys`].
+    /// Passkeys: see [`crate::passkeys`].
     PasskeyList(PasskeyQuery),
     PasskeyGet(PasskeyUse),
     PasskeyTargets(PasskeyTargetsQuery),
@@ -208,9 +208,9 @@ pub struct Reply {
 pub enum ReplyResult {
     Status {
         unlocked: bool,
-        /// Version de l'extension livrée avec Verrou (le `manifest.json` du
-        /// paquet de l'app) : l'extension se recharge si elle diffère de la
-        /// sienne. Absente : inconnue (tests, autre client).
+        /// Version of the extension shipped with Verrou (the `manifest.json` of
+        /// the app bundle): the extension reloads if it differs from its
+        /// own. Missing: unknown (tests, another client).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         extension_version: Option<String>,
     },
@@ -225,18 +225,18 @@ pub enum ReplyResult {
     Done,
     Check {
         action: SaveAction,
-        /// L'élément concerné, pour `known` et `update`.
+        /// The item concerned, for `known` and `update`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         item: Option<Suggestion>,
     },
-    /// Écrit dans le coffre : l'identifiant de l'élément créé ou modifié.
+    /// Written to the vault: the identifier of the created or modified item.
     Saved {
         item: String,
     },
-    /// Élément protégé (« redemander le mot de passe principal ») : Verrou
-    /// demande confirmation ; l'extension réessaie ensuite.
+    /// Protected item ("master password re-prompt"): Verrou
+    /// asks for confirmation; the extension then retries.
     Confirm,
-    /// Résultats d'une recherche du terminal : les premiers, et leur total.
+    /// Results of a terminal search: the first ones, and their total.
     Items {
         items: Vec<ItemSummary>,
         total: u32,
@@ -244,7 +244,7 @@ pub enum ReplyResult {
     Item {
         item: ItemView,
     },
-    /// Valeur d'un champ, révélée avec l'accord de l'utilisateur.
+    /// Value of a field, revealed with the user's approval.
     Secret(SecretValue),
     Code {
         code: String,
@@ -259,7 +259,7 @@ pub enum ReplyResult {
         identities: Vec<FormSuggestion>,
     },
     Form(Box<FormData>),
-    /// Signature au format de l'agent SSH (algorithme et signature), base64.
+    /// Signature in the SSH agent's format (algorithm and signature), base64.
     Signature {
         signature: String,
     },
@@ -267,7 +267,7 @@ pub enum ReplyResult {
         items: Vec<PasskeySuggestion>,
     },
     PasskeyTargets {
-        /// Une passkey de `exclude` est déjà dans le coffre.
+        /// A passkey from `exclude` is already in the vault.
         excluded: bool,
         logins: Vec<PasskeyTarget>,
     },
@@ -275,7 +275,7 @@ pub enum ReplyResult {
     Registration(PasskeyRegistration),
 }
 
-/// Un élément dans une liste du terminal. Aucun secret.
+/// An item in a terminal list. No secrets.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ItemSummary {
     pub id: String,
@@ -287,13 +287,13 @@ pub struct ItemSummary {
     pub tags: Vec<String>,
     pub favorite: bool,
     pub has_totp: bool,
-    /// Coffre partagé : « Organisation › Collection, … ». Absent pour un
-    /// élément personnel.
+    /// Shared vault: "Organization › Collection, …". Missing for a
+    /// personal item.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared: Option<String>,
 }
 
-/// Un élément pour `verrou get` : la valeur des champs secrets est absente.
+/// An item for `verrou get`: the value of secret fields is missing.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ItemView {
     #[serde(flatten)]
@@ -308,7 +308,7 @@ pub struct FieldView {
     pub label: String,
     pub kind: FieldKind,
     pub secret: bool,
-    /// Absente pour un champ secret : il faut `reveal`.
+    /// Missing for a secret field: `reveal` is needed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
 }
@@ -318,29 +318,29 @@ pub struct SecretValue {
     pub value: String,
 }
 
-/// Une clé SSH du coffre, vue par l'agent : sa clé publique seulement.
+/// An SSH key of the vault, as the agent sees it: its public key only.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SshIdentity {
     pub item: String,
     pub title: String,
-    /// Forme binaire SSH de la clé publique, base64.
+    /// SSH binary form of the public key, base64.
     pub public_key: String,
 }
 
-/// Refus particulier de [`crate::Backend::credentials`] : l'élément attend une
-/// confirmation dans Verrou (renvoyé à l'extension comme [`ReplyResult::Confirm`]).
-pub const CONFIRM_IN_APP: &str = "confirmation requise dans Verrou";
+/// Special refusal from [`crate::Backend::credentials`]: the item awaits a
+/// confirmation in Verrou (sent back to the extension as [`ReplyResult::Confirm`]).
+pub const CONFIRM_IN_APP: &str = "confirmation required in Verrou";
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SaveAction {
-    /// Déjà dans le coffre, à l'identique : rien à proposer.
+    /// Already in the vault, identical: nothing to offer.
     Known,
     New,
     Update,
 }
 
-/// Ce que le menu de l'extension affiche. Aucun secret.
+/// What the extension's menu shows. No secrets.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Suggestion {
     pub id: String,
@@ -349,8 +349,8 @@ pub struct Suggestion {
     pub has_totp: bool,
 }
 
-/// Une carte ou une identité proposée dans le menu : aucun secret
-/// (« Visa •••• 4242 », l'e-mail de l'identité).
+/// A card or identity suggested in the menu: no secrets
+/// ("Visa •••• 4242", the identity's email).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct FormSuggestion {
     pub id: String,
@@ -358,22 +358,22 @@ pub struct FormSuggestion {
     pub subtitle: String,
 }
 
-/// Les champs d'une carte (`kind` = `card`) ou d'une identité (`identity`),
-/// au moment du remplissage. Absents : vides dans le coffre.
+/// The fields of a card (`kind` = `card`) or an identity (`identity`),
+/// at fill time. Missing: empty in the vault.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct FormData {
     pub kind: String,
-    // Carte
+    // Card
     pub cardholder: Option<String>,
-    /// Chiffres seuls.
+    /// Digits only.
     pub number: Option<String>,
     /// `MM`.
     pub exp_month: Option<String>,
-    /// `AAAA`.
+    /// `YYYY`.
     pub exp_year: Option<String>,
     pub code: Option<String>,
     pub brand: Option<String>,
-    // Identité
+    // Identity
     pub first_name: Option<String>,
     pub last_name: Option<String>,
     pub full_name: Option<String>,
@@ -392,18 +392,18 @@ pub struct FormData {
 pub struct Credentials {
     pub username: Option<String>,
     pub password: Option<String>,
-    /// Code à usage unique du moment, s'il y a une graine.
+    /// Current one-time code, if there is a seed.
     pub totp: Option<String>,
 }
 
 // MARK: Passkeys
 //
-// Octets en base64url, comme `PublicKeyCredential.toJSON()`. L'adresse
-// (`url`) est celle que le navigateur attribue à la page ; le reste vient de
-// la page (options de `navigator.credentials`).
+// Bytes in base64url, like `PublicKeyCredential.toJSON()`. The address
+// (`url`) is the one the browser assigns to the page; the rest comes from
+// the page (options of `navigator.credentials`).
 
-/// Passkeys du coffre pour le site : toutes les découvrables, ou celles de
-/// `allow` (identifiants d'accréditation).
+/// The vault's passkeys for the site: all discoverable ones, or those in
+/// `allow` (credential identifiers).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeyQuery {
     pub url: String,
@@ -413,8 +413,8 @@ pub struct PasskeyQuery {
     pub allow: Vec<String>,
 }
 
-/// Signer `challenge` avec la passkey `credential` de l'élément `item`.
-/// `uv` : le site demande la vérification de l'utilisateur (Touch ID).
+/// Sign `challenge` with the passkey `credential` of the item `item`.
+/// `uv`: the site asks for user verification (Touch ID).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeyUse {
     pub url: String,
@@ -425,13 +425,13 @@ pub struct PasskeyUse {
     pub challenge: String,
     #[serde(default)]
     pub uv: bool,
-    /// Extension PRF demandée par la page (`extensions.prf`).
+    /// PRF extension requested by the page (`extensions.prf`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prf: Option<PrfRequest>,
 }
 
-/// Où enregistrer une nouvelle passkey : les identifiants du site, et si
-/// l'une des passkeys `exclude` y est déjà.
+/// Where to save a new passkey: the site's logins, and whether
+/// one of the `exclude` passkeys is already there.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeyTargetsQuery {
     pub url: String,
@@ -441,8 +441,8 @@ pub struct PasskeyTargetsQuery {
     pub exclude: Vec<String>,
 }
 
-/// Créer une passkey (`navigator.credentials.create`) et l'enregistrer dans
-/// l'identifiant `item`, ou dans un nouvel identifiant.
+/// Create a passkey (`navigator.credentials.create`) and save it in
+/// the login `item`, or in a new login.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeyCreation {
     pub url: String,
@@ -456,26 +456,26 @@ pub struct PasskeyCreation {
     #[serde(default)]
     pub user_display_name: Option<String>,
     pub challenge: String,
-    /// Algorithmes COSE acceptés par le site (`pubKeyCredParams`).
+    /// COSE algorithms accepted by the site (`pubKeyCredParams`).
     #[serde(default)]
     pub algorithms: Vec<i64>,
     #[serde(default)]
     pub exclude: Vec<String>,
     #[serde(default)]
     pub uv: bool,
-    /// `none`, `indirect`, `direct` ou `enterprise`.
+    /// `none`, `indirect`, `direct` or `enterprise`.
     #[serde(default)]
     pub attestation: Option<String>,
     #[serde(default)]
     pub item: Option<String>,
-    /// Extension PRF demandée à la création (`eval` seulement).
+    /// PRF extension requested at creation (`eval` only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prf: Option<PrfRequest>,
 }
 
-/// Entrées de l'extension PRF (`AuthenticationExtensionsPRFValues`), brutes,
-/// en base64url : Verrou les hache (`"WebAuthn PRF" ‖ 0 ‖ entrée`) comme un
-/// navigateur avant la clé (voir `verrou_core::passkey_prf`).
+/// Inputs of the PRF extension (`AuthenticationExtensionsPRFValues`), raw,
+/// in base64url: Verrou hashes them (`"WebAuthn PRF" ‖ 0 ‖ input`) like a
+/// browser before the key (see `verrou_core::passkey_prf`).
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PrfValues {
     pub first: String,
@@ -483,8 +483,8 @@ pub struct PrfValues {
     pub second: Option<String>,
 }
 
-/// `extensions.prf` de la page : `eval`, et pour une connexion,
-/// `evalByCredential` (identifiant en base64url → entrées).
+/// The page's `extensions.prf`: `eval`, and for a sign-in,
+/// `evalByCredential` (identifier in base64url → inputs).
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PrfRequest {
     #[serde(default)]
@@ -493,8 +493,8 @@ pub struct PrfRequest {
     pub eval_by_credential: std::collections::BTreeMap<String, PrfValues>,
 }
 
-/// Résultat de création : la passkey sait évaluer la PRF (`enabled`), et
-/// les sorties si la page a donné `eval`.
+/// Creation result: the passkey can evaluate the PRF (`enabled`), and
+/// the outputs if the page gave `eval`.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PrfCreated {
     pub enabled: bool,
@@ -502,7 +502,7 @@ pub struct PrfCreated {
     pub results: Option<PrfValues>,
 }
 
-/// Une passkey proposée dans la page. Aucun secret.
+/// A passkey suggested in the page. No secrets.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeySuggestion {
     pub item: String,
@@ -511,13 +511,13 @@ pub struct PasskeySuggestion {
     pub user_name: String,
 }
 
-/// Un identifiant du site qui peut recevoir la passkey.
+/// A login of the site that can receive the passkey.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PasskeyTarget {
     pub id: String,
     pub title: String,
     pub username: String,
-    /// Il en a déjà une : elle serait remplacée.
+    /// It already has one: it would be replaced.
     pub has_passkey: bool,
 }
 
@@ -528,7 +528,7 @@ pub struct PasskeyAssertion {
     pub authenticator_data: String,
     pub signature: String,
     pub user_handle: Option<String>,
-    /// Sorties de la PRF (base64url), si la page l'a demandée.
+    /// PRF outputs (base64url), if the page requested it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prf: Option<PrfValues>,
 }
@@ -540,7 +540,7 @@ pub struct PasskeyRegistration {
     pub client_data: String,
     pub authenticator_data: String,
     pub attestation_object: String,
-    /// `SubjectPublicKeyInfo` (DER) de la clé publique.
+    /// `SubjectPublicKeyInfo` (DER) of the public key.
     pub public_key: String,
     pub algorithm: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]

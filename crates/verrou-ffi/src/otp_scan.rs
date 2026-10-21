@@ -1,49 +1,49 @@
-//! Lecture d'un QR code de double authentification pour l'app iPhone.
-//! Voir `verrou_core::otp_scan`.
+//! Reading a two-factor authentication QR code for the iPhone app.
+//! See `verrou_core::otp_scan`.
 //!
-//! Exception documentée au principe du crate : `scan_otp` rend le lien
-//! `otpauth://` canonique de chaque compte, graine comprise. L'utilisateur
-//! vient de le scanner (ou de le coller) pour l'enregistrer : il part
-//! aussitôt dans le brouillon chiffré de l'élément, sans être journalisé
-//! ni copié.
+//! Documented exception to the crate's principle: `scan_otp` returns the
+//! canonical `otpauth://` link of each account, seed included. The user
+//! just scanned it (or pasted it) to save it: it goes straight
+//! into the item's encrypted draft, without being logged
+//! or copied.
 
 use verrou_core::otp_scan::{self, OtpAccount};
 use verrou_core::totp::Totp;
 
 use crate::{TotpView, VaultSession, VerrouError};
 
-/// Identifiant existant, sans code, auquel le compte scanné peut s'ajouter.
+/// Existing login, without a code, the scanned account can be added to.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct OtpTarget {
     pub id: String,
     pub title: String,
-    /// Identifiant affiché (jamais un secret).
+    /// Displayed username (never a secret).
     pub subtitle: String,
 }
 
-/// Un compte lu dans le QR code, validé.
+/// An account read from the QR code, validated.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ScannedOtp {
     pub issuer: Option<String>,
     pub account: Option<String>,
-    /// Titre proposé pour un nouvel identifiant.
+    /// Suggested title for a new login.
     pub title: String,
-    /// Lien `otpauth://totp` canonique, graine comprise : la valeur du champ.
+    /// Canonical `otpauth://totp` link, seed included: the field's value.
     pub uri: String,
-    /// Premier code, pour l'aperçu.
+    /// First code, for the preview.
     pub code: TotpView,
-    /// Identifiants sans code du même service (ou du même identifiant), les
-    /// plus probables d'abord. Vide si le coffre est verrouillé.
+    /// Logins without a code for the same service (or the same username), the
+    /// most likely first. Empty if the vault is locked.
     pub matches: Vec<OtpTarget>,
 }
 
-/// Contenu d'un QR code.
+/// Content of a QR code.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct OtpScanResult {
     pub accounts: Vec<ScannedOtp>,
-    /// Comptes HOTP (à compteur) d'un export Google Authenticator, écartés.
+    /// HOTP (counter-based) accounts from a Google Authenticator export, skipped.
     pub skipped: u32,
-    /// Export en plusieurs QR codes : rang (à partir de 1) et nombre total.
+    /// Export split over several QR codes: position (from 1) and total count.
     pub batch_number: Option<u32>,
     pub batch_count: Option<u32>,
 }
@@ -63,8 +63,8 @@ fn invalid(error: verrou_core::totp::TotpError) -> VerrouError {
     }
 }
 
-/// Code du moment pour une graine ou un lien `otpauth://` (aperçu avant
-/// l'enregistrement).
+/// Current code for a seed or an `otpauth://` link (preview before
+/// saving).
 #[uniffi::export]
 pub fn totp_preview(value: String, unix_time: u64) -> Result<TotpView, VerrouError> {
     let totp = Totp::parse(&value).map_err(invalid)?;
@@ -73,9 +73,9 @@ pub fn totp_preview(value: String, unix_time: u64) -> Result<TotpView, VerrouErr
 
 #[uniffi::export]
 impl VaultSession {
-    /// Lit le texte d'un QR code (lien `otpauth://totp`, export
-    /// `otpauth-migration://` de Google Authenticator, graine nue) et cherche,
-    /// pour chaque compte, les identifiants sans code auxquels l'ajouter.
+    /// Reads the text of a QR code (`otpauth://totp` link, Google Authenticator
+    /// `otpauth-migration://` export, bare seed) and looks up,
+    /// for each account, the logins without a code to add it to.
     pub fn scan_otp(&self, text: String, unix_time: u64) -> Result<OtpScanResult, VerrouError> {
         let scan = otp_scan::parse_scan(&text).map_err(invalid)?;
         let accounts = scan
@@ -124,7 +124,7 @@ mod tests {
     fn scan_proposes_logins_without_a_code() {
         let session = VaultSession::new();
         session.unlock_mock(0, 42);
-        // Netflix n'a pas de code dans le coffre fictif, GitHub en a un.
+        // Netflix has no code in the mock vault, GitHub has one.
         let netflix = session
             .scan_otp(
                 "otpauth://totp/Netflix:camille.martin%40exemple.fr?secret=JBSWY3DPEHPK3PXP&issuer=Netflix".into(),
@@ -172,7 +172,7 @@ mod tests {
             (1, Some(1), Some(2))
         );
         assert_eq!(result.accounts[0].code.code, "94287082");
-        // Coffre verrouillé : pas de suggestion, pas d'erreur.
+        // Locked vault: no suggestion, no error.
         assert_eq!(result.accounts[0].matches, Vec::<OtpTarget>::new());
         assert!(matches!(
             session.scan_otp("otpauth://hotp/x?secret=JBSWY3DPEHPK3PXP".into(), 0),

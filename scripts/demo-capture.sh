@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Rejoue la démonstration scriptée de l'app Mac et range ses captures et sa
-# vidéo dans docs/media/.
+# Replays the scripted demo of the Mac app and puts its screenshots and its
+# video in docs/media/.
 #
-#   scripts/demo-capture.sh [chemin/vers/Verrou.app]
+#   scripts/demo-capture.sh [path/to/Verrou.app]
 #
-# L'app capture ses propres fenêtres par ScreenCaptureKit (voir
-# WindowRecorder.swift), et seulement elles : le terminal qui lance ce script
-# doit avoir l'autorisation « Enregistrement de l'écran ».
+# The app captures its own windows with ScreenCaptureKit (see
+# WindowRecorder.swift), and only them: the terminal running this script
+# needs the "Screen Recording" permission.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"
@@ -18,7 +18,7 @@ mkdir -p "$MEDIA"
 VERROU_DEMO=1 "$APP/Contents/MacOS/Verrou" > "$LOG" 2>/dev/null || true
 
 OUT="$(sed -n 's/^DEMO_OUT //p' "$LOG" | tail -1)"
-grep -q '^DEMO_DONE' "$LOG" || { echo "la démonstration ne s'est pas terminée :" >&2; cat "$LOG" >&2; exit 1; }
+grep -q '^DEMO_DONE' "$LOG" || { echo "the demo did not finish:" >&2; cat "$LOG" >&2; exit 1; }
 cp "$OUT"/*.png "$MEDIA/"
 if [[ -s "$OUT/demo.mov" ]]; then
   ffmpeg -y -loglevel error -i "$OUT/demo.mov" -c:v libx264 -preset slow -crf 22 -pix_fmt yuv420p -movflags +faststart -an "$MEDIA/demo.mp4"

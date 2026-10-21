@@ -1,24 +1,24 @@
-//! Dernière utilisation des éléments, sur cet appareil.
+//! Items' last use, on this device.
 //!
-//! Bitwarden ne connaît que la date de dernière utilisation d'un mot de passe
-//! remplacé (historique) et, pour les passkeys, un compteur : aucun champ du
-//! format ne dit quand un élément a servi. Verrou tient donc son propre
-//! registre, local à l'appareil et jamais envoyé au serveur : des
-//! identifiants d'éléments et des horodatages, rien d'autre (ni titre, ni
-//! site, ni secret). Il sert au tri « Dernière utilisation ».
+//! Bitwarden only knows the last-used date of a replaced password
+//! (history) and, for passkeys, a counter: no field of the
+//! format says when an item was used. So Verrou keeps its own
+//! log, local to the device and never sent to the server: item
+//! ids and timestamps, nothing else (no title, no
+//! site, no secret). It backs the "Last used" sort.
 //!
-//! Une utilisation, c'est un remplissage (extension, ⌘\, remplissage
-//! automatique de l'iPhone), une copie ou l'affichage d'un secret.
+//! A use is a fill (extension, ⌘\, iPhone
+//! autofill), a copy or the display of a secret.
 
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-/// Éléments gardés au plus : au-delà, les plus anciens sont oubliés.
+/// Maximum number of items kept: beyond that, the oldest are forgotten.
 pub const MAX_ENTRIES: usize = 5_000;
 
-/// Le registre : identifiant d'élément → horodatage Unix (secondes) de sa
-/// dernière utilisation.
+/// The log: item id → Unix timestamp (seconds) of its
+/// last use.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UsageLog {
     #[serde(default)]
@@ -30,8 +30,8 @@ pub struct UsageLog {
 impl UsageLog {
     pub const VERSION: u32 = 1;
 
-    /// Lit le fichier ; illisible ou absent : registre vide (il n'est
-    /// qu'une commodité).
+    /// Reads the file; unreadable or missing: empty log (it is
+    /// only a convenience).
     pub fn from_json(data: &[u8]) -> Self {
         serde_json::from_slice(data).unwrap_or_default()
     }
@@ -44,16 +44,16 @@ impl UsageLog {
         serde_json::to_vec(&file).unwrap_or_default()
     }
 
-    /// Note une utilisation. Une date plus ancienne que celle connue ne la
-    /// remplace pas (deux processus, horloge reculée).
+    /// Records a use. A date older than the known one does not
+    /// replace it (two processes, clock set back).
     pub fn record(&mut self, id: &str, at: i64) {
         let entry = self.items.entry(id.to_owned()).or_insert(at);
         *entry = (*entry).max(at);
         self.trim();
     }
 
-    /// Fusionne un autre registre (celui de l'extension de remplissage,
-    /// écrit par un autre processus) : la date la plus récente l'emporte.
+    /// Merges another log (the autofill extension's,
+    /// written by another process): the most recent date wins.
     pub fn merge(&mut self, other: &Self) {
         for (id, at) in &other.items {
             let entry = self.items.entry(id.clone()).or_insert(*at);
@@ -62,13 +62,13 @@ impl UsageLog {
         self.trim();
     }
 
-    /// Oublie un élément (supprimé, ou devenu un autre élément).
+    /// Forgets an item (deleted, or turned into another item).
     pub fn forget(&mut self, id: &str) {
         self.items.remove(id);
     }
 
-    /// Reporte la date d'un élément sur son nouvel identifiant (élément
-    /// créé hors ligne puis envoyé, élément retiré d'un partage).
+    /// Carries an item's date over to its new id (item
+    /// created offline then uploaded, item removed from sharing).
     pub fn rename(&mut self, from: &str, to: &str) {
         if let Some(at) = self.items.remove(from) {
             self.record(to, at);
@@ -87,7 +87,7 @@ impl UsageLog {
         dates.sort_unstable_by(|a, b| b.cmp(a));
         let floor = dates[MAX_ENTRIES - 1];
         self.items.retain(|_, at| *at >= floor);
-        // Ex aequo à la limite : on retire les derniers arbitrairement.
+        // Ties at the limit: the last ones are removed arbitrarily.
         while self.items.len() > MAX_ENTRIES {
             let Some(id) = self
                 .items
@@ -114,7 +114,7 @@ mod tests {
         log.record("b", 7);
         assert_eq!(log.last_used("a"), Some(10));
         let json = String::from_utf8(log.to_json()).unwrap();
-        // Rien d'autre que des identifiants et des dates.
+        // Nothing but ids and dates.
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["version"], 1);
         assert_eq!(parsed["items"]["a"], 10);

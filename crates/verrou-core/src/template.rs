@@ -1,33 +1,33 @@
-//! Modèles d'éléments à la 1Password (licence, Wi-Fi, passeport…), sur les
-//! seuls types que Bitwarden connaît.
+//! 1Password-style item templates (license, Wi-Fi, passport…), built only on
+//! the types Bitwarden knows.
 //!
-//! Un modèle est une note sécurisée, ou un identifiant quand il a un site, un
-//! identifiant et un mot de passe (serveur, base de données, clé API), avec
-//! des champs personnalisés prédéfinis. Il est reconnu grâce à un champ
-//! personnalisé texte réservé, `verrou:type`, dont la valeur désigne le
-//! modèle (`wifi`, `passport`…) : il se synchronise et survit au coffre web
-//! (qui le montre comme un champ ordinaire). Verrou ne l'affiche jamais et le
-//! garde intact à chaque modification, comme les morceaux d'adresse `part:…`.
+//! A template is a secure note, or a login when it has a site, a username
+//! and a password (server, database, API key), with predefined custom
+//! fields. It is recognised by a reserved text custom field, `verrou:type`,
+//! whose value names the template (`wifi`, `passport`…): it syncs and
+//! survives the web vault (which shows it as an ordinary field). Verrou never
+//! displays it and keeps it intact on every edit, like the `part:…` address
+//! pieces.
 
 use crate::model::{Field, Item, ItemKind};
 use crate::search::fold;
 
-/// Nom du champ personnalisé qui désigne le modèle.
+/// Name of the custom field that names the template.
 pub const MARKER: &str = "verrou:type";
 
-/// Préfixe des champs personnalisés réservés à Verrou : jamais affichés ni
-/// proposés à la modification, toujours conservés.
+/// Prefix of the custom fields reserved to Verrou: never displayed nor
+/// offered for editing, always kept.
 pub const RESERVED_PREFIX: &str = "verrou:";
 
-/// Un champ personnalisé est-il réservé à Verrou ?
+/// Is a custom field reserved to Verrou?
 pub fn is_reserved(name: &str) -> bool {
     name.starts_with(RESERVED_PREFIX)
 }
 
-/// Libellés des champs de Wi-Fi, lus par le QR code.
-pub const WIFI_SSID: &str = "Nom du réseau (SSID)";
-pub const WIFI_PASSWORD: &str = "Mot de passe";
-pub const WIFI_SECURITY: &str = "Sécurité";
+/// Labels of the Wi-Fi fields, read for the QR code.
+pub const WIFI_SSID: &str = "Network name (SSID)";
+pub const WIFI_PASSWORD: &str = "Password";
+pub const WIFI_SECURITY: &str = "Security";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Template {
@@ -43,26 +43,56 @@ pub enum Template {
     Membership,
 }
 
-/// Un champ prédéfini : libellé, et s'il est masqué (champ « caché » de
-/// Bitwarden).
+/// A predefined field: label, and whether it is concealed (Bitwarden's
+/// "hidden" field).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TemplateField {
+    /// Label written into new items.
     pub label: &'static str,
+    /// Label earlier versions of Verrou wrote (in French), still
+    /// recognised when reading; the same as `label` when it did not change.
+    pub legacy: &'static str,
     pub hidden: bool,
 }
 
-const fn text(label: &'static str) -> TemplateField {
+const fn text(label: &'static str, legacy: &'static str) -> TemplateField {
     TemplateField {
         label,
+        legacy,
         hidden: false,
     }
 }
 
-const fn hidden(label: &'static str) -> TemplateField {
+const fn hidden(label: &'static str, legacy: &'static str) -> TemplateField {
     TemplateField {
         label,
+        legacy,
         hidden: true,
     }
+}
+
+/// The other spelling of a template field label: the legacy French label
+/// for an English one, the English label for a legacy French one.
+fn label_alias(label: &str) -> Option<&'static str> {
+    let label = fold(label.trim());
+    Template::ALL.iter().flat_map(|t| t.fields()).find_map(|f| {
+        if fold(f.label) == label {
+            Some(f.legacy)
+        } else if fold(f.legacy) == label {
+            Some(f.label)
+        } else {
+            None
+        }
+    })
+}
+
+/// Does a field labelled `field_label` stand for `wanted`? Ignores case and
+/// accents, and treats a template field's English label and its legacy
+/// French label as the same, so that items created by earlier versions
+/// are still recognised.
+pub fn matches_label(field_label: &str, wanted: &str) -> bool {
+    let field = fold(field_label.trim());
+    field == fold(wanted.trim()) || label_alias(wanted).is_some_and(|alias| fold(alias) == field)
 }
 
 impl Template {
@@ -79,7 +109,7 @@ impl Template {
         Self::Membership,
     ];
 
-    /// Valeur du champ `verrou:type` : stable, jamais traduite.
+    /// Value of the `verrou:type` field: stable, never translated.
     pub fn key(self) -> &'static str {
         match self {
             Self::SoftwareLicense => "software-license",
@@ -102,8 +132,24 @@ impl Template {
             .find(|t| t.key().eq_ignore_ascii_case(key))
     }
 
-    /// Nom de la catégorie dans la barre latérale.
+    /// Name of the category in the sidebar.
     pub fn label(self) -> &'static str {
+        match self {
+            Self::SoftwareLicense => "Software Licenses",
+            Self::Wifi => "Wi-Fi Networks",
+            Self::BankAccount => "Bank Accounts",
+            Self::Passport => "Passports",
+            Self::DriversLicense => "Driver's Licenses",
+            Self::IdCard => "ID Cards",
+            Self::Server => "Servers",
+            Self::Database => "Databases",
+            Self::ApiKey => "API Keys",
+            Self::Membership => "Memberships and Subscriptions",
+        }
+    }
+
+    /// French name of the category, still found by search.
+    pub fn french_label(self) -> &'static str {
         match self {
             Self::SoftwareLicense => "Licences logicielles",
             Self::Wifi => "Réseaux Wi-Fi",
@@ -120,37 +166,42 @@ impl Template {
 
     pub fn singular(self) -> &'static str {
         match self {
-            Self::SoftwareLicense => "Licence logicielle",
-            Self::Wifi => "Réseau Wi-Fi",
-            Self::BankAccount => "Compte bancaire",
-            Self::Passport => "Passeport",
-            Self::DriversLicense => "Permis de conduire",
-            Self::IdCard => "Carte d'identité",
-            Self::Server => "Serveur",
-            Self::Database => "Base de données",
-            Self::ApiKey => "Clé API",
-            Self::Membership => "Adhésion ou abonnement",
+            Self::SoftwareLicense => "Software License",
+            Self::Wifi => "Wi-Fi Network",
+            Self::BankAccount => "Bank Account",
+            Self::Passport => "Passport",
+            Self::DriversLicense => "Driver's License",
+            Self::IdCard => "ID Card",
+            Self::Server => "Server",
+            Self::Database => "Database",
+            Self::ApiKey => "API Key",
+            Self::Membership => "Membership or Subscription",
         }
     }
 
-    /// Mot-clé de la recherche (`type:wifi`).
+    /// Search keyword (`type:wifi`).
     pub fn keyword(self) -> &'static str {
+        self.keywords()[0]
+    }
+
+    /// Search keywords: the English one first, then the French aliases.
+    pub fn keywords(self) -> &'static [&'static str] {
         match self {
-            Self::SoftwareLicense => "licence",
-            Self::Wifi => "wifi",
-            Self::BankAccount => "banque",
-            Self::Passport => "passeport",
-            Self::DriversLicense => "permis",
-            Self::IdCard => "cni",
-            Self::Server => "serveur",
-            Self::Database => "bdd",
-            Self::ApiKey => "api",
-            Self::Membership => "adhesion",
+            Self::SoftwareLicense => &["license", "licence"],
+            Self::Wifi => &["wifi"],
+            Self::BankAccount => &["bank", "banque"],
+            Self::Passport => &["passport", "passeport"],
+            Self::DriversLicense => &["driver", "permis"],
+            Self::IdCard => &["idcard", "cni"],
+            Self::Server => &["server", "serveur"],
+            Self::Database => &["database", "db", "bdd"],
+            Self::ApiKey => &["api"],
+            Self::Membership => &["membership", "adhesion"],
         }
     }
 
-    /// Type Bitwarden de l'élément : un identifiant quand le modèle a un
-    /// site, un identifiant et un mot de passe à remplir.
+    /// Bitwarden type of the item: a login when the template has a site, a
+    /// username and a password to fill.
     pub fn kind(self) -> ItemKind {
         match self {
             Self::Server | Self::Database | Self::ApiKey => ItemKind::Login,
@@ -158,156 +209,162 @@ impl Template {
         }
     }
 
-    /// Champs personnalisés prédéfinis, dans l'ordre de l'écran.
-    // Une table, pas de la logique : la découper n'aiderait pas à la lire.
+    /// Predefined custom fields, in screen order.
+    // A table, not logic: splitting it would not make it easier to read.
     #[allow(clippy::too_many_lines)]
     pub fn fields(self) -> &'static [TemplateField] {
         match self {
             Self::SoftwareLicense => {
                 const F: &[TemplateField] = &[
-                    text("Version"),
-                    hidden("Clé de licence"),
-                    text("Licencié à"),
-                    text("E-mail"),
-                    text("Éditeur"),
-                    text("Date d'achat"),
-                    text("Numéro de commande"),
+                    text("Version", "Version"),
+                    hidden("License key", "Clé de licence"),
+                    text("Licensed to", "Licencié à"),
+                    text("Email", "E-mail"),
+                    text("Publisher", "Éditeur"),
+                    text("Purchase date", "Date d'achat"),
+                    text("Order number", "Numéro de commande"),
                 ];
                 F
             }
             Self::Wifi => {
-                const F: &[TemplateField] =
-                    &[text(WIFI_SSID), hidden(WIFI_PASSWORD), text(WIFI_SECURITY)];
+                const F: &[TemplateField] = &[
+                    text(WIFI_SSID, "Nom du réseau (SSID)"),
+                    hidden(WIFI_PASSWORD, "Mot de passe"),
+                    text(WIFI_SECURITY, "Sécurité"),
+                ];
                 F
             }
             Self::BankAccount => {
                 const F: &[TemplateField] = &[
-                    text("Banque"),
-                    text("Titulaire"),
-                    text("Type de compte"),
-                    hidden("IBAN"),
-                    text("BIC"),
-                    hidden("Numéro de compte"),
-                    hidden("Code PIN"),
+                    text("Bank", "Banque"),
+                    text("Account holder", "Titulaire"),
+                    text("Account type", "Type de compte"),
+                    hidden("IBAN", "IBAN"),
+                    text("BIC", "BIC"),
+                    hidden("Account number", "Numéro de compte"),
+                    hidden("PIN", "Code PIN"),
                 ];
                 F
             }
             Self::Passport => {
                 const F: &[TemplateField] = &[
-                    hidden("Numéro"),
-                    text("Nom"),
-                    text("Prénoms"),
-                    text("Nationalité"),
-                    text("Date de naissance"),
-                    text("Lieu de naissance"),
-                    text("Sexe"),
-                    text("Date de délivrance"),
-                    text("Date d'expiration"),
-                    text("Autorité de délivrance"),
+                    hidden("Number", "Numéro"),
+                    text("Surname", "Nom"),
+                    text("Given names", "Prénoms"),
+                    text("Nationality", "Nationalité"),
+                    text("Date of birth", "Date de naissance"),
+                    text("Place of birth", "Lieu de naissance"),
+                    text("Sex", "Sexe"),
+                    text("Issue date", "Date de délivrance"),
+                    text("Expiry date", "Date d'expiration"),
+                    text("Issuing authority", "Autorité de délivrance"),
                 ];
                 F
             }
             Self::DriversLicense => {
                 const F: &[TemplateField] = &[
-                    hidden("Numéro"),
-                    text("Nom"),
-                    text("Prénoms"),
-                    text("Date de naissance"),
-                    text("Catégories"),
-                    text("Date de délivrance"),
-                    text("Date d'expiration"),
-                    text("Pays ou région"),
+                    hidden("Number", "Numéro"),
+                    text("Surname", "Nom"),
+                    text("Given names", "Prénoms"),
+                    text("Date of birth", "Date de naissance"),
+                    text("Categories", "Catégories"),
+                    text("Issue date", "Date de délivrance"),
+                    text("Expiry date", "Date d'expiration"),
+                    text("Country or region", "Pays ou région"),
                 ];
                 F
             }
             Self::IdCard => {
                 const F: &[TemplateField] = &[
-                    hidden("Numéro"),
-                    text("Nom"),
-                    text("Prénoms"),
-                    text("Date de naissance"),
-                    text("Lieu de naissance"),
-                    text("Nationalité"),
-                    text("Date de délivrance"),
-                    text("Date d'expiration"),
-                    text("Autorité de délivrance"),
+                    hidden("Number", "Numéro"),
+                    text("Surname", "Nom"),
+                    text("Given names", "Prénoms"),
+                    text("Date of birth", "Date de naissance"),
+                    text("Place of birth", "Lieu de naissance"),
+                    text("Nationality", "Nationalité"),
+                    text("Issue date", "Date de délivrance"),
+                    text("Expiry date", "Date d'expiration"),
+                    text("Issuing authority", "Autorité de délivrance"),
                 ];
                 F
             }
             Self::Server => {
                 const F: &[TemplateField] = &[
-                    text("Hébergeur"),
-                    text("Console d'administration"),
-                    text("Identifiant de la console"),
-                    hidden("Mot de passe de la console"),
+                    text("Hosting provider", "Hébergeur"),
+                    text("Admin console", "Console d'administration"),
+                    text("Console username", "Identifiant de la console"),
+                    hidden("Console password", "Mot de passe de la console"),
                 ];
                 F
             }
             Self::Database => {
                 const F: &[TemplateField] = &[
-                    text("Type"),
-                    text("Port"),
-                    text("Base"),
-                    text("Options de connexion"),
+                    text("Type", "Type"),
+                    text("Port", "Port"),
+                    text("Database", "Base"),
+                    text("Connection options", "Options de connexion"),
                 ];
                 F
             }
             Self::ApiKey => {
-                const F: &[TemplateField] = &[text("Type"), text("Date d'expiration")];
+                const F: &[TemplateField] = &[
+                    text("Type", "Type"),
+                    text("Expiry date", "Date d'expiration"),
+                ];
                 F
             }
             Self::Membership => {
                 const F: &[TemplateField] = &[
-                    text("Organisation"),
-                    text("Membre"),
-                    text("Numéro de membre"),
-                    text("Membre depuis"),
-                    text("Date d'expiration"),
-                    hidden("Code PIN"),
-                    text("Téléphone"),
+                    text("Organization", "Organisation"),
+                    text("Member", "Membre"),
+                    text("Member number", "Numéro de membre"),
+                    text("Member since", "Membre depuis"),
+                    text("Expiry date", "Date d'expiration"),
+                    hidden("PIN", "Code PIN"),
+                    text("Phone", "Téléphone"),
                 ];
                 F
             }
         }
     }
 
-    /// Exemple de titre pour l'écran de création.
+    /// Sample title for the creation screen.
     pub fn title_prompt(self) -> &'static str {
         match self {
-            Self::SoftwareLicense => "Logiciel",
-            Self::Wifi => "Wi-Fi maison",
-            Self::BankAccount => "Compte courant",
-            Self::Passport => "Passeport",
-            Self::DriversLicense => "Permis de conduire",
-            Self::IdCard => "Carte d'identité",
-            Self::Server => "Serveur web",
-            Self::Database => "Base de production",
-            Self::ApiKey => "Clé API",
-            Self::Membership => "Abonnement",
+            Self::SoftwareLicense => "Software",
+            Self::Wifi => "Home Wi-Fi",
+            Self::BankAccount => "Checking account",
+            Self::Passport => "Passport",
+            Self::DriversLicense => "Driver's license",
+            Self::IdCard => "ID card",
+            Self::Server => "Web server",
+            Self::Database => "Production database",
+            Self::ApiKey => "API key",
+            Self::Membership => "Subscription",
         }
     }
 }
 
 impl Item {
-    /// Le modèle de l'élément, d'après son champ `verrou:type`.
+    /// The item's template, from its `verrou:type` field.
     pub fn template(&self) -> Option<Template> {
         self.field(MARKER)
             .and_then(|f| Template::from_key(f.value.expose()))
     }
 
-    /// Premier champ (non réservé) portant ce libellé, casse et accents
-    /// ignorés.
+    /// First (non-reserved) field with this label, ignoring case and
+    /// accents; a template field is also found under its legacy French
+    /// label (see [`matches_label`]).
     pub fn field_labelled(&self, label: &str) -> Option<&Field> {
-        let wanted = fold(label);
         self.fields
             .iter()
             .filter(|f| f.id.starts_with("custom-"))
-            .find(|f| fold(f.label.trim()) == wanted)
+            .find(|f| matches_label(&f.label, label))
     }
 }
 
-/// Contenu du QR code d'un réseau Wi-Fi (format reconnu par l'appareil
-/// photo d'iOS et d'Android) : `WIFI:T:WPA;S:<ssid>;P:<mot de passe>;;`.
+/// Content of a Wi-Fi network's QR code (format recognised by the iOS and
+/// Android cameras): `WIFI:T:WPA;S:<ssid>;P:<password>;;`.
 pub fn wifi_qr_payload(ssid: &str, password: &str, security: &str) -> String {
     let auth = wifi_auth(security, password);
     let mut payload = format!("WIFI:T:{auth};S:{};", wifi_escape(ssid));
@@ -320,8 +377,8 @@ pub fn wifi_qr_payload(ssid: &str, password: &str, security: &str) -> String {
     payload
 }
 
-/// `WPA`, `WEP` ou `nopass`, d'après le champ « Sécurité » : WPA par défaut
-/// (WPA2 et WPA3 s'annoncent aussi « WPA »).
+/// `WPA`, `WEP` or `nopass`, from the "Security" field: WPA by default
+/// (WPA2 and WPA3 also announce themselves as "WPA").
 fn wifi_auth(security: &str, password: &str) -> &'static str {
     let security = fold(security);
     if security.contains("wep") {
@@ -337,7 +394,7 @@ fn wifi_auth(security: &str, password: &str) -> &'static str {
     }
 }
 
-/// Caractères spéciaux du format `WIFI:` : `\`, `;`, `,`, `:` et `"`.
+/// Special characters of the `WIFI:` format: `\`, `;`, `,`, `:` and `"`.
 fn wifi_escape(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for c in value.chars() {
@@ -411,6 +468,57 @@ mod tests {
     }
 
     #[test]
+    fn items_with_the_legacy_french_labels_are_still_recognised() {
+        let old = item(vec![
+            Field::new(
+                "custom-0",
+                "Nom du réseau (SSID)",
+                FieldKind::Text,
+                "Maison",
+            ),
+            Field::new("custom-1", "Mot de passe", FieldKind::Concealed, "secret"),
+            Field::new("custom-2", "Sécurité", FieldKind::Text, "Aucun"),
+            Field::new(MARKER, MARKER, FieldKind::Text, "wifi"),
+        ]);
+        let value = |label: &str| old.field_labelled(label).unwrap().value.expose().to_owned();
+        assert_eq!(value(WIFI_SSID), "Maison");
+        assert_eq!(value(WIFI_PASSWORD), "secret");
+        assert_eq!(value(WIFI_SECURITY), "Aucun");
+        let new = item(vec![Field::new(
+            "custom-0",
+            "Console password",
+            FieldKind::Concealed,
+            "x",
+        )]);
+        assert!(new.field_labelled("Mot de passe de la console").is_some());
+        assert!(matches_label("Date d'expiration", "Expiry date"));
+        assert!(matches_label("expiry date", "Expiry Date"));
+        assert!(!matches_label("Nom", "Given names"));
+        // Every template field: the English and French labels are the same field.
+        for template in Template::ALL {
+            for f in template.fields() {
+                assert!(matches_label(f.legacy, f.label), "{}", f.label);
+                assert!(matches_label(f.label, f.legacy), "{}", f.label);
+            }
+        }
+    }
+
+    #[test]
+    fn a_label_has_a_single_legacy_form() {
+        let fields: Vec<_> = Template::ALL.iter().flat_map(|t| t.fields()).collect();
+        for a in &fields {
+            for b in &fields {
+                assert!(
+                    (fold(a.label) == fold(b.label)) == (fold(a.legacy) == fold(b.legacy)),
+                    "{} / {}",
+                    a.label,
+                    b.label
+                );
+            }
+        }
+    }
+
+    #[test]
     fn templates_have_a_filter_a_keyword_and_a_count() {
         use crate::search::{Filter, Sort};
         use crate::vault::Vault;
@@ -431,10 +539,12 @@ mod tests {
         assert_eq!(titles("", &Filter::Template(Template::Wifi)), ["Maison"]);
         assert_eq!(titles("type:wifi", &Filter::All), ["Maison"]);
         assert_eq!(titles("réseaux wi-fi", &Filter::All), ["Maison"]);
+        assert_eq!(titles("wi-fi networks", &Filter::All), ["Maison"]);
+        assert_eq!(titles("type:passeport", &Filter::All).len(), 0);
         assert_eq!(
             titles("", &Filter::Kind(ItemKind::SecureNote)).len(),
             2,
-            "un modèle reste une note"
+            "a template stays a note"
         );
         assert_eq!(vault.counts().templates, [(Template::Wifi, 1)]);
     }

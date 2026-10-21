@@ -1,13 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Démonstration scriptée (`VERROU_DEMO=1`) pour les captures d'écran et la
-/// vidéo de la PR : rejoue un parcours réaliste sans toucher au clavier.
+/// Scripted demo (`VERROU_DEMO=1`) for the screenshots and the PR video:
+/// replays a realistic walk without touching the keyboard.
 ///
-/// L'app capture ses propres fenêtres par ScreenCaptureKit (`WindowSnapshot`,
-/// `WindowRecorder`) dans son dossier temporaire, qu'elle annonce par `DEMO_OUT <chemin>` ;
-/// `scripts/demo-capture.sh` les récupère. Le déverrouillage simule Touch ID :
-/// le coffre fictif n'a rien à protéger.
+/// The app captures its own windows through ScreenCaptureKit (`WindowSnapshot`,
+/// `WindowRecorder`) in its temporary folder, which it announces with `DEMO_OUT <path>`;
+/// `scripts/demo-capture.sh` collects them. Unlocking simulates Touch ID:
+/// the mock vault has nothing to protect.
 @MainActor
 final class DemoDriver {
     private let model: AppModel
@@ -34,18 +34,18 @@ final class DemoDriver {
 
     private func snap(_ name: String) async {
         await pause(0.25)
-        guard let image = recorder?.snapshot() else { fail("capture \(name) : aucune image reçue") }
+        guard let image = recorder?.snapshot() else { fail("capture \(name): no image received") }
         do {
             try WindowSnapshot.writePNG(image, to: output.appending(path: "\(name).png"))
         } catch {
-            fail("capture \(name) : \(error.localizedDescription)")
+            fail("capture \(name): \(error.localizedDescription)")
         }
         print("DEMO_SNAP \(name)")
         fflush(stdout)
         await pause(1.0)
     }
 
-    /// Le script attend `DEMO_DONE` : sans lui, il affiche ce journal et échoue.
+    /// The script waits for `DEMO_DONE`: without it, it shows this log and fails.
     private func fail(_ message: String) -> Never {
         print("DEMO_ERROR \(message)")
         fflush(stdout)
@@ -84,27 +84,27 @@ final class DemoDriver {
                 try await recorder.start()
                 self.recorder = recorder
             } catch {
-                // Sans l'autorisation « Enregistrement de l'écran », inutile d'aller plus loin.
-                fail("enregistrement : \(error.localizedDescription)")
+                // Without the "Screen Recording" permission, no point going further.
+                fail("recording: \(error.localizedDescription)")
             }
         }
         await pause(1.5)
-        await snap("01-verrouille")
+        await snap("01-locked")
 
         withAnimation { model.openVault() }
         await pause(1.0)
         select(title: "GitHub")
         await pause(0.6)
-        await snap("02-coffre")
+        await snap("02-vault")
 
         await type("git", into: \.query)
         await pause(0.4)
-        await snap("03-recherche")
+        await snap("03-search")
         select(title: "GitHub")
         await pause(0.8)
         model.toggleReveal("password", of: model.selection ?? "")
         await pause(0.6)
-        await snap("04-identifiant-revele")
+        await snap("04-login-revealed")
         model.copyPassword(of: model.selection ?? "")
         await pause(1.4)
 
@@ -113,7 +113,7 @@ final class DemoDriver {
         await type("societe gen", into: \.query)
         await pause(0.5)
         select(title: "Société Générale")
-        await snap("05-recherche-accents")
+        await snap("05-search-accents")
 
         model.query = ""
         model.filter = .category(category: .card)
@@ -125,32 +125,32 @@ final class DemoDriver {
             model.toggleReveal("code", of: id)
         }
         await pause(0.4)
-        await snap("06-carte")
+        await snap("06-card")
 
         model.filter = .category(category: .identity)
         await pause(0.4)
         select(title: "Camille Martin")
         await pause(0.5)
-        await snap("07-identite")
+        await snap("07-identity")
 
-        // Modèle Wi-Fi : champs prédéfinis.
+        // Wi-Fi template: predefined fields.
         model.filter = .template(template: .wifi)
         await pause(0.4)
         select(title: "Wi-Fi maison")
         await pause(0.6)
         await snap("08-wifi")
 
-        // Coffre partagé de la famille (organisation Vaultwarden).
+        // The family's shared vault (Vaultwarden organization).
         model.filter = .all
         await pause(0.3)
         await type("famille", into: \.query)
         await pause(0.4)
         select(title: "Google — famille")
         await pause(0.6)
-        await snap("09-coffre-partage")
+        await snap("09-shared-vault")
         model.query = ""
 
-        // Audit de sécurité, dans la fenêtre principale.
+        // Security audit, in the main window.
         withAnimation(.snappy) { model.openAudit() }
         await pause(1.2)
         await snap("10-audit")
@@ -161,11 +161,11 @@ final class DemoDriver {
         await pause(0.6)
         await type("net", into: \.quickQuery)
         await pause(0.6)
-        await snap("11-acces-rapide")
+        await snap("11-quick-access")
         model.quickQuery = ""
         await type("cloud", into: \.quickQuery)
         await pause(0.8)
-        await snap("12-acces-rapide-code")
+        await snap("12-quick-access-code")
         quickAccess.close()
         await pause(0.8)
 

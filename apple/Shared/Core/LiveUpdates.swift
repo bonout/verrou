@@ -1,20 +1,19 @@
 import Foundation
 
-/// Mises à jour en direct, coffre ouvert : le canal de notifications de
-/// Vaultwarden (`/notifications/hub`, tenu par le cœur Rust, qui garde le
-/// jeton d'accès). Un changement annoncé déclenche une synchronisation
-/// (regroupée sur une seconde et demie), donc les notifications du partage
-/// en quelques secondes.
+/// Live updates, vault open: Vaultwarden's notification channel
+/// (`/notifications/hub`, held by the Rust core, which keeps the access
+/// token). An announced change triggers a sync (batched over a second and a
+/// half), hence sharing notifications within a few seconds.
 ///
-/// Canal perdu : nouvel essai après 2 s, puis 4, 8… jusqu'à 5 minutes, avec
-/// un peu de hasard (plusieurs appareils ne reviennent pas ensemble).
-/// Serveur sans canal (`ENABLE_WEBSOCKET=false`) : on s'arrête, la
-/// synchronisation périodique reste.
+/// Channel lost: retry after 2 s, then 4, 8… up to 5 minutes, with a bit of
+/// randomness (several devices don't come back together).
+/// Server without the channel (`ENABLE_WEBSOCKET=false`): we stop, the
+/// periodic sync remains.
 @MainActor
 final class LiveUpdates {
-    /// Canal ouvert en ce moment.
+    /// Channel open right now.
     private(set) var connected = false
-    /// Le serveur n'a pas le canal.
+    /// The server doesn't have the channel.
     private(set) var unsupported = false
 
     private var task: Task<Void, Never>?
@@ -22,8 +21,8 @@ final class LiveUpdates {
 
     var isRunning: Bool { task != nil }
 
-    /// `sync` : synchroniser (puis examiner les nouveautés). `expired` :
-    /// la session n'est plus valable.
+    /// `sync`: sync (then examine what's new). `expired`: the session is no
+    /// longer valid.
     func start(session: VaultSession, sync: @escaping @MainActor () async -> Void,
                expired: @escaping @MainActor () -> Void) {
         guard task == nil, !unsupported else { return }
@@ -37,7 +36,7 @@ final class LiveUpdates {
                     self.connected = true
                     if change.fromThisDevice { continue }
                     switch change.kind {
-                    // Ni le coffre ni le partage : rien à relire.
+                    // Neither the vault nor sharing: nothing to reload.
                     case .sends, .authRequest, .other: continue
                     default: self.scheduleSync(sync)
                     }
@@ -70,7 +69,7 @@ final class LiveUpdates {
         session.stopServerChanges()
     }
 
-    /// Une seule synchronisation pour une rafale de changements.
+    /// A single sync for a burst of changes.
     private func scheduleSync(_ sync: @escaping @MainActor () async -> Void) {
         guard pendingSync == nil else { return }
         pendingSync = Task { [weak self] in

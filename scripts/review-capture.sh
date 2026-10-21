@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Revue visuelle hors écran de l'app Mac (build Debug) : chaque écran rendu
-# sur le coffre fictif, en clair et en sombre, sans fenêtre à l'écran ni
-# ScreenCaptureKit. Les PNG arrivent dans target/review/.
+# Offscreen visual review of the Mac app (Debug build): each screen rendered
+# on the fake vault, in light and dark mode, without a window on screen or
+# ScreenCaptureKit. The PNGs land in target/review/.
 #
-#   scripts/review-capture.sh [chemin/vers/Verrou.app]
+#   scripts/review-capture.sh [path/to/Verrou.app]
 #
-# L'audit de mise en page de chaque écran (REVIEW_OK / REVIEW_FAIL) est
-# affiché ; le script échoue si l'un d'eux échoue, après avoir copié les images.
+# The layout audit of each screen (REVIEW_OK / REVIEW_FAIL) is shown; the
+# script fails if one of them fails, after copying the images.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="${1:-$ROOT/target/xcode.noindex/Build/Products/Debug/Verrou.app}"
@@ -19,7 +19,7 @@ VERROU_REVIEW=1 "$APP/Contents/MacOS/Verrou" > "$LOG" 2>/dev/null || status=$?
 grep -E '^REVIEW_(OK|FAIL|DONE)' "$LOG" || true
 OUT="$(sed -n 's/^REVIEW_OUT //p' "$LOG" | tail -1)"
 if [[ -z "$OUT" ]] || ! grep -q '^REVIEW_DONE' "$LOG"; then
-  echo "la revue ne s'est pas terminée :" >&2
+  echo "the review did not finish:" >&2
   cat "$LOG" >&2
   exit 1
 fi

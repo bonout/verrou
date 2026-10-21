@@ -2,53 +2,51 @@ import AppKit
 import Observation
 import UserNotifications
 
-/// Compléments de l'audit : cartes expirées, mots de passe anciens, double
-/// authentification disponible (liste de 2fa.directory), passkeys possibles
-/// (annuaire passkeys.2fa.directory), et vérification dans les fuites connues
-/// des mots de passe qu'on vient d'enregistrer.
+/// Audit additions: expired cards, old passwords, two-factor authentication
+/// available (2fa.directory list), possible passkeys (passkeys.2fa.directory
+/// directory), and check in known leaks of the passwords just saved.
 @MainActor
 @Observable
 final class Watchtower {
-    /// Préférence : vérifier les nouveaux mots de passe dans Have I Been Pwned.
+    /// Preference: check new passwords in Have I Been Pwned.
     static let checkNewPasswordsKey = "checkNewPasswords"
     static var checksNewPasswords: Bool {
         UserDefaults.standard.object(forKey: checkNewPasswordsKey) as? Bool ?? true
     }
 
-    /// Cartes et mots de passe anciens (local, sans réseau).
+    /// Cards and old passwords (local, without network).
     private(set) var report: WatchtowerReport?
-    /// `nil` : pas encore chargé (ou indisponible, voir `twoFactorError`).
+    /// `nil`: not loaded yet (or unavailable, see `twoFactorError`).
     private(set) var twoFactor: TwoFactorReport?
     private(set) var loadingTwoFactor = false
     private(set) var twoFactorError: String?
-    /// « Passkey possible » : `nil` tant que l'annuaire n'est pas chargé (ou
-    /// s'il est indisponible, voir `passkeysError`).
+    /// "Passkey available": `nil` as long as the directory is not loaded (or
+    /// if it is unavailable, see `passkeysError`).
     private(set) var passkeys: PasskeyReport?
     private(set) var loadingPasskeys = false
     private(set) var passkeysError: String?
-    /// Élément dont on cherche la page de création de passkey
+    /// Item whose passkey creation page is being looked up
     /// (`AppModel.createPasskey`).
     var creatingPasskey: String?
-    /// Revue visuelle : section de l'audit à montrer en haut (`passkeys`).
+    /// Visual review: audit section to show at the top (`passkeys`).
     var focus: String?
 
-    /// Problèmes comptés dans la barre latérale.
+    /// Issues counted in the sidebar.
     var issues: Int {
         (report.map { $0.cards.count + $0.old.count } ?? 0) + (twoFactor?.missing.count ?? 0)
     }
 
     func refresh(_ session: VaultSession, network: Bool) {
         report = try? session.watchtower()
-        // Coffre fictif : l'annuaire des passkeys vient d'un extrait
-        // embarqué, sans réseau.
+        // Mock vault: the passkeys directory comes from an embedded excerpt,
+        // without network.
         Task { await loadPasskeys(session) }
         guard network else { return }
         Task { await loadTwoFactor(session) }
     }
 
-    /// Télécharge l'annuaire des passkeys au besoin (en entier, gardé 7
-    /// jours) ; hors ligne, la dernière copie, sinon la catégorie est
-    /// ignorée.
+    /// Downloads the passkeys directory if needed (in full, kept 7 days);
+    /// offline, the last copy, otherwise the category is skipped.
     func loadPasskeys(_ session: VaultSession) async {
         guard !loadingPasskeys else { return }
         loadingPasskeys = true
@@ -62,8 +60,8 @@ final class Watchtower {
         }
     }
 
-    /// Télécharge la liste au besoin (gardée 7 jours) ; hors ligne, la
-    /// dernière copie, sinon la catégorie est ignorée.
+    /// Downloads the list if needed (kept 7 days); offline, the last copy,
+    /// otherwise the category is skipped.
     private func loadTwoFactor(_ session: VaultSession) async {
         guard !loadingTwoFactor else { return }
         loadingTwoFactor = true
@@ -88,9 +86,9 @@ final class Watchtower {
 }
 
 extension AppModel {
-    /// Après une écriture faite dans Verrou (éditeur, extension, import) :
-    /// les mots de passe nouveaux partent vérifier dans les fuites connues
-    /// (k-anonymat : 5 caractères de leur SHA-1), en arrière-plan.
+    /// After a write made in Verrou (editor, extension, import): the new
+    /// passwords are checked against known leaks (k-anonymity: 5 characters
+    /// of their SHA-1), in the background.
     func checkNewPasswords() {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         guard Watchtower.checksNewPasswords else {
@@ -103,9 +101,9 @@ extension AppModel {
             mergeBreaches(found)
             let first = found[0]
             let message = found.count == 1
-                ? "Mot de passe présent dans des fuites connues"
-                : "\(found.count) mots de passe présents dans des fuites connues"
-            let detail = "« \(first.item.title) » : vu \(first.count.formatted()) fois. Changez-le."
+                ? String(localized: "Password found in known leaks")
+                : String(localized: "\(found.count) passwords found in known leaks")
+            let detail = String(localized: "“\(first.item.title)”: seen \(first.count.formatted()) times. Change it.")
             if NSApp.isActive {
                 toast = Toast(message: message, detail: detail, failure: true)
             } else {
@@ -114,7 +112,7 @@ extension AppModel {
         }
     }
 
-    /// Notification système (l'utilisateur est dans Brave, par exemple).
+    /// System notification (the user is in Brave, for example).
     private static func notify(_ title: String, _ body: String) {
         let center = UNUserNotificationCenter.current()
         Task {
@@ -128,74 +126,74 @@ extension AppModel {
     }
 }
 
-// MARK: Changer le mot de passe
+// MARK: Change the password
 
 extension ItemSummary {
-    /// Identifiant avec un site, hors corbeille : « Changer le mot de passe »
-    /// a une page à ouvrir.
+    /// Login with a site, not in the trash: "Change Password" has a page to
+    /// open.
     var canChangePassword: Bool {
         category == .login && host != nil && state != .trashed
     }
 }
 
 extension AppModel {
-    /// Ouvre la page où changer le mot de passe de l'élément : page connue
-    /// d'avance (grands sites), sinon `/.well-known/change-password` si le
-    /// site la propose (vérifié par le cœur Rust, pour ce site seul et
-    /// seulement maintenant), sinon l'accueil du site. L'extension propose
-    /// ensuite un mot de passe fort, puis sa mise à jour dans le coffre ; à
-    /// la synchronisation suivante, l'élément quitte l'audit.
+    /// Opens the page where the item's password is changed: page known in
+    /// advance (big sites), otherwise `/.well-known/change-password` if the
+    /// site offers it (checked by the Rust core, for this site only and only
+    /// now), otherwise the site's home page. The extension then suggests a
+    /// strong password, then its update in the vault; at the next sync, the
+    /// item leaves the audit.
     func changePassword(of summary: ItemSummary) async {
         guard summary.canChangePassword, changingPassword == nil, lockState == .unlocked else { return }
         changingPassword = summary.id
         defer { changingPassword = nil }
-        let hint = "Verrou proposera un mot de passe fort et l'enregistrement"
+        let hint = String(localized: "Verrou will suggest a strong password and saving it")
         do {
             let page = try await session.changePasswordPage(id: summary.id)
             guard lockState == .unlocked, let url = URL(string: page.url) else { return }
             NSWorkspace.shared.open(url)
             switch page.source {
             case .known, .wellKnown:
-                toast = Toast(message: "Page de changement du mot de passe ouverte", detail: hint, seconds: 5)
+                toast = Toast(message: String(localized: "Change-password page opened"), detail: hint, seconds: 5)
             case .home:
-                toast = Toast(message: "Ce site n'indique pas sa page de changement de mot de passe : ouverture de l'accueil",
+                toast = Toast(message: String(localized: "This site doesn't state its change-password page: opening the home page"),
                               detail: hint, seconds: 6)
             }
         } catch {
-            toast = Toast(message: "Page introuvable", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Page not found"), detail: Self.describe(error), failure: true)
         }
     }
 }
 
-// MARK: Créer une passkey
+// MARK: Create a passkey
 
 extension AppModel {
-    /// Ouvre la page où créer une passkey pour l'élément : celle que le site
-    /// publie (`/.well-known/passkey-endpoints`, vérifiée par le cœur Rust,
-    /// pour ce site seul et seulement maintenant), sinon une page connue
-    /// d'avance, sinon l'accueil du site. Dans Brave ou Firefox, l'extension
-    /// propose ensuite d'enregistrer la passkey dans l'élément ; à la
-    /// synchronisation suivante, il quitte « Passkey possible ».
+    /// Opens the page where a passkey is created for the item: the one the
+    /// site publishes (`/.well-known/passkey-endpoints`, checked by the Rust
+    /// core, for this site only and only now), otherwise a page known in
+    /// advance, otherwise the site's home page. In Brave or Firefox, the
+    /// extension then offers to save the passkey in the item; at the next
+    /// sync, it leaves "Passkey available".
     func createPasskey(for candidate: PasskeyCandidate) async {
         let summary = candidate.item
         guard watchtower.creatingPasskey == nil, lockState == .unlocked else { return }
         watchtower.creatingPasskey = summary.id
         defer { watchtower.creatingPasskey = nil }
-        let hint = "Créez-la sur le site : l'extension Verrou de Brave ou Firefox proposera de l'enregistrer dans « \(summary.title) »."
+        let hint = String(localized: "Create it on the site: the Verrou extension for Brave or Firefox will offer to save it in “\(summary.title)”.")
         do {
             let page = try await session.passkeySetupPage(id: summary.id)
             guard lockState == .unlocked, let url = URL(string: page.url) else { return }
             NSWorkspace.shared.open(url)
             switch page.source {
             case .wellKnown, .known:
-                toast = Toast(message: "Page des passkeys ouverte", detail: hint, seconds: 6)
+                toast = Toast(message: String(localized: "Passkeys page opened"), detail: hint, seconds: 6)
             case .home:
-                toast = Toast(message: "Ce site n'indique pas sa page de passkeys : ouverture de l'accueil",
-                              detail: "Cherchez « passkey » ou « clé d'accès » dans les réglages de sécurité du compte. "
+                toast = Toast(message: String(localized: "This site doesn't state its passkeys page: opening the home page"),
+                              detail: String(localized: "Look for “passkey” in the account's security settings. ")
                                   + hint, seconds: 8)
             }
         } catch {
-            toast = Toast(message: "Page introuvable", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Page not found"), detail: Self.describe(error), failure: true)
         }
     }
 }

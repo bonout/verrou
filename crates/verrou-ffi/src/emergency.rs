@@ -1,10 +1,10 @@
-//! Accès d'urgence : contacts de confiance, demandes, et coffre d'un
-//! concédant ouvert en lecture seule.
+//! Emergency access: trusted contacts, requests, and a grantor's vault
+//! opened read-only.
 //!
-//! Le coffre d'un concédant vit dans un objet à part (`EmergencyVault`),
-//! que Swift garde le temps de la fenêtre : mêmes règles que le coffre
-//! principal (les secrets ne traversent la frontière que par `reveal`), et
-//! il se vide de lui-même quand le coffre principal se verrouille.
+//! A grantor's vault lives in a separate object (`EmergencyVault`), which
+//! Swift keeps for as long as the window: same rules as the main vault
+//! (secrets only cross the boundary through `reveal`), and it empties
+//! itself when the main vault locks.
 
 use std::sync::{Arc, Mutex, PoisonError, Weak};
 
@@ -17,9 +17,9 @@ use crate::{ItemDetail, ItemSummary, TotpView, VaultSession, VerrouError, detail
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum EmergencyType {
-    /// Lecture seule.
+    /// Read-only.
     View,
-    /// Prise de contrôle (depuis le coffre web).
+    /// Takeover (from the web vault).
     Takeover,
 }
 
@@ -62,11 +62,11 @@ impl From<EmergencyStatus> for EmergencyState {
     }
 }
 
-/// Un accès d'urgence : l'autre personne, le type d'accès, l'état.
+/// An emergency access: the other person, the access type, the state.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct EmergencyContact {
     pub id: String,
-    /// L'autre personne (contact ou concédant), une fois l'invitation acceptée.
+    /// The other person (contact or grantor), once the invitation is accepted.
     pub user_id: Option<String>,
     pub name: Option<String>,
     pub email: Option<String>,
@@ -91,18 +91,18 @@ impl From<EmergencyAccess> for EmergencyContact {
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct EmergencyOverview {
-    /// Mes contacts de confiance (je suis le concédant).
+    /// My trusted contacts (I am the grantor).
     pub trusted: Vec<EmergencyContact>,
-    /// Ceux qui m'ont choisi comme contact.
+    /// Those who chose me as a contact.
     pub granted: Vec<EmergencyContact>,
 }
 
-/// Le coffre d'un concédant, en lecture seule. Vidé (secrets mis à zéro)
-/// dès que le coffre principal se verrouille, ou que Swift le libère.
+/// A grantor's vault, read-only. Emptied (secrets zeroed) as soon as the
+/// main vault locks, or Swift releases it.
 #[derive(uniffi::Object)]
 pub struct EmergencyVault {
     vault: Mutex<Option<Vault>>,
-    /// La connexion qui l'a ouvert : disparue, le coffre principal est verrouillé.
+    /// The connection that opened it: gone, the main vault is locked.
     connection: Weak<tokio::sync::Mutex<Connection>>,
     failures: u32,
 }
@@ -122,12 +122,12 @@ impl EmergencyVault {
 
 #[uniffi::export]
 impl EmergencyVault {
-    /// Éléments qui ne se sont pas déchiffrés.
+    /// Items that didn't decrypt.
     pub fn failures(&self) -> u32 {
         self.failures
     }
 
-    /// Les résumés, triés par titre. Aucun secret.
+    /// The summaries, sorted by title. No secret.
     pub fn summaries(&self) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| Ok(v.items().iter().map(summary).collect()))
     }
@@ -136,7 +136,7 @@ impl EmergencyVault {
         self.with_vault(|v| v.get(&id).map(detail).ok_or(VerrouError::NotFound))
     }
 
-    /// Valeur d'un champ secret (ou `notes`), à la demande de l'utilisateur.
+    /// Value of a secret field (or `notes`), at the user's request.
     pub fn reveal(&self, id: String, field_id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
             let item = v.get(&id).ok_or(VerrouError::NotFound)?;
@@ -171,7 +171,7 @@ impl EmergencyVault {
         })
     }
 
-    /// Ferme le coffre du concédant tout de suite (fenêtre fermée).
+    /// Closes the grantor's vault right away (window closed).
     pub fn close(&self) {
         self.vault
             .lock()
@@ -182,7 +182,7 @@ impl EmergencyVault {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Mes contacts d'urgence et ceux qui m'ont choisi, depuis le serveur.
+    /// My emergency contacts and those who chose me, from the server.
     pub async fn emergency_access(&self) -> Result<EmergencyOverview, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let overview = connection.lock().await.emergency_access().await?;
@@ -218,8 +218,8 @@ impl VaultSession {
             .await?)
     }
 
-    /// Empreinte de la clé publique du contact, à vérifier avec lui avant
-    /// de confirmer.
+    /// Fingerprint of the contact's public key, to check with them before
+    /// confirming.
     pub async fn emergency_contact_fingerprint(
         &self,
         grantee_id: String,
@@ -229,8 +229,8 @@ impl VaultSession {
         Ok(open.emergency_contact_fingerprint(&grantee_id).await?)
     }
 
-    /// Confirme le contact : la clé du coffre est chiffrée pour lui, à
-    /// condition que sa clé ait toujours l'empreinte vérifiée.
+    /// Confirms the contact: the vault key is encrypted for them, provided
+    /// their key still has the verified fingerprint.
     pub async fn confirm_emergency_contact(
         &self,
         id: String,
@@ -268,7 +268,7 @@ impl VaultSession {
         Ok(open.reject_emergency_access(&id).await?)
     }
 
-    /// Ouvre en lecture seule le coffre d'un concédant (accès accordé).
+    /// Opens a grantor's vault read-only (access granted).
     pub async fn open_emergency_vault(
         &self,
         id: String,

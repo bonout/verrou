@@ -1,5 +1,5 @@
-//! Modèles d'éléments (Wi-Fi, passeport…) et champs personnalisés, côté
-//! Swift. Voir `verrou_core::template`.
+//! Item templates (Wi-Fi, passport…) and custom fields, Swift side. See
+//! `verrou_core::template`.
 
 use verrou_core::SecretString;
 use verrou_core::template::{self, Template};
@@ -61,27 +61,26 @@ pub struct ItemTemplateCount {
     pub count: u32,
 }
 
-/// Nature d'un champ personnalisé (celle de Bitwarden).
+/// Kind of a custom field (Bitwarden's).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
 pub enum CustomFieldType {
     #[default]
     Text,
     Hidden,
-    /// Case à cocher : valeur `"true"` ou `"false"`.
+    /// Checkbox: value `"true"` or `"false"`.
     Boolean,
-    /// Renvoie à un autre champ de l'élément : affiché, jamais modifié.
+    /// Refers to another field of the item: shown, never edited.
     Linked,
 }
 
-/// Un champ personnalisé dans l'écran de modification. Les champs réservés
-/// à Verrou (`verrou:…`) n'y figurent jamais : ils sont conservés à
-/// l'enregistrement.
+/// A custom field in the edit screen. Fields reserved for Verrou
+/// (`verrou:…`) never appear there: they are kept on save.
 #[derive(Clone, Debug, Default, uniffi::Record)]
 pub struct CustomField {
     pub name: String,
     pub value: Option<String>,
     pub field_type: CustomFieldType,
-    /// Champ désigné par un champ lié (numérotation de Bitwarden).
+    /// Field a linked field points to (Bitwarden's numbering).
     pub linked_id: Option<u32>,
 }
 
@@ -117,14 +116,14 @@ impl From<CustomFieldDraft> for CustomField {
     }
 }
 
-/// Le champ est-il réservé à Verrou (jamais affiché) ?
+/// Is the field reserved for Verrou (never shown)?
 pub(crate) fn is_reserved_field(id: &str) -> bool {
     id.starts_with("part:") || template::is_reserved(id)
 }
 
-/// Brouillon d'un nouvel élément selon un modèle : ses champs prédéfinis,
-/// vides ; un identifiant (avec un mot de passe généré) pour un serveur, une
-/// base de données ou une clé API.
+/// Draft of a new item from a template: its predefined fields, empty; a
+/// login (with a generated password) for a server, a database or an API
+/// key.
 #[uniffi::export]
 pub fn template_draft(template: ItemTemplate) -> ItemDraft {
     let template = Template::from(template);
@@ -167,10 +166,10 @@ pub fn template_draft(template: ItemTemplate) -> ItemDraft {
 
 #[uniffi::export]
 impl VaultSession {
-    /// ⚠️ Contenu du QR code d'un réseau Wi-Fi (`WIFI:T:WPA;S:…;P:…;;`) :
-    /// contient le mot de passe, seulement quand l'utilisateur affiche le QR
-    /// code. Un élément protégé demande d'abord sa confirmation ; une
-    /// organisation qui masque les mots de passe le refuse.
+    /// ⚠️ Content of a Wi-Fi network's QR code (`WIFI:T:WPA;S:…;P:…;;`):
+    /// contains the password, only when the user shows the QR code. A
+    /// protected item asks for confirmation first; an organization that
+    /// hides passwords refuses it.
     pub fn wifi_qr_code(&self, id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;

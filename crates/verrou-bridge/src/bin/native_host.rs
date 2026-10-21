@@ -1,18 +1,18 @@
-//! Hôte Native Messaging de Verrou, lancé par le navigateur.
+//! Verrou's Native Messaging host, launched by the browser.
 //!
-//! Il relaie les trames entre le navigateur (entrée et sortie standard) et
-//! Verrou (`127.0.0.1`), sans les lire : elles sont chiffrées de bout en bout
-//! entre l'extension et l'app. Si Verrou ne tourne pas, il l'ouvre en
-//! arrière-plan et attend qu'il écoute.
+//! It relays frames between the browser (standard input and output) and
+//! Verrou (`127.0.0.1`), without reading them: they are end-to-end encrypted
+//! between the extension and the app. If Verrou is not running, it opens it in
+//! the background and waits for it to listen.
 //!
-//! Brave et Firefox le lancent avec des arguments différents
-//! ([`verrou_bridge::Launcher`]) ; seule l'extension de Verrou est servie.
+//! Brave and Firefox launch it with different arguments
+//! ([`verrou_bridge::Launcher`]); only Verrou's extension is served.
 
 use std::io::{self, Read as _, Write as _};
 use std::net::Shutdown;
 use std::thread;
 
-/// Message au format Native Messaging, écrit directement au navigateur.
+/// A message in Native Messaging format, written directly to the browser.
 fn tell_browser(json: &str) {
     let mut out = io::stdout().lock();
     let length = u32::try_from(json.len()).unwrap_or(0);
@@ -27,7 +27,7 @@ fn main() {
         tell_browser(r#"{"type":"error","code":"unknown_extension"}"#);
         return;
     }
-    // Verrou n'est pas ouvert : on le lance sans le mettre au premier plan.
+    // Verrou is not open: launch it without bringing it to the foreground.
     let Some(stream) = verrou_bridge::connect_to_app(verrou_bridge::port_from_env(), true) else {
         tell_browser(r#"{"type":"error","code":"app_unavailable"}"#);
         return;
@@ -37,7 +37,7 @@ fn main() {
     };
     let mut from_app = stream;
 
-    // Verrou → navigateur.
+    // Verrou → browser.
     let downstream = thread::spawn(move || {
         let mut out = io::stdout().lock();
         let mut buffer = [0u8; 16 * 1024];
@@ -57,8 +57,8 @@ fn main() {
         }
     });
 
-    // Navigateur → Verrou. Le navigateur ferme l'entrée quand l'extension se
-    // déconnecte : on ferme alors la connexion.
+    // Browser → Verrou. The browser closes the input when the extension
+    // disconnects: the connection is then closed.
     let mut input = io::stdin().lock();
     let mut buffer = [0u8; 16 * 1024];
     loop {

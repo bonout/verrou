@@ -1,12 +1,11 @@
 import SwiftUI
 
 extension View {
-    /// Repère stable d'un élément clé (titre d'un volet, pied de la barre
-    /// latérale…) : identifiant d'accessibilité, et dans les builds Debug une
-    /// vue AppKit invisible de la même taille, que l'audit de mise en page
-    /// (`LayoutAudit`) retrouve dans la hiérarchie des vues sans dépendre de
-    /// l'arbre d'accessibilité de SwiftUI (construit seulement pour un client
-    /// d'accessibilité).
+    /// Stable marker of a key element (title of a pane, footer of the
+    /// sidebar…): accessibility identifier, and in Debug builds an invisible
+    /// AppKit view of the same size, which the layout audit (`LayoutAudit`)
+    /// finds in the view hierarchy without depending on SwiftUI's
+    /// accessibility tree (built only for an accessibility client).
     func layoutMark(_ identifier: String) -> some View {
         #if DEBUG
         accessibilityIdentifier(identifier)
@@ -18,7 +17,7 @@ extension View {
 }
 
 #if DEBUG
-/// Vue AppKit transparente posée derrière l'élément repéré.
+/// Transparent AppKit view placed behind the marked element.
 private struct LayoutMarkView: NSViewRepresentable {
     let identifier: String
 
@@ -33,7 +32,7 @@ private struct LayoutMarkView: NSViewRepresentable {
     }
 }
 
-/// Le repère lui-même : ni clics, ni accessibilité.
+/// The marker itself: no clicks, no accessibility.
 final class LayoutMarkNSView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
     override func isAccessibilityElement() -> Bool { false }

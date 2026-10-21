@@ -1,31 +1,31 @@
 import Observation
 import SwiftUI
 
-/// Membres d'une organisation (volet « Membres » de la barre latérale) :
-/// liste, invitation, confirmation après vérification de l'empreinte,
-/// rôles et collections. Tout passe par le cœur Rust, qui vérifie les
-/// droits et relit chaque membre sur le serveur avant d'agir.
+/// Members of an organization ("Members" pane of the sidebar): list,
+/// invitation, confirmation after checking the fingerprint, roles and
+/// collections. Everything goes through the Rust core, which checks the
+/// rights and reads each member again on the server before acting.
 @MainActor
 @Observable
 final class MembersModel {
-    /// Organisation affichée.
+    /// Displayed organization.
     private(set) var organizationID: String?
     private(set) var members: [OrganizationMember] = []
     private(set) var loaded = false
     var busy = false
     var error: String?
     var notice: String?
-    /// Membre affiché dans la colonne de droite.
+    /// Member displayed in the right column.
     var selection: String?
-    /// Invitation, ou modification du rôle et des collections d'un membre.
+    /// Invitation, or edit of a member's role and collections.
     var draft: MemberDraft?
-    /// Confirmation d'un membre : l'empreinte de sa clé, à vérifier avec lui.
+    /// Confirmation of a member: their key's fingerprint, to check with them.
     var confirmation: Confirmation?
     var confirmRemove: OrganizationMember?
     var confirmRevoke: OrganizationMember?
-    /// Adresse tout juste invitée : sa fiche s'ouvre sur « Et ensuite ? ».
+    /// Address just invited: its detail opens on "What's next?".
     var justInvited: String?
-    /// Revue visuelle : membres fictifs, aucun serveur.
+    /// Visual review: mock members, no server.
     var preview = false
 
     struct Confirmation: Identifiable {
@@ -38,7 +38,7 @@ final class MembersModel {
         selection.flatMap { id in members.first { $0.id == id } }
     }
 
-    /// Membres qui ont accepté l'invitation : à confirmer.
+    /// Members who accepted the invitation: to confirm.
     var pendingConfirmation: Int {
         members.filter { $0.status == .accepted }.count
     }
@@ -58,12 +58,12 @@ final class MembersModel {
         self.members = members
         loaded = true
         if selected == nil {
-            // À confirmer d'abord : c'est ce qui attend.
+            // To confirm first: that's what is waiting.
             selection = (members.first { $0.status == .accepted } ?? members.first)?.id
         }
     }
 
-    /// Au verrouillage : liste et brouillons oubliés.
+    /// On lock: list and drafts forgotten.
     func clear() {
         organizationID = nil
         members = []
@@ -82,12 +82,12 @@ final class MembersModel {
 }
 
 extension AppModel {
-    /// L'organisation du volet « Membres ».
+    /// The organization of the "Members" pane.
     var membersOrganization: OrganizationView? {
         organizations.first { $0.id == members.organizationID }
     }
 
-    /// Barre latérale : le volet des membres de l'organisation.
+    /// Sidebar: the organization's members pane.
     func openMembers(_ organizationID: String) {
         guard showsAccountPanes || members.preview else { return }
         showMainWindow()
@@ -124,7 +124,7 @@ extension AppModel {
     func saveMemberDraft(_ draft: MemberDraft) async {
         guard let organizationID = members.organizationID else { return }
         if let member = draft.member {
-            await membersAction("Accès de \(member.displayName) enregistrés.") {
+            await membersAction(String(localized: "Access of \(member.displayName) saved.")) {
                 try await self.session.editOrganizationMember(organizationId: organizationID, memberId: member.id,
                                                              role: draft.role, collections: draft.collections)
                 self.members.draft = nil
@@ -136,12 +136,12 @@ extension AppModel {
                     collections: draft.collections)
                 self.members.draft = nil
                 self.members.notice = invited.count == 1
-                    ? "Invitation envoyée à \(invited[0]) : voir « Et ensuite ? »."
-                    : "\(invited.count) invitations envoyées : voir « Et ensuite ? »."
+                    ? String(localized: "Invitation sent to \(invited[0]): see “What's next?”.")
+                    : String(localized: "\(invited.count) invitations sent: see “What's next?”.")
                 self.members.justInvited = invited.first
             }
-            // Sans courriel, le serveur accepte d'office un compte existant :
-            // ce membre à confirmer n'est pas une nouvelle pour qui l'invite.
+            // Without email, the server automatically accepts an existing
+            // account: this member to confirm is no news to whoever invites them.
             await refreshSharingStatus(notify: false)
             if let email = members.justInvited,
                let invited = members.members.first(where: { $0.email.caseInsensitiveCompare(email) == .orderedSame }) {
@@ -151,36 +151,36 @@ extension AppModel {
     }
 
     func reinviteMember(_ member: OrganizationMember) async {
-        await membersAction("Invitation renvoyée à \(member.email).") {
+        await membersAction(String(localized: "Invitation sent again to \(member.email).")) {
             try await self.session.reinviteOrganizationMember(organizationId: self.members.organizationID ?? "",
                                                               memberId: member.id)
         }
     }
 
     func revokeMember(_ member: OrganizationMember) async {
-        await membersAction("Accès de \(member.displayName) révoqué.") {
+        await membersAction(String(localized: "Access of \(member.displayName) revoked.")) {
             try await self.session.revokeOrganizationMember(organizationId: self.members.organizationID ?? "",
                                                             memberId: member.id)
         }
     }
 
     func restoreMember(_ member: OrganizationMember) async {
-        await membersAction("Accès de \(member.displayName) restauré.") {
+        await membersAction(String(localized: "Access of \(member.displayName) restored.")) {
             try await self.session.restoreOrganizationMember(organizationId: self.members.organizationID ?? "",
                                                              memberId: member.id)
         }
     }
 
     func removeMember(_ member: OrganizationMember) async {
-        await membersAction("\(member.displayName) ne fait plus partie de l'organisation.") {
+        await membersAction(String(localized: "\(member.displayName) is no longer part of the organization.")) {
             try await self.session.removeOrganizationMember(organizationId: self.members.organizationID ?? "",
                                                             memberId: member.id)
             if self.members.selection == member.id { self.members.selection = nil }
         }
     }
 
-    /// Avant de confirmer : l'empreinte de la clé publique du membre, relue
-    /// sur le serveur.
+    /// Before confirming: the fingerprint of the member's public key, read
+    /// again on the server.
     func prepareMemberConfirmation(_ member: OrganizationMember) async {
         guard let organizationID = members.organizationID, !members.busy else { return }
         members.busy = true
@@ -197,25 +197,25 @@ extension AppModel {
 
     func confirmMember(_ confirmation: MembersModel.Confirmation) async {
         members.confirmation = nil
-        await membersAction("\(confirmation.member.displayName) est confirmé : il a accès aux collections partagées.") {
+        await membersAction(String(localized: "\(confirmation.member.displayName) is confirmed: they have access to the shared collections.")) {
             try await self.session.confirmOrganizationMember(organizationId: self.members.organizationID ?? "",
                                                              memberId: confirmation.member.id,
                                                              fingerprint: confirmation.fingerprint)
         }
     }
 
-    /// Après la création d'un compte avec un lien d'invitation : l'accepter,
-    /// une fois connecté (second facteur compris).
+    /// After creating an account with an invitation link: accept it, once
+    /// logged in (second factor included).
     func acceptPendingInvitation() async {
         guard mode == .vaultwarden else { return }
         do {
             if let organization = try await session.acceptPendingInvitation() {
-                toast = Toast(message: "Invitation acceptée",
-                              detail: "Un administrateur de \(organization) doit maintenant vous confirmer (Réglages → Compte : votre phrase d'empreinte)",
+                toast = Toast(message: String(localized: "Invitation accepted"),
+                              detail: String(localized: "An administrator of \(CoreText.organization(organization)) must now confirm you (Settings → Account: your fingerprint phrase)"),
                               seconds: 8)
             }
         } catch {
-            toast = Toast(message: "Invitation non acceptée", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Invitation not accepted"), detail: Self.describe(error), failure: true)
         }
     }
 

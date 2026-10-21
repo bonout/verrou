@@ -1,19 +1,19 @@
-//! Signaux des sites (Signal API, iOS 26) : un site dit au fournisseur de
-//! remplissage qu'une passkey n'existe plus chez lui, quelles passkeys d'un
-//! compte il accepte encore, qu'un nom d'utilisateur a changé, ou qu'un mot
-//! de passe ne sert plus (le compte est passé à la passkey).
+//! Site signals (Signal API, iOS 26): a site tells the autofill
+//! provider that a passkey no longer exists on its side, which passkeys of an
+//! account it still accepts, that a user name changed, or that a
+//! password is no longer used (the account moved to the passkey).
 //!
-//! Le système les transmet à l'extension en arrière-plan, coffre fermé :
-//! elle les note (`credential-signals.json`, dossier du compte ; sites,
-//! identifiants d'accréditation et noms d'utilisateur, **jamais un
-//! secret**). Ensuite :
-//! - les suggestions du système (`QuickType`) cachent les passkeys refusées
-//!   et les mots de passe inutiles, et prennent le nouveau nom ;
-//! - l'audit de l'iPhone les montre, pour que l'utilisateur décide. Rien
-//!   n'est supprimé du coffre automatiquement.
+//! The system passes them to the extension in the background, vault closed:
+//! it records them (`credential-signals.json`, account folder; sites,
+//! credential ids and user names, **never a
+//! secret**). Then:
+//! - the system suggestions (`QuickType`) hide the rejected passkeys
+//!   and the unused passwords, and take the new name;
+//! - the iPhone audit shows them, so the user decides. Nothing
+//!   is deleted from the vault automatically.
 //!
-//! Un signal qui ne correspond plus à rien (passkey supprimée, mot de passe
-//! retiré) disparaît de lui-même.
+//! A signal that no longer matches anything (passkey deleted, password
+//! removed) goes away by itself.
 
 use std::collections::HashSet;
 use std::fs;
@@ -29,41 +29,41 @@ use crate::{ItemSummary, VaultSession, VerrouError, summary};
 use verrou_vaultwarden::Store;
 
 const FILE: &str = "credential-signals.json";
-/// Garde-fous : signaux gardés au plus, et longueur des textes reçus.
+/// Safeguards: maximum number of signals kept, and length of received texts.
 const MAX_SIGNALS: usize = 200;
 const MAX_TEXT: usize = 256;
-/// Un signal plus ancien est oublié.
+/// An older signal is forgotten.
 const MAX_AGE: i64 = 180 * 24 * 60 * 60;
 
-/// Ce qu'un site signale (`ASCredentialUpdater`, reçu par l'extension).
+/// What a site reports (`ASCredentialUpdater`, received by the extension).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, uniffi::Enum)]
 pub enum CredentialSignal {
-    /// `reportUnknownPublicKeyCredential` : le site ne connaît pas (plus)
-    /// cette passkey.
+    /// `reportUnknownPublicKeyCredential`: the site doesn't know (anymore)
+    /// this passkey.
     UnknownPasskey {
         rp_id: String,
         credential_id: Vec<u8>,
     },
-    /// `reportAllAcceptedPublicKeyCredentials` : les seules passkeys que le
-    /// site accepte pour ce compte.
+    /// `reportAllAcceptedPublicKeyCredentials`: the only passkeys the
+    /// site accepts for this account.
     AcceptedPasskeys {
         rp_id: String,
         user_handle: Vec<u8>,
         accepted: Vec<Vec<u8>>,
     },
-    /// `reportPublicKeyCredentialUpdate` : nouveau nom d'utilisateur.
+    /// `reportPublicKeyCredentialUpdate`: new user name.
     PasskeyRenamed {
         rp_id: String,
         user_handle: Vec<u8>,
         name: String,
     },
-    /// `reportUnusedPasswordCredential` : le mot de passe de ce compte ne
-    /// sert plus.
+    /// `reportUnusedPasswordCredential`: the password of this account is no
+    /// longer used.
     UnusedPassword { domain: String, user_name: String },
 }
 
 impl CredentialSignal {
-    /// Deux signaux du même sujet : le plus récent remplace l'autre.
+    /// Two signals on the same subject: the most recent replaces the other.
     fn subject(&self) -> String {
         match self {
             Self::UnknownPasskey {
@@ -84,7 +84,7 @@ impl CredentialSignal {
         }
     }
 
-    /// Normalisé et borné : rien d'anormalement long venu du système.
+    /// Normalized and bounded: nothing abnormally long coming from the system.
     fn sanitized(self) -> Option<Self> {
         let host = |s: &str| {
             let s = s.trim().trim_end_matches('.').to_ascii_lowercase();
@@ -150,18 +150,18 @@ impl CredentialSignal {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Stored {
     signal: CredentialSignal,
-    /// Horodatage Unix de réception.
+    /// Unix timestamp of reception.
     at: i64,
 }
 
-/// Ce que l'audit montre d'un signal.
+/// What the audit shows of a signal.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum SignalFindingKind {
-    /// Le site ne reconnaît plus cette passkey : elle peut être supprimée.
+    /// The site no longer recognizes this passkey: it can be deleted.
     PasskeyRejected,
-    /// Le site a changé le nom d'utilisateur de la passkey.
+    /// The site changed the passkey's user name.
     PasskeyRenamed,
-    /// Le site n'utilise plus ce mot de passe : il peut être retiré.
+    /// The site no longer uses this password: it can be removed.
     PasswordUnused,
 }
 
@@ -169,11 +169,11 @@ pub enum SignalFindingKind {
 pub struct SignalFinding {
     pub kind: SignalFindingKind,
     pub item: ItemSummary,
-    /// Site concerné (`rpId` ou domaine).
+    /// Site concerned (`rpId` or domain).
     pub site: String,
-    /// Nouveau nom (`PasskeyRenamed`).
+    /// New name (`PasskeyRenamed`).
     pub detail: Option<String>,
-    /// Horodatage Unix du signal.
+    /// Unix timestamp of the signal.
     pub at: i64,
 }
 
@@ -188,8 +188,8 @@ fn read(dir: &Path) -> Vec<Stored> {
         .unwrap_or_default()
 }
 
-/// Réécrit la liste sous le verrou du dossier (`Store::update_file`) :
-/// l'app et l'extension la partagent.
+/// Rewrites the list under the folder's lock (`Store::update_file`):
+/// the app and the extension share it.
 fn update(dir: &Path, change: impl FnOnce(Vec<Stored>) -> Vec<Stored>) -> Result<(), VerrouError> {
     Store::new(dir).update_file(FILE, |data| {
         let list = data
@@ -230,8 +230,8 @@ fn handle_of(key: &Passkey) -> Vec<u8> {
         .unwrap_or_default()
 }
 
-/// Ce que les signaux disent du coffre, signal par signal (avec l'élément
-/// concerné). Un signal sans correspondance ne donne rien.
+/// What the signals say about the vault, signal by signal (with the item
+/// concerned). A signal without a match yields nothing.
 fn findings_of<'v>(
     vault: &'v Vault,
     stored: &Stored,
@@ -292,8 +292,8 @@ fn findings_of<'v>(
     }
 }
 
-/// Les suggestions du système, corrigées par les signaux : sans les
-/// passkeys refusées ni les mots de passe inutiles, avec les noms changés.
+/// The system suggestions, corrected by the signals: without the
+/// rejected passkeys or the unused passwords, with the changed names.
 pub(crate) fn apply_to_identities(
     vault: &Vault,
     dir: &Path,
@@ -361,13 +361,13 @@ pub(crate) fn apply_to_identities(
 
 #[uniffi::export]
 impl VaultSession {
-    /// Extension, en arrière-plan (coffre fermé) : note un signal du site.
-    /// Le plus récent d'un même sujet remplace l'ancien ; les plus vieux
-    /// sont oubliés au-delà de 200.
+    /// Extension, in the background (vault closed): records a site signal.
+    /// The most recent one on a subject replaces the old one; the oldest
+    /// are forgotten beyond 200.
     pub fn record_credential_signal(&self, signal: CredentialSignal) -> Result<(), VerrouError> {
         let dir = self.store()?.dir().to_path_buf();
         let signal = signal.sanitized().ok_or_else(|| VerrouError::Invalid {
-            message: "signal invalide".to_owned(),
+            message: "invalid signal".to_owned(),
         })?;
         let subject = signal.subject();
         let at = now();
@@ -380,9 +380,9 @@ impl VaultSession {
         })
     }
 
-    /// Audit de l'iPhone : ce que les sites ont signalé et qui concerne
-    /// encore le coffre, le plus récent d'abord. Les signaux qui ne
-    /// correspondent plus à rien sont oubliés.
+    /// iPhone audit: what the sites reported that still concerns
+    /// the vault, most recent first. Signals that no longer
+    /// match anything are forgotten.
     pub fn credential_signal_findings(&self) -> Result<Vec<SignalFinding>, VerrouError> {
         let Ok(store) = self.store() else {
             return Ok(Vec::new());
@@ -417,8 +417,8 @@ impl VaultSession {
             Ok((findings, stale))
         })?;
         if !stale.is_empty() {
-            // Seuls les signaux lus ici et sans objet : un signal arrivé
-            // entre-temps reste.
+            // Only the signals read here and now pointless: a signal that arrived
+            // in the meantime stays.
             let _ = update(&dir, |list| {
                 list.into_iter()
                     .filter(|s| !stale.contains(&(s.signal.subject(), s.at)))
@@ -545,7 +545,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("verrou-signals-{}", uuid::Uuid::new_v4()));
         let stored = |signal| Stored { signal, at: 10 };
         let list = vec![
-            // La passkey 2 n'est plus acceptée pour le compte u1.
+            // Passkey 2 is no longer accepted for account u1.
             stored(CredentialSignal::AcceptedPasskeys {
                 rp_id: "github.com".to_owned(),
                 user_handle: b"u1".to_vec(),
@@ -560,7 +560,7 @@ mod tests {
                 domain: "exemple.fr".to_owned(),
                 user_name: "CAMILLE".to_owned(),
             }),
-            // Ne correspond à rien.
+            // Matches nothing.
             stored(CredentialSignal::UnknownPasskey {
                 rp_id: "github.com".to_owned(),
                 credential_id: vec![9; 16],
@@ -595,7 +595,7 @@ mod tests {
         let mut identities = crate::autofill::identities(&vault);
         let before = identities.len();
         apply_to_identities(&vault, &dir, &mut identities);
-        // Passkey 2 et mot de passe d'Exemple cachés.
+        // Passkey 2 and Exemple's password hidden.
         assert_eq!(identities.len(), before - 2);
         assert!(!identities.iter().any(|i| i.credential_id == vec![2; 16]));
         assert!(identities.iter().any(|i| i.credential_id == vec![1; 16]));

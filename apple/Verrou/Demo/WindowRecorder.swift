@@ -3,24 +3,24 @@ import AVFoundation
 import ScreenCaptureKit
 import VideoToolbox
 
-/// Capture des fenêtres de Verrou pour la démonstration, par ScreenCaptureKit.
+/// Capture of Verrou's windows for the demo, through ScreenCaptureKit.
 ///
-/// Le filtre ne retient que les fenêtres de Verrou : aucune autre app ne peut
-/// apparaître dans les captures, même si l'une d'elles recouvre la fenêtre.
-/// Demande l'autorisation « Enregistrement de l'écran » pour l'app qui lance
-/// Verrou (le terminal, via `scripts/demo-capture.sh`).
+/// The filter only keeps Verrou's windows: no other app can appear in the
+/// captures, even if one of them covers the window. Requires the "Screen
+/// Recording" permission for the app that launches Verrou (the terminal,
+/// through `scripts/demo-capture.sh`).
 ///
-/// `cacheDisplay(in:to:)` ne convenait pas : il ne sait pas dessiner les
-/// matériaux translucides (barre latérale, barre d'outils), rendus en blanc.
+/// `cacheDisplay(in:to:)` didn't work: it can't draw the translucent
+/// materials (sidebar, toolbar), rendered in white.
 enum WindowSnapshot {
     struct Source {
         let filter: SCContentFilter
-        /// Rectangle de la fenêtre principale dans l'écran, origine en haut à gauche.
+        /// Rectangle of the main window in the screen, origin at the top left.
         let rect: CGRect
     }
 
-    /// Toutes les fenêtres de Verrou, y compris celles ouvertes plus tard
-    /// (l'accès rapide), cadrées sur la fenêtre principale.
+    /// All of Verrou's windows, including those opened later (quick access),
+    /// framed on the main window.
     @MainActor
     static func source(main: NSWindow) async throws -> Source {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
@@ -33,8 +33,8 @@ enum WindowSnapshot {
         guard let display = content.displays.first(where: { $0.displayID == displayID }) ?? content.displays.first else {
             throw CaptureError.displayNotFound
         }
-        // Coordonnées AppKit (origine en bas à gauche de l'écran principal)
-        // vers celles de l'écran capturé (origine en haut à gauche).
+        // AppKit coordinates (origin at the bottom left of the main screen) to
+        // those of the captured screen (origin at the top left).
         let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
         let frame = main.frame
         let rect = CGRect(
@@ -68,10 +68,10 @@ enum WindowSnapshot {
     }
 }
 
-/// Enregistrement vidéo (H.264) de la fenêtre principale et des panneaux de
-/// Verrou qui la recouvrent. Les captures d'écran sont prises dans ce même
-/// flux : une seule session ScreenCaptureKit, que les autres apps qui
-/// capturent l'écran (visioconférence) ne font pas échouer en cours de route.
+/// Video recording (H.264) of the main window and of Verrou's panels that
+/// cover it. The screenshots are taken from this same stream: a single
+/// ScreenCaptureKit session, which other apps capturing the screen (video
+/// conferencing) don't make fail along the way.
 final class WindowRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let writer: AVAssetWriter
     private let input: AVAssetWriterInput
@@ -119,7 +119,7 @@ final class WindowRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
         }
     }
 
-    /// ScreenCaptureKit envoie aussi des images vides quand rien n'a bougé.
+    /// ScreenCaptureKit also sends empty frames when nothing has moved.
     private func isComplete(_ sampleBuffer: CMSampleBuffer) -> Bool {
         guard let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
                 as? [[SCStreamFrameInfo: Any]],
@@ -129,11 +129,11 @@ final class WindowRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @uncheck
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        print("DEMO_LOG flux arrêté : \(error.localizedDescription)")
+        print("DEMO_LOG stream stopped: \(error.localizedDescription)")
         fflush(stdout)
     }
 
-    /// Dernière image reçue, en pleine définition.
+    /// Last frame received, in full resolution.
     func snapshot() -> CGImage? {
         guard let buffer = queue.sync(execute: { latest }) else { return nil }
         var image: CGImage?

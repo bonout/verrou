@@ -8,24 +8,24 @@ import UniformTypeIdentifiers
 import Vision
 import VisionKit
 
-/// Lecture d'un QR code de double authentification : caméra, photo ou
-/// capture d'écran, presse-papiers.
+/// Reading a two-factor authentication QR code: camera, photo or
+/// screenshot, clipboard.
 ///
-/// Sécurité (voir SECURITY.md, « Scanner un QR code ») :
-/// - aucune image de la caméra n'est enregistrée : VisionKit (ou
-///   AVFoundation) ne rend que le texte du QR code ;
-/// - l'image choisie dans Photos (ou collée) n'existe qu'en mémoire, le
-///   temps de la lire, puis est relâchée ;
-/// - la graine part directement dans le brouillon chiffré de l'élément ;
-///   elle n'est jamais journalisée ni copiée dans le presse-papiers.
+/// Security (see SECURITY.md, "Scanning a QR code"):
+/// - no camera image is saved: VisionKit (or AVFoundation) only returns
+///   the QR code's text;
+/// - the image chosen in Photos (or pasted) only exists in memory, long
+///   enough to read it, then is released;
+/// - the seed goes straight into the item's encrypted draft; it is never
+///   logged nor copied to the clipboard.
 @MainActor
 @Observable
 final class OTPScanFlow: Identifiable {
-    /// D'où vient la demande.
+    /// Where the request comes from.
     enum Purpose: Equatable {
-        /// Écran de modification (`isNew` : création d'un identifiant).
+        /// Edit screen (`isNew`: creating a login).
         case editor(isNew: Bool)
-        /// Fiche d'un identifiant sans code (« Ajouter un code (QR) »).
+        /// Page of a login without a code ("Add a code (QR)").
         case item(id: String, title: String)
 
         var isEditor: Bool {
@@ -39,21 +39,21 @@ final class OTPScanFlow: Identifiable {
         case preview(OtpScanResult)
     }
 
-    /// Ce que devient un compte lu.
+    /// What becomes of a scanned account.
     enum Destination: Hashable {
         case skip
         case newLogin
         case attach(String)
-        /// Le formulaire de l'écran de modification ouvert.
+        /// The open edit screen's form.
         case form
     }
 
-    /// État de la caméra.
+    /// Camera state.
     enum Camera: Equatable {
         case checking
         /// VisionKit (`DataScannerViewController`).
         case dataScanner
-        /// Repli AVFoundation (`AVCaptureMetadataOutput`).
+        /// AVFoundation fallback (`AVCaptureMetadataOutput`).
         case metadata
         case denied
         case unavailable
@@ -65,10 +65,10 @@ final class OTPScanFlow: Identifiable {
     var error: String?
     private(set) var busy = false
     var camera: Camera = .checking
-    /// Destination choisie pour chaque compte (par position).
+    /// Destination chosen for each account (by position).
     var destinations: [Int: Destination] = [:]
-    /// Dernier texte refusé : la caméra le revoit à chaque image, on ne le
-    /// relit pas.
+    /// Last rejected text: the camera sees it again in every frame, we don't
+    /// read it again.
     @ObservationIgnored private var lastRejected: String?
 
     init(purpose: Purpose) {
@@ -80,12 +80,12 @@ final class OTPScanFlow: Identifiable {
         return nil
     }
 
-    // MARK: Caméra
+    // MARK: Camera
 
-    /// Vérifie qu'il y a une caméra, puis l'autorisation (demandée au
-    /// premier usage), puis choisit VisionKit ou, à défaut, AVFoundation.
+    /// Checks there is a camera, then the authorization (asked on first
+    /// use), then picks VisionKit or, failing that, AVFoundation.
     func prepareCamera() async {
-        // Sans caméra (simulateur), inutile de demander l'autorisation.
+        // Without a camera (simulator), no point asking for authorization.
         guard AVCaptureDevice.default(for: .video) != nil else {
             camera = .unavailable
             return
@@ -106,10 +106,10 @@ final class OTPScanFlow: Identifiable {
             ? .dataScanner : .metadata
     }
 
-    // MARK: Lecture
+    // MARK: Reading
 
-    /// Texte d'un QR code (caméra) ou collé. `fromCamera` : un texte refusé
-    /// n'est signalé qu'une fois.
+    /// Text of a QR code (camera) or pasted. `fromCamera`: a rejected text
+    /// is reported only once.
     func handle(text: String, session: VaultSession, fromCamera: Bool = false) {
         guard case .scanning = phase, !busy else { return }
         if fromCamera, text == lastRejected { return }
@@ -118,8 +118,8 @@ final class OTPScanFlow: Identifiable {
             guard !result.accounts.isEmpty else {
                 lastRejected = text
                 error = result.skipped > 0
-                    ? "Les codes HOTP (à compteur) ne sont pas pris en charge, seulement les codes TOTP."
-                    : "Ce QR code ne contient aucun compte."
+                    ? String(localized: "HOTP (counter-based) codes are not supported, only TOTP codes.")
+                    : String(localized: "This QR code contains no account.")
                 return
             }
             lastRejected = nil
@@ -132,8 +132,8 @@ final class OTPScanFlow: Identifiable {
         }
     }
 
-    /// Image (photo, capture d'écran, image collée) : ses QR codes sont lus
-    /// hors du fil principal, puis l'image est relâchée.
+    /// Image (photo, screenshot, pasted image): its QR codes are read off the
+    /// main thread, then the image is released.
     func handle(imageData: Data, session: VaultSession) async {
         guard case .scanning = phase, !busy else { return }
         busy = true
@@ -142,18 +142,18 @@ final class OTPScanFlow: Identifiable {
         }.value
         busy = false
         guard !payloads.isEmpty else {
-            error = "Aucun QR code trouvé dans l'image. Recadrez la capture sur le QR code, puis réessayez."
+            error = String(localized: "No QR code found in the image. Crop the screenshot to the QR code, then try again.")
             return
         }
-        // Le premier QR code qui porte un code à usage unique.
+        // The first QR code that carries a one-time code.
         for payload in payloads {
             handle(text: payload, session: session)
             if case .preview = phase { return }
         }
     }
 
-    /// Contenu du presse-papiers, collé par `PasteButton` (sans alerte de
-    /// collage) : image ou texte.
+    /// Clipboard content, pasted by `PasteButton` (no paste alert): image or
+    /// text.
     func handle(pasted providers: [NSItemProvider], session: VaultSession) async {
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier),
@@ -171,7 +171,7 @@ final class OTPScanFlow: Identifiable {
                 }
             }
         }
-        error = "Le presse-papiers ne contient ni lien otpauth:// ni image de QR code."
+        error = String(localized: "The clipboard contains neither an otpauth:// link nor a QR code image.")
     }
 
     private static func load(_ provider: NSItemProvider, type: UTType) async -> Data? {
@@ -180,7 +180,7 @@ final class OTPScanFlow: Identifiable {
         }
     }
 
-    /// Revient à la caméra (autre QR code).
+    /// Back to the camera (another QR code).
     func rescan() {
         lastRejected = nil
         error = nil
@@ -205,15 +205,16 @@ final class OTPScanFlow: Identifiable {
 
     static func describe(_ error: Error) -> String {
         if case .InvalidTotp(let message)? = error as? VerrouError {
+            let message = CoreText.message(message)
             return message.prefix(1).uppercased() + message.dropFirst() + "."
         }
         return ErrorText.describe(error)
     }
 
-    // MARK: Application
+    // MARK: Applying
 
-    /// Applique les destinations choisies ; rend `true` si la feuille peut se
-    /// fermer.
+    /// Applies the chosen destinations; returns `true` if the sheet can
+    /// close.
     func apply(_ plan: [(ScannedOtp, Destination)], model: PhoneModel) async -> Bool {
         guard !busy else { return false }
         busy = true
@@ -227,14 +228,14 @@ final class OTPScanFlow: Identifiable {
         return true
     }
 
-    /// Plan d'après les destinations choisies (tous les comptes).
+    /// Plan from the chosen destinations (all the accounts).
     var plan: [(ScannedOtp, Destination)] {
         guard let result else { return [] }
         return result.accounts.enumerated().map { ($0.element, destinations[$0.offset] ?? .skip) }
     }
 }
 
-/// Compte choisi pour remplir l'écran de modification ouvert.
+/// Account chosen to fill the open edit screen.
 struct OTPFormFill: Equatable {
     let id = UUID()
     let account: ScannedOtp
@@ -242,11 +243,11 @@ struct OTPFormFill: Equatable {
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
-// MARK: Lecture des images
+// MARK: Reading images
 
 enum QRImageReader {
-    /// Contenus des QR codes d'une image (PNG, JPEG, HEIC…). Vision d'abord,
-    /// Core Image en secours.
+    /// Contents of an image's QR codes (PNG, JPEG, HEIC…). Vision first,
+    /// Core Image as a fallback.
     nonisolated static func payloads(in data: Data) -> [String] {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return [] }
@@ -274,7 +275,7 @@ enum QRImageReader {
     }
 }
 
-// MARK: Écritures
+// MARK: Writes
 
 extension PhoneModel {
     func startOTPScan(_ purpose: OTPScanFlow.Purpose) {
@@ -282,9 +283,9 @@ extension PhoneModel {
         otpScan = OTPScanFlow(purpose: purpose)
     }
 
-    /// Enregistre les comptes scannés : ajout à un identifiant existant,
-    /// nouvel identifiant, ou remplissage du formulaire ouvert. Rend l'erreur
-    /// à afficher dans la feuille, s'il y en a une.
+    /// Saves the scanned accounts: added to an existing login, new login,
+    /// or filling the open form. Returns the error to show in the sheet, if
+    /// there is one.
     func applyScannedCodes(_ plan: [(ScannedOtp, OTPScanFlow.Destination)],
                            purpose: OTPScanFlow.Purpose) async -> (written: Int, failure: String?) {
         var written = 0
@@ -298,14 +299,14 @@ extension PhoneModel {
                 case .form:
                     otpFormFill = OTPFormFill(account: account)
                 case .attach(let itemID):
-                    let title = summary(id: itemID)?.title ?? account.title
+                    let title = summary(id: itemID)?.title ?? account.displayTitle
                     if session.needsConfirmation(id: itemID) {
                         guard await confirmAccess(itemID: itemID, title: title) else { return (written, nil) }
                     }
                     var draft = try await session.editDraft(id: itemID)
-                    guard draft.login != nil else { return (written, "« \(title) » n'est pas un identifiant.") }
+                    guard draft.login != nil else { return (written, String(localized: "“\(title)” is not a login.")) }
                     guard (draft.login?.totp ?? "").isEmpty else {
-                        return (written, "« \(title) » a déjà un code à usage unique.")
+                        return (written, String(localized: "“\(title)” already has a one-time code."))
                     }
                     draft.login?.totp = account.uri
                     try await session.updateItem(id: itemID, draft: draft)
@@ -313,11 +314,11 @@ extension PhoneModel {
                     attachedTo.append(itemID)
                 case .newLogin:
                     var urls: [String] = []
-                    // Un service écrit comme un domaine (`github.com`) devient le site.
+                    // A service written like a domain (`github.com`) becomes the site.
                     if let issuer = account.issuer, issuer.contains("."), !issuer.contains(" ") {
                         urls = ["https://\(issuer.lowercased())"]
                     }
-                    let draft = ItemDraft(name: account.title, folderId: nil, favorite: false, notes: nil,
+                    let draft = ItemDraft(name: account.displayTitle, folderId: nil, favorite: false, notes: nil,
                                           login: LoginFields(username: account.account, password: nil,
                                                              totp: account.uri, urls: urls),
                                           fields: [], template: nil)
@@ -333,21 +334,21 @@ extension PhoneModel {
         guard written > 0 else { return (0, nil) }
         afterWrite()
         pushChanges()
-        // Depuis un nouvel identifiant laissé vide : l'écran de création se
-        // ferme, la fiche ajoutée s'ouvre.
+        // From a new login left empty: the creation screen closes, the added
+        // item page opens.
         if purpose == .editor(isNew: true), otpFormFill == nil {
             editor = nil
         }
         let opened = attachedTo.first ?? created.first
-        // Depuis une fiche, elle est déjà affichée.
+        // From an item page, it is already shown.
         if written == 1, purpose.isEditor, let opened, editor == nil {
             open(session.resolveItemId(id: opened))
         }
         let message = written == 1
-            ? (attachedTo.isEmpty ? "Identifiant créé avec son code" : "Code ajouté à « \(summary(id: attachedTo[0])?.title ?? "l'élément") »")
-            : "\(written) codes enregistrés"
+            ? (attachedTo.isEmpty ? String(localized: "Login created with its code") : String(localized: "Code added to “\(summary(id: attachedTo[0])?.title ?? String(localized: "the item"))”"))
+            : String(localized: "\(written) codes saved")
         toast = Toast(message: message,
-                      detail: syncState == .offline ? "Hors ligne : synchronisé dès que le serveur répondra" : nil)
+                      detail: syncState == .offline ? String(localized: "Offline: synced as soon as the server responds") : nil)
         return (written, nil)
     }
 }

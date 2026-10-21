@@ -1,14 +1,13 @@
 import SwiftUI
 
-/// Générateur : mot de passe (longueur, chiffres, symboles) ou phrase de
-/// passe (mots tirés dans une liste de 7 776, séparateur, majuscules,
-/// chiffre), avec un aperçu coloré et sa robustesse. Les réglages sont ceux
-/// du Mac (mêmes clés).
+/// Generator: password (length, digits, symbols) or passphrase (words drawn
+/// from a list of 7,776, separator, capitals, digit), with a colored preview
+/// and its strength. The settings are the Mac's (same keys).
 struct GeneratorView: View {
     enum Purpose {
-        /// Onglet Générateur : copier la valeur.
+        /// Generator tab: copy the value.
         case copy
-        /// Écran de modification : la valeur et, pour une phrase de passe, son entropie exacte.
+        /// Edit screen: the value and, for a passphrase, its exact entropy.
         case use((String, Double?) -> Void)
     }
 
@@ -26,9 +25,9 @@ struct GeneratorView: View {
     @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
     @State private var value = ""
     @State private var bits: Double?
-    /// Tirages faits : la flèche de « Autre » tourne d'un tour à chacun.
+    /// Draws made: the "Another" arrow turns one full turn at each.
     @State private var draws = 0
-    /// « Copier » vient de copier : coche pendant 1,5 s.
+    /// "Copy" just copied: checkmark for 1.5 s.
     @State private var copied = false
 
     var body: some View {
@@ -36,7 +35,7 @@ struct GeneratorView: View {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
-                        // Chaque nouvelle valeur arrive « déchiffrée » (iOS 18).
+                        // Each new value arrives "decrypted" (iOS 18).
                         DecryptReveal(value: value.isEmpty ? nil : value, fontSize: 22, replaysOnChange: true) { value in
                             PasswordText(value: value, size: 22, selectable: false)
                                 .lineLimit(6)
@@ -45,7 +44,7 @@ struct GeneratorView: View {
                         }
                         .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
                         .accessibilityElement(children: .ignore)
-                        .accessibilityLabel("Valeur générée")
+                        .accessibilityLabel("Generated value")
                         .accessibilityValue(value)
                         StrengthMeter(password: value, bits: bits)
                         GlassGroup(spacing: 12) {
@@ -55,7 +54,7 @@ struct GeneratorView: View {
                                     draws += 1
                                 } label: {
                                     Label {
-                                        Text("Autre")
+                                        Text("Another")
                                     } icon: {
                                         Image(systemName: "arrow.clockwise")
                                             .rotatesOnChange(of: draws)
@@ -89,17 +88,17 @@ struct GeneratorView: View {
                 case .passphrase: passphraseOptions
                 }
             }
-            .navigationTitle("Générateur")
+            .navigationTitle("Generator")
             .navigationBarTitleDisplayMode(isSheet ? .inline : .large)
             .toolbar {
                 if isSheet {
-                    ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 }
             }
         }
         .onAppear(perform: regenerate)
         #if DEBUG
-        // Captures : `VERROU_GENERATOR_DEMO=1` tire une valeur toutes les 2 s.
+        // Screenshots: `VERROU_GENERATOR_DEMO=1` draws a value every 2 s.
         .task {
             guard ProcessInfo.processInfo.environment["VERROU_GENERATOR_DEMO"] == "1" else { return }
             while !Task.isCancelled {
@@ -130,11 +129,11 @@ struct GeneratorView: View {
         case .copy:
             Button {
                 let before = model.copies
-                model.copy(value, label: mode == .password ? "Mot de passe" : "Phrase de passe", secret: true)
+                model.copy(value, label: mode == .password ? String(localized: "Password") : String(localized: "Passphrase"), secret: true)
                 if model.copies != before { copied = true }
             } label: {
                 Label {
-                    Text("Copier")
+                    Text("Copy")
                 } icon: {
                     CopySymbol(copied: copied)
                 }
@@ -147,7 +146,7 @@ struct GeneratorView: View {
             Button {
                 use(value, bits)
             } label: {
-                Label("Utiliser", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
+                Label("Use", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
             }
             .glassButton(prominent: true)
         }
@@ -157,7 +156,7 @@ struct GeneratorView: View {
         Section {
             VStack(alignment: .leading) {
                 HStack {
-                    Text("Longueur")
+                    Text("Length")
                     Spacer()
                     Text("\(Int(length))")
                         .font(.body.weight(.semibold))
@@ -168,26 +167,26 @@ struct GeneratorView: View {
                 }
                 Slider(value: $length, in: 8...64, step: 1)
             }
-            Toggle("Chiffres", isOn: $digits)
-            Toggle("Symboles", isOn: $symbols)
+            Toggle("Digits", isOn: $digits)
+            Toggle("Symbols", isOn: $symbols)
         } header: {
-            SectionHeader("Mot de passe")
+            SectionHeader("Password")
         }
     }
 
     @ViewBuilder private var passphraseOptions: some View {
         Section {
-            Stepper("Mots : \(Int(words))", value: $words, in: 3...20, step: 1)
-            Picker("Séparateur", selection: $separator) {
+            Stepper("Words: \(Int(words))", value: $words, in: 3...20, step: 1)
+            Picker("Separator", selection: $separator) {
                 ForEach(PassphraseSeparatorChoice.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            Picker("Langue", selection: $language) {
+            Picker("Language", selection: $language) {
                 ForEach(PassphraseLanguageChoice.allCases, id: \.self) { Text($0.label).tag($0) }
             }
-            Toggle("Majuscules", isOn: $capitalize)
-            Toggle("Ajouter un chiffre", isOn: $number)
+            Toggle("Capitals", isOn: $capitalize)
+            Toggle("Add a digit", isOn: $number)
         } header: {
-            SectionHeader("Phrase de passe")
+            SectionHeader("Passphrase")
         }
     }
 
@@ -206,7 +205,7 @@ struct GeneratorView: View {
     }
 }
 
-/// L'onglet Générateur.
+/// The Generator tab.
 struct GeneratorTab: View {
     var body: some View {
         GeneratorView(purpose: .copy)

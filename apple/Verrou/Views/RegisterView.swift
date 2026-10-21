@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// « Créer un compte », sur l'écran de connexion : pour une personne invitée
-/// sur un serveur aux inscriptions fermées. Coller le lien de l'invitation
-/// préremplit le serveur et l'adresse.
+/// "Create an Account", on the login screen: for a person invited to a
+/// server with closed sign-ups. Pasting the invitation link prefills the
+/// server and the address.
 struct RegisterStep: View {
     @Environment(AppModel.self) private var model
     @Bindable var flow: RegistrationFlow
@@ -14,7 +14,7 @@ struct RegisterStep: View {
     var body: some View {
         VStack(spacing: 18) {
             VStack(spacing: 6) {
-                Text("Créer un compte")
+                Text("Create an Account")
                     .font(.system(size: 26, weight: .bold, design: .rounded))
                     .layoutMark("login-title")
                 Text(subtitle)
@@ -25,63 +25,63 @@ struct RegisterStep: View {
             }
 
             VStack(spacing: 10) {
-                LabeledField(label: "Lien d'invitation (facultatif)") {
-                    TextField("https://vault.exemple.fr/#/accept-organization/?…", text: $flow.link)
+                LabeledField(label: "Invitation link (optional)") {
+                    TextField("https://vault.example.com/#/accept-organization/?…", text: $flow.link)
                         .focused($focus, equals: .link)
                         .onSubmit { focus = .password }
                 }
                 if let error = flow.linkError {
                     hintLine(error, symbol: "exclamationmark.triangle.fill", tint: .orange)
                 } else if let info = flow.linkInfo {
-                    hintLine(info.organizationName.map { "Invitation de \($0) pour \(info.email)" }
-                             ?? (info.invitation ? "Invitation au serveur pour \(info.email)"
-                                                 : "Adresse à vérifier : \(info.email)"),
+                    hintLine(info.organizationName.map { String(localized: "Invitation from \($0) for \(info.email)") }
+                             ?? (info.invitation ? String(localized: "Invitation to the server for \(info.email)")
+                                                 : String(localized: "Address to verify: \(info.email)")),
                              symbol: "checkmark.seal.fill", tint: .green)
                 }
-                LabeledField(label: "Serveur") {
-                    TextField("https://vault.exemple.fr", text: $flow.server)
+                LabeledField(label: "Server") {
+                    TextField("https://vault.example.com", text: $flow.server)
                         .textContentType(.URL)
                         .focused($focus, equals: .server)
                         .onSubmit { focus = .email }
                 }
-                LabeledField(label: "E-mail") {
-                    TextField("vous@exemple.fr", text: $flow.email)
+                LabeledField(label: "Email") {
+                    TextField("you@example.com", text: $flow.email)
                         .textContentType(.username)
                         .focused($focus, equals: .email)
                         .onSubmit { focus = .name }
                         .disabled(flow.linkInfo != nil)
                 }
-                LabeledField(label: "Nom (vu par les autres membres)") {
-                    TextField("Léa Martin", text: $flow.name)
+                LabeledField(label: "Name (seen by the other members)") {
+                    TextField("Jane Doe", text: $flow.name)
                         .textContentType(.name)
                         .focused($focus, equals: .name)
                         .onSubmit { focus = .password }
                 }
-                LabeledField(label: "Mot de passe principal") {
+                LabeledField(label: "Master password") {
                     SecureField("", text: $flow.password)
                         .textContentType(.newPassword)
                         .focused($focus, equals: .password)
                         .onSubmit { focus = .confirmation }
                 }
                 MasterPasswordStrengthMeter(score: flow.strength)
-                LabeledField(label: "Confirmer le mot de passe principal") {
+                LabeledField(label: "Confirm the master password") {
                     SecureField("", text: $flow.confirmation)
                         .textContentType(.newPassword)
                         .focused($focus, equals: .confirmation)
                         .onSubmit { focus = .hint }
                 }
-                LabeledField(label: "Indice (facultatif, visible sans mot de passe)") {
+                LabeledField(label: "Hint (optional, visible without password)") {
                     TextField("", text: $flow.hint)
                         .focused($focus, equals: .hint)
                         .onSubmit(submit)
                 }
-                Picker("Dérivation de la clé", selection: $flow.kdf) {
-                    Text("PBKDF2 (600 000 itérations)").tag(NewAccountKdfChoice.pbkdf2)
-                    Text("Argon2id (64 Mio)").tag(NewAccountKdfChoice.argon2id)
+                Picker("Key derivation", selection: $flow.kdf) {
+                    Text("PBKDF2 (600,000 iterations)").tag(NewAccountKdfChoice.pbkdf2)
+                    Text("Argon2id (64 MiB)").tag(NewAccountKdfChoice.argon2id)
                 }
                 .pickerStyle(.menu)
                 .font(.callout)
-                .help("PBKDF2 : le réglage par défaut des apps Bitwarden. Argon2id résiste mieux aux attaques par carte graphique.")
+                .help("PBKDF2: the default setting of the Bitwarden apps. Argon2id better withstands graphics card attacks.")
                 ForEach(flow.problems, id: \.self) { problem in
                     hintLine(problem, symbol: "exclamationmark.circle", tint: .orange)
                 }
@@ -89,7 +89,7 @@ struct RegisterStep: View {
             .frame(width: 340)
             .disabled(flow.busy)
 
-            Text("Le mot de passe principal ne peut pas être récupéré : sans lui, le coffre est perdu.")
+            Text("The master password can't be recovered: without it, the vault is lost.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -98,7 +98,7 @@ struct RegisterStep: View {
             Button(action: submit) {
                 HStack(spacing: 8) {
                     if flow.busy { ProgressView().controlSize(.small) }
-                    Text(flow.busy ? "Création du compte…" : "Créer le compte")
+                    Text(flow.busy ? "Creating the account…" : "Create the Account")
                 }
                 .font(.body.weight(.semibold))
                 .frame(width: 316, height: 30)
@@ -116,14 +116,14 @@ struct RegisterStep: View {
                     .frame(maxWidth: 340)
             }
 
-            Button("J'ai déjà un compte") { cancel() }
+            Button("I Already Have an Account") { cancel() }
                 .buttonStyle(.link)
         }
         .onAppear { focus = .link }
     }
 
-    private var subtitle: String {
-        "Pour rejoindre un serveur sur invitation : collez le lien « Rejoindre » reçu par e-mail. Les clés de votre coffre sont créées sur ce Mac."
+    private var subtitle: LocalizedStringKey {
+        "To join a server by invitation: paste the “Join” link received by email. The keys of your vault are created on this Mac."
     }
 
     private func hintLine(_ text: String, symbol: String, tint: Color) -> some View {
@@ -141,7 +141,7 @@ struct RegisterStep: View {
     }
 }
 
-/// Robustesse du mot de passe principal (zxcvbn, 0 à 4).
+/// Strength of the master password (zxcvbn, 0 to 4).
 struct MasterPasswordStrengthMeter: View {
     let score: UInt8?
 
@@ -160,7 +160,7 @@ struct MasterPasswordStrengthMeter: View {
                 .frame(width: 70, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Robustesse : \(label)")
+        .accessibilityLabel("Strength: \(label)")
     }
 
     private var filled: Int {
@@ -170,11 +170,11 @@ struct MasterPasswordStrengthMeter: View {
 
     private var label: String {
         switch score {
-        case nil: "Robustesse"
-        case 0, 1: "Faible"
-        case 2: "Moyen"
-        case 3: "Bon"
-        default: "Fort"
+        case nil: String(localized: "Strength")
+        case 0, 1: String(localized: "Weak")
+        case 2: String(localized: "Fair")
+        case 3: String(localized: "Good")
+        default: String(localized: "Strong")
         }
     }
 

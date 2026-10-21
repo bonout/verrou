@@ -29,7 +29,7 @@ around a Rust core.
   history, and a change made elsewhere in the meantime is never overwritten.
   Trash can be restored from the web vault. Saving never waits for the
   server (see *Local-first writes* below).
-- **Templates**: *Nouvel élément* also offers software license, Wi-Fi
+- **Templates**: *New item* also offers software license, Wi-Fi
   network, bank account, passport, driver's license, ID card, server,
   database, API key and membership. Bitwarden has no such types, so each one
   is a secure note (a login for server, database and API key) with
@@ -42,40 +42,40 @@ around a Rust core.
 - **Select several items** like in Finder: ⌘-click adds or removes one,
   ⇧-click selects a range, ⇧↑/⇧↓ extend it, ⌘A selects every result (list
   focused), Escape goes back to one item. The detail column then offers
-  archive/unarchive, trash/restore, favorites and *Déplacer vers un
-  dossier…* for the whole selection (also in the toolbar and the context
+  archive/unarchive, trash/restore, favorites and *Move to
+  folder…* for the whole selection (also in the toolbar and the context
   menu of a selected row). The change shows at once and goes through the
   outbox like single ones; sending uses Vaultwarden's bulk routes (one
   request per 500 items, one sync at the end; favorites go one by one);
   read-only shared items and items in the trash are skipped and counted, and
   trashing more than one item asks first.
-- **Import and duplicates** (File → *Importer…*, ⌘⇧I): exports from Apple
+- **Import and duplicates** (File → *Import…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one
-  request; Vault → *Nettoyer les doublons…* groups duplicates by confidence,
+  request; Vault → *Clean Up Duplicates…* groups duplicates by confidence,
   merges them into the item you keep and moves the copies to the trash.
   See [Import from another password manager](#import-from-another-password-manager).
 - **Browser extension (Brave, Firefox)**: like 1Password, a dark pill at the
   top left of the page instead of a menu under the field. On a page with a
   login form and a login (or passkey) for that site, it appears once per page
-  load: the site, the suggested username, *Se connecter* (sign in) and ✕.
-  *Se connecter* fills the username and password (or the one-time code) and,
+  load: the site, the suggested username, *Sign in* and ✕.
+  *Sign in* fills the username and password (or the one-time code) and,
   like 1Password, submits the form when nothing is left to type: no other
   empty field and no visible captcha (an invisible reCAPTCHA v3 badge does
   not count). A username-only first step is submitted too; the pill comes
   back on the password step and waits for your click again. Cards, addresses
-  and generated passwords are never submitted. The popup's *Envoyer le
-  formulaire après le remplissage* checkbox (on by default) turns this off:
-  the cursor then lands on the submit button and Enter sends it. The *Autres identifiants ⌄* tab under the pill lists the
-  site's other logins and passkeys, *Remplir avec un autre identifiant…*
+  and generated passwords are never submitted. The popup's *Submit the
+  form after filling* checkbox (on by default) turns this off:
+  the cursor then lands on the submit button and Enter sends it. The *Other logins ⌄* tab under the pill lists the
+  site's other logins and passkeys, *Fill with another login…*
   (link the site to an existing login, in the extension's popup) and, on a
-  sign-up form, *Générer un mot de passe*. In the focused field there is only
+  sign-up form, *Generate a password*. In the focused field there is only
   a small Verrou icon at the right edge, which opens or closes the pill (even
   when the site has no login in Verrou); ↓ from that field moves the keyboard
   into the pill. ✕ or Escape hides it for the rest of the page. Nothing is
   attached to the field anymore, so the site's own suggestion lists are left
-  alone. Vault locked: the pill says *Verrou est verrouillé* with
-  *Déverrouiller* (Touch ID). The extension is linked to the app once, by
+  alone. Vault locked: the pill says *Verrou is locked* with
+  *Unlock* (Touch ID). The extension is linked to the app once, by
   comparing a 6-digit code; the channel is then end-to-end encrypted, and it
   only receives the logins of the site in front of it, over HTTPS. On a "new
   password" field the pill suggests a strong password (and fills the
@@ -83,14 +83,14 @@ around a Rust core.
   offers to save the account or update its password. A two-factor QR code
   shown by a site can be added to the login from the extension's popup (or
   its secret key, typed by hand). Payment and address forms get the same pill
-  when you enter a field (*Remplir la carte Visa •••• 4242*, other cards in
+  when you enter a field (*Fill card Visa •••• 4242*, other cards in
   the tab): every field is filled, drop-down lists included.
 - **Passkeys in Brave and Firefox**: when a site asks for a passkey, Verrou offers its
   own for that site, or to save a new one in the site's login (or a new
   one); "use the browser" hands over to the browser. Sites that offer passkey
   autofill (`mediation: "conditional"`, e.g. a username field with
   `autocomplete="username webauthn"`) get them in the pill, like 1Password:
-  the passkey is the top suggestion (*Se connecter avec une passkey*), the
+  the passkey is the top suggestion (*Sign in with a passkey*), the
   passwords stay in the tab, and a click (or Enter on the button) signs in. No passkey in Verrou for that site, or Verrou not reachable:
   the browser's own autofill takes over. When Verrou cannot take a passkey request
   (app not running, extension not linked, key type it cannot create), a short
@@ -109,12 +109,12 @@ around a Rust core.
   expired or expiring within 60 days, and logins untouched for more than
   3 years. A password created or changed in Verrou (editor, Brave, import) is
   checked against known breaches in the background, with an alert if it
-  appears there (Settings → *Sécurité*, on by default).
+  appears there (Settings → *Security*, on by default).
 - **Upgrade to passkeys**: the audit's *Passkey possible* section lists the
   logins whose site accepts passkeys (from the
   [passkeys.2fa.directory](https://passkeys.2fa.directory) list, downloaded
   whole at most weekly and cached, matched by registrable domain) and that
-  have no passkey yet, with the site's passkey help page. *Créer une passkey*
+  have no passkey yet, with the site's passkey help page. *Create a Passkey*
   opens the site's passkey page: the one it publishes at
   `/.well-known/passkey-endpoints` (asked only when you click, for that site
   only), a known page for a few big sites, or its home page. In Brave and
@@ -124,7 +124,7 @@ around a Rust core.
   or remove it on the site if it allows passwordless sign-in (Verrou never
   removes it for you). The audit header (Mac) and summary (iPhone) count
   these logins.
-- **Change a password in one click**: *Changer le mot de passe* on the audit
+- **Change a password in one click**: *Change Password* on the audit
   rows (known breaches, reused, weak, old, plain HTTP), in a login's details
   and in its context menu opens the site's change-password page. A short
   built-in list covers big sites that don't follow the standard (Google,
@@ -141,42 +141,42 @@ around a Rust core.
   vaults): the sidebar lists each organization and its collections with
   their counts; items show where they are shared. Shared items are edited
   in place (re-encrypted with the organization key), created directly in a
-  collection, or moved there from the personal vault (*Partager…*, which
+  collection, or moved there from the personal vault (*Share…*, which
   re-encrypts the item and its attachment keys). Several items move at once
-  from a multi-selection (*Partager…*, one `PUT /api/ciphers/share` request;
+  from a multi-selection (*Share…*, one `PUT /api/ciphers/share` request;
   items already shared, read-only or in the trash are skipped and counted).
   Read-only collections and "hide passwords" are enforced in the Rust core
   (filling in Brave still works, like Bitwarden). Only organization policies
-  stay in the web vault (*Gérer dans le coffre web*).
-- **Organizations and collections** (sidebar → *Coffres partagés* → **+**,
-  or the File menu): *Nouvelle organisation…* creates one you own (keys
+  stay in the web vault (*Manage in the Web Vault*).
+- **Organizations and collections** (sidebar → *Shared Vaults* → **+**,
+  or the File menu): *New Organization…* creates one you own (keys
   generated by the SDK; the server may restrict this with
-  `ORG_CREATION_USERS`), *Rejoindre une organisation…* accepts an invitation
-  with an existing account by pasting the e-mail's *Rejoindre* link. Right
-  click an organization for *Nouvelle collection…*, *Groupes…* (when the
-  server sets `ORG_GROUPS_ENABLED=true`), *Renommer…* (owners) and *Quitter
-  l'organisation…*; right click a collection to edit its name and who can
+  `ORG_CREATION_USERS`), *Join an Organization…* accepts an invitation
+  with an existing account by pasting the e-mail's *Join* link. Right
+  click an organization for *New Collection…*, *Groups…* (when the
+  server sets `ORG_GROUPS_ENABLED=true`), *Rename…* (owners) and *Leave
+  Organization…*; right click a collection to edit its name and who can
   access it (each member or group: view, view without passwords, edit, edit
   without passwords, manage), or delete it. An organization you joined but
-  that hasn't confirmed you yet shows *En attente de confirmation*, with
-  your fingerprint phrase one click away; admins see *N membres à confirmer*
-  at the top of the section and on each organization's *Membres* row.
-- **Members** (sidebar → each organization → *Membres*, a pane of the main
-  window like Sends): members grouped by status (*À confirmer*, *Invitations
-  en attente*, *Membres*, *Révoqués*) with their role, collections, account
+  that hasn't confirmed you yet shows *Waiting for confirmation*, with
+  your fingerprint phrase one click away; admins see *N members to confirm*
+  at the top of the section and on each organization's *Members* row.
+- **Members** (sidebar → each organization → *Members*, a pane of the main
+  window like Sends): members grouped by status (*To confirm*, *Pending
+  invitations*, *Members*, *Revoked members*) with their role, collections, account
   and two-factor status. Owners and admins invite one or more addresses with
-  a role (*Utilisateur*; *Gestionnaire*, *Administrateur* and *Propriétaire*
+  a role (*User*; *Manager*, *Administrator* and *Owner*
   for owners only, as Vaultwarden requires) and per-collection access (view,
   view without passwords, edit, edit without passwords, manage), resend an
   invitation, change a member's role and collections, revoke and restore
   access, and remove members. Confirming a member who accepted shows the
   5-word fingerprint phrase of their public key, to compare with what they
-  read in their account (Verrou: Settings → *Compte*, which shows your own
+  read in their account (Verrou: Settings → *Account*, which shows your own
   phrase; web vault: Settings → My account); the key is fetched again when
   sending and nothing is sent if the phrase changed. A manager with access to
   all collections sees the list read-only. No admin token is used.
-- **Create an account** (sign-in screen → *Créer un compte*): for people
-  invited to a server with sign-ups closed. Paste the *Rejoindre* link from
+- **Create an account** (sign-in screen → *Create an Account*): for people
+  invited to a server with sign-ups closed. Paste the *Join* link from
   the invitation e-mail (it fills in the server and address), choose a master
   password (12 characters minimum, strength meter, confirmation, optional
   hint) and PBKDF2 (600,000 iterations, the default) or Argon2id. Keys are
@@ -194,23 +194,23 @@ around a Rust core.
 - **Tidy up**: favorites (click the star), **archive** items (kept but out of
   the list, search and autofill), trash with **restore**, previous passwords
   visible in each item, configurable auto-lock delay.
-- **Attachments and documents**: an item's *Pièces jointes* section lists
+- **Attachments and documents**: an item's *Attachments* section lists
   its files (Bitwarden format: a key per file, encrypted before upload).
   Open one in Quick Look, save a decrypted copy, delete it (with
-  confirmation), or add files with *Ajouter un fichier…* or by dropping them
-  on the item; 100 MB per file. File → *Nouveau document…* stores a file as
+  confirmation), or add files with *Add File…* or by dropping them
+  on the item; 100 MB per file. File → *New Document…* stores a file as
   a secure note named after it. Attachments are downloaded on demand, never
   cached: opening one needs the network.
 - **Local-first writes**: creating, editing, favorites, moving to a folder,
   trash and restore, archives, bulk actions, and logins saved from Brave or
   Firefox are encrypted by the SDK, put in an encrypted queue in the account
   folder (the outbox) and applied to the displayed vault at once: the editor
-  closes, the list and the toast (*Enregistré*) update without waiting for
+  closes, the list and the toast (*Saved*) update without waiting for
   the server (the Rust core takes about 25 ms on a 900-item vault, whatever
   the latency). The
   queue is then sent in the background, in order, followed by a sync; the
   extension gets its answer as soon as the login is queued. Until the server
-  confirms, the item shows *En attente de synchronisation*. A new item gets a
+  confirms, the item shows *Pending sync*. A new item gets a
   temporary id, replaced by the server's (the selection follows). If the
   server refuses a change (not a network error), it is removed from the
   queue, the displayed vault goes back to the server's version, and a toast
@@ -223,11 +223,11 @@ around a Rust core.
 - **Offline**: the vault stays available without network, decrypted from the
   cache (the server's response, still encrypted). Edits keep working too:
   they wait in the same queue (they survive locking and quitting). The
-  sidebar footer counts *N modifications en attente*, and Verrou retries
+  sidebar footer counts *N pending changes*, and Verrou retries
   every 30 seconds. On reconnection (next sync or ⌘R) the queue is sent in
   order before the vault is downloaded. If an item changed elsewhere in the
-  meantime, both versions are kept: yours becomes a copy named *« … (conflit
-  hors ligne) »*. Attachments, sharing to a shared vault, Sends, emergency
+  meantime, both versions are kept: yours becomes a copy named *"… (offline
+  conflict)"*. Attachments, sharing to a shared vault, Sends, emergency
   access and import need the server and say so. Signing out discards the
   queue (the confirmation says how many changes would be lost).
 - **Touch ID**: the vault key is sealed by the Secure Enclave (see
@@ -253,7 +253,7 @@ around a Rust core.
   history apps skip them) and cleared after 90 s.
 - **Auto-lock**: after 10 min of inactivity by default (1 min to never, in
   Settings), on sleep, and when the screen locks.
-- **Emergency access** (sidebar → *Accès d'urgence*, in the main window like
+- **Emergency access** (sidebar → *Emergency Access*, in the main window like
   the audit: the list in the middle column, the selected contact and its
   actions on the right): invite trusted
   contacts (view only or takeover, with a waiting period of 1 to 90 days),
@@ -263,11 +263,11 @@ around a Rust core.
   new master password for the grantor) stays in the web vault. Invitations
   need the contact to have an account on the server; without e-mail
   configured, Vaultwarden accepts them at once.
-- **Send** (sidebar → *Envois*, in the main window: the list in the middle
+- **Send** (sidebar → *Sends*, in the main window: the list in the middle
   column, the selected Send on the right): share a text or a file through an
   end-to-end encrypted link (Bitwarden Send), readable by anyone with the
-  link, with or without an account. *Nouvel envoi* offers *Texte* or
-  *Fichier…*; you can also drop a file onto the Sends list. The file and its
+  link, with or without an account. *New Send* offers *Text* or
+  *File…*; you can also drop a file onto the Sends list. The file and its
   name are encrypted with the Send's key before upload (100 MB at most, or
   less if the server's Send quota is lower); the recipient downloads it from
   the web vault like any Bitwarden file Send. Deletion date (7 days by
@@ -275,19 +275,19 @@ around a Rust core.
   password, hidden e-mail address; the list shows the file name and size,
   access counts and dates, and copies the link, edits, deletes or removes the
   password. Editing a file Send changes its options, never its file (like
-  Bitwarden). From a login or a note, right-click → *Envoyer de façon
-  sécurisée…* prefills a Send with its password (or the note), hidden from the
+  Bitwarden). From a login or a note, right-click → *Send
+  Securely…* prefills a Send with its password (or the note), hidden from the
   recipient and limited to one access, to confirm before creating it; the same
-  action on an attachment (*Pièces jointes* section) prefills a file Send with
+  action on an attachment (*Attachments* section) prefills a file Send with
   it, decrypted and re-encrypted with the Send's key inside the Rust core.
 - **`verrou` CLI**: `search`, `get`, `totp`, `generate`, `--json` output, on
   the real vault served by the running app (`--mock` for the mock vault and
   `bench`). Secrets ask for Touch ID in the app.
 - **SSH agent** (`verrou ssh-agent`): the vault's SSH keys for `ssh` and
   `git`; the app signs, the private key never leaves it.
-- **SSH keys and git commit signing**: *Nouvelle clé SSH…* (+ menu, or the
+- **SSH keys and git commit signing**: *New SSH Key…* (+ menu, or the
   SSH keys category) generates an Ed25519 (default) or RSA 4096 key, stored
-  as a regular Bitwarden SSH key item; *Copier la clé publique* on the item.
+  as a regular Bitwarden SSH key item; *Copy Public Key* on the item.
   `verrou git-signing` sets git up to sign commits through the agent, and the
   Touch ID prompt says it is a git signature.
 
@@ -358,7 +358,7 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   counts. Pull to refresh syncs. Lists have their own search, a sort order,
   swipe actions (favorite, archive, trash, restore) and a context menu
   (copy username, password, code).
-- **Select several items** (*Choisir*): favorite, move to a folder (existing
+- **Select several items** (*Select*): favorite, move to a folder (existing
   or new), archive, trash (with confirmation), restore from the trash or
   unarchive, in one go through Vaultwarden's bulk routes.
 - **Item details**: tap a field to copy it, the eye reveals it, one-time
@@ -381,25 +381,25 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   sent on the next sync (when the app comes back to the foreground, every
   5 minutes while it is open, every 30 s while changes are waiting, or by
   pulling down).
-- **Shared vaults** (home → *Coffres partagés*, **+** to create or join):
+- **Shared vaults** (home → *Shared vaults*, **+** to create or join):
   each organization opens a screen with its items, its collections (swipe
-  to edit or delete the ones you manage; *Nouvelle collection…*), its
-  *Membres* and *Groupes* when your role allows, *Renommer…* (owners) and
-  *Quitter l'organisation…*. *Partager…* moves one item (detail menu, swipe
+  to edit or delete the ones you manage; *New collection…*), its
+  *Members* and *Groups* when your role allows, *Rename organization…* (owners) and
+  *Leave organization…*. *Share…* moves one item (detail menu, swipe
   right in a list) or a multi-selection into an organization, re-encrypted
   with its key; *Collections…* changes where a shared item sits. Members:
   invite (role, rights per collection), resend, change role and
   collections, revoke, restore, remove, and confirm after comparing the
   5-word fingerprint phrase. A collection's editor sets view, view without
   passwords, edit, edit without passwords or manage for each member and
-  group. *Rejoindre une organisation* (home **+** or Settings → *Compte*)
-  accepts an invitation by pasting its e-mail link; Settings → *Compte* →
-  *Phrase d'empreinte* shows your own phrase. Banners at the top of the home
-  page show *N membres à confirmer* and invitations waiting for an admin.
+  group. *Join an organization* (home **+** or Settings → *Account*)
+  accepts an invitation by pasting its e-mail link; Settings → *Account* →
+  *Fingerprint phrase* shows your own phrase. Banners at the top of the home
+  page show *N members to confirm* and invitations waiting for an admin.
   Read-only items can't be edited, hidden passwords can't be shown or
   copied, and management actions only appear where Vaultwarden would allow
   them. Everything here needs the server; offline, it says so.
-- **Envois** (home → *Rangement* → *Envois*): Bitwarden Send for a text or a
+- **Sends** (home → *Storage* → *Sends*): Bitwarden Send for a text or a
   file, with a lifetime, an access limit and an optional password; the link
   (which carries the key) is copied with the clipboard rules and can be
   shared.
@@ -566,7 +566,7 @@ provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
 
 - **Turn it on** in Settings → General → AutoFill & Passwords → Verrou
   (French: *Réglages → Général → Remplissage automatique et mots de passe*).
-  Verrou's own Settings tab has a *Remplissage automatique* section with the
+  Verrou's own Settings tab has an *AutoFill* section with the
   steps, the current state and a button that opens that page (iOS 18,
   `ASSettingsHelper`).
 - **Keyboard suggestions**: after each unlock, sync or edit, the app
@@ -581,7 +581,7 @@ provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
   password), as in the app.
 - **One-time codes**: logins with a TOTP seed show as code suggestions
   (`autocomplete="one-time-code"` fields); the current code is filled.
-- **Passkeys**: when a site creates a passkey, choose *Enregistrer dans
+- **Passkeys**: when a site creates a passkey, choose *Save in
   Verrou* in the system sheet; Verrou saves it in a new login or an existing
   one for the site, in the Bitwarden format (the official apps read it).
   Signing in with it signs in the Rust core (ES256, `authenticatorData` built
@@ -592,7 +592,7 @@ provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
   straight to the server, then saves the refreshed cache; it never sends or
   rewrites the app's queue. File writes are atomic and serialized by a
   `flock` held only for the rename. Details in
-  [SECURITY.md](../SECURITY.md#écritures-depuis-lextension).
+  [SECURITY.md](../SECURITY.md#writes-from-the-extension).
 - **Memory**: the extension peaked at 56 MB in the Simulator end-to-end test
   (iOS allows about 120 MB); the extension logs `AUTOFILL_MEMORY` lines.
 
@@ -648,14 +648,13 @@ scripts/install-macos.sh
 The app is signed locally ("ad hoc"): no Apple developer account is needed,
 and it only runs on the Mac that built it. On first launch, enter the server
 address, e-mail and master password, then the second factor. Reinstalling keeps
-the account; to forget it: Settings (⌘,) → *Se déconnecter de ce Mac* (sign
-out of this Mac).
+the account; to forget it: Settings (⌘,) → *Log Out of This Mac…*.
 
 ## Passwords and passphrases
 
-The wand next to a login's password opens the generator. *Mot de passe* gives
+The wand next to a login's password opens the generator. *Password* gives
 a random password (8 to 64 characters, digits and symbols optional);
-*Phrase de passe* gives words drawn at random, like 1Password's memorable
+*Passphrase* gives words drawn at random, like 1Password's memorable
 passwords or Bitwarden's passphrases: 3 to 20 words (5 by default), French
 (default) or English, separated by `-`, a space, `.`, `_`, `,` or a random
 digit, optionally capitalized and with a digit added to one word. The meter
@@ -681,7 +680,7 @@ sites refuse spaces.
 ## Import from another password manager
 
 Export your passwords from the other app, then in Verrou: File →
-*Importer…* (⌘⇧I) or Settings → *Importer*, and choose the file. The format
+*Import…* (⌘⇧I) or Settings → *Import*, and choose the file. The format
 is recognized from its content (you can pick it by hand if needed).
 
 | From | How to export | File |
@@ -696,7 +695,7 @@ password differs (you choose: keep the existing one, replace it — the old
 password goes to the item's history — or import it separately), items that
 only add a one-time code, and entries that cannot be imported, with the
 reason. Secrets never appear in the review. Created items can go to a folder
-(« Import 1Password » by default), to the source app's own folders or vaults,
+("Import 1Password" by default), to the source app's own folders or vaults,
 or to no folder. Everything is sent in one request, followed by one sync.
 
 What is imported: logins (username, password, sites, one-time code, extra
@@ -722,8 +721,8 @@ and never copies it.
 
 The same account often arrives several times, from Apple, 1Password and
 Proton Pass, with different URLs (`connect.maif.fr`, `www.maif.fr/espace-perso`),
-titles (« Maif », « maif.fr », « MAIF - Espace sociétaire ») and sometimes no
-username or no URL. Vault → *Nettoyer les doublons…* compares, in the Rust core:
+titles ("Maif", "maif.fr", "MAIF - Espace sociétaire") and sometimes no
+username or no URL. Vault → *Clean Up Duplicates…* compares, in the Rust core:
 
 - the **sites** of every URL: scheme, port, path and `www.` ignored, login
   prefixes stripped (`accounts.google.com`, `m.facebook.com`,
@@ -731,21 +730,21 @@ username or no URL. Vault → *Nettoyer les doublons…* compares, in the Rust c
   registrable domain; app URIs (`macapp://`, `iosapp://`, `androidapp://`)
   only against each other; passkey sites too;
 - the **title**, normalized (accents, case, punctuation, `www`, `.fr`,
-  « connexion », « espace client/perso/sociétaire », parentheses) and its
-  brand, compared with the first label of a domain (« Maif » ↔ `maif.fr`);
+  "connexion", "espace client/perso/sociétaire", parentheses) and its
+  brand, compared with the first label of a domain ("Maif" ↔ `maif.fr`);
   a title that is a domain (`maif.fr`) counts as a URL;
 - the **username** (trimmed, lowercase, `+tag` of an email ignored);
 - the **password** and the **one-time code** secret, compared in constant
   time; Swift only gets the verdict.
 
 Groups come in three levels, most certain first, with the reason in plain
-words (« même site (maif.fr), même identifiant, même mot de passe »):
+words ("same site (maif.fr), same username, same password"):
 
 | Level | When | Copies |
 |---|---|---|
 | **Certain** | same site (or title brand ↔ domain), same username, same password | checked for the trash |
 | **Probable** | same site and username, another password; or same password, one username missing; or same title and username without URL | suggested, not checked |
-| **À vérifier** | same site, different usernames but the same password; title only without usernames; two subdomains of one domain (`cloud.example.com` and `vault.example.com` are usually two services) | never checked |
+| **To check** | same site, different usernames but the same password; title only without usernames; two subdomains of one domain (`cloud.example.com` and `vault.example.com` are usually two services) | never checked |
 
 Different item types never mix (cards compare their number, notes their
 title and content), personal and shared items are only compared within the
@@ -754,14 +753,14 @@ only joins a group when a single account on the site matches.
 
 In each group Verrou keeps the item with passkeys or attachments (they do
 not move), then a one-time code, then the most recently modified, with a
-URL, the most complete, the longest history; *Garder* picks another one.
-**Fusionner et mettre les autres à la corbeille** copies into the kept item
+URL, the most complete, the longest history; *Keep* picks another one.
+**Merge and Move the Others to Trash** copies into the kept item
 the URLs of hosts it lacks, the username and one-time code if missing, the
 notes (appended under the source title), the custom fields it does not have
 and the other passwords into its password history; the most recently
 changed password stays the current one. It is written like an edit
 (revision date checked, offline outbox), then the others go to the trash,
-restorable from the web vault for 30 days. **Ignorer ce groupe** remembers
+restorable from the web vault for 30 days. **Ignore This Group** remembers
 the group on this Mac (by a hash of its item ids, so it comes back if it
 changes); the footer shows them again. Grouping 10,000 items takes about
 40 ms.
@@ -773,7 +772,7 @@ it), and anything weaker is created.
 
 ## Fill in any app
 
-1. Settings (⌘,) → *Général* → *Remplissage dans les apps*: on by default,
+1. Settings (⌘,) → *General* → *Filling in apps*: on by default,
    shortcut ⌘\ (the key left of Return, whatever the layout; ⌥⌘ or ⌃⌘
    variants if another app already uses it).
 2. The first time, allow Verrou in System Settings → Privacy & Security →
@@ -783,7 +782,7 @@ it), and anything weaker is created.
    logins linked to it. Enter fills: Verrou closes, the app comes back to the
    front, and the username, Tab and password are typed.
 4. No login linked yet: search for it and press **⌘↩** to fill and link it
-   to the app (or click *Associer à …* to link without filling). The link is
+   to the app (or click *Link to “…”* to link without filling). The link is
    stored in the item as a `macapp://<bundle id>` URI (with Bitwarden's
    "never" match rule, so browser extensions ignore it) and syncs with the
    vault.
@@ -800,14 +799,13 @@ Verrou from the Accessibility list and allow it again.
 
 ## Brave extension
 
-1. In Verrou: Settings (⌘,) → *Brave, Firefox et le terminal* (Brave, Firefox
-   and the terminal). Verrou registers its Native Messaging host with Brave
-   (and Chrome, and Firefox if installed). *Extension Brave* → *Copier le
-   chemin* copies the extension's path.
+1. In Verrou: Settings (⌘,) → *Brave, Firefox and the terminal*. Verrou registers its Native Messaging host with Brave
+   (and Chrome, and Firefox if installed). *Brave extension* → *Copy
+   Path* copies the extension's path.
 2. In Brave: `brave://extensions`, *Developer mode*, *Load unpacked*, ⌘⇧G and
    paste the path (the extension ships inside `Verrou.app` and updates with
    the app).
-3. Click Verrou's icon in Brave, *Relier à Verrou* (link to Verrou), check that
+3. Click Verrou's icon in Brave, *Link to Verrou*, check that
    Verrou shows the same code, and accept.
 
 No manual reload after an update: each build gives the bundled extension a
@@ -834,12 +832,12 @@ manifest:
 - `host_permissions` listing the content scripts' sites. Firefox lets you grant
   or withdraw site access for a Manifest V3 extension; without it there is no
   pill and no passkeys. When access is missing, the popup shows
-  *Autoriser Verrou sur les sites* (allow Verrou on sites); reload the pages
+  *Allow Verrou on sites*; reload the pages
   that were already open afterwards;
 - no `key` or `minimum_chrome_version` (Chrome-only).
 
 The scripts pick `browser` (Firefox) or `chrome` (Brave) themselves
-(`extension/browser.js`); the extension announces itself as « Firefox » when
+(`extension/browser.js`); the extension announces itself as "Firefox" when
 pairing, so Verrou's settings list it as *Firefox*. Both folders get the same
 content-derived version.
 
@@ -861,10 +859,10 @@ Release Firefox only installs extensions signed by Mozilla for good. Three
 ways, from quickest to most durable:
 
 1. **Temporary add-on (any Firefox, nothing to sign).** Verrou → Settings →
-   *Extension Firefox* → *Copier le chemin* (copies the path of its
+   *Firefox extension* → *Copy Path* (copies the path of its
    `manifest.json`). In Firefox: `about:debugging` → *This Firefox* → *Load
    Temporary Add-on…*, ⌘⇧G, paste, *Open*. Then click Verrou's icon,
-   *Autoriser Verrou sur les sites* if shown, and *Relier à Verrou*.
+   *Allow Verrou on sites* if shown, and *Link to Verrou*.
    Firefox removes temporary add-ons when it quits: load it again after each
    restart. Its storage goes with it, so it has to be linked again too; unlink
    the old *Firefox* entries in Verrou's settings from time to time. While it
@@ -934,10 +932,10 @@ verrou unlink
 ```
 
 The link (client id and channel key) is stored in `~/.config/verrou/cli.json`
-(mode 600; `VERROU_CLI_CONFIG` overrides it). Settings → *Brave, Firefox et le terminal*
+(mode 600; `VERROU_CLI_CONFIG` overrides it). Settings → *Brave, Firefox and the terminal*
 must be on. Reading a secret (`get --field password`, `--reveal`, `totp`)
-asks for Touch ID (or the session password) in Verrou: *autoriser le terminal
-à lire « GitHub »*. An approval lasts 5 minutes for that item and that
+asks for Touch ID (or the session password) in Verrou: *allow the terminal
+to read “GitHub”*. An approval lasts 5 minutes for that item and that
 terminal, and is forgotten when the vault locks.
 
 ### SSH agent
@@ -949,7 +947,7 @@ verrou ssh-agent        # foreground; prints: export SSH_AUTH_SOCK=/Users/you/.v
 It listens on `~/.verrou/agent.sock` (`--socket PATH` to change it; directory
 700, socket 600) and offers the vault's SSH key items (Ed25519, ECDSA P-256 and
 P-384, RSA with `rsa-sha2-256`/`rsa-sha2-512`). Each signature is made **by the
-app**, after a Touch ID prompt (*autoriser ssh à utiliser la clé « … »*), cached
+app**, after a Touch ID prompt (*allow ssh to use the key “…”*), cached
 5 minutes per key. Only `ssh` and `git` signing requests are served; adding or
 removing keys through the agent is refused.
 
@@ -988,19 +986,19 @@ To start it at login, a LaunchAgent such as
 
 ### New SSH keys
 
-In the app: + → *Nouvelle clé SSH…* (also in the list header of the *Clés
-SSH* category). Pick a title, Ed25519 (default) or RSA 4096, and a folder.
+In the app: + → *New SSH Key…* (also in the list header of the *SSH
+keys* category). Pick a title, Ed25519 (default) or RSA 4096, and a folder.
 The key is generated by the Rust core and saved as a Bitwarden SSH key item
 (type 5: OpenSSH private key without passphrase, public key, `SHA256:`
-fingerprint), so the official Bitwarden apps see it too. *Copier la clé
-publique* (on the item, or in its context menu) copies the `ssh-ed25519 AAAA…`
+fingerprint), so the official Bitwarden apps see it too. *Copy Public
+Key* (on the item, or in its context menu) copies the `ssh-ed25519 AAAA…`
 line for `authorized_keys`, GitHub or GitLab.
 
 ### Signing git commits
 
 git signs with SSH keys (`gpg.format=ssh`) by running `ssh-keygen -Y sign -n
 git`, which asks the agent named by `SSH_AUTH_SOCK`. With Verrou's agent, the
-Touch ID prompt reads *signer un commit git avec la clé « … »* (a separate
+Touch ID prompt reads *sign a git commit with the key “…”* (a separate
 approval from `ssh` logins, also cached 5 minutes per key).
 
 ```sh
@@ -1096,9 +1094,9 @@ with no screenshots involved:
   assistive client, so the identifiers alone cannot be found);
 - sheets fit their window and are no taller than the window they sit on.
 
-The walkthrough reports `E2E_OK mise en page : <screen>`, or `E2E_FAIL` with
-either "fenêtre principale introuvable" / "feuille introuvable" (the window is
-missing) or "mise en page cassée" (the layout is broken), and keeps going so
+The walkthrough reports `E2E_OK layout: <screen>`, or `E2E_FAIL` with
+either "main window not found" / "sheet not found" (the window is
+missing) or "layout broken" (the layout is broken), and keeps going so
 that every broken screen is listed.
 
 ## Performance
@@ -1107,7 +1105,7 @@ that every broken screen is listed.
   times each unlock step on a real account (830 items unlock in about 12 ms).
 - App: timings of launch, Touch ID, unlock and sync are logged (durations only):
   `log stream --predicate 'subsystem == "app.verrou.mac" AND category == "perf"'`.
-  After a sync, the line *synchronisation appliquée* splits the reload into
+  After a sync, the line *sync applied* splits the reload into
   the part read off the main thread and the part on it.
 - Writes: `VERROU_TEST_SERVER=… cargo test --release -p verrou-ffi --test latency -- --ignored --nocapture`
   times saving, favoriting and creating on a 900-item vault, from the call to

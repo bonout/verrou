@@ -1,9 +1,9 @@
-//! Cœur de Verrou, partagé par l'application Apple (via `verrou-ffi`) et la CLI.
+//! Verrou's core, shared by the Apple app (through `verrou-ffi`) and the CLI.
 //!
-//! Ce crate ne fait aucune entrée-sortie : il reçoit des éléments déjà
-//! déchiffrés, les indexe et y cherche. Le déchiffrement et la synchronisation
-//! avec Vaultwarden sont dans `verrou-vaultwarden`, construit sur le SDK Rust
-//! de Bitwarden.
+//! This crate does no I/O: it receives items that are already
+//! decrypted, indexes them and searches them. Decryption and syncing
+//! with Vaultwarden live in `verrou-vaultwarden`, built on Bitwarden's
+//! Rust SDK.
 
 pub mod apps;
 pub mod audit;

@@ -1,28 +1,28 @@
 import SwiftUI
 
-/// Fond de l'écran verrouillé : un dégradé maillé aux couleurs de Verrou
-/// dont les points dérivent lentement (iOS 18). L'horloge s'arrête quand la
-/// scène n'est pas active ou que l'écran n'est pas affiché ; maillage immobile
-/// avec « Réduire les animations » ; le fond fixe de toujours sur iOS 17.
+/// Lock screen background: a mesh gradient in Verrou's colors whose points
+/// drift slowly (iOS 18). The clock stops when the scene isn't active or the
+/// screen isn't shown; still mesh with "Reduce Motion"; the usual fixed
+/// background on iOS 17.
 struct LockMeshBackground: View {
-    /// Onde du déverrouillage sur le fond (RippleEffect) : centre global et
-    /// secondes écoulées (0 : pas d'onde).
+    /// Unlock ripple on the background (RippleEffect): global center and
+    /// seconds elapsed (0: no ripple).
     var rippleOrigin: CGPoint = .zero
     var rippleElapsed: Double = 0
-    /// Au déverrouillage : le maillage s'immobilise pendant le fondu, le
-    /// rendu va au coffre qui apparaît dessous.
+    /// On unlock: the mesh freezes during the fade, the rendering goes to
+    /// the vault appearing underneath.
     var frozen = false
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @State private var onScreen = false
-    /// Le maillage n'arrive qu'après 0,5 s à l'écran, en fondu sur le fond
-    /// fixe : la première image (lancement) n'attend pas sa mise en place, et
-    /// un coffre ouvert aussitôt ne le construit jamais.
+    /// The mesh only arrives after 0.5 s on screen, fading in over the fixed
+    /// background: the first frame (launch) doesn't wait for it to be set
+    /// up, and a vault opened right away never builds it.
     @State private var meshReady = false
 
     var body: some View {
-        // L'onde s'applique au fond déjà étendu sous les barres du système.
+        // The ripple applies to the background already extended under the system bars.
         ZStack {
             LockBackground()
             if #available(iOS 18, *), Motion.modern, meshReady {
@@ -42,7 +42,7 @@ struct LockMeshBackground: View {
 
     @available(iOS 18, *)
     private var mesh: some View {
-        // 30 images par seconde suffisent à une dérive aussi lente.
+        // 30 frames per second are enough for such a slow drift.
         let paused = !onScreen || scenePhase != .active || reduceMotion || frozen
         return TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { context in
             let time = reduceMotion ? 0 : context.date.timeIntervalSinceReferenceDate
@@ -57,8 +57,8 @@ struct LockMeshBackground: View {
         .onDisappear { onScreen = false }
     }
 
-    /// Coins fixes ; milieux des bords et centre qui dérivent, chacun à son
-    /// rythme (périodes de 11 à 23 s), sans jamais se croiser.
+    /// Fixed corners; edge midpoints and center that drift, each at its own
+    /// pace (periods of 11 to 23 s), without ever crossing.
     static func points(at time: TimeInterval) -> [SIMD2<Float>] {
         func drift(_ period: Double, _ phase: Double, _ range: Float) -> Float {
             Float(sin(time * 2 * .pi / period + phase)) * range
@@ -72,8 +72,8 @@ struct LockMeshBackground: View {
         ]
     }
 
-    /// Teintes de la marque, plus soutenues en sombre ; le bas reste proche
-    /// du fond pour la lisibilité des commandes.
+    /// Brand hues, deeper in dark mode; the bottom stays close to the
+    /// background for the controls' readability.
     private var colors: [Color] {
         let dark = colorScheme == .dark
         let strong = dark ? 0.42 : 0.30

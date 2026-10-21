@@ -1,11 +1,11 @@
-//! Clients appairés (extensions, terminal), dans le dossier de Verrou
-//! (conteneur de l'app, fichier lisible par le seul utilisateur).
+//! Paired clients (extensions, terminal), in Verrou's folder
+//! (the app's container, a file readable only by the user).
 //!
-//! La clé d'un client ne permet que ce que permet sa nature
-//! ([`crate::access::allowed`]) : pour l'extension, demander les
-//! identifiants d'une page ; pour le terminal, chercher et demander un
-//! secret, que l'utilisateur confirme dans Verrou. Révoquer un client
-//! l'oblige à s'appairer de nouveau.
+//! A client's key only allows what its kind allows
+//! ([`crate::access::allowed`]): for the extension, asking for a page's
+//! logins; for the terminal, searching and asking for a
+//! secret, which the user confirms in Verrou. Revoking a client
+//! forces it to pair again.
 
 use std::fs;
 use std::io::Write as _;
@@ -21,14 +21,14 @@ struct StoredClient {
     id: String,
     name: String,
     key: String,
-    /// Horodatage Unix de l'appairage.
+    /// Unix timestamp of the pairing.
     created: i64,
-    /// Absent des fichiers d'avant le terminal : une extension.
+    /// Missing from files written before the terminal: an extension.
     #[serde(default)]
     kind: ClientKind,
 }
 
-/// Ce que les réglages affichent d'un client.
+/// What the settings show about a client.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClientInfo {
     pub id: String,
@@ -57,7 +57,7 @@ impl ClientStore {
         Self { path, clients }
     }
 
-    /// La clé du client et ce qu'on sait de lui.
+    /// The client's key and what is known about it.
     pub fn get(&self, id: &str) -> Option<(ChannelKey, ClientInfo)> {
         let client = self.clients.iter().find(|c| c.id == id)?;
         let key = ChannelKey::from_base64(&client.key).ok()?;
@@ -91,8 +91,8 @@ impl ClientStore {
         self.save();
     }
 
-    /// Écriture atomique, mode 600. Un échec laisse l'ancien fichier : au
-    /// pire, un appairage est à refaire.
+    /// Atomic write, mode 600. A failure leaves the old file: at
+    /// worst, a pairing has to be redone.
     fn save(&self) {
         let Some(dir) = self.path.parent() else {
             return;

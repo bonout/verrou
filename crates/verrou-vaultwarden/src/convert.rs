@@ -1,7 +1,8 @@
-//! Éléments déchiffrés par le SDK (`CipherView`) → modèle de Verrou.
+//! Items decrypted by the SDK (`CipherView`) → Verrou's model.
 //!
-//! Les identifiants de champs (`username`, `password`, `totp`, `number`…) sont
-//! ceux du coffre fictif : l'interface n'a pas à savoir d'où vient l'élément.
+//! The field ids (`username`, `password`, `totp`, `number`…) are those of
+//! the mock vault: the interface doesn't need to know where the item comes
+//! from.
 
 use std::collections::HashMap;
 
@@ -10,7 +11,7 @@ use verrou_core::{
     Field, FieldKind, Item, ItemKind, ItemState, Passkey, SecretString, UriMatch, template,
 };
 
-/// Règle de correspondance de Bitwarden → Verrou.
+/// Bitwarden match rule → Verrou.
 pub(crate) fn uri_match(rule: UriMatchType) -> UriMatch {
     match rule {
         UriMatchType::Domain => UriMatch::Domain,
@@ -22,7 +23,7 @@ pub(crate) fn uri_match(rule: UriMatchType) -> UriMatch {
     }
 }
 
-/// Règle de correspondance de Verrou → Bitwarden.
+/// Verrou match rule → Bitwarden.
 pub(crate) fn uri_match_type(rule: UriMatch) -> UriMatchType {
     match rule {
         UriMatch::Domain => UriMatchType::Domain,
@@ -34,8 +35,8 @@ pub(crate) fn uri_match_type(rule: UriMatch) -> UriMatchType {
     }
 }
 
-/// Les éléments archivés et ceux de la corbeille sont gardés, avec leur état :
-/// l'interface les montre à part.
+/// Archived and trashed items are kept, with their state: the interface
+/// shows them separately.
 pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Option<Item> {
     let state = if view.deleted_date.is_some() {
         ItemState::Trashed
@@ -53,7 +54,7 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
         id,
         kind: ItemKind::SecureNote,
         title: if view.name.trim().is_empty() {
-            "(sans nom)".to_owned()
+            "(untitled)".to_owned()
         } else {
             view.name.clone()
         },
@@ -80,12 +81,12 @@ pub(crate) fn item(view: &CipherView, folders: &HashMap<String, String>) -> Opti
         CipherType::Card => card(view, &mut item),
         CipherType::Identity => identity(view, &mut item),
         CipherType::SshKey => ssh_key(view, &mut item),
-        CipherType::SecureNote => "Note sécurisée".clone_into(&mut item.subtitle),
-        // Types récents (compte bancaire, permis, passeport) : affichés comme
-        // des notes, avec leurs champs personnalisés et leurs notes.
-        CipherType::BankAccount => "Compte bancaire".clone_into(&mut item.subtitle),
-        CipherType::DriversLicense => "Permis de conduire".clone_into(&mut item.subtitle),
-        CipherType::Passport => "Passeport".clone_into(&mut item.subtitle),
+        CipherType::SecureNote => "Secure note".clone_into(&mut item.subtitle),
+        // Recent types (bank account, licence, passport): shown as notes,
+        // with their custom fields and their notes.
+        CipherType::BankAccount => "Bank account".clone_into(&mut item.subtitle),
+        CipherType::DriversLicense => "Driver's license".clone_into(&mut item.subtitle),
+        CipherType::Passport => "Passport".clone_into(&mut item.subtitle),
     }
     custom_fields(view, &mut item);
     password_history(view, &mut item);
@@ -106,23 +107,23 @@ fn login(view: &CipherView, item: &mut Item) {
         Some(u) if u.contains('@') => FieldKind::Email,
         _ => FieldKind::Username,
     };
-    push(item, "username", "Identifiant", kind, username);
+    push(item, "username", "Username", kind, username);
     push(
         item,
         "password",
-        "Mot de passe",
+        "Password",
         FieldKind::Password,
         login.password.as_ref(),
     );
     push(
         item,
         "totp",
-        "Code à usage unique",
+        "One-time code",
         FieldKind::Totp,
         login.totp.as_ref(),
     );
     item.subtitle = username.cloned().unwrap_or_default();
-    // Sites et règles, dans le même ordre.
+    // Sites and rules, in the same order.
     (item.urls, item.url_matches) = login
         .uris
         .iter()
@@ -151,22 +152,16 @@ fn card(view: &CipherView, item: &mut Item) {
     push(
         item,
         "cardholder",
-        "Titulaire",
+        "Cardholder",
         FieldKind::Text,
         card.cardholder_name.as_ref(),
     );
-    push(
-        item,
-        "brand",
-        "Réseau",
-        FieldKind::Text,
-        card.brand.as_ref(),
-    );
+    push(item, "brand", "Brand", FieldKind::Text, card.brand.as_ref());
     let number = (!digits.is_empty()).then(|| group_card_number(&digits));
     push(
         item,
         "number",
-        "Numéro",
+        "Number",
         FieldKind::CardNumber,
         number.as_ref(),
     );
@@ -188,13 +183,13 @@ fn card(view: &CipherView, item: &mut Item) {
     push(
         item,
         "code",
-        "Cryptogramme",
+        "Security code",
         FieldKind::Pin,
         card.code.as_ref(),
     );
 }
 
-/// `4242424242424242` → `4242 4242 4242 4242` (l'interface le copie sans espaces).
+/// `4242424242424242` → `4242 4242 4242 4242` (the interface copies it without spaces).
 fn group_card_number(digits: &str) -> String {
     digits
         .as_bytes()
@@ -228,34 +223,34 @@ fn identity(view: &CipherView, item: &mut Item) {
         "\n",
     ));
     let fields = [
-        ("first_name", "Prénom", FieldKind::Text, &id.first_name),
+        ("first_name", "First name", FieldKind::Text, &id.first_name),
         (
             "middle_name",
-            "Deuxième prénom",
+            "Middle name",
             FieldKind::Text,
             &id.middle_name,
         ),
-        ("last_name", "Nom", FieldKind::Text, &id.last_name),
-        ("company", "Société", FieldKind::Text, &id.company),
-        ("email", "E-mail", FieldKind::Email, &id.email),
-        ("phone", "Téléphone", FieldKind::Phone, &id.phone),
-        ("username", "Identifiant", FieldKind::Username, &id.username),
-        ("address", "Adresse", FieldKind::Address, &address),
+        ("last_name", "Last name", FieldKind::Text, &id.last_name),
+        ("company", "Company", FieldKind::Text, &id.company),
+        ("email", "Email", FieldKind::Email, &id.email),
+        ("phone", "Phone", FieldKind::Phone, &id.phone),
+        ("username", "Username", FieldKind::Username, &id.username),
+        ("address", "Address", FieldKind::Address, &address),
         (
             "ssn",
-            "Numéro de sécurité sociale",
+            "Social security number",
             FieldKind::Concealed,
             &id.ssn,
         ),
         (
             "passport",
-            "Passeport",
+            "Passport",
             FieldKind::Concealed,
             &id.passport_number,
         ),
         (
             "license",
-            "Permis de conduire",
+            "Driver's license",
             FieldKind::Concealed,
             &id.license_number,
         ),
@@ -263,8 +258,8 @@ fn identity(view: &CipherView, item: &mut Item) {
     for (key, label, kind, value) in fields {
         push(item, key, label, kind, value.as_ref());
     }
-    // L'adresse en morceaux, pour remplir les formulaires champ par champ
-    // (`part:…` : jamais affichés, l'adresse complète l'est déjà).
+    // The address in pieces, to fill forms field by field (`part:…`: never
+    // shown, the full address already is).
     let parts = [
         ("part:address1", &id.address1),
         ("part:address2", &id.address2),
@@ -278,7 +273,7 @@ fn identity(view: &CipherView, item: &mut Item) {
     }
 }
 
-/// Les parties non vides, séparées par `separator`.
+/// The non-empty parts, separated by `separator`.
 fn join<const N: usize>(parts: [&Option<String>; N], separator: &str) -> String {
     parts
         .into_iter()
@@ -296,37 +291,37 @@ fn ssh_key(view: &CipherView, item: &mut Item) {
     push(
         item,
         "public_key",
-        "Clé publique",
+        "Public key",
         FieldKind::Multiline,
         Some(&key.public_key),
     );
     push(
         item,
         "fingerprint",
-        "Empreinte",
+        "Fingerprint",
         FieldKind::Text,
         Some(&key.fingerprint),
     );
     push(
         item,
         "private_key",
-        "Clé privée",
+        "Private key",
         FieldKind::Concealed,
         Some(&key.private_key),
     );
 }
 
-/// Champs personnalisés. Un champ « lié » (qui renvoie à l'identifiant, au
-/// mot de passe…) n'a pas de valeur propre : il montre le champ désigné. Les
-/// champs réservés `verrou:…` gardent leur nom pour identifiant (jamais
-/// affichés) ; le modèle qu'ils désignent remplace le sous-titre générique.
+/// Custom fields. A "linked" field (pointing to the username, the
+/// password…) has no value of its own: it shows the designated field. The
+/// reserved `verrou:…` fields keep their name as id (never shown); the
+/// template they designate replaces the generic subtitle.
 fn custom_fields(view: &CipherView, item: &mut Item) {
     for (index, field) in view.fields.iter().flatten().enumerate() {
         let label = field
             .name
             .clone()
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "Champ".to_owned());
+            .unwrap_or_else(|| "Field".to_owned());
         if template::is_reserved(&label) {
             push(item, &label, &label, FieldKind::Text, field.value.as_ref());
             continue;
@@ -343,16 +338,16 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
             ),
             FieldType::Boolean => {
                 let value = if field.value.as_deref() == Some("true") {
-                    "Oui"
+                    "Yes"
                 } else {
-                    "Non"
+                    "No"
                 };
                 item.fields
                     .push(Field::new(&id, &label, FieldKind::Text, value));
             }
             FieldType::Linked => {
                 let target = field.linked_id.map_or(0, u32::from);
-                let value = format!("Lié au champ « {} »", linked_label(target));
+                let value = format!("Linked to the \"{}\" field", linked_label(target));
                 item.fields
                     .push(Field::new(&id, &label, FieldKind::Text, value));
             }
@@ -362,7 +357,7 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
         return;
     };
     if item.kind == ItemKind::SecureNote {
-        // Le premier champ visible du modèle (réseau, banque…), sinon son nom.
+        // The template's first visible field (network, bank…), otherwise its name.
         item.subtitle = template
             .fields()
             .iter()
@@ -375,48 +370,48 @@ fn custom_fields(view: &CipherView, item: &mut Item) {
     }
 }
 
-/// Nom du champ désigné par un champ lié (numérotation de Bitwarden).
+/// Name of the field designated by a linked field (Bitwarden's numbering).
 fn linked_label(id: u32) -> &'static str {
     match id {
-        100 | 413 => "Identifiant",
-        101 => "Mot de passe",
-        300 => "Titulaire",
-        301 => "Mois d'expiration",
-        302 => "Année d'expiration",
-        303 => "Cryptogramme",
-        304 => "Réseau",
-        305 => "Numéro",
-        400 => "Civilité",
-        401 => "Deuxième prénom",
-        402..=404 => "Adresse",
-        405 => "Ville",
-        406 => "Région",
-        407 => "Code postal",
-        408 => "Pays",
-        409 => "Société",
-        410 => "E-mail",
-        411 => "Téléphone",
-        412 => "Numéro de sécurité sociale",
-        414 => "Passeport",
-        415 => "Permis de conduire",
-        416 => "Prénom",
-        417 => "Nom",
-        418 => "Nom complet",
-        _ => "inconnu",
+        100 | 413 => "Username",
+        101 => "Password",
+        300 => "Cardholder",
+        301 => "Expiration month",
+        302 => "Expiration year",
+        303 => "Security code",
+        304 => "Brand",
+        305 => "Number",
+        400 => "Title",
+        401 => "Middle name",
+        402..=404 => "Address",
+        405 => "City",
+        406 => "State",
+        407 => "Postal code",
+        408 => "Country",
+        409 => "Company",
+        410 => "Email",
+        411 => "Phone",
+        412 => "Social security number",
+        414 => "Passport",
+        415 => "Driver's license",
+        416 => "First name",
+        417 => "Last name",
+        418 => "Full name",
+        _ => "unknown",
     }
 }
 
-/// Anciens mots de passe, du plus récent au plus ancien : champs secrets
-/// `history-N` (jamais `Password`, pour que le mot de passe actuel reste le
-/// seul que l'audit et le remplissage voient).
+/// Old passwords, from newest to oldest: secret `history-N` fields (never
+/// `Password`, so that the current password stays the only one the audit
+/// and autofill see).
 fn password_history(view: &CipherView, item: &mut Item) {
     for (index, entry) in view.password_history.iter().flatten().enumerate() {
         if entry.password.is_empty() {
             continue;
         }
         let label = format!(
-            "Remplacé le {}",
-            entry.last_used_date.format("%d/%m/%Y à %H:%M")
+            "Replaced on {}",
+            entry.last_used_date.format("%Y-%m-%d at %H:%M")
         );
         item.fields.push(Field::new(
             &format!("history-{index}"),
@@ -427,8 +422,8 @@ fn password_history(view: &CipherView, item: &mut Item) {
     }
 }
 
-/// Passkeys d'un identifiant, au format de Bitwarden. Celles dont
-/// l'élément n'a pas d'identifiant sont ignorées.
+/// A login's passkeys, in Bitwarden's format. Those whose item has no id
+/// are ignored.
 pub(crate) fn passkeys(view: &CipherView) -> Vec<Passkey> {
     let Some(item) = view.id.map(|id| id.to_string()) else {
         return Vec::new();

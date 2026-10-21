@@ -1,9 +1,9 @@
-//! Échanges HTTP avec Vaultwarden : prélogin, jetons, synchronisation,
-//! écritures.
+//! HTTP exchanges with Vaultwarden: prelogin, tokens, sync,
+//! writes.
 //!
-//! Aucune cryptographie ici. Le mot de passe principal n'y arrive que déjà
-//! dérivé par le SDK (`MasterPasswordAuthenticationData`), et les données du
-//! coffre en repartent telles que le serveur les stocke : chiffrées.
+//! No cryptography here. The master password only arrives already
+//! derived by the SDK (`MasterPasswordAuthenticationData`), and the vault
+//! data leaves as the server stores it: encrypted.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -19,29 +19,29 @@ use serde_json::Value;
 
 use crate::error::Error;
 
-/// Verrou se présente comme l'app de bureau macOS : c'est ce qu'il est, et
-/// c'est ainsi que l'appareil apparaît dans la liste des sessions du coffre web.
+/// Verrou presents itself as the macOS desktop app: that is what it is, and
+/// that is how the device shows up in the web vault's session list.
 const CLIENT_ID: &str = "desktop";
 const DEVICE_TYPE: &str = "7"; // DeviceType::MacOsDesktop
 const DEVICE_NAME: &str = "Verrou (macOS)";
-/// Version de client annoncée : Vaultwarden adapte certaines réponses aux
-/// clients trop anciens.
+/// Announced client version: Vaultwarden adapts some responses for
+/// clients that are too old.
 const CLIENT_VERSION: &str = "2026.6.0";
 
-/// Délai d'établissement d'une connexion. Court : une adresse injoignable
-/// (réseau local vu de l'extérieur, VPN qui monte, IPv6 sans route) ne
-/// retient pas la synchronisation 10 s ; hyper le partage entre les adresses
-/// du nom (et essaie IPv4 et IPv6 en parallèle, « happy eyeballs »). Le
-/// délai total des requêtes reste long, pour les gros transferts.
+/// Connection setup timeout. Short: an unreachable address
+/// (local network seen from outside, VPN coming up, IPv6 without a route) does
+/// not hold the sync for 10 s; hyper splits it across the name's addresses
+/// (and tries IPv4 and IPv6 in parallel, "happy eyeballs"). The
+/// total request timeout stays long, for large transfers.
 pub(crate) const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
-/// Pause avant de retenter une connexion qui n'a pas pu s'établir.
+/// Pause before retrying a connection that could not be established.
 const CONNECT_RETRY_PAUSE: Duration = Duration::from_millis(250);
 
-/// Envoi qui retente une fois une connexion impossible (délai dépassé,
-/// refus) : rien n'est parti vers le serveur, la requête peut être rejouée
-/// sans risque. Le réseau du téléphone (radio, VPN à la demande) a souvent
-/// fini de monter entre-temps.
+/// Send that retries once a failed connection (timeout,
+/// refusal): nothing reached the server, the request can be replayed
+/// safely. The phone's network (radio, on-demand VPN) has often
+/// finished coming up in the meantime.
 pub(crate) trait SendRetrying {
     fn send_retrying(
         self,
@@ -50,7 +50,7 @@ pub(crate) trait SendRetrying {
 
 impl SendRetrying for reqwest::RequestBuilder {
     async fn send_retrying(self) -> reqwest::Result<reqwest::Response> {
-        // Corps en flux (pièce jointe) : pas de copie possible, un seul essai.
+        // Streamed body (attachment): cannot be copied, a single attempt.
         let Some(retry) = self.try_clone() else {
             return self.send().await;
         };
@@ -70,29 +70,29 @@ pub(crate) struct Api {
     pub(crate) base: String,
 }
 
-/// Paramètres de dérivation du mot de passe, renvoyés par le prélogin.
+/// Password derivation parameters, returned by the prelogin.
 #[derive(Clone)]
 pub(crate) struct Prelogin {
     pub kdf: Kdf,
     pub salt: String,
 }
 
-/// Une méthode de second facteur proposée par le serveur.
+/// A second-factor method offered by the server.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TwoFactorMethod {
-    /// Application TOTP (code à 6 chiffres).
+    /// TOTP app (6-digit code).
     Authenticator,
-    /// Code reçu par e-mail.
+    /// Code received by email.
     Email,
-    /// `YubiKey` en mode OTP (on touche la clé, elle « tape » un code).
+    /// `YubiKey` in OTP mode (you touch the key, it "types" a code).
     YubiKeyOtp,
-    /// Clé de sécurité `FIDO2`/`WebAuthn`. `challenge` est le JSON des options
-    /// d'assertion, à passer tel quel à la page de connexion du serveur.
+    /// `FIDO2`/`WebAuthn` security key. `challenge` is the JSON of the assertion
+    /// options, to pass as is to the server's login page.
     WebAuthn { challenge: String },
 }
 
 impl TwoFactorMethod {
-    /// Numéro du fournisseur dans le protocole Bitwarden.
+    /// Provider number in the Bitwarden protocol.
     pub fn provider(&self) -> u8 {
         match self {
             Self::Authenticator => 0,
@@ -103,22 +103,22 @@ impl TwoFactorMethod {
     }
 }
 
-/// Réponse au second facteur : la méthode choisie et ce qu'elle a produit
-/// (code saisi, ou JSON de l'assertion `WebAuthn`).
+/// Second-factor answer: the chosen method and what it produced
+/// (typed code, or JSON of the `WebAuthn` assertion).
 #[derive(Clone, Debug)]
 pub struct TwoFactorAnswer {
     pub provider: u8,
     pub token: String,
 }
 
-/// Jetons et clés renvoyés par une connexion réussie.
+/// Tokens and keys returned by a successful login.
 pub(crate) struct Tokens {
     pub access: String,
     pub refresh: String,
-    /// Clé de l'utilisateur, chiffrée par sa clé principale.
+    /// The user's key, encrypted with their master key.
     pub wrapped_user_key: Option<String>,
     pub private_key: Option<String>,
-    /// Paramètres de déverrouillage par mot de passe, quand le serveur les donne.
+    /// Password unlock parameters, when the server provides them.
     pub unlock: Option<Prelogin>,
 }
 
@@ -127,13 +127,13 @@ pub(crate) enum TokenOutcome {
     TwoFactorRequired(Vec<TwoFactorMethod>),
 }
 
-/// Ce qu'envoie une demande de jeton par mot de passe.
+/// What a password token request sends.
 pub(crate) struct PasswordGrant<'a> {
     pub email: &'a str,
-    /// Empreinte d'authentification, dérivée par le SDK.
+    /// Authentication hash, derived by the SDK.
     pub auth_hash: &'a str,
-    /// Connexion approuvée par un autre appareil : `auth_hash` est alors le
-    /// code d'accès de la demande.
+    /// Login approved by another device: `auth_hash` is then the
+    /// request's access code.
     pub auth_request: Option<&'a str>,
     pub device_id: &'a str,
     pub two_factor: Option<&'a TwoFactorAnswer>,
@@ -144,7 +144,7 @@ impl Api {
         Self::with_client(server, |builder| builder)
     }
 
-    /// `configure` complète le client (tests : résolution des noms imposée).
+    /// `configure` completes the client (tests: forced name resolution).
     fn with_client(
         server: &str,
         configure: impl FnOnce(reqwest::ClientBuilder) -> reqwest::ClientBuilder,
@@ -224,7 +224,7 @@ impl Api {
         let response = self
             .http
             .post(format!("{}/identity/connect/token", self.base))
-            // Le serveur officiel l'exige ; Vaultwarden l'ignore.
+            // The official server requires it; Vaultwarden ignores it.
             .header(
                 "Auth-Email",
                 data_encoding::BASE64URL_NOPAD.encode(grant.email.as_bytes()),
@@ -272,8 +272,8 @@ impl Api {
         Err(Error::Server(error_message(&body)))
     }
 
-    /// Réponse brute de `/api/sync` : profil, dossiers et éléments, tous
-    /// chiffrés. Elle sert telle quelle de cache hors ligne.
+    /// Raw response of `/api/sync`: profile, folders and items, all
+    /// encrypted. It serves as is as the offline cache.
     pub async fn sync(&self, access_token: &str) -> Result<String, Error> {
         let response = self
             .http
@@ -287,7 +287,7 @@ impl Api {
         Ok(response.error_for_status()?.text().await?)
     }
 
-    /// Crée un élément (déjà chiffré) ; rend son identifiant.
+    /// Creates an item (already encrypted); returns its id.
     pub async fn create_cipher(
         &self,
         access_token: &str,
@@ -297,11 +297,11 @@ impl Api {
         body.get("id")
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))
+            .ok_or_else(|| Error::Server("item created without an id".to_owned()))
     }
 
-    /// Crée un élément (déjà chiffré) ; rend l'élément tel que le serveur
-    /// le garde (identifiant, date de révision).
+    /// Creates an item (already encrypted); returns the item as the server
+    /// keeps it (id, revision date).
     pub async fn post_cipher(
         &self,
         access_token: &str,
@@ -317,8 +317,8 @@ impl Api {
         write_response(response).await
     }
 
-    /// Remplace un élément. Le serveur refuse si `lastKnownRevisionDate` ne
-    /// correspond plus (modifié ailleurs entre-temps).
+    /// Replaces an item. The server refuses if `lastKnownRevisionDate` no
+    /// longer matches (modified elsewhere in the meantime).
     pub async fn update_cipher(
         &self,
         access_token: &str,
@@ -328,8 +328,8 @@ impl Api {
         self.put_cipher(access_token, id, cipher).await.map(drop)
     }
 
-    /// Comme `update_cipher`, en rendant l'élément tel que le serveur le
-    /// garde (nouvelle date de révision).
+    /// Like `update_cipher`, returning the item as the server
+    /// keeps it (new revision date).
     pub async fn put_cipher(
         &self,
         access_token: &str,
@@ -346,7 +346,7 @@ impl Api {
         write_response(response).await
     }
 
-    /// `PUT /api/ciphers/{id}/{action}` : `delete` (corbeille), `restore`,
+    /// `PUT /api/ciphers/{id}/{action}`: `delete` (trash), `restore`,
     /// `archive`, `unarchive`.
     pub async fn cipher_action(
         &self,
@@ -363,9 +363,9 @@ impl Api {
         write_response(response).await
     }
 
-    /// Importe des éléments déjà chiffrés en une seule requête, comme
-    /// l'import du coffre web. Les dossiers sont désignés par leur
-    /// identifiant (`folders` + `folderRelationships`).
+    /// Imports already encrypted items in a single request, like
+    /// the web vault import. Folders are referenced by their
+    /// id (`folders` + `folderRelationships`).
     pub async fn import_ciphers(
         &self,
         access_token: &str,
@@ -375,7 +375,7 @@ impl Api {
             .http
             .post(format!("{}/api/ciphers/import", self.base))
             .bearer_auth(access_token)
-            // Des centaines d'éléments chiffrés : plus long qu'une écriture.
+            // Hundreds of encrypted items: longer than a write.
             .timeout(Duration::from_secs(120))
             .json(request)
             .send_retrying()
@@ -383,7 +383,7 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
-    /// Crée un dossier (nom déjà chiffré) ; rend son identifiant.
+    /// Creates a folder (name already encrypted); returns its id.
     pub async fn create_folder(&self, access_token: &str, name: &str) -> Result<String, Error> {
         let response = self
             .http
@@ -396,19 +396,19 @@ impl Api {
         body.get("id")
             .and_then(Value::as_str)
             .map(str::to_owned)
-            .ok_or_else(|| Error::Server("dossier créé sans identifiant".to_owned()))
+            .ok_or_else(|| Error::Server("folder created without an id".to_owned()))
     }
 
-    /// Met plusieurs éléments à la corbeille en une requête (restaurables).
+    /// Moves several items to the trash in one request (restorable).
     pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
         self.bulk_cipher_action(access_token, ids, "delete")
             .await
             .map(drop)
     }
 
-    /// `PUT /api/ciphers/{action}` sur plusieurs éléments en une requête :
-    /// `delete` (corbeille), `restore`, `archive`, `unarchive`. Vaultwarden
-    /// s'arrête au premier élément refusé (ceux d'avant restent faits).
+    /// `PUT /api/ciphers/{action}` on several items in one request:
+    /// `delete` (trash), `restore`, `archive`, `unarchive`. Vaultwarden
+    /// stops at the first refused item (the ones before stay done).
     pub async fn bulk_cipher_action(
         &self,
         access_token: &str,
@@ -425,9 +425,9 @@ impl Api {
         write_response(response).await
     }
 
-    /// Range plusieurs éléments dans un dossier (`None` : aucun) en une
-    /// requête, `PUT /api/ciphers/move`. Le dossier est propre au compte :
-    /// l'élément lui-même n'est pas réécrit.
+    /// Files several items into a folder (`None`: none) in one
+    /// request, `PUT /api/ciphers/move`. The folder belongs to the account:
+    /// the item itself is not rewritten.
     pub async fn move_ciphers(
         &self,
         access_token: &str,
@@ -444,8 +444,8 @@ impl Api {
         write_response(response).await.map(drop)
     }
 
-    /// Requête JSON authentifiée vers `/api/{path}` (envois, accès d'urgence) :
-    /// le JSON renvoyé (`Null` si vide), ou l'erreur traduite.
+    /// Authenticated JSON request to `/api/{path}` (sends, emergency access):
+    /// the returned JSON (`Null` if empty), or the translated error.
     pub async fn call(
         &self,
         method: reqwest::Method,
@@ -463,8 +463,8 @@ impl Api {
         write_response(request.send_retrying().await?).await
     }
 
-    /// Jeton d'accès anonyme à un envoi (`grant_type=send_access`), avec
-    /// l'empreinte du mot de passe s'il en a un.
+    /// Anonymous access token for a send (`grant_type=send_access`), with
+    /// the password hash if it has one.
     pub async fn send_access_token(
         &self,
         access_id: &str,
@@ -492,15 +492,15 @@ impl Api {
                 .get("access_token")
                 .and_then(Value::as_str)
                 .map(str::to_owned)
-                .ok_or_else(|| Error::Server("jeton d'accès absent".to_owned()));
+                .ok_or_else(|| Error::Server("missing access token".to_owned()));
         }
         Err(
             match body.get("send_access_error_type").and_then(Value::as_str) {
                 Some("password_hash_b64_required") => {
-                    Error::Invalid("cet envoi est protégé par un mot de passe".to_owned())
+                    Error::Invalid("this send is protected by a password".to_owned())
                 }
                 Some("password_hash_b64_invalid") => {
-                    Error::Invalid("mot de passe de l'envoi incorrect".to_owned())
+                    Error::Invalid("incorrect send password".to_owned())
                 }
                 Some(_) => Error::NotFound,
                 None => Error::Server(error_message(&body)),
@@ -508,8 +508,8 @@ impl Api {
         )
     }
 
-    /// Contenu d'un envoi (chiffré), avec le jeton de `send_access_token`.
-    /// Le serveur compte un accès.
+    /// Content of a send (encrypted), with the token from `send_access_token`.
+    /// The server counts an access.
     pub async fn send_access(&self, token: &str) -> Result<Value, Error> {
         let response = self
             .http
@@ -520,8 +520,8 @@ impl Api {
         write_response(response).await
     }
 
-    /// Écriture JSON authentifiée (`path` commence par `/api/`) ; rend le
-    /// JSON de la réponse.
+    /// Authenticated JSON write (`path` starts with `/api/`); returns the
+    /// response JSON.
     pub async fn send_json(
         &self,
         method: reqwest::Method,
@@ -539,7 +539,7 @@ impl Api {
         write_response(response).await
     }
 
-    /// Demande l'envoi du code de second facteur par e-mail.
+    /// Asks for the second-factor code to be sent by email.
     pub async fn send_email_code(
         &self,
         email: &str,
@@ -547,8 +547,8 @@ impl Api {
         auth_request: Option<&str>,
         device_id: &str,
     ) -> Result<(), Error> {
-        // Connexion par un autre appareil : la demande et son code d'accès
-        // à la place de l'empreinte du mot de passe.
+        // Login through another device: the request and its access code
+        // instead of the password hash.
         let body = match auth_request {
             Some(request) => serde_json::json!({
                 "email": email,
@@ -576,7 +576,7 @@ impl Api {
     }
 }
 
-/// Réponse d'une écriture : le JSON renvoyé, ou l'erreur traduite.
+/// Response of a write: the returned JSON, or the translated error.
 pub(crate) async fn write_response(response: reqwest::Response) -> Result<Value, Error> {
     let status = response.status();
     let body: Value = response.json().await.unwrap_or(Value::Null);
@@ -596,8 +596,8 @@ pub(crate) async fn write_response(response: reqwest::Response) -> Result<Value,
     Err(Error::Server(message))
 }
 
-/// `https://vault.exemple.fr/` → `https://vault.exemple.fr`. HTTP en clair
-/// n'est accepté que pour un serveur local (tests).
+/// `https://vault.exemple.fr/` → `https://vault.exemple.fr`. Plain HTTP
+/// is only accepted for a local server (tests).
 fn normalize_server(server: &str) -> Result<String, Error> {
     let trimmed = server.trim().trim_end_matches('/');
     let with_scheme = if trimmed.contains("://") {
@@ -614,7 +614,7 @@ fn normalize_server(server: &str) -> Result<String, Error> {
         "http" if local => {}
         _ => {
             return Err(Error::InvalidServer(format!(
-                "{trimmed} : seul HTTPS est accepté"
+                "{trimmed}: only HTTPS is accepted"
             )));
         }
     }
@@ -624,8 +624,8 @@ fn normalize_server(server: &str) -> Result<String, Error> {
     Ok(url.as_str().trim_end_matches('/').to_owned())
 }
 
-/// Les clients Bitwarden salent la dérivation avec l'adresse, sans espaces et
-/// en minuscules, quand le serveur ne donne pas de sel.
+/// Bitwarden clients salt the derivation with the address, trimmed and
+/// lower-cased, when the server gives no salt.
 pub(crate) fn default_salt(email: &str) -> String {
     email.trim().to_lowercase()
 }
@@ -639,20 +639,18 @@ pub(crate) fn kdf(
     let nonzero = |value: Option<u32>, what: &str| {
         value
             .and_then(NonZeroU32::new)
-            .ok_or_else(|| Error::Server(format!("paramètre de dérivation manquant : {what}")))
+            .ok_or_else(|| Error::Server(format!("missing key derivation parameter: {what}")))
     };
     match kind {
         0 => Ok(Kdf::PBKDF2 {
-            iterations: nonzero(Some(iterations), "itérations")?,
+            iterations: nonzero(Some(iterations), "iterations")?,
         }),
         1 => Ok(Kdf::Argon2id {
-            iterations: nonzero(Some(iterations), "itérations")?,
-            memory: nonzero(memory, "mémoire")?,
-            parallelism: nonzero(parallelism, "parallélisme")?,
+            iterations: nonzero(Some(iterations), "iterations")?,
+            memory: nonzero(memory, "memory")?,
+            parallelism: nonzero(parallelism, "parallelism")?,
         }),
-        other => Err(Error::Server(format!(
-            "dérivation de clé inconnue ({other})"
-        ))),
+        other => Err(Error::Server(format!("unknown key derivation ({other})"))),
     }
 }
 
@@ -681,9 +679,9 @@ fn tokens(body: &Value) -> Result<Tokens, Error> {
         .or_else(|| text("Key"));
     Ok(Tokens {
         access: text("access_token")
-            .ok_or_else(|| Error::Server("jeton d'accès absent".to_owned()))?,
+            .ok_or_else(|| Error::Server("missing access token".to_owned()))?,
         refresh: text("refresh_token")
-            .ok_or_else(|| Error::Server("jeton de renouvellement absent".to_owned()))?,
+            .ok_or_else(|| Error::Server("missing refresh token".to_owned()))?,
         wrapped_user_key,
         private_key: text("PrivateKey"),
         unlock,
@@ -694,7 +692,7 @@ fn two_factor_methods(providers: &Value) -> Vec<TwoFactorMethod> {
     let Some(map) = providers.as_object() else {
         return Vec::new();
     };
-    // Ordre de préférence : la clé de sécurité d'abord.
+    // Order of preference: the security key first.
     let mut methods: BTreeMap<u8, TwoFactorMethod> = BTreeMap::new();
     for (id, data) in map {
         let method = match id.as_str() {
@@ -729,7 +727,7 @@ fn grant_error(body: &Value, with_two_factor: bool) -> Error {
     }
 }
 
-/// Le message lisible d'une erreur du serveur, quel que soit son format.
+/// The readable message of a server error, whatever its format.
 pub(crate) fn error_message(body: &Value) -> String {
     [
         "/ErrorModel/Message",
@@ -744,7 +742,7 @@ pub(crate) fn error_message(body: &Value) -> String {
             .and_then(Value::as_str)
             .filter(|s| !s.is_empty())
     })
-    .unwrap_or("erreur inconnue")
+    .unwrap_or("unknown error")
     .to_owned()
 }
 
@@ -755,7 +753,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    /// Répond `{}` à une requête, sur `listener`.
+    /// Answers `{}` to one request, on `listener`.
     async fn answer_once(listener: TcpListener) {
         let (mut stream, _) = listener.accept().await.unwrap();
         let mut buffer = [0u8; 4096];
@@ -768,7 +766,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_connection_is_retried() {
-        // Le serveur n'écoute pas encore au premier essai (réseau qui monte).
+        // The server is not listening yet on the first attempt (network coming up).
         let port = TcpListener::bind("127.0.0.1:0")
             .await
             .unwrap()
@@ -786,9 +784,9 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_first_address_does_not_hold_the_sync() {
-        // Le nom donne d'abord une adresse qui ne répond jamais (réseau de
-        // documentation, aucune route), puis le serveur : avant, la
-        // connexion attendait 10 s (5 s par adresse).
+        // The name first gives an address that never answers (documentation
+        // network, no route), then the server: before, the
+        // connection waited 10 s (5 s per address).
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = tokio::spawn(answer_once(listener));
@@ -800,14 +798,14 @@ mod tests {
             builder.resolve_to_addrs("vault.exemple.fr", &addresses)
         })
         .unwrap();
-        // HTTPS vers un serveur en clair : la connexion TCP aboutit, puis la
-        // poignée de main TLS échoue aussitôt. Seul compte le délai.
+        // HTTPS to a plain-text server: the TCP connection succeeds, then the
+        // TLS handshake fails right away. Only the delay matters.
         let start = Instant::now();
         let _ = api.sync("jeton").await;
         let elapsed = start.elapsed();
         assert!(
             elapsed < Duration::from_secs(4),
-            "connexion retenue {elapsed:?} par l'adresse injoignable"
+            "connection held {elapsed:?} by the unreachable address"
         );
         server.abort();
     }

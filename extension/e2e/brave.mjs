@@ -1,13 +1,13 @@
-// Parcours de l'extension dans un vrai Brave, en arrière-plan, sur un profil
-// jetable : appairage depuis la fenêtre de l'extension, puis
-// remplissage d'un formulaire de connexion au clavier, comme un utilisateur.
+// Walk through the extension in a real Brave, in the background, on a
+// throwaway profile: pairing from the extension's popup, then filling a
+// sign-in form with the keyboard, like a user.
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node extension/e2e/brave.mjs
 //
-// Verrou est remplacé par le serveur de test du pont (faux coffre, appairage
-// accepté d'office) : l'hôte Native Messaging, l'extension et Brave sont les
-// vrais.
+// Verrou is replaced by the bridge's test server (fake vault, pairing
+// accepted automatically): the Native Messaging host, the extension and
+// Brave are the real ones.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -30,12 +30,12 @@ async function eventually(probe, what, timeout = 10_000) {
   for (;;) {
     const value = await probe();
     if (value) return value;
-    if (Date.now() > end) throw new Error(`délai dépassé : ${what}`);
+    if (Date.now() > end) throw new Error(`timed out: ${what}`);
     await sleep(150);
   }
 }
 
-// MARK: Faux Verrou
+// MARK: Fake Verrou
 
 const server = spawn(`${root}target/debug/examples/test_server`, {
   env: { ...process.env, VERROU_BRIDGE_PORT: "0" },
@@ -52,7 +52,7 @@ const port = await new Promise((resolve) => {
   });
 });
 
-// MARK: Page de connexion
+// MARK: Sign-in page
 
 const page = createServer((request, response) => {
   if (request.url === "/qr.png") {
@@ -104,12 +104,12 @@ await new Promise((resolve) => page.once("listening", resolve));
 const pageUrl = `http://localhost:${page.address().port}/connexion`;
 const signupUrl = `http://localhost:${page.address().port}/inscription`;
 
-// MARK: Brave, profil jetable
+// MARK: Brave, throwaway profile
 
 const profile = mkdtempSync(join(tmpdir(), "verrou-brave-"));
-// Brave cherche les hôtes Native Messaging dans le dossier de Google Chrome
-// (et dans le sien pour le profil habituel) : on y pose celui du test, en
-// gardant de côté celui que Verrou aurait installé.
+// Brave looks for Native Messaging hosts in Google Chrome's folder (and in
+// its own for the usual profile): we put the test's there, keeping aside
+// the one Verrou may have installed.
 const hosts = join(homedir(), "Library/Application Support/Google/Chrome/NativeMessagingHosts");
 const manifestPath = join(hosts, "app.verrou.bridge.json");
 mkdirSync(hosts, { recursive: true });
@@ -122,9 +122,9 @@ writeFileSync(manifestPath, JSON.stringify({
   allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
 }));
 
-// Un vrai Brave, sur le profil jetable, en arrière-plan (`open -g` : il ne
-// prend pas le focus). L'hôte hérite de l'environnement : le port du faux
-// Verrou, et jamais d'ouverture de la vraie app.
+// A real Brave, on the throwaway profile, in the background (`open -g`: it
+// doesn't take the focus). The host inherits the environment: the fake
+// Verrou's port, and never opening the real app.
 const DEVTOOLS_PORT = 9_555;
 const flags = [
   `--user-data-dir=${profile}`, `--remote-debugging-port=${DEVTOOLS_PORT}`,
@@ -146,7 +146,7 @@ const endpoint = await eventually(async () => {
   } catch {
     return null;
   }
-}, "DevTools de Brave", 20_000);
+}, "Brave's DevTools", 20_000);
 
 // MARK: DevTools
 
@@ -177,8 +177,8 @@ async function openTab(url) {
   return sessionId;
 }
 
-// Le texte de la pastille de Verrou (shadow DOM fermé : DevTools le
-// traverse, pas la page).
+// The text of Verrou's pill (closed shadow DOM: DevTools goes through it,
+// the page doesn't).
 async function pillText(sessionId) {
   const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
   const texts = [];
@@ -192,7 +192,7 @@ async function pillText(sessionId) {
   return texts.join(" | ");
 }
 
-// Le centre du bouton `label` dans l'hôte `tag` (shadow DOM fermé).
+// The center of the `label` button in the `tag` host (closed shadow DOM).
 async function shadowButton(sessionId, tag, label) {
   const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
   let found = null;
@@ -214,7 +214,7 @@ async function evaluate(sessionId, expression) {
   return result.value;
 }
 
-// Un vrai clic (isTrusted), aux coordonnées de la fenêtre.
+// A real click (isTrusted), at the window's coordinates.
 async function click(sessionId, x, y) {
   for (const type of ["mousePressed", "mouseReleased"]) {
     await cdp("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 }, sessionId);
@@ -231,137 +231,148 @@ async function press(sessionId, key) {
   }
 }
 
+// A text of the extension in the browser's language, asked of the
+// extension's popup (extension/_locales).
+const text = (name) => evaluate(popup, `chrome.i18n.getMessage(${JSON.stringify(name)})`);
+
 let failed = false;
 let popup;
 try {
-  // L'extension est chargée, avec l'identifiant attendu.
+  // The extension is loaded, with the expected ID.
   await eventually(async () => (await cdp("Target.getTargets")).targetInfos
-    .some((t) => t.url.startsWith(`chrome-extension://${EXTENSION_ID}/`)), "service worker de l'extension");
-  step("extension chargée");
+    .some((t) => t.url.startsWith(`chrome-extension://${EXTENSION_ID}/`)), "extension service worker");
+  step("extension loaded");
 
-  // Appairage depuis la fenêtre de l'extension.
+  // Pairing from the extension's popup.
   popup = await openTab(`chrome-extension://${EXTENSION_ID}/popup.html`);
-  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === "Relier à Verrou"`),
-    "bouton « Relier à Verrou »");
+  const pair = await eventually(() => text("popupPair"), "extension texts");
+  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === ${JSON.stringify(pair)}`),
+    `"${pair}" button`);
   await evaluate(popup, `document.querySelector("button").click()`);
   const shown = await eventually(() => evaluate(popup, `document.querySelector(".code")?.textContent`),
-    "code d'appairage", 15_000);
-  assert.ok(codes.includes(shown), `code ${shown} affiché par l'extension, ${codes} par Verrou`);
-  step(`même code des deux côtés (${shown})`);
-  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === "Déverrouillé"`),
-    "extension reliée");
-  step("extension reliée");
+    "pairing code", 15_000);
+  assert.ok(codes.includes(shown), `code ${shown} shown by the extension, ${codes} by Verrou`);
+  step(`same code on both sides (${shown})`);
+  const unlocked = await text("popupUnlocked");
+  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === ${JSON.stringify(unlocked)}`),
+    "extension linked");
+  step("extension linked");
 
-  // Formulaire : la pastille vient d'elle-même en haut à gauche ; au
-  // clavier, flèche vers le bas depuis l'identifiant, puis Entrée.
+  // Form: the pill comes by itself at the top left; with the keyboard, down
+  // arrow from the username, then Enter.
   const tab = await openTab(pageUrl);
-  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page chargée");
+  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page loaded");
   await cdp("Page.bringToFront", {}, tab);
-  await eventually(async () => (await pillText(tab)).includes("Se connecter"), "pastille Verrou");
+  const signIn = await text("pillSignIn");
+  await eventually(async () => (await pillText(tab)).includes(signIn), "Verrou pill");
   const corner = await evaluate(tab, `(() => { const r = document.querySelector("verrou-pill").getBoundingClientRect(); return [r.left, r.top]; })()`);
   assert.deepEqual(corner, [16, 16]);
-  step(`pastille en haut à gauche : ${await pillText(tab)}`);
+  step(`pill at the top left: ${await pillText(tab)}`);
   await evaluate(tab, `document.querySelector("verrou-pill").shadowRoot === null`).then((closed) => {
-    assert.equal(closed, true, "la pastille doit être invisible pour la page (shadow DOM fermé)");
+    assert.equal(closed, true, "the pill must be invisible to the page (closed shadow DOM)");
   });
-  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "la pastille ne prend pas le focus");
+  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "the pill doesn't take the focus");
   await evaluate(tab, `document.getElementById("email").focus()`);
-  await eventually(() => evaluate(tab, `Boolean(document.querySelector("verrou-field"))`), "icône dans le champ");
-  assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), false, "plus de menu sous le champ");
+  await eventually(() => evaluate(tab, `Boolean(document.querySelector("verrou-field"))`), "icon in the field");
+  assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-menu"))`), false, "no more menu under the field");
   await press(tab, "ArrowDown");
   await press(tab, "Enter");
   const filled = await eventually(() => evaluate(tab,
     `document.getElementById("password").value && [document.getElementById("email").value, document.getElementById("password").value]`),
-  "formulaire rempli");
+  "form filled");
   assert.deepEqual(filled, ["camille@exemple.fr", "mot-de-passe-local"]);
-  step("identifiant et mot de passe remplis au clavier");
+  step("username and password filled with the keyboard");
 
-  // Un champ sans rapport avec la connexion : pas d'icône Verrou.
+  // A field unrelated to signing in: no Verrou icon.
   await evaluate(tab, `document.getElementById("newsletter").focus()`);
   await sleep(800);
   assert.equal(await evaluate(tab, `Boolean(document.querySelector("verrou-field"))`), false);
-  step("aucune icône hors des champs de connexion");
+  step("no icon outside the sign-in fields");
 
-  // L'icône du champ rouvre la pastille (vrai clic) ; un clic simulé par la
-  // page ne remplit rien.
+  // The field's icon reopens the pill (real click); a click simulated by the
+  // page fills nothing.
   await evaluate(tab, `document.getElementById("password").value = ""; document.getElementById("email").value = ""`);
   await evaluate(tab, `document.getElementById("password").focus()`);
-  const icon = await eventually(() => shadowButton(tab, "VERROU-FIELD", null), "icône dans le champ");
+  const icon = await eventually(() => shadowButton(tab, "VERROU-FIELD", null), "icon in the field");
   await click(tab, ...icon);
-  await eventually(async () => (await pillText(tab)).includes("Se connecter"), "pastille rouverte");
+  await eventually(async () => (await pillText(tab)).includes(signIn), "pill reopened");
   await evaluate(tab, `document.querySelector("verrou-pill").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
   await sleep(600);
   assert.equal(await evaluate(tab, `document.getElementById("password").value`), "");
-  step("un clic simulé par la page ne remplit rien");
+  step("a click simulated by the page fills nothing");
 
-  // Inscription : mot de passe fort proposé dans le champ, au clavier.
+  // Sign-up: strong password suggested in the field, with the keyboard.
   const signup = await openTab(signupUrl);
-  await eventually(() => evaluate(signup, `document.readyState === "complete"`), "page d'inscription");
+  await eventually(() => evaluate(signup, `document.readyState === "complete"`), "sign-up page");
   await cdp("Page.bringToFront", {}, signup);
   await evaluate(signup, `document.getElementById("new-email").value = "dominique@exemple.fr"`);
   await evaluate(signup, `document.getElementById("new-password").focus()`);
-  await eventually(async () => (await pillText(signup)).includes("Suggérer un mot de passe fort"), "générateur");
+  const suggest = await text("pillSuggestPassword");
+  await eventually(async () => (await pillText(signup)).includes(suggest), "generator");
   await press(signup, "ArrowDown");
   await press(signup, "Enter");
   const generated = await eventually(() => evaluate(signup,
     `document.getElementById("new-password").value && [document.getElementById("new-password").value, document.getElementById("confirm").value]`),
-  "mot de passe généré");
+  "password generated");
   assert.equal(generated[0].length, 20);
-  assert.equal(generated[0], generated[1], "la confirmation reçoit le même mot de passe");
-  step("mot de passe fort généré dans le champ et sa confirmation");
+  assert.equal(generated[0], generated[1], "the confirmation gets the same password");
+  step("strong password generated in the field and its confirmation");
 
-  // Envoi du formulaire : la page suivante propose d'enregistrer.
+  // Form submission: the next page offers to save.
   const box = await evaluate(signup, `(() => { const r = document.getElementById("create").getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; })()`);
   await click(signup, ...box);
-  await eventually(() => evaluate(signup, `location.pathname === "/bienvenue" && document.readyState === "complete"`), "page suivante");
-  const saveButton = await eventually(() => shadowButton(signup, "VERROU-PILL", "Enregistrer"), "bandeau « Enregistrer »");
-  step("bandeau d'enregistrement après l'envoi du formulaire");
-  // Un clic simulé par la page sur le bandeau n'enregistre rien.
+  await eventually(() => evaluate(signup, `location.pathname === "/bienvenue" && document.readyState === "complete"`), "next page");
+  const save = await text("save");
+  const saveButton = await eventually(() => shadowButton(signup, "VERROU-PILL", save), `"${save}" banner`);
+  step("save banner after the form is submitted");
+  // A click simulated by the page on the banner saves nothing.
   await evaluate(signup, `document.querySelector("verrou-pill").dispatchEvent(new MouseEvent("click", { bubbles: true }))`);
   await sleep(500);
   assert.deepEqual(saved, []);
   await click(signup, ...saveButton);
-  await eventually(() => saved.length > 0, "enregistrement dans Verrou");
-  step(`identifiant enregistré dans Verrou (${saved[0]})`);
+  await eventually(() => saved.length > 0, "saved in Verrou");
+  step(`login saved in Verrou (${saved[0]})`);
 
-  // Paiement : la carte, puis l'adresse, depuis la pastille.
+  // Payment: the card, then the address, from the pill.
   const checkout = await openTab(pageUrl.replace("/connexion", "/paiement"));
-  await eventually(() => evaluate(checkout, `document.readyState === "complete"`), "page de paiement");
+  await eventually(() => evaluate(checkout, `document.readyState === "complete"`), "payment page");
   await cdp("Page.bringToFront", {}, checkout);
   await evaluate(checkout, `document.getElementById("cc").focus()`);
-  await eventually(async () => (await pillText(checkout)).includes("Remplir la carte"), "pastille des cartes");
+  const fillCard = (await text("pillFillCard")).trim();
+  await eventually(async () => (await pillText(checkout)).includes(fillCard), "cards pill");
   await press(checkout, "ArrowDown");
   await press(checkout, "Enter");
   const card = await eventually(() => evaluate(checkout, `(() => {
     const v = (id) => document.getElementById(id).value;
     return v("cc") && [v("cc"), v("month"), v("year"), v("cvc")];
-  })()`), "carte remplie");
+  })()`), "card filled");
   assert.deepEqual(card, ["4242424242424242", "09", "29", "123"]);
-  step("carte remplie (numéro, mois en liste, année sur 2 chiffres, cryptogramme)");
+  step("card filled (number, month in a list, 2-digit year, security code)");
   await evaluate(checkout, `document.getElementById("given").focus()`);
-  await eventually(async () => (await pillText(checkout)).includes("Remplir l'adresse"), "pastille des adresses");
+  const fillAddress = await text("pillFillAddress");
+  await eventually(async () => (await pillText(checkout)).includes(fillAddress), "addresses pill");
   await press(checkout, "ArrowDown");
   await press(checkout, "Enter");
   const address = await eventually(() => evaluate(checkout, `(() => {
     const v = (id) => document.getElementById(id).value;
     return v("given") && [v("given"), v("family"), v("street"), v("zip"), v("city"), v("country")];
-  })()`), "adresse remplie");
+  })()`), "address filled");
   assert.deepEqual(address, ["Camille", "Martin", "12 rue des Lilas", "74000", "Annecy", "FR"]);
-  step("adresse remplie, pays choisi dans la liste");
+  step("address filled, country chosen in the list");
 
-  // QR code de double authentification lu dans la fenêtre de l'extension.
+  // Two-factor QR code read in the extension's popup.
   const otpauth = await evaluate(popup, `import("./qr.js").then(async (qr) =>
     qr.otpauthFrom(await (await fetch("http://localhost:${page.address().port}/qr.png")).blob()))`);
   assert.equal(otpauth, "otpauth://totp/Local:dominique%40exemple.fr?secret=JBSWY3DPEHPK3PXP&issuer=Local");
-  step("QR code de double authentification lu");
+  step("two-factor QR code read");
 } catch (error) {
   failed = true;
   console.error(`BRAVE_FAIL ${error.message}`);
   if (popup) {
-    console.error(`fenêtre de l'extension : ${await evaluate(popup, "document.body.innerText").catch(() => "?")}`);
-    console.error(`appairage : ${await evaluate(popup, "chrome.storage.session.get('pairing').then(JSON.stringify)").catch((e) => e.message)}`);
-    console.error(`codes vus par Verrou : ${codes.join(", ") || "aucun"}`);
-    console.error(`status : ${await evaluate(popup, "Promise.race([chrome.runtime.sendMessage({ kind: 'status' }).then(JSON.stringify), new Promise((r) => setTimeout(() => r('bloqué'), 3000))])").catch((e) => e.message)}`);
+    console.error(`extension popup: ${await evaluate(popup, "document.body.innerText").catch(() => "?")}`);
+    console.error(`pairing: ${await evaluate(popup, "chrome.storage.session.get('pairing').then(JSON.stringify)").catch((e) => e.message)}`);
+    console.error(`codes seen by Verrou: ${codes.join(", ") || "none"}`);
+    console.error(`status: ${await evaluate(popup, "Promise.race([chrome.runtime.sendMessage({ kind: 'status' }).then(JSON.stringify), new Promise((r) => setTimeout(() => r('blocked'), 3000))])").catch((e) => e.message)}`);
   }
 } finally {
   socket.close();
@@ -371,7 +382,7 @@ try {
   if (previousManifest) writeFileSync(manifestPath, previousManifest);
   else rmSync(manifestPath, { force: true });
   await sleep(300);
-  if (process.env.BRAVE_LOG) console.log(`journal : ${profile}/chrome_debug.log`);
+  if (process.env.BRAVE_LOG) console.log(`log: ${profile}/chrome_debug.log`);
   else rmSync(profile, { recursive: true, force: true });
 }
 console.log(failed ? "BRAVE_FAILED" : "BRAVE_DONE");

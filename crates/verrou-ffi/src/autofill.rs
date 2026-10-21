@@ -1,15 +1,14 @@
-//! Remplissage automatique d'iOS (extension `VerrouAutoFill`).
+//! iOS `AutoFill` (`VerrouAutoFill` extension).
 //!
-//! L'extension ouvre le coffre du dossier partagé en **invitée**
-//! (`VaultSession::for_autofill`) : elle lit le cache et la file de l'app,
-//! écrit directement sur le serveur ce qui ne peut pas attendre (passkey
-//! créée, compteur d'une passkey), puis enregistre le cache resynchronisé ;
-//! elle n'envoie ni n'écrit jamais la file de l'app (voir
-//! `verrou_vaultwarden::Store::guest`).
+//! The extension opens the shared folder's vault as a **guest**
+//! (`VaultSession::for_autofill`): it reads the app's cache and queue,
+//! writes directly to the server what can't wait (created passkey, a
+//! passkey's counter), then saves the resynced cache; it never sends
+//! nor writes the app's queue (see `verrou_vaultwarden::Store::guest`).
 //!
-//! Ce module donne aussi à l'app ce qu'elle publie dans le magasin des
-//! identités du système (`ASCredentialIdentityStore`) : sites, noms
-//! d'utilisateur et identifiants de passkeys, **jamais un secret**.
+//! This module also gives the app what it publishes to the system's
+//! identity store (`ASCredentialIdentityStore`): sites, usernames and
+//! passkey identifiers, **never a secret**.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,41 +21,41 @@ use verrou_vaultwarden::Store;
 
 use crate::{ItemSummary, VaultSession, VerrouError, summary};
 
-/// Longueur maximale des textes venus du site (nom, utilisateur).
+/// Maximum length of texts coming from the site (name, user).
 const MAX_TEXT: usize = 256;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum AutofillIdentityKind {
     Password,
-    /// Code à usage unique (iOS 18) : l'élément a une graine TOTP.
+    /// One-time code (iOS 18): the item has a TOTP seed.
     OneTimeCode,
     Passkey,
 }
 
-/// Une suggestion pour la barre `QuickType` : où et pour qui, sans secret.
+/// A suggestion for the `QuickType` bar: where and for whom, without secret.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct AutofillIdentity {
     pub kind: AutofillIdentityKind,
-    /// L'élément du coffre (`recordIdentifier`).
+    /// The vault item (`recordIdentifier`).
     pub item_id: String,
-    /// Domaine du site (mot de passe, code), ou `rpId` (passkey).
+    /// Site domain (password, code), or `rpId` (passkey).
     pub service: String,
-    /// Nom d'utilisateur montré (ou titre de l'élément s'il n'en a pas).
+    /// Username shown (or the item's title if it has none).
     pub user: String,
-    /// Passkey : identifiant brut de l'accréditation.
+    /// Passkey: raw credential identifier.
     pub credential_id: Vec<u8>,
-    /// Passkey : identifiant de l'utilisateur chez le site (vide sinon).
+    /// Passkey: the user's identifier at the site (empty otherwise).
     pub user_handle: Vec<u8>,
 }
 
-/// Identifiant et mot de passe d'un élément, pour `ASPasswordCredential`.
+/// Username and password of an item, for `ASPasswordCredential`.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct AutofillPassword {
     pub username: String,
     pub password: String,
 }
 
-/// Une passkey proposée pour un site, sans clé privée.
+/// A passkey offered for a site, without private key.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct AutofillPasskey {
     pub item_id: String,
@@ -68,7 +67,7 @@ pub struct AutofillPasskey {
     pub reprompt: bool,
 }
 
-/// Assertion signée pour `ASPasskeyAssertionCredential`.
+/// Signed assertion for `ASPasskeyAssertionCredential`.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyAssertionResult {
     pub item_id: String,
@@ -78,27 +77,27 @@ pub struct PasskeyAssertionResult {
     pub user_handle: Vec<u8>,
 }
 
-/// Nouvelle passkey, pour `ASPasskeyRegistrationCredential`.
+/// New passkey, for `ASPasskeyRegistrationCredential`.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyRegistrationResult {
-    /// L'identifiant qui la porte (nouveau ou existant).
+    /// The login that holds it (new or existing).
     pub item_id: String,
     pub credential_id: Vec<u8>,
     pub attestation_object: Vec<u8>,
 }
 
-/// Ce que le système demande de créer (`ASPasskeyCredentialRequest`).
+/// What the system asks to create (`ASPasskeyCredentialRequest`).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyCreationRequest {
     pub rp_id: String,
     pub user_name: String,
     pub user_handle: Vec<u8>,
     pub client_data_hash: Vec<u8>,
-    /// Face ID ou mot de passe principal demandé pour cette création.
+    /// Face ID or master password asked for this creation.
     pub user_verified: bool,
-    /// Identifiant existant qui recevra la passkey ; `None` : un nouveau.
+    /// Existing login that will receive the passkey; `None`: a new one.
     pub item_id: Option<String>,
-    /// Passkeys que le site exclut (déjà enregistrées chez lui).
+    /// Passkeys the site excludes (already registered with it).
     pub excluded_credentials: Vec<Vec<u8>>,
 }
 
@@ -114,7 +113,7 @@ fn clip(text: &str) -> Option<String> {
     (!text.is_empty()).then(|| text.chars().take(MAX_TEXT).collect())
 }
 
-/// Les sites d'un élément (hôtes sans `www.`, sans doublon), dans l'ordre.
+/// An item's sites (hosts without `www.`, no duplicates), in order.
 fn hosts(item: &Item) -> Vec<String> {
     let mut seen = HashSet::new();
     item.urls
@@ -124,10 +123,10 @@ fn hosts(item: &Item) -> Vec<String> {
         .collect()
 }
 
-/// Identités de tout le coffre : identifiants actifs avec un site, codes
-/// des éléments qui ont une graine TOTP, passkeys. Les éléments protégés
-/// en font partie (seul le nom d'utilisateur est montré ; le secret
-/// attendra la confirmation).
+/// Identities of the whole vault: active logins with a site, codes of
+/// the items that have a TOTP seed, passkeys. Protected items are
+/// included (only the username is shown; the secret will wait for the
+/// confirmation).
 pub(crate) fn identities(vault: &Vault) -> Vec<AutofillIdentity> {
     let mut out = Vec::new();
     for item in vault.items() {
@@ -207,8 +206,8 @@ fn passkey_user(key: &Passkey, item: &Item) -> String {
         })
 }
 
-/// Page à partir d'un identifiant de service du système : un domaine nu
-/// (`exemple.fr`) ou une URL.
+/// Page from a system service identifier: a bare domain
+/// (`exemple.fr`) or a URL.
 fn page_of(service: &str) -> String {
     let service = service.trim();
     if service.contains("://") {
@@ -218,7 +217,7 @@ fn page_of(service: &str) -> String {
     }
 }
 
-/// Adresse enregistrée dans un nouvel identifiant créé pour une passkey.
+/// Address saved in a new login created for a passkey.
 pub(crate) fn site_uri(rp_id: &str) -> String {
     if rp_id == "localhost" {
         "http://localhost".to_owned()
@@ -245,17 +244,17 @@ impl VaultSession {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Session de l'extension de remplissage automatique : même dossier que
-    /// l'app, ouvert en invitée (jamais d'envoi ni d'écriture de la file).
+    /// Session of the `AutoFill` extension: same folder as the app, opened
+    /// as a guest (never sends nor writes the queue).
     #[uniffi::constructor]
     pub fn for_autofill(data_dir: String) -> Arc<Self> {
         Self::with_store(Store::new(data_dir).guest())
     }
 
-    /// Ce que l'app publie pour les suggestions du système (`QuickType`) :
-    /// sites, noms d'utilisateur, passkeys. Aucun secret.
-    /// Les signaux des sites (passkeys refusées, mots de passe inutiles,
-    /// noms changés) corrigent la liste : voir `signals`.
+    /// What the app publishes for the system's suggestions (`QuickType`):
+    /// sites, usernames, passkeys. No secret.
+    /// The sites' signals (rejected passkeys, unneeded passwords,
+    /// changed names) correct the list: see `signals`.
     pub fn autofill_identities(&self) -> Result<Vec<AutofillIdentity>, VerrouError> {
         self.with_vault(|v| {
             let mut list = identities(v);
@@ -266,8 +265,8 @@ impl VaultSession {
         })
     }
 
-    /// Identifiants correspondant aux services demandés par le système
-    /// (domaines ou URL), du plus précis au moins précis, sans doublon.
+    /// Logins matching the services asked by the system (domains or
+    /// URLs), from most to least precise, no duplicates.
     pub fn autofill_matches(&self, services: Vec<String>) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| {
             let mut seen = HashSet::new();
@@ -280,17 +279,16 @@ impl VaultSession {
         })
     }
 
-    /// ⚠️ Identifiant et mot de passe d'un identifiant, pour le remplir :
-    /// seulement après le choix de l'utilisateur (ou une suggestion du
-    /// système qu'il a touchée). Un élément protégé doit avoir été confirmé
-    /// (`authorize_item`). Comme sur le Mac, « masquer les mots de passe »
-    /// d'une organisation n'empêche pas le remplissage.
+    /// ⚠️ Username and password of a login, to fill it: only after the
+    /// user's choice (or a system suggestion they tapped). A protected
+    /// item must have been confirmed (`authorize_item`). As on the Mac,
+    /// an organization's "hide passwords" doesn't prevent filling.
     pub fn autofill_password(&self, id: String) -> Result<AutofillPassword, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
             if item.kind != ItemKind::Login {
                 return Err(VerrouError::Invalid {
-                    message: "seul un identifiant se remplit".to_owned(),
+                    message: "only a login can be filled".to_owned(),
                 });
             }
             self.require_authorized(item)?;
@@ -305,7 +303,7 @@ impl VaultSession {
         })
     }
 
-    /// Passkeys du site `rp_id` ; `allowed` (non vide) : seulement celles-là.
+    /// Passkeys of site `rp_id`; `allowed` (non-empty): only those.
     pub fn autofill_passkeys(
         &self,
         rp_id: String,
@@ -341,7 +339,7 @@ impl VaultSession {
         })
     }
 
-    /// Identifiants du site qui peuvent recevoir une nouvelle passkey.
+    /// The site's logins that can receive a new passkey.
     pub fn autofill_passkey_targets(&self, rp_id: String) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| {
             Ok(v.suggestions_for(&site_uri(&rp_id))
@@ -352,10 +350,10 @@ impl VaultSession {
         })
     }
 
-    /// Signe pour le système : `authenticatorData ‖ clientDataHash` avec la
-    /// passkey `credential_id` du site `rp_id`. Le nouveau compteur est
-    /// enregistré sur le serveur **avant** de rendre la signature (comme
-    /// dans le navigateur) ; hors ligne, la passkey ne signe pas.
+    /// Signs for the system: `authenticatorData ‖ clientDataHash` with
+    /// passkey `credential_id` of site `rp_id`. The new counter is saved
+    /// on the server **before** returning the signature (as in the
+    /// browser); offline, the passkey doesn't sign.
     pub async fn passkey_assertion(
         &self,
         rp_id: String,
@@ -396,8 +394,8 @@ impl VaultSession {
         Ok(result)
     }
 
-    /// Crée une passkey pour le système (attestation `none`) et l'enregistre
-    /// dans le coffre, sur le serveur, avant de répondre.
+    /// Creates a passkey for the system (`none` attestation) and saves it
+    /// in the vault, on the server, before answering.
     pub async fn passkey_registration(
         &self,
         request: PasskeyCreationRequest,
@@ -412,7 +410,7 @@ impl VaultSession {
                     .is_some_and(|id| request.excluded_credentials.contains(&id))
             }) {
                 return Err(VerrouError::Invalid {
-                    message: "une passkey de ce compte est déjà enregistrée pour ce site"
+                    message: "a passkey of this account is already registered for this site"
                         .to_owned(),
                 });
             }

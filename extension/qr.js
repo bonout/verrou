@@ -1,10 +1,9 @@
-// Lecture d'un QR code de double authentification (URI `otpauth://totp/…`)
-// dans une image, par le lecteur de codes-barres du navigateur.
+// Reading of a two-factor QR code (URI `otpauth://totp/…`) in an image, by
+// the browser's barcode reader.
 
 export const canReadQrCodes = () => "BarcodeDetector" in globalThis;
 
-// L'URI otpauth du premier QR code de double authentification de l'image,
-// ou null.
+// The otpauth URI of the image's first two-factor QR code, or null.
 export async function otpauthFrom(blob) {
   const bitmap = await createImageBitmap(blob);
   try {

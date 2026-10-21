@@ -2,12 +2,12 @@ import AppKit
 import Observation
 import UniformTypeIdentifiers
 
-/// Import d'un export d'Apple, de 1Password ou de Proton Pass : fichier
-/// choisi, revue, import.
+/// Import of an export from Apple, 1Password or Proton Pass: file chosen,
+/// review, import.
 ///
-/// Le fichier est lu par le cœur Rust, qui en garde les secrets jusqu'à
-/// l'import (ou l'abandon, ou le verrouillage) ; la revue ne contient que
-/// titres, identifiants et sites.
+/// The file is read by the Rust core, which keeps its secrets until the
+/// import (or giving up, or locking); the review only contains titles,
+/// usernames and sites.
 @MainActor
 @Observable
 final class ImportFlow: Identifiable {
@@ -15,12 +15,12 @@ final class ImportFlow: Identifiable {
         case reading
         case review(ImportReview)
         case importing(count: Int)
-        /// Lecture impossible : on peut choisir le format à la main.
+        /// Couldn't read: the format can be chosen by hand.
         case failed(String)
         case done(ImportOutcome)
     }
 
-    /// Où ranger les éléments créés.
+    /// Where to put the created items.
     enum Placement: Hashable {
         case none
         case folder
@@ -29,17 +29,17 @@ final class ImportFlow: Identifiable {
 
     let id = UUID()
     let url: URL
-    /// `nil` : reconnu d'après le contenu.
+    /// `nil`: recognized from the content.
     var format: ImportFormat?
     var stage: Stage = .reading
-    /// Un choix par ligne de la revue.
+    /// One choice per review row.
     var choices: [ImportChoice] = []
     var placement: Placement = .folder
     var folderName = ""
-    /// Erreur de l'import lui-même : la revue reste affichée.
+    /// Error of the import itself: the review stays displayed.
     var error: String?
 
-    /// Formats proposés quand la détection échoue.
+    /// Formats offered when detection fails.
     static let formats: [ImportFormat] = [
         .applePasswords, .onePassword1pux, .onePasswordCsv, .protonPassZip, .protonPassCsv,
     ]
@@ -59,13 +59,13 @@ final class ImportFlow: Identifiable {
 
     func loaded(_ review: ImportReview) {
         choices = review.entries.map(\.choice)
-        folderName = "Import \(review.source)"
+        folderName = String(localized: "Import \(review.source)")
         placement = .folder
         error = nil
         stage = .review(review)
     }
 
-    /// Éléments qui seront écrits (créés ou complétés).
+    /// Items that will be written (created or completed).
     var writeCount: Int {
         choices.filter { $0 != .skip }.count
     }
@@ -84,14 +84,14 @@ final class ImportFlow: Identifiable {
 extension AppModel {
     // MARK: Import
 
-    /// Fichier → Importer… : choix du fichier, puis revue.
+    /// File → Import…: choice of the file, then review.
     func startImport() {
         guard canEdit else { return }
         showMainWindow()
         let panel = NSOpenPanel()
-        panel.title = "Importer des mots de passe"
-        panel.message = "Choisissez l'export des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV)."
-        panel.prompt = "Choisir"
+        panel.title = String(localized: "Import Passwords")
+        panel.message = String(localized: "Choose the export from Apple Passwords (CSV), 1Password (1PUX or CSV) or Proton Pass (unencrypted ZIP or CSV).")
+        panel.prompt = String(localized: "Choose")
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.allowedContentTypes = ImportFlow.contentTypes
@@ -101,7 +101,7 @@ extension AppModel {
         Task { await readImport(flow) }
     }
 
-    /// Lit le fichier (au format choisi, ou reconnu) et le compare au coffre.
+    /// Reads the file (in the chosen or recognized format) and compares it to the vault.
     func readImport(_ flow: ImportFlow) async {
         flow.stage = .reading
         let scoped = flow.url.startAccessingSecurityScopedResource()
@@ -124,8 +124,10 @@ extension AppModel {
             afterWrite(select: selection)
             flow.stage = .done(outcome)
             let total = outcome.created + outcome.updated
-            toast = Toast(message: "\(total) élément\(total > 1 ? "s" : "") importé\(total > 1 ? "s" : "")",
-                          detail: outcome.failures.isEmpty ? "Pensez à supprimer le fichier d'export" : "\(outcome.failures.count) non importé(s)",
+            let count = Int(total)
+            toast = Toast(message: count > 1 ? String(localized: "\(count) items imported") : String(localized: "\(count) item imported"),
+                          detail: outcome.failures.isEmpty ? String(localized: "Remember to delete the export file")
+                                                           : String(localized: "\(outcome.failures.count) not imported"),
                           failure: !outcome.failures.isEmpty)
         } catch {
             flow.error = Self.describe(error)
@@ -133,7 +135,7 @@ extension AppModel {
         }
     }
 
-    /// Ferme l'import ; le cœur Rust oublie le fichier.
+    /// Closes the import; the Rust core forgets the file.
     func closeImport() {
         session.cancelImport()
         importFlow = nil

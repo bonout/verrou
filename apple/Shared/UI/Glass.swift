@@ -1,17 +1,17 @@
 #if os(iOS)
 import SwiftUI
 
-// Verre (Liquid Glass) d'iOS 26, avec un repli pour iOS 17 à 25 : chaque
-// appel passe par ces quelques fonctions, qui vérifient la version.
+// iOS 26 glass (Liquid Glass), with a fallback for iOS 17 to 25: every
+// call goes through these few functions, which check the version.
 //
-// Le verre est réservé aux commandes qui flottent au-dessus du contenu
-// (boutons, champ de déverrouillage, notification) ; jamais dans les lignes
-// d'une liste, où il coûterait cher au défilement.
+// Glass is reserved for the controls that float above the content
+// (buttons, unlock field, notification); never in the rows of a list,
+// where it would make scrolling expensive.
 
 enum LiquidGlass {
-    /// Builds Debug : `VERROU_LEGACY_UI=1` force le repli d'iOS 17 sur
-    /// iOS 26, pour en faire des captures (les barres du système restent
-    /// celles d'iOS 26).
+    /// Debug builds: `VERROU_LEGACY_UI=1` forces the iOS 17 fallback on
+    /// iOS 26, to take screenshots of it (the system bars stay the iOS 26
+    /// ones).
     static let forcedFallback: Bool = {
         #if DEBUG
         ProcessInfo.processInfo.environment["VERROU_LEGACY_UI"] == "1"
@@ -20,7 +20,7 @@ enum LiquidGlass {
         #endif
     }()
 
-    /// Le verre d'iOS 26 est disponible (et pas écarté).
+    /// iOS 26 glass is available (and not ruled out).
     static var isAvailable: Bool {
         #if compiler(>=6.2)
         if #available(iOS 26, *) { return !forcedFallback }
@@ -30,7 +30,7 @@ enum LiquidGlass {
 }
 
 extension View {
-    /// Fond de verre dans `shape` sur iOS 26 ; matériau flou sinon.
+    /// Glass background in `shape` on iOS 26; blurred material otherwise.
     @ViewBuilder
     func glassSurface<S: InsettableShape>(_ shape: S, tint: Color? = nil, interactive: Bool = false) -> some View {
         #if compiler(>=6.2)
@@ -64,8 +64,8 @@ extension View {
         .overlay(shape.strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
     }
 
-    /// Bouton de verre (`prominent` : teinté de l'accent) sur iOS 26 ; bouton
-    /// en capsule, plein ou teinté, sinon.
+    /// Glass button (`prominent`: tinted with the accent) on iOS 26; capsule
+    /// button, filled or tinted, otherwise.
     @ViewBuilder
     func glassButton(prominent: Bool = false) -> some View {
         #if compiler(>=6.2)
@@ -93,8 +93,8 @@ extension View {
     }
 }
 
-/// Regroupe des éléments de verre voisins (iOS 26) : ils se fondent l'un
-/// dans l'autre et partagent un seul rendu ; une simple pile sinon.
+/// Groups neighboring glass elements (iOS 26): they blend into each other
+/// and share a single render; a plain stack otherwise.
 struct GlassGroup<Content: View>: View {
     var spacing: CGFloat = 12
     @ViewBuilder var content: Content
@@ -112,12 +112,12 @@ struct GlassGroup<Content: View>: View {
     }
 }
 
-// MARK: Morphose
+// MARK: Morphing
 
 extension View {
-    /// Identité de verre (iOS 26) : deux vues de même `id` dans un
-    /// `GlassGroup` se transforment l'une en l'autre ; `morph` faux (Réduire
-    /// les animations) : simple apparition du verre. Rien avant iOS 26.
+    /// Glass identity (iOS 26): two views with the same `id` in a
+    /// `GlassGroup` morph into each other; `morph` false (Reduce Motion):
+    /// the glass simply appears. Nothing before iOS 26.
     @ViewBuilder
     func glassMorphID(_ id: String, in namespace: Namespace.ID, morph: Bool = true) -> some View {
         #if compiler(>=6.2)
@@ -140,7 +140,7 @@ private struct ZoomNamespaceKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// Espace des transitions « zoom » d'une pile de navigation (iOS 18+).
+    /// Namespace of a navigation stack's "zoom" transitions (iOS 18+).
     var zoomNamespace: Namespace.ID? {
         get { self[ZoomNamespaceKey.self] }
         set { self[ZoomNamespaceKey.self] = newValue }
@@ -148,7 +148,7 @@ extension EnvironmentValues {
 }
 
 extension View {
-    /// Source d'une transition « zoom » vers la fiche (iOS 18+ ; rien avant).
+    /// Source of a "zoom" transition to the item page (iOS 18+; nothing before).
     @ViewBuilder
     func zoomSource(id: String, in namespace: Namespace.ID?) -> some View {
         if #available(iOS 18, *), let namespace {
@@ -158,8 +158,8 @@ extension View {
         }
     }
 
-    /// La fiche s'ouvre en zoomant depuis sa ligne (iOS 18+ ; glissement
-    /// latéral classique avant).
+    /// The item page opens by zooming from its row (iOS 18+; classic side
+    /// slide before).
     @ViewBuilder
     func zoomDestination(id: String, in namespace: Namespace.ID?) -> some View {
         if #available(iOS 18, *), let namespace {
@@ -169,7 +169,7 @@ extension View {
         }
     }
 
-    /// Sous-titre de la barre de navigation (iOS 26 ; rien avant).
+    /// Navigation bar subtitle (iOS 26; nothing before).
     @ViewBuilder
     func navigationSubtitleIfAvailable(_ text: String) -> some View {
         #if compiler(>=6.2)
@@ -184,10 +184,10 @@ extension View {
     }
 }
 
-// MARK: Symboles
+// MARK: Symbols
 
 extension View {
-    /// Symbole qui tourne en continu (iOS 18+) ; immobile avant.
+    /// Symbol that rotates continuously (iOS 18+); still before.
     @ViewBuilder
     func spinning(_ active: Bool) -> some View {
         if #available(iOS 18, *) {
@@ -198,10 +198,10 @@ extension View {
     }
 }
 
-// MARK: Déverrouillage
+// MARK: Unlocking
 
-/// Champ du mot de passe principal, avec sa flèche : verre interactif sur
-/// iOS 26, champ arrondi bordé d'accent sinon (comme sur le Mac).
+/// Master password field, with its arrow: interactive glass on iOS 26,
+/// rounded field with an accent border otherwise (as on the Mac).
 struct MasterPasswordField: View {
     @Binding var password: String
     let busy: Bool
@@ -214,7 +214,7 @@ struct MasterPasswordField: View {
             Image(systemName: "key.fill")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            SecureField("Mot de passe principal", text: $password)
+            SecureField("Master password", text: $password)
                 .textContentType(.password)
                 .submitLabel(.go)
                 .focused(focused)
@@ -231,7 +231,7 @@ struct MasterPasswordField: View {
                 }
             }
             .disabled(password.isEmpty)
-            .accessibilityLabel("Déverrouiller")
+            .accessibilityLabel("Unlock")
         }
         .padding(.leading, 18)
         .padding(.trailing, 10)
@@ -258,9 +258,9 @@ private struct PasswordFieldSurface: ViewModifier {
     }
 }
 
-/// Bouton de déverrouillage par Face ID (ou Touch ID).
+/// Face ID (or Touch ID) unlock button.
 struct BiometricUnlockButton: View {
-    let title: String
+    let title: LocalizedStringKey
     let symbol: String
     let busy: Bool
     let action: () -> Void
@@ -278,9 +278,9 @@ struct BiometricUnlockButton: View {
     }
 }
 
-// MARK: Pictogrammes
+// MARK: Pictograms
 
-/// Symbole blanc sur un carré arrondi teinté (accueil, réglages).
+/// White symbol on a tinted rounded square (home, settings).
 struct TintedSymbol: View {
     let symbol: String
     let tint: Color
@@ -296,13 +296,13 @@ struct TintedSymbol: View {
     }
 }
 
-/// En-tête de section à la manière du Mac : petites capitales espacées.
+/// Mac-style section header: small spaced capitals.
 struct SectionHeader: View {
-    let title: String
-    init(_ title: String) { self.title = title }
-
+    let title: Text
+    init(_ title: LocalizedStringKey) { self.title = Text(title) }
+    init<S: StringProtocol>(_ title: S) { self.title = Text(title) }
     var body: some View {
-        Text(title)
+        title
             .font(.footnote.weight(.semibold))
             .textCase(.uppercase)
             .tracking(0.6)

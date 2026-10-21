@@ -2,9 +2,8 @@ import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// « Pièces jointes » de la fiche d'un élément : ouvrir (Quick Look),
-/// enregistrer sous, supprimer ; ajouter par « Ajouter un fichier… » ou en
-/// déposant des fichiers sur la fiche.
+/// "Attachments" of an item's detail: open (Quick Look), save as, delete;
+/// add through "Add File…" or by dropping files on the detail.
 struct AttachmentsSection: View {
     @Environment(AppModel.self) private var model
     let summary: ItemSummary
@@ -18,7 +17,7 @@ struct AttachmentsSection: View {
     var body: some View {
         Group {
             if !entries.isEmpty || store.activity != nil || model.canEdit && summary.state == .active {
-                SectionTitle("Pièces jointes")
+                SectionTitle(String(localized: "Attachments"))
                 FieldCard {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                         if index > 0 { Divider().padding(.leading, 14) }
@@ -40,12 +39,12 @@ struct AttachmentsSection: View {
                             Button {
                                 model.chooseAttachments(for: summary.id)
                             } label: {
-                                Label("Ajouter un fichier…", systemImage: "paperclip")
+                                Label("Add File…", systemImage: "paperclip")
                             }
                             .buttonStyle(.borderless)
                             .disabled(!editable)
                             Spacer()
-                            Text("ou déposez-le ici · 100 Mo au plus")
+                            Text("or drop it here · 100 MB at most")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
@@ -72,7 +71,7 @@ private struct AttachmentRow: View {
                 .resizable()
                 .frame(width: 28, height: 28)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.readable ? entry.fileName : "Pièce jointe illisible")
+                Text(entry.readable ? entry.fileName : String(localized: "Unreadable attachment"))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(entry.readable ? Color.primary : Color.secondary)
@@ -82,15 +81,15 @@ private struct AttachmentRow: View {
             }
             Spacer(minLength: 8)
             if entry.readable {
-                IconButton(symbol: "eye", help: "Ouvrir") { model.openAttachment(entry, of: itemID) }
+                IconButton(symbol: "eye", help: "Open") { model.openAttachment(entry, of: itemID) }
                     .opacity(hovering ? 1 : 0)
-                IconButton(symbol: "square.and.arrow.down", help: "Enregistrer sous…") {
+                IconButton(symbol: "square.and.arrow.down", help: "Save As…") {
                     model.saveAttachment(entry, of: itemID)
                 }
                 .opacity(hovering ? 1 : 0)
             }
             if editable {
-                IconButton(symbol: "trash", help: "Supprimer") { confirmDelete = true }
+                IconButton(symbol: "trash", help: "Delete") { confirmDelete = true }
                     .opacity(hovering ? 1 : 0)
             }
         }
@@ -102,34 +101,33 @@ private struct AttachmentRow: View {
         .onTapGesture(count: 2) { if entry.readable { model.openAttachment(entry, of: itemID) } }
         .contextMenu {
             if entry.readable {
-                Button("Ouvrir") { model.openAttachment(entry, of: itemID) }
-                Button("Enregistrer sous…") { model.saveAttachment(entry, of: itemID) }
+                Button("Open") { model.openAttachment(entry, of: itemID) }
+                Button("Save As…") { model.saveAttachment(entry, of: itemID) }
                 if model.sendsAvailable {
-                    Button("Envoyer de façon sécurisée…") { model.composeSend(fromAttachment: entry, of: itemID) }
+                    Button("Send Securely…") { model.composeSend(fromAttachment: entry, of: itemID) }
                 }
             }
             if editable {
                 Divider()
-                Button("Supprimer…", role: .destructive) { confirmDelete = true }
+                Button("Delete…", role: .destructive) { confirmDelete = true }
             }
         }
-        .confirmationDialog("Supprimer « \(entry.readable ? entry.fileName : "cette pièce jointe") » ?",
+        .confirmationDialog("Delete “\(entry.readable ? entry.fileName : String(localized: "this attachment"))”?",
                             isPresented: $confirmDelete) {
-            Button("Supprimer", role: .destructive) {
+            Button("Delete", role: .destructive) {
                 Task { await model.deleteAttachment(entry, of: itemID) }
             }
-            Button("Annuler", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("La pièce jointe est supprimée définitivement du serveur, sans passer par la corbeille.")
+            Text("The attachment is permanently deleted from the server, without going through the trash.")
         }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Ouvrir") { model.openAttachment(entry, of: itemID) }
+        .accessibilityAction(named: "Open") { model.openAttachment(entry, of: itemID) }
     }
 }
 
-/// Sur la fiche d'un élément : chargement de la liste des pièces jointes,
-/// aperçu Quick Look, et dépôt de fichiers (ils deviennent des pièces
-/// jointes).
+/// On an item's detail: loading of the attachment list, Quick Look preview,
+/// and file drop (they become attachments).
 struct AttachmentDropModifier: ViewModifier {
     @Environment(AppModel.self) private var model
     let summary: ItemSummary
@@ -153,7 +151,7 @@ struct AttachmentDropModifier: ViewModifier {
                     RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                         .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                         .background(Theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                        .overlay(Label("Déposer pour joindre à l'élément", systemImage: "paperclip")
+                        .overlay(Label("Drop to attach to the item", systemImage: "paperclip")
                             .font(.headline).foregroundStyle(Theme.accent))
                         .padding(8)
                         .allowsHitTesting(false)

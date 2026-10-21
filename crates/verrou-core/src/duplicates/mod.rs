@@ -1,28 +1,28 @@
-//! Doublons : entre un import et le coffre, et à l'intérieur du coffre.
+//! Duplicates: between an import and the vault, and within the vault.
 //!
-//! Un même compte arrive souvent plusieurs fois, d'Apple, de 1Password et
-//! de Proton Pass, avec des adresses et des titres différents
-//! (`connect.maif.fr`, `www.maif.fr/espace-perso`, « Maif », « MAIF -
-//! Espace sociétaire »). Chaque identifiant est donc résumé en signaux
-//! (`signals`) : sites et domaines de ses adresses (schéma, port, chemin
-//! et préfixes de connexion ignorés ; adresses d'app comparées entre
-//! elles), titre normalisé et sa marque (« Maif » ↔ `maif.fr`), identifiant
-//! normalisé, passkeys. Les mots de passe et les graines TOTP sont comparés
-//! ici, dans Rust, en temps constant : l'interface ne reçoit qu'un verdict.
+//! The same account often arrives several times, from Apple, 1Password and
+//! Proton Pass, with different URLs and titles
+//! (`connect.maif.fr`, `www.maif.fr/espace-perso`, "Maif", "MAIF -
+//! Espace sociétaire"). Each login is therefore summarised as signals
+//! (`signals`): sites and domains of its URLs (scheme, port, path
+//! and sign-in prefixes ignored; app URLs compared with each
+//! other), normalised title and its brand ("Maif" ↔ `maif.fr`), normalised
+//! username, passkeys. Passwords and TOTP seeds are compared
+//! here, in Rust, in constant time: the UI only receives a verdict.
 //!
-//! Trois degrés :
-//! - **Certain** : même site (ou marque ↔ domaine), même identifiant, même
-//!   mot de passe. Les copies sont cochées pour la corbeille.
-//! - **Probable** : même site, même identifiant, autre mot de passe (ou un
-//!   identifiant manquant, même mot de passe) ; même titre, même
-//!   identifiant, sans adresse. Suggéré, pas coché.
-//! - **À vérifier** : même site, autres identifiants mais même mot de
-//!   passe ; même marque sans identifiant ; deux sous-domaines (souvent
-//!   deux services : `cloud.exemple.fr` et `vault.exemple.fr`). Jamais
-//!   coché.
+//! Three levels:
+//! - **Certain**: same site (or brand ↔ domain), same username, same
+//!   password. The copies are checked for the trash.
+//! - **Probable**: same site, same username, different password (or one
+//!   username missing, same password); same title, same
+//!   username, no URL. Suggested, not checked.
+//! - **To review**: same site, different usernames but same
+//!   password; same brand without username; two subdomains (often
+//!   two services: `cloud.exemple.fr` and `vault.exemple.fr`). Never
+//!   checked.
 //!
-//! Les comparaisons se font par paquets (même domaine, même app, même
-//! marque, même titre), jamais tout le coffre contre tout le coffre.
+//! Comparisons are made by buckets (same domain, same app, same
+//! brand, same title), never the whole vault against the whole vault.
 
 mod signals;
 #[cfg(test)]
@@ -41,51 +41,51 @@ use crate::model::{Item, ItemKind, ItemState};
 use crate::search::fold;
 use crate::secret::SecretString;
 
-/// L'élément déjà connu auquel un élément importé ressemble.
+/// The already known item that an imported item resembles.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Existing {
-    /// Identifiant d'un élément du coffre.
+    /// Id of a vault item.
     Vault(String),
-    /// Position d'un élément plus haut dans le même import.
+    /// Position of an item earlier in the same import.
     Import(usize),
 }
 
-/// Ce qu'est un élément importé par rapport au coffre.
+/// What an imported item is relative to the vault.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Status {
     New,
-    /// Doublon certain (même site, même identifiant, même mot de passe) :
-    /// déjà présent.
+    /// Certain duplicate (same site, same username, same password):
+    /// already present.
     Exact(Existing),
-    /// Déjà présent, mais l'import apporte un code à usage unique que
-    /// l'élément du coffre n'a pas.
+    /// Already present, but the import brings a one-time code that
+    /// the vault item lacks.
     AddsTotp(String),
-    /// Doublon probable, avec un autre mot de passe.
+    /// Probable duplicate, with a different password.
     NewPassword(Existing),
-    /// Doublon probable, même mot de passe (un identifiant manquant, ou un
-    /// titre sans site) : à compléter plutôt qu'à créer.
+    /// Probable duplicate, same password (one username missing, or a
+    /// title without a site): to complete rather than create.
     Similar(Existing),
 }
 
-/// Ce que l'import fera d'un élément.
+/// What the import will do with an item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Decision {
-    /// Ne pas l'importer (garder l'existant).
+    /// Don't import it (keep the existing one).
     Skip,
-    /// Le créer, à côté de l'existant s'il y en a un.
+    /// Create it, next to the existing one if there is one.
     Create,
-    /// Compléter l'élément du coffre : nouveau mot de passe (l'ancien
-    /// rejoint l'historique), code à usage unique et sites manquants.
+    /// Complete the vault item: new password (the old one
+    /// goes to the history), one-time code and missing sites.
     Update,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Classification {
     pub status: Status,
-    /// Choix proposé par défaut.
+    /// Default proposed choice.
     pub decision: Decision,
-    /// Pourquoi il ressemble à l'existant (« même site (maif.fr), même
-    /// identifiant, autre mot de passe »). Jamais de secret.
+    /// Why it resembles the existing one ("same site (maif.fr), same
+    /// username, different password"). Never a secret.
     pub reason: Option<String>,
 }
 
@@ -115,14 +115,14 @@ fn vault_card_digits(item: &Item) -> String {
         .unwrap_or_default()
 }
 
-/// Clé d'une note d'un modèle (Wi-Fi, passeport…) : le modèle et le titre.
+/// Key of a template note (Wi-Fi, passport…): the template and the title.
 fn template_key(template: &str, title: &str) -> String {
-    format!("modèle:{template}:{}", fold(title.trim()))
+    format!("template:{template}:{}", fold(title.trim()))
 }
 
-/// Clé d'une identité : le titre et le nom complet.
+/// Key of an identity: the title and the full name.
 fn identity_key(title: &str, full_name: &str) -> String {
-    format!("identité:{}:{}", fold(title.trim()), fold(full_name.trim()))
+    format!("identity:{}:{}", fold(title.trim()), fold(full_name.trim()))
 }
 
 fn vault_full_name(item: &Item) -> String {
@@ -140,15 +140,15 @@ fn notes_key(title: &str, notes: Option<&str>) -> Option<(String, String)> {
     Some((fold(title.trim()), notes.to_owned()))
 }
 
-const SAME_CARD: &str = "même numéro de carte";
-const SAME_NOTE: &str = "même titre, même contenu";
+const SAME_CARD: &str = "same card number";
+const SAME_NOTE: &str = "same title, same content";
 
-/// Ce que le coffre sait d'un élément en dehors de ses champs : ses
-/// passkeys et ses pièces jointes. Rien de cela ne se fusionne : l'élément
-/// qui en a est gardé de préférence.
+/// What the vault knows about an item outside its fields: its
+/// passkeys and its attachments. None of it is merged: the item
+/// that has some is preferably kept.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ItemExtras {
-    /// Sites des passkeys (`rpId`).
+    /// Passkey sites (`rpId`).
     pub passkey_sites: Vec<String>,
     pub attachments: usize,
 }
@@ -179,15 +179,15 @@ fn imported_signals(item: &ImportedItem) -> Signals<'_> {
     })
 }
 
-// MARK: Paquets
+// MARK: Buckets
 
-/// Au-delà, un paquet n'est plus comparé paire par paire : seulement les
-/// éléments qui partagent un identifiant ou un mot de passe, et ceux sans
-/// identifiant.
+/// Beyond this, a bucket is no longer compared pair by pair: only the
+/// items that share a username or a password, and those without a
+/// username.
 const SMALL_BUCKET: usize = 48;
 
-/// Paquets d'identifiants : même domaine ou même app (« web »), même marque
-/// ou même titre (« nom » : seulement pour un élément sans adresse web).
+/// Login buckets: same domain or same app ("web"), same brand
+/// or same title ("name": only for an item without a web URL).
 #[derive(Default)]
 struct Buckets {
     web: HashMap<String, Vec<usize>>,
@@ -204,7 +204,7 @@ impl Buckets {
         }
     }
 
-    /// Éléments indexés qui peuvent ressembler à `signals` (pour l'import).
+    /// Indexed items that may resemble `signals` (for the import).
     fn candidates(&self, signals: &Signals, known: &[Signals]) -> Vec<usize> {
         let mut found: Vec<usize> = signals
             .web_keys()
@@ -226,7 +226,7 @@ impl Buckets {
         found
     }
 
-    /// Paires à comparer, chacune une fois.
+    /// Pairs to compare, each once.
     fn pairs(&self, signals: &[Signals]) -> HashSet<(usize, usize)> {
         let hasher = std::collections::hash_map::RandomState::new();
         let mut pairs = HashSet::new();
@@ -240,8 +240,8 @@ impl Buckets {
     }
 }
 
-/// Une paire à comparer. Dans un paquet « nom », l'un des deux au moins
-/// est sans adresse web.
+/// A pair to compare. In a "name" bucket, at least one of the two
+/// has no web URL.
 fn push_pair(
     pairs: &mut HashSet<(usize, usize)>,
     signals: &[Signals],
@@ -267,11 +267,11 @@ fn all_pairs(
     }
 }
 
-/// Paires d'un paquet. Un grand paquet (un domaine partagé par des
-/// centaines d'éléments) se subdivise : même identifiant, même mot de
-/// passe (par empreinte en mémoire, l'égalité est vérifiée ensuite en temps
-/// constant), ou sans identifiant. Deux éléments qui n'ont rien de tout
-/// cela en commun ne sont jamais des doublons.
+/// Pairs of a bucket. A large bucket (a domain shared by
+/// hundreds of items) is subdivided: same username, same
+/// password (by in-memory hash, equality is then checked in constant
+/// time), or without username. Two items that have none of
+/// this in common are never duplicates.
 fn bucket_pairs<S: BuildHasher>(
     members: &[usize],
     signals: &[Signals],
@@ -313,10 +313,10 @@ fn bucket_pairs<S: BuildHasher>(
 
 // MARK: Import
 
-/// Classe chaque élément importé par rapport au coffre et aux éléments
-/// importés avant lui. Prudent : seul un doublon certain est ignoré
-/// d'office ; un doublon probable complète l'élément du coffre (un mot de
-/// passe remplacé rejoint son historique).
+/// Classifies each imported item relative to the vault and to the items
+/// imported before it. Cautious: only a certain duplicate is skipped
+/// by default; a probable duplicate completes the vault item (a replaced
+/// password goes to its history).
 pub fn classify(imported: &[ImportedItem], vault: &[Item]) -> Vec<Classification> {
     let mut classifier = Classifier::new(vault);
     imported
@@ -343,18 +343,18 @@ pub fn classify(imported: &[ImportedItem], vault: &[Item]) -> Vec<Classification
         .collect()
 }
 
-/// Index du coffre, et des éléments importés déjà vus.
+/// Index of the vault, and of the imported items already seen.
 struct Classifier<'a> {
     vault: &'a [Item],
-    /// Identifiants du coffre : position dans le coffre, et leurs signaux.
+    /// Vault logins: position in the vault, and their signals.
     logins: Vec<usize>,
     login_signals: Vec<Signals<'a>>,
     login_buckets: Buckets,
     cards: HashMap<String, usize>,
     notes: HashMap<(String, String), usize>,
-    /// Identités et notes des modèles, par clé.
+    /// Identities and template notes, by key.
     others: HashMap<String, usize>,
-    /// Identifiants importés nouveaux : position dans l'import.
+    /// New imported logins: position in the import.
     seen_logins: Vec<usize>,
     seen_signals: Vec<Signals<'a>>,
     seen_buckets: Buckets,
@@ -395,14 +395,14 @@ impl<'a> Classifier<'a> {
             seen_others: HashMap::new(),
         };
         for (index, item) in vault.iter().enumerate() {
-            // Un élément à la corbeille ne compte pas : il va disparaître.
+            // An item in the trash doesn't count: it will disappear.
             if item.state == ItemState::Trashed {
                 continue;
             }
             match item.kind {
                 ItemKind::Login => {
-                    // L'import va dans le coffre personnel, mais une copie
-                    // partagée du même compte compte aussi : pas de coffre.
+                    // The import goes to the personal vault, but a shared
+                    // copy of the same account counts too: no vault.
                     let signals = item_signals(item, "", None);
                     classifier
                         .login_buckets
@@ -447,8 +447,8 @@ impl<'a> Classifier<'a> {
 
     fn login(&mut self, position: usize, item: &'a ImportedItem) -> Classification {
         let signals = imported_signals(item);
-        // Le meilleur rapprochement dans le coffre : le plus certain, puis
-        // le même mot de passe, puis le plus récent.
+        // The best match in the vault: the most certain, then
+        // the same password, then the most recent.
         let best = self
             .login_buckets
             .candidates(&signals, &self.login_signals)
@@ -488,9 +488,9 @@ impl<'a> Classifier<'a> {
                     reason,
                 };
             }
-            // L'export dit l'élément plus ancien que celui du coffre : on garde
-            // le coffre. Sinon (ou sans date), le nouveau mot de passe remplace
-            // l'ancien, qui rejoint l'historique.
+            // The export says the item is older than the vault's: keep
+            // the vault. Otherwise (or without a date), the new password replaces
+            // the old one, which goes to the history.
             let older = item.modified.is_some_and(|m| m < existing.modified);
             return Classification {
                 status: Status::NewPassword(Existing::Vault(existing.id.clone())),
@@ -508,7 +508,7 @@ impl<'a> Classifier<'a> {
             .into_iter()
             .filter_map(|i| relate(&signals, &self.seen_signals[i]).map(|r| (i, r)))
             .filter(|(_, r)| r.confidence >= Confidence::Probable)
-            // Le plus certain, puis le premier du fichier.
+            // The most certain, then the first in the file.
             .max_by(|(a, ra), (b, rb)| ra.confidence.cmp(&rb.confidence).then(b.cmp(a)));
         if let Some((seen, relation)) = earlier {
             let earlier = self.seen_logins[seen];
@@ -556,7 +556,7 @@ impl<'a> Classifier<'a> {
         NEW
     }
 
-    /// Identité ou note d'un modèle : même clé, même élément.
+    /// Identity or template note: same key, same item.
     fn keyed(&mut self, position: usize, key: String) -> Classification {
         if let Some(&index) = self.others.get(&key) {
             return exact(Existing::Vault(self.vault[index].id.clone()), SAME_NOTE);
@@ -584,44 +584,44 @@ impl<'a> Classifier<'a> {
     }
 }
 
-// MARK: Doublons du coffre
+// MARK: Vault duplicates
 
-/// Un élément d'un groupe de doublons.
+/// An item of a duplicate group.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DuplicateMember {
     pub id: String,
-    /// Ressemblance avec l'élément gardé ; `None` pour l'élément gardé.
+    /// Resemblance to the kept item; `None` for the kept item.
     pub confidence: Option<Confidence>,
-    /// Pourquoi (« même site (maif.fr), même identifiant, autre mot de
-    /// passe ») ; vide pour l'élément gardé.
+    /// Why ("same site (maif.fr), same username, different password");
+    /// empty for the kept item.
     pub reason: String,
-    /// Coché d'office pour la corbeille : seulement un doublon certain.
+    /// Checked for the trash by default: only a certain duplicate.
     pub preselected: bool,
 }
 
-/// Des éléments du coffre qui désignent le même compte (ou la même carte,
-/// la même note).
+/// Vault items that designate the same account (or the same card,
+/// the same note).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DuplicateGroup {
-    /// Empreinte de l'ensemble des éléments : un groupe ignoré ne revient
-    /// pas tant qu'il ne change pas.
+    /// Fingerprint of the set of items: an ignored group doesn't come back
+    /// as long as it doesn't change.
     pub key: String,
-    /// Site de l'élément gardé (ou son titre).
+    /// Site of the kept item (or its title).
     pub label: String,
-    /// Identifiant de l'élément gardé.
+    /// Username of the kept item.
     pub username: String,
-    /// Le degré le plus fort parmi les éléments.
+    /// The strongest level among the items.
     pub confidence: Confidence,
-    /// La raison de ce degré.
+    /// The reason for that level.
     pub reason: String,
-    /// L'élément suggéré à garder d'abord : passkeys, pièces jointes, code
-    /// à usage unique, le plus récent, une adresse, le plus complet, le plus
-    /// d'historique.
+    /// The item suggested to keep first: passkeys, attachments, one-time
+    /// code, the most recent, a URL, the most complete, the most
+    /// history.
     pub members: Vec<DuplicateMember>,
-    /// Tous les éléments ont le même mot de passe (la même valeur, pour une
-    /// carte ou une note).
+    /// All items have the same password (the same value, for a
+    /// card or a note).
     pub same_password: bool,
-    /// Des identifiants : « Fusionner » est possible.
+    /// Logins: "Merge" is possible.
     pub mergeable: bool,
 }
 
@@ -630,14 +630,14 @@ impl DuplicateGroup {
         self.members.iter().map(|m| m.id.clone()).collect()
     }
 
-    /// L'élément suggéré à garder.
+    /// The item suggested to keep.
     pub fn kept(&self) -> &str {
         &self.members[0].id
     }
 }
 
-/// Union-find minimal : chaque élément pointe vers le représentant de son
-/// groupe.
+/// Minimal union-find: each item points to the representative of its
+/// group.
 struct Groups(Vec<usize>);
 
 impl Groups {
@@ -673,7 +673,7 @@ fn richness(item: &Item) -> usize {
             .count()
 }
 
-/// Empreinte d'un ensemble d'éléments (ordre indifférent).
+/// Fingerprint of a set of items (order-independent).
 pub fn group_key(ids: &[String]) -> String {
     let mut sorted: Vec<&str> = ids.iter().map(String::as_str).collect();
     sorted.sort_unstable();
@@ -681,13 +681,13 @@ pub fn group_key(ids: &[String]) -> String {
     data_encoding::HEXLOWER.encode(&digest[..12])
 }
 
-/// Les groupes de doublons du coffre, les plus certains d'abord.
+/// The vault's duplicate groups, most certain first.
 pub fn find_duplicates(items: &[Item]) -> Vec<DuplicateGroup> {
     find_duplicates_with(items, &HashMap::new())
 }
 
-/// Comme [`find_duplicates`], avec les passkeys et pièces jointes de chaque
-/// élément (par identifiant).
+/// Like [`find_duplicates`], with the passkeys and attachments of each
+/// item (by id).
 #[allow(clippy::implicit_hasher)]
 pub fn find_duplicates_with(
     items: &[Item],
@@ -702,18 +702,18 @@ fn owner_of(item: &Item) -> &str {
         .map_or("", |s| s.organization_id.as_str())
 }
 
-/// Clé d'une carte ou d'une note : (sorte, valeur, valeur, coffre).
+/// Key of a card or a note: (kind, value, value, vault).
 type ExactKey<'a> = (u8, String, String, &'a str);
 
-/// Un lien « à vérifier » qui ne tient qu'à un identifiant manquant (autre
-/// mot de passe) : l'élément sans identifiant ressemble à tous les comptes
-/// du site. Il ne s'y rattache que s'il n'y en a qu'un.
+/// A "to review" link that rests only on a missing username (different
+/// password): the item without a username resembles every account
+/// of the site. It joins one only if there is just one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Vague {
     No,
-    /// Cet élément (position dans `items`) n'a pas d'identifiant.
+    /// This item (position in `items`) has no username.
     From(usize),
-    /// Aucun des deux n'en a.
+    /// Neither has one.
     Both,
 }
 
@@ -729,9 +729,9 @@ struct Finder<'a> {
     items: &'a [Item],
     extras: &'a HashMap<String, ItemExtras>,
     signals: Vec<Signals<'a>>,
-    /// Position dans `items` → position dans `signals`.
+    /// Position in `items` → position in `signals`.
     login_of: HashMap<usize, usize>,
-    /// Ressemblances (positions dans `items`).
+    /// Resemblances (positions in `items`).
     edges: Vec<Edge>,
 }
 
@@ -741,16 +741,16 @@ impl<'a> Finder<'a> {
         let mut signals = Vec::new();
         let mut login_of = HashMap::new();
         let mut edges = Vec::new();
-        // Cartes et notes : même clé, même élément.
+        // Cards and notes: same key, same item.
         let mut first: HashMap<ExactKey, usize> = HashMap::new();
         for (index, item) in items.iter().enumerate() {
-            // Archives et corbeille : déjà rangés à l'écart. Un élément partagé
-            // en lecture seule ne peut pas partir à la corbeille.
+            // Archive and trash: already set aside. A read-only shared
+            // item cannot go to the trash.
             if !item.is_active() || !item.is_writable() {
                 continue;
             }
-            // Une copie personnelle et une copie partagée ne sont pas des
-            // doublons à nettoyer : on ne compare que dans un même coffre.
+            // A personal copy and a shared copy are not
+            // duplicates to clean up: only compare within the same vault.
             let owner = owner_of(item);
             let key: ExactKey = match item.kind {
                 ItemKind::Login => {
@@ -825,7 +825,7 @@ impl<'a> Finder<'a> {
         }
     }
 
-    /// La ressemblance de `other` avec `kept`, et sa raison.
+    /// The resemblance of `other` to `kept`, and its reason.
     fn describe(&self, kept: usize, other: usize) -> Option<(Confidence, String)> {
         match self.items[kept].kind {
             ItemKind::Login => {
@@ -837,9 +837,9 @@ impl<'a> Finder<'a> {
         }
     }
 
-    /// Ordre de préférence de l'élément à garder : ce qui ne se fusionne
-    /// pas (passkeys, pièces jointes), le code à usage unique, le plus
-    /// récent, une adresse, le plus complet, le plus d'historique.
+    /// Preference order of the item to keep: what can't be merged
+    /// (passkeys, attachments), the one-time code, the most
+    /// recent, a URL, the most complete, the most history.
     fn rank(&self, index: usize) -> (bool, bool, bool, i64, bool, usize, usize) {
         let item = &self.items[index];
         let extras = self.extras.get(&item.id);
@@ -857,9 +857,9 @@ impl<'a> Finder<'a> {
     fn groups(self) -> Vec<DuplicateGroup> {
         let n = self.items.len();
         let mut groups = Groups((0..n).collect());
-        // D'abord les liens forts (certain, probable). Un lien « à vérifier »
-        // ne réunit jamais deux groupes déjà formés : il rattache un élément
-        // isolé à un groupe, ou deux éléments isolés entre eux.
+        // Strong links first (certain, probable). A "to review" link
+        // never merges two already formed groups: it attaches a lone
+        // item to a group, or two lone items to each other.
         for edge in &self.edges {
             if edge.level >= Confidence::Probable {
                 groups.join(edge.a, edge.b);
@@ -893,8 +893,8 @@ impl<'a> Finder<'a> {
             let root = groups.join(edge.a, edge.b);
             anchored[root] = either;
         }
-        // Enfin, un élément isolé sans identifiant rejoint le seul groupe (ou
-        // le seul élément) qui lui ressemble ; s'il y en a plusieurs, rien.
+        // Finally, a lone item without a username joins the only group (or
+        // the only item) that resembles it; if there are several, nothing.
         let mut targets: HashMap<usize, HashSet<usize>> = HashMap::new();
         for edge in &self.edges {
             let pairs: &[(usize, usize)] = match edge.vague {
@@ -937,8 +937,8 @@ impl<'a> Finder<'a> {
             .into_values()
             .filter(|m| m.len() > 1)
             .map(|mut m| {
-                // L'élément gardé vient du cœur du groupe (liens forts),
-                // pas d'un élément rattaché « à vérifier ».
+                // The kept item comes from the group's core (strong links),
+                // not from an item attached as "to review".
                 let has_core = m.iter().any(|&i| core[i]);
                 m.sort_by(|&a, &b| {
                     (core[b] || !has_core)
@@ -959,7 +959,7 @@ impl<'a> Finder<'a> {
         result
     }
 
-    /// Un groupe, l'élément à garder en tête.
+    /// A group, with the item to keep first.
     fn group(
         &self,
         members: &[usize],
@@ -975,7 +975,7 @@ impl<'a> Finder<'a> {
         }];
         for &other in &members[1..] {
             let (confidence, reason) = self.describe(kept_index, other).unwrap_or_else(|| {
-                // Relié à l'élément gardé par un autre élément seulement.
+                // Linked to the kept item only through another item.
                 let via = neighbours
                     .get(&other)
                     .into_iter()
@@ -983,7 +983,7 @@ impl<'a> Finder<'a> {
                     .filter(|(n, _)| members.contains(n))
                     .max_by_key(|(_, level)| *level)
                     .map_or("", |(n, _)| self.items[*n].title.as_str());
-                (Confidence::Review, format!("proche de « {via} »"))
+                (Confidence::Review, format!("close to \"{via}\""))
             });
             list.push(DuplicateMember {
                 id: self.items[other].id.clone(),
@@ -1001,7 +1001,7 @@ impl<'a> Finder<'a> {
             ItemKind::Login => members
                 .iter()
                 .all(|&i| same_secret(vault_password(&self.items[i]), vault_password(keep))),
-            // Même numéro, même note : regroupés parce qu'identiques.
+            // Same number, same note: grouped because identical.
             _ => true,
         };
         let label = match keep.kind {

@@ -1,19 +1,18 @@
 import UIKit
 import UniformTypeIdentifiers
 
-/// Presse-papiers des secrets sur l'iPhone.
+/// The secrets' clipboard on the iPhone.
 ///
-/// - `localOnly` : jamais envoyé aux autres appareils (presse-papiers
-///   universel).
-/// - `expirationDate` : iOS efface lui-même le secret après le délai choisi
-///   (90 s par défaut), même si Verrou a été fermé entre-temps.
-/// - Au verrouillage, Verrou l'efface s'il contient encore ce qu'il y a mis
-///   (`changeCount`), sans lire son contenu ni déclencher l'alerte de collage.
+/// - `localOnly`: never sent to the other devices (Universal Clipboard).
+/// - `expirationDate`: iOS itself erases the secret after the chosen delay
+///   (90 s by default), even if Verrou was closed in the meantime.
+/// - On lock, Verrou erases it if it still holds what Verrou put there
+///   (`changeCount`), without reading its content or triggering the paste alert.
 @MainActor
 final class Clipboard {
     private var ownedChangeCount: Int?
 
-    /// `expiresIn` : `nil` pour une valeur qui n'est pas secrète.
+    /// `expiresIn`: `nil` for a value that isn't secret.
     func copy(_ value: String, expiresIn seconds: TimeInterval?) {
         var options: [UIPasteboard.OptionsKey: Any] = [.localOnly: true]
         if let seconds { options[.expirationDate] = Date().addingTimeInterval(seconds) }

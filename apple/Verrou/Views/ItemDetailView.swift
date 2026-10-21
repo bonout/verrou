@@ -11,10 +11,10 @@ struct ItemDetailView: View {
                 stateBanner
                 if detail.summary.category == .sshKey, fields.contains(where: { $0.id == "public_key" }) {
                     HStack {
-                        Button("Copier la clé publique", systemImage: "doc.on.doc") {
+                        Button("Copy Public Key", systemImage: "doc.on.doc") {
                             model.copyPublicKey(of: detail.summary.id)
                         }
-                        .help("Pour ~/.ssh/authorized_keys, GitHub, GitLab…")
+                        .help("For ~/.ssh/authorized_keys, GitHub, GitLab…")
                         Spacer()
                     }
                 }
@@ -40,7 +40,7 @@ struct ItemDetailView: View {
                     WifiQRButton(itemID: detail.summary.id, title: detail.summary.title)
                 }
                 if !detail.urls.isEmpty {
-                    SectionTitle("Sites")
+                    SectionTitle(String(localized: "Websites"))
                     FieldCard {
                         ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
                             if index > 0 { Divider().padding(.leading, 14) }
@@ -51,11 +51,11 @@ struct ItemDetailView: View {
                 }
                 PasskeysSection(itemID: detail.summary.id, passkeys: model.session.passkeys(id: detail.summary.id))
                 if detail.hasNotes {
-                    SectionTitle("Notes")
+                    SectionTitle(String(localized: "Notes"))
                     FieldCard { NotesRow(itemID: detail.summary.id) }
                 }
                 if !history.isEmpty {
-                    SectionTitle("Anciens mots de passe")
+                    SectionTitle(String(localized: "Old passwords"))
                     FieldCard {
                         ForEach(Array(history.enumerated()), id: \.element.id) { index, field in
                             if index > 0 { Divider().padding(.leading, 14) }
@@ -90,38 +90,38 @@ struct ItemDetailView: View {
                     .font(.system(size: 24, weight: .bold))
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
-                // Les pastilles passent à la ligne quand la colonne est
-                // étroite, sans jamais couper leur texte.
+                // The chips wrap to the next line when the column is narrow,
+                // without ever cutting their text.
                 FlowLayout(spacing: 8, lineSpacing: 6) {
                     Chip(text: detail.summary.kindLabel, symbol: detail.summary.symbol, tint: detail.summary.tint)
                     if let folder = detail.summary.folder {
                         Chip(text: folder, symbol: "folder", tint: .secondary)
                     }
                     if detail.summary.pendingSync {
-                        Chip(text: "En attente de synchronisation", symbol: "arrow.triangle.2.circlepath", tint: .orange)
-                            .help("Pas encore confirmé par le serveur : envoyé en arrière-plan, ou dès qu'il répondra")
+                        Chip(text: String(localized: "Waiting for sync"), symbol: "arrow.triangle.2.circlepath", tint: .orange)
+                            .help("Not confirmed by the server yet: sent in the background, or as soon as it responds")
                     }
                     if detail.summary.reprompt {
-                        Chip(text: "Protégé", symbol: "lock.shield", tint: .orange)
-                            .help("Ses secrets demandent une confirmation (Touch ID ou mot de passe principal)")
+                        Chip(text: String(localized: "Protected"), symbol: "lock.shield", tint: .orange)
+                            .help("Its secrets require a confirmation (Touch ID or master password)")
                     }
                     if let sharing = detail.summary.sharing {
                         Chip(text: sharing.label, symbol: "person.2.fill", tint: .indigo)
-                            .help("Coffre partagé : les membres de ces collections le voient")
+                            .help("Shared vault: the members of these collections see it")
                             .contextMenu {
-                                Button("Gérer dans le coffre web") {
+                                Button("Manage in the Web Vault") {
                                     model.openWebVault(organizationID: sharing.organizationId)
                                 }
                                 if model.canEdit, detail.summary.canUnshare {
-                                    Button("Retirer du partage…") { model.requestUnshare([detail.summary.id]) }
+                                    Button("Remove from Sharing…") { model.requestUnshare([detail.summary.id]) }
                                 }
                             }
                         if sharing.readOnly {
-                            Chip(text: "Lecture seule", symbol: "eye", tint: .secondary)
+                            Chip(text: String(localized: "Read-only"), symbol: "eye", tint: .secondary)
                         }
                         if sharing.hidePasswords {
-                            Chip(text: "Mot de passe masqué", symbol: "eye.slash", tint: .secondary)
-                                .help("L'organisation cache le mot de passe à votre compte ; le remplissage reste possible")
+                            Chip(text: String(localized: "Password hidden"), symbol: "eye.slash", tint: .secondary)
+                                .help("The organization hides the password from your account; filling is still possible")
                         }
                     }
                 }
@@ -136,29 +136,29 @@ struct ItemDetailView: View {
             }
             .buttonStyle(.plain)
             .disabled(!model.canModify(detail.summary) || detail.summary.state != .active || model.editorBusy)
-            .help(detail.summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris")
+            .help(detail.summary.favorite ? "Remove from Favorites" : "Add to Favorites")
         }
         .padding(.bottom, 4)
     }
 
-    /// Champs de l'élément, hors anciens mots de passe (`history-N`).
-    private var fields: [FieldView] { detail.fields.filter { !$0.id.hasPrefix("history-") } }
-    private var history: [FieldView] { detail.fields.filter { $0.id.hasPrefix("history-") } }
+    /// The item's fields, except old passwords (`history-N`).
+    private var fields: [FieldView] { detail.displayFields.filter { !$0.id.hasPrefix("history-") } }
+    private var history: [FieldView] { detail.displayFields.filter { $0.id.hasPrefix("history-") } }
 
     @ViewBuilder private var stateBanner: some View {
         switch detail.summary.state {
         case .active:
             EmptyView()
         case .archived:
-            banner("Archivé : hors de la liste, de la recherche et du remplissage.", symbol: "archivebox",
-                   action: "Sortir des archives") { await model.setArchived(detail.summary.id, false) }
+            banner("Archived: out of the list, the search and autofill.", symbol: "archivebox",
+                   action: "Unarchive") { await model.setArchived(detail.summary.id, false) }
         case .trashed:
-            banner("À la corbeille : supprimé définitivement par le serveur après 30 jours.", symbol: "trash",
-                   action: "Restaurer") { await model.restore(detail.summary.id) }
+            banner("In the trash: permanently deleted by the server after 30 days.", symbol: "trash",
+                   action: "Restore") { await model.restore(detail.summary.id) }
         }
     }
 
-    private func banner(_ text: String, symbol: String, action: String,
+    private func banner(_ text: LocalizedStringKey, symbol: String, action: LocalizedStringKey,
                         perform: @escaping () async -> Void) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol).foregroundStyle(.secondary)
@@ -174,13 +174,13 @@ struct ItemDetailView: View {
     }
 
     private var metadata: some View {
-        let format = Date.FormatStyle(date: .long, time: .shortened).locale(Locale(identifier: "fr_FR"))
+        let format = Date.FormatStyle(date: .long, time: .shortened)
         return VStack(alignment: .leading, spacing: 3) {
-            Text("Modifié le \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
-            Text("Créé le \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
+            Text("Modified on \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
+            Text("Created on \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
             if let used = detail.summary.lastUsedLabel {
-                Text("Utilisé sur ce Mac \(used)")
-                    .help("Remplissage, copie ou secret affiché : noté sur ce Mac seulement")
+                Text("Used on this Mac \(used)")
+                    .help("Fill, copy or secret shown: recorded on this Mac only")
             }
         }
         .font(.caption)
@@ -189,7 +189,7 @@ struct ItemDetailView: View {
     }
 }
 
-// MARK: Briques
+// MARK: Building blocks
 
 struct FieldCard<Content: View>: View {
     @ViewBuilder var content: Content
@@ -216,7 +216,7 @@ struct SectionTitle: View {
     }
 }
 
-/// Une ligne de champ : un clic copie, le survol montre les actions.
+/// A field row: a click copies, hovering shows the actions.
 struct FieldRow: View {
     @Environment(AppModel.self) private var model
     let itemID: String
@@ -230,19 +230,19 @@ struct FieldRow: View {
                 Text(field.label)
                     .font(.caption)
                     .foregroundStyle(field.fieldType == .password || field.fieldType == .totp ? Theme.accent : Color.secondary)
-                // Vue à part : le survol de la ligne ne la redessine pas
-                // (ni ne recalcule le code à usage unique).
+                // Separate view: hovering the row doesn't redraw it (nor
+                // recompute the one-time code).
                 FieldValue(itemID: itemID, field: field)
             }
             Spacer(minLength: 8)
             if field.secret && field.fieldType != .totp {
                 IconButton(symbol: model.revealed[field.id] == nil ? "eye" : "eye.slash",
-                           help: model.revealed[field.id] == nil ? "Afficher" : "Masquer") {
+                           help: model.revealed[field.id] == nil ? "Show" : "Hide") {
                     withAnimation(.snappy(duration: 0.18)) { model.toggleReveal(field.id, of: itemID) }
                 }
                 .opacity(hovering || model.revealed[field.id] != nil ? 1 : 0)
             }
-            IconButton(symbol: "doc.on.doc", help: "Copier") {
+            IconButton(symbol: "doc.on.doc", help: "Copy") {
                 model.copyField(field, of: itemID)
             }
             .opacity(hovering ? 1 : 0)
@@ -254,11 +254,11 @@ struct FieldRow: View {
         .onHover { hovering = $0 }
         .onTapGesture { model.copyField(field, of: itemID) }
         .accessibilityElement(children: .combine)
-        .accessibilityAction(named: "Copier") { model.copyField(field, of: itemID) }
+        .accessibilityAction(named: "Copy") { model.copyField(field, of: itemID) }
     }
 }
 
-/// La valeur d'un champ (masquée, révélée, code à usage unique…).
+/// A field's value (hidden, revealed, one-time code…).
 private struct FieldValue: View {
     @Environment(AppModel.self) private var model
     let itemID: String
@@ -271,7 +271,7 @@ private struct FieldValue: View {
                 if let code = model.totpCode(of: itemID, at: context.date) {
                     TotpCodeView(code: code)
                 } else {
-                    // Élément protégé : le code n'apparaît qu'après confirmation.
+                    // Protected item: the code only appears after confirmation.
                     MaskedText(count: 6)
                 }
             }
@@ -301,7 +301,7 @@ private struct FieldValue: View {
 
 struct IconButton: View {
     let symbol: String
-    let help: String
+    let help: LocalizedStringKey
     let action: () -> Void
 
     var body: some View {
@@ -320,23 +320,23 @@ struct IconButton: View {
 struct WebsiteRow: View {
     let url: String
     let primary: Bool
-    /// Règle de correspondance propre au site (`nil` : celle par défaut).
+    /// The site's own match rule (`nil`: the default one).
     var rule: UriMatchRule?
     @State private var hovering = false
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(primary ? "Site principal" : "Site").font(.caption).foregroundStyle(.secondary)
+                Text(primary ? "Main website" : "Website").font(.caption).foregroundStyle(.secondary)
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             if let rule {
                 Chip(text: rule.label, symbol: "scope", tint: rule == .never ? .orange : .secondary)
-                    .help("Correspondance : \(rule.explanation)")
+                    .help("Matching: \(rule.explanation)")
             }
             if let link = URL(string: url) {
-                Button("Ouvrir") { NSWorkspace.shared.open(link) }
+                Button("Open") { NSWorkspace.shared.open(link) }
                     .controlSize(.small)
                     .opacity(hovering ? 1 : 0.0001)
             }
@@ -358,12 +358,12 @@ struct NotesRow: View {
                 Text(notes).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Contenu masqué").foregroundStyle(.secondary)
-                    Text("Cliquez sur l'œil pour afficher la note.").font(.caption).foregroundStyle(.tertiary)
+                    Text("Content hidden").foregroundStyle(.secondary)
+                    Text("Click the eye to show the note.").font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer()
             }
-            IconButton(symbol: model.revealed["notes"] == nil ? "eye" : "eye.slash", help: "Afficher la note") {
+            IconButton(symbol: model.revealed["notes"] == nil ? "eye" : "eye.slash", help: "Show the note") {
                 withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
             }
         }

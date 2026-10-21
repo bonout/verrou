@@ -1,25 +1,25 @@
-//! Création conditionnelle de passkey (iOS 18, `mediation: "conditional"`).
+//! Conditional passkey creation (iOS 18, `mediation: "conditional"`).
 //!
-//! Après un mot de passe rempli par Verrou, Safari peut demander en arrière-
-//! plan une passkey pour le même compte, sans interface
-//! (`performWithoutUserInteractionIfPossible(passkeyRegistration:)`). Le
-//! coffre de l'extension est alors fermé : un nouveau processus, sans Face
-//! ID possible. D'où trois temps :
+//! After a password filled by Verrou, Safari can request in the
+//! background a passkey for the same account, without UI
+//! (`performWithoutUserInteractionIfPossible(passkeyRegistration:)`). The
+//! extension's vault is then closed: a new process, with no Face
+//! ID possible. Hence three steps:
 //!
-//! 1. **Remplissage** (coffre ouvert, Face ID passé) : `prepare_passkey_upgrade`
-//!    prépare une clé pour l'identifiant rempli s'il n'a pas de passkey. Le
-//!    « ticket » (`passkey-upgrade.json`, dossier du compte) garde la clé
-//!    publique, l'identifiant de l'accréditation, les domaines enregistrables
-//!    et le nom d'utilisateur de l'élément, et la clé privée **scellée** par
-//!    la clé locale du compte (lisible seulement coffre ouvert). Valable
-//!    5 minutes, une seule fois.
-//! 2. **Demande d'arrière-plan** (coffre fermé) : `conditional_passkey_registration`
-//!    consomme le ticket si le site et le nom d'utilisateur correspondent, et
-//!    rend l'attestation (`none`, sans présence ni vérification). La passkey
-//!    attend dans `passkeys-pending.json`, clé toujours scellée.
-//! 3. **Prochaine ouverture du coffre** dans l'app : `finish_pending_passkeys`
-//!    descelle chaque clé et enregistre la passkey dans l'identifiant, sur le
-//!    serveur. Le mot de passe reste : jamais rien n'est supprimé.
+//! 1. **Fill** (vault open, Face ID passed): `prepare_passkey_upgrade`
+//!    prepares a key for the filled login if it has no passkey. The
+//!    "ticket" (`passkey-upgrade.json`, account folder) keeps the public
+//!    key, the credential id, the registrable domains
+//!    and the item's user name, and the private key **sealed** by
+//!    the account's local key (readable only with the vault open). Valid for
+//!    5 minutes, once.
+//! 2. **Background request** (vault closed): `conditional_passkey_registration`
+//!    consumes the ticket if the site and the user name match, and
+//!    returns the attestation (`none`, without presence or verification). The passkey
+//!    waits in `passkeys-pending.json`, key still sealed.
+//! 3. **Next vault unlock** in the app: `finish_pending_passkeys`
+//!    unseals each key and saves the passkey in the login, on the
+//!    server. The password stays: nothing is ever deleted.
 
 use std::fs;
 use std::path::Path;
@@ -36,30 +36,30 @@ use verrou_vaultwarden::Store;
 
 const TICKET_FILE: &str = "passkey-upgrade.json";
 const PENDING_FILE: &str = "passkeys-pending.json";
-/// Durée de validité d'un ticket : Safari demande la passkey juste après
-/// l'envoi du formulaire.
+/// Validity of a ticket: Safari requests the passkey right after
+/// the form is submitted.
 const TICKET_SECONDS: i64 = 5 * 60;
-/// Garde-fou : passkeys en attente gardées au plus.
+/// Safeguard: maximum number of pending passkeys kept.
 const MAX_PENDING: usize = 20;
 
-/// Clé préparée pendant le remplissage d'un mot de passe.
+/// Key prepared while filling a password.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Ticket {
     item_id: String,
-    /// Domaines enregistrables des sites de l'élément.
+    /// Registrable domains of the item's sites.
     domains: Vec<String>,
-    /// Nom d'utilisateur de l'élément, en minuscules.
+    /// User name of the item, lowercased.
     user: String,
     created: i64,
     /// base64url.
     credential_id: String,
-    /// Clé publique SEC1, base64url.
+    /// SEC1 public key, base64url.
     public_key: String,
-    /// Clé privée PKCS#8 (base64url), scellée par la clé locale du compte.
+    /// PKCS#8 private key (base64url), sealed by the account's local key.
     sealed_key: String,
 }
 
-/// Passkey enregistrée chez le site, pas encore dans le coffre.
+/// Passkey registered with the site, not yet in the vault.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Pending {
     item_id: String,
@@ -93,8 +93,8 @@ fn read<T: for<'de> Deserialize<'de>>(dir: &Path, file: &str) -> Option<T> {
     serde_json::from_slice(&fs::read(dir.join(file)).ok()?).ok()
 }
 
-/// Lit, transforme et réécrit un fichier du dossier sous son verrou
-/// (`Store::update_file`) : l'app et son extension le partagent.
+/// Reads, transforms and rewrites a file of the folder under its lock
+/// (`Store::update_file`): the app and its extension share it.
 fn update<T: Serialize + for<'de> Deserialize<'de>, R>(
     dir: &Path,
     file: &str,
@@ -128,7 +128,7 @@ fn remove(dir: &Path, file: &str) {
     let _ = Store::new(dir).update_file(file, |_| (None, ()));
 }
 
-/// Le ticket, retiré du disque (une seule utilisation, valide ou non).
+/// The ticket, removed from disk (single use, valid or not).
 fn take_ticket(dir: &Path) -> Option<Ticket> {
     update(dir, TICKET_FILE, |ticket: Option<Ticket>| (None, ticket))
         .ok()
@@ -139,7 +139,7 @@ fn pending(dir: &Path) -> Vec<Pending> {
     read(dir, PENDING_FILE).unwrap_or_default()
 }
 
-/// Ajoute une passkey en attente (les plus anciennes partent au-delà de
+/// Adds a pending passkey (the oldest go beyond
 /// `MAX_PENDING`).
 fn push_pending(dir: &Path, entry: Pending) -> Result<(), VerrouError> {
     update(dir, PENDING_FILE, |list: Option<Vec<Pending>>| {
@@ -151,7 +151,7 @@ fn push_pending(dir: &Path, entry: Pending) -> Result<(), VerrouError> {
     })
 }
 
-/// Retire les passkeys traitées ; celles ajoutées entre-temps restent.
+/// Removes the processed passkeys; those added in the meantime stay.
 fn forget_pending(dir: &Path, done: &[String]) -> Result<(), VerrouError> {
     update(dir, PENDING_FILE, |list: Option<Vec<Pending>>| {
         let list: Vec<Pending> = list
@@ -163,29 +163,31 @@ fn forget_pending(dir: &Path, done: &[String]) -> Result<(), VerrouError> {
     })
 }
 
-/// La demande du site convient-elle au ticket : récent, même site (domaine
-/// enregistrable), même nom d'utilisateur ?
+/// Does the site's request fit the ticket: recent, same site (registrable
+/// domain), same user name?
 fn check_ticket(ticket: &Ticket, rp_id: &str, user_name: &str, at: i64) -> Result<(), VerrouError> {
     if at < ticket.created || at - ticket.created > TICKET_SECONDS {
-        return Err(invalid("aucun mot de passe rempli récemment"));
+        return Err(invalid("no password filled recently"));
     }
-    let site = registrable_domain(rp_id).ok_or_else(|| invalid("site invalide"))?;
+    let site = registrable_domain(rp_id).ok_or_else(|| invalid("invalid site"))?;
     if !ticket.domains.contains(&site) {
-        return Err(invalid("ce site n'est pas celui du mot de passe rempli"));
+        return Err(invalid("this site is not the one of the filled password"));
     }
     if ticket.user.is_empty() || user_name.trim().to_lowercase() != ticket.user {
-        return Err(invalid("ce compte n'est pas celui du mot de passe rempli"));
+        return Err(invalid(
+            "this account is not the one of the filled password",
+        ));
     }
     Ok(())
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Extension, juste après avoir rempli le mot de passe de `id` (coffre
-    /// ouvert) : prépare la clé d'une éventuelle création conditionnelle.
-    /// Rien si l'élément a déjà une passkey, n'a pas de site ou pas de nom
-    /// d'utilisateur (le ticket précédent est alors effacé). Rend `true` si
-    /// un ticket est prêt.
+    /// Extension, right after filling the password of `id` (vault
+    /// open): prepares the key of a possible conditional creation.
+    /// Nothing if the item already has a passkey, has no site or no user
+    /// name (the previous ticket is then erased). Returns `true` if
+    /// a ticket is ready.
     pub async fn prepare_passkey_upgrade(&self, id: String) -> Result<bool, VerrouError> {
         let dir = self.store()?.dir().to_path_buf();
         remove(&dir, TICKET_FILE);
@@ -241,29 +243,28 @@ impl VaultSession {
         Ok(true)
     }
 
-    /// Extension, demande d'arrière-plan de Safari (coffre fermé) : crée la
-    /// passkey avec la clé préparée au remplissage, si la demande vient du
-    /// même site et du même compte dans les 5 minutes. La passkey attend la
-    /// prochaine ouverture du coffre (`finish_pending_passkeys`). Toute
-    /// autre situation est refusée, sans interface.
+    /// Extension, Safari background request (vault closed): creates the
+    /// passkey with the key prepared at fill time, if the request comes from the
+    /// same site and the same account within 5 minutes. The passkey waits for the
+    /// next vault unlock (`finish_pending_passkeys`). Any
+    /// other situation is refused, without UI.
     pub fn conditional_passkey_registration(
         &self,
         request: PasskeyCreationRequest,
     ) -> Result<PasskeyRegistrationResult, VerrouError> {
         let dir = self.store()?.dir().to_path_buf();
-        let ticket =
-            take_ticket(&dir).ok_or_else(|| invalid("aucun mot de passe rempli récemment"))?;
+        let ticket = take_ticket(&dir).ok_or_else(|| invalid("no password filled recently"))?;
         let rp_id = passkey::system_rp_id(&request.rp_id).map_err(|e| VerrouError::Invalid {
             message: e.to_string(),
         })?;
         check_ticket(&ticket, &rp_id, &request.user_name, now())?;
         if request.user_handle.is_empty() || request.user_handle.len() > 64 {
-            return Err(invalid("identifiant d'utilisateur invalide"));
+            return Err(invalid("invalid user id"));
         }
         let credential_id = passkey::b64url_decode(&ticket.credential_id)
-            .ok_or_else(|| invalid("ticket illisible"))?;
+            .ok_or_else(|| invalid("unreadable ticket"))?;
         let public_key = passkey::b64url_decode(&ticket.public_key)
-            .ok_or_else(|| invalid("ticket illisible"))?;
+            .ok_or_else(|| invalid("unreadable ticket"))?;
         let registration = passkey::conditional_registration(
             &rp_id,
             &credential_id,
@@ -293,16 +294,16 @@ impl VaultSession {
         })
     }
 
-    /// Passkeys créées en arrière-plan qui attendent d'entrer dans le coffre.
+    /// Passkeys created in the background waiting to enter the vault.
     pub fn pending_passkeys(&self) -> u32 {
         self.store().map_or(0, |s| pending(s.dir()).len() as u32)
     }
 
-    /// App, coffre ouvert et en ligne : enregistre dans leur identifiant les
-    /// passkeys créées en arrière-plan (un nouvel identifiant si l'élément
-    /// a disparu). Rend les titres des éléments qui en ont reçu une ; les
-    /// autres restent en attente (hors ligne) ou sont abandonnées (clé
-    /// illisible : coffre d'un autre compte).
+    /// App, vault open and online: saves in their login the
+    /// passkeys created in the background (a new login if the item
+    /// is gone). Returns the titles of the items that received one; the
+    /// others stay pending (offline) or are dropped (unreadable
+    /// key: another account's vault).
     pub async fn finish_pending_passkeys(&self) -> Result<Vec<String>, VerrouError> {
         let dir = self.store()?.dir().to_path_buf();
         let list = pending(&dir);
@@ -320,7 +321,7 @@ impl VaultSession {
                 continue;
             }
             let Ok(key) = connection.lock().await.open_local(entry.sealed_key.clone()) else {
-                continue; // scellée par un autre compte : abandonnée
+                continue; // sealed by another account: dropped
             };
             let (Some(credential_id), Some(user_id)) = (
                 passkey::b64url_decode(&entry.credential_id),
@@ -332,7 +333,7 @@ impl VaultSession {
                 let target = v
                     .get(&entry.item_id)
                     .filter(|i| i.kind == ItemKind::Login && i.is_active() && i.is_writable());
-                // Déjà là (une première tentative a abouti) : rien à refaire.
+                // Already there (a first attempt succeeded): nothing to redo.
                 if v.passkeys()
                     .iter()
                     .any(|p| p.raw_id().as_deref() == Some(&credential_id))
@@ -365,7 +366,7 @@ impl VaultSession {
                 )))
             });
             match built {
-                // Déjà dans le coffre, ou clé invalide : abandonnée.
+                // Already in the vault, or invalid key: dropped.
                 Ok(None) | Err(VerrouError::Invalid { .. }) => {}
                 Ok(Some((title, write))) => match self.perform_write(&connection, write).await {
                     Ok(_) => done.push(title),
@@ -416,20 +417,20 @@ mod tests {
         assert!(check_ticket(&t, "login.github.com", " Camille ", 1_299).is_ok());
         assert!(
             check_ticket(&t, "github.com", "camille", 1_301).is_err(),
-            "périmé"
+            "expired"
         );
         assert!(
             check_ticket(&t, "github.com", "camille", 999).is_err(),
-            "horloge"
+            "clock"
         );
         assert!(
             check_ticket(&t, "github.io", "camille", 1_000).is_err(),
-            "autre site"
+            "other site"
         );
         assert!(check_ticket(&t, "evil.com", "camille", 1_000).is_err());
         assert!(
             check_ticket(&t, "github.com", "dominique", 1_000).is_err(),
-            "autre compte"
+            "other account"
         );
         let mut anonymous = ticket(1_000);
         anonymous.user = String::new();
@@ -446,7 +447,7 @@ mod tests {
         let mut t = ticket(now());
         t.credential_id = passkey::b64url(&prepared.credential_id);
         t.public_key = passkey::b64url(&prepared.public_key);
-        t.sealed_key = "scellée".to_owned();
+        t.sealed_key = "sealed".to_owned();
         write(&dir, TICKET_FILE, t.clone()).unwrap();
         let request = |user: &str| PasskeyCreationRequest {
             rp_id: "github.com".to_owned(),
@@ -466,14 +467,14 @@ mod tests {
         let waiting = pending(&dir);
         assert_eq!(waiting[0].rp_id, "github.com");
         assert_eq!(waiting[0].user_name.as_deref(), Some("camille"));
-        assert_eq!(waiting[0].sealed_key, "scellée");
-        // Une seule fois.
+        assert_eq!(waiting[0].sealed_key, "sealed");
+        // Only once.
         assert!(
             session
                 .conditional_passkey_registration(request("camille"))
                 .is_err()
         );
-        // Un ticket pour un autre compte est consommé sans rien créer.
+        // A ticket for another account is consumed without creating anything.
         write(&dir, TICKET_FILE, t.clone()).unwrap();
         assert!(
             session

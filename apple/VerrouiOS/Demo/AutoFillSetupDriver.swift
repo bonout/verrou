@@ -1,18 +1,18 @@
 #if DEBUG
 import Foundation
 
-/// Préparation du test du remplissage automatique (builds Debug
-/// seulement) : `scripts/ios-autofill-e2e.sh` lance l'app depuis le test
-/// XCUITest avec `VERROU_AUTOFILL_E2E_SERVER`, `_EMAIL`, `_PASSWORD`,
-/// `_TOTP` (graine du second facteur), `_SITE` (la page de test) et
-/// `_ACK` (dossier du Mac où signaler l'avancement).
+/// Setup of the AutoFill test (Debug builds only):
+/// `scripts/ios-autofill-e2e.sh` launches the app from the XCUITest test
+/// with `VERROU_AUTOFILL_E2E_SERVER`, `_EMAIL`, `_PASSWORD`, `_TOTP` (seed
+/// of the second factor), `_SITE` (the test page) and `_ACK` (folder on the
+/// Mac where to report progress).
 ///
-/// Contrairement au parcours de l'app (`EndToEndDriver`), le compte vit à
-/// sa vraie place, le dossier du groupe d'apps : l'extension doit le voir.
-/// Le pilote se connecte (second facteur TOTP), crée l'identifiant du site
-/// de test (avec une graine de code à usage unique), synchronise, attend le
-/// scellement Face ID et la publication des identités, ouvre les Réglages
-/// de l'app, puis crée `<_ACK>/app-ready`.
+/// Unlike the app's run (`EndToEndDriver`), the account lives in its real
+/// place, the app group folder: the extension must see it. The driver
+/// signs in (TOTP second factor), creates the test site's login (with a
+/// one-time code seed), syncs, waits for the Face ID seal and the
+/// publication of the identities, opens the app's Settings, then creates
+/// `<_ACK>/app-ready`.
 @MainActor
 final class AutoFillSetupDriver {
     struct Config {
@@ -39,7 +39,7 @@ final class AutoFillSetupDriver {
         }
     }
 
-    /// L'identifiant du site de test, que le test retrouve dans Safari.
+    /// The test site's login, which the test finds again in Safari.
     static let title = "Banc d'essai"
     static let username = "camille@verrou.test"
     static let sitePassword = "Verrou-AutoFill-42"
@@ -77,7 +77,7 @@ final class AutoFillSetupDriver {
     private func wait(_ seconds: Double, _ what: String, until condition: () -> Bool) async throws {
         let deadline = Date().addingTimeInterval(seconds)
         while !condition() {
-            if Date() > deadline { throw Failure(description: "délai dépassé : \(what)") }
+            if Date() > deadline { throw Failure(description: "timed out: \(what)") }
             try? await Task.sleep(for: .milliseconds(250))
         }
     }
@@ -95,7 +95,7 @@ final class AutoFillSetupDriver {
         } else if model.lockState != .unlocked {
             await model.unlock(masterPassword: config.password)
         }
-        try await wait(60, "coffre ouvert") { model.lockState == .unlocked }
+        try await wait(60, "vault open") { model.lockState == .unlocked }
         if !model.summaries.contains(where: { $0.title == Self.title }) {
             let draft = ItemDraft(name: Self.title, folderId: nil, favorite: false, notes: nil,
                                   login: LoginFields(username: Self.username, password: Self.sitePassword,
@@ -104,13 +104,13 @@ final class AutoFillSetupDriver {
             _ = try await model.session.createItem(draft: draft)
         }
         await model.syncNow()
-        try await wait(30, "envoi au serveur") { model.pendingChanges == 0 }
-        try await wait(30, "scellement Face ID") { model.biometricEnrolled }
+        try await wait(30, "upload to the server") { model.pendingChanges == 0 }
+        try await wait(30, "Face ID seal") { model.biometricEnrolled }
         model.tab = .settings
         await model.refreshAutofillStatus()
-        try await wait(20, "Verrou activé comme fournisseur") { model.autofillEnabled == true }
-        // La publication des identités suit le rechargement de quelques
-        // centaines de millisecondes.
+        try await wait(20, "Verrou enabled as provider") { model.autofillEnabled == true }
+        // Publishing the identities follows the reload by a few hundred
+        // milliseconds.
         try? await Task.sleep(for: .seconds(2))
     }
 }

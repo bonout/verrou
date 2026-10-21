@@ -1,27 +1,27 @@
 import Observation
 import UIKit
 
-/// « Passkey possible » sur l'iPhone : identifiants dont le site accepte les
-/// passkeys, d'après l'annuaire passkeys.2fa.directory (téléchargé en
-/// entier, gardé 7 jours par le cœur Rust ; aucune requête par site).
+/// "Passkey possible" on the iPhone: logins whose site accepts passkeys,
+/// according to the passkeys.2fa.directory directory (downloaded whole,
+/// kept 7 days by the Rust core; no request per site).
 ///
-/// « Créer une passkey » ouvre la page du site dans Safari : Verrou y est le
-/// fournisseur de remplissage, la passkey créée s'enregistre donc dans le
-/// coffre (extension VerrouAutoFill), dans l'élément du même compte.
+/// "Create a passkey" opens the site's page in Safari: Verrou is the
+/// AutoFill provider there, so the created passkey is saved in the vault
+/// (VerrouAutoFill extension), in the item of the same account.
 @MainActor
 @Observable
 final class PhonePasskeyAudit {
-    /// `nil` : pas encore chargé (ou indisponible, voir `error`).
+    /// `nil`: not loaded yet (or unavailable, see `error`).
     private(set) var report: PasskeyReport?
     private(set) var loading = false
     private(set) var error: String?
-    /// Élément dont on cherche la page de création.
+    /// Item whose creation page is being looked up.
     private(set) var opening: String?
-    /// Parcours de bout en bout : montrer la section en haut de l'audit.
+    /// End-to-end run: show the section at the top of the audit.
     var focus = false
 
-    /// Ce que les sites ont signalé à l'extension (iOS 26) et qui concerne
-    /// encore le coffre.
+    /// What the sites reported to the extension (iOS 26) and that still
+    /// concerns the vault.
     private(set) var signals: [SignalFinding] = []
 
     var count: Int { report?.candidates.count ?? 0 }
@@ -48,43 +48,43 @@ final class PhonePasskeyAudit {
         focus = false
     }
 
-    /// Ouvre la page où créer la passkey : celle que le site publie
-    /// (`/.well-known/passkey-endpoints`, vérifiée pour ce site seul), sinon
-    /// une page connue, sinon l'accueil du site. Rend le message à afficher.
+    /// Opens the page where to create the passkey: the one the site
+    /// publishes (`/.well-known/passkey-endpoints`, verified for this site
+    /// only), otherwise a known page, otherwise the site's home. Returns the message to show.
     func open(_ candidate: PasskeyCandidate, session: VaultSession) async -> Toast? {
         guard opening == nil else { return nil }
         opening = candidate.item.id
         defer { opening = nil }
-        let hint = "Quand Safari propose d'enregistrer la passkey, choisissez Verrou."
+        let hint = String(localized: "When Safari offers to save the passkey, choose Verrou.")
         do {
             let page = try await session.passkeySetupPage(id: candidate.item.id)
             guard let url = URL(string: page.url) else { return nil }
             await UIApplication.shared.open(url)
             switch page.source {
             case .wellKnown, .known:
-                return Toast(message: "Page des passkeys ouverte", detail: hint, seconds: 6)
+                return Toast(message: String(localized: "Passkeys page opened"), detail: hint, seconds: 6)
             case .home:
-                return Toast(message: "Ce site n'indique pas sa page de passkeys",
-                             detail: "Cherchez « passkey » dans les réglages de sécurité du compte. " + hint,
+                return Toast(message: String(localized: "This site doesn't indicate its passkeys page"),
+                             detail: String(localized: "Look for “passkey” in the account's security settings.") + " " + hint,
                              seconds: 8)
             }
         } catch {
-            return Toast(message: "Page introuvable", detail: ErrorText.describe(error), failure: true)
+            return Toast(message: String(localized: "Page not found"), detail: ErrorText.describe(error), failure: true)
         }
     }
 }
 
 extension PhoneModel {
-    /// Charge « Passkey possible » (coffre fictif : extrait embarqué de
-    /// l'annuaire, sans réseau).
+    /// Loads "Passkey possible" (demo vault: embedded excerpt of the
+    /// directory, no network).
     func refreshPasskeyAudit() {
         guard lockState == .unlocked else { return }
         Task { await passkeyAudit.load(session) }
     }
 
-    /// Passkeys créées par Safari en arrière-plan après un remplissage
-    /// (création conditionnelle, extension VerrouAutoFill) : enregistrées
-    /// dans leur identifiant maintenant que le coffre est ouvert.
+    /// Passkeys created by Safari in the background after a fill
+    /// (conditional creation, VerrouAutoFill extension): saved in their
+    /// login now that the vault is open.
     func finishPendingPasskeys() async {
         guard mode == .vaultwarden, lockState == .unlocked, session.pendingPasskeys() > 0 else { return }
         guard let titles = try? await session.finishPendingPasskeys(), !titles.isEmpty,
@@ -92,8 +92,8 @@ extension PhoneModel {
         afterWrite()
         publishAutofillIdentities()
         if audit != nil { refreshPasskeyAudit() }
-        toast = Toast(message: titles.count == 1 ? "Passkey enregistrée" : "\(titles.count) passkeys enregistrées",
-                      detail: "Créée par Safari pour « \(titles.joined(separator: " », « ")) » ; le mot de passe reste en secours.",
+        toast = Toast(message: titles.count == 1 ? String(localized: "Passkey saved") : String(localized: "\(titles.count) passkeys saved"),
+                      detail: String(localized: "Created by Safari for “\(titles.joined(separator: String(localized: "”, “")))”; the password stays as a fallback."),
                       seconds: 5)
     }
 

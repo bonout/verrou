@@ -1,25 +1,25 @@
-//! Sélection de plusieurs éléments dans la liste, comme le Finder ou Mail.
+//! Selecting several items in the list, like Finder or Mail.
 //!
-//! Fonction pure : la sélection actuelle, l'ordre affiché et un geste
-//! donnent la nouvelle sélection. Rien n'y dépend de l'interface, d'où les
-//! tests ci-dessous (l'app Swift n'a pas de cible de tests).
+//! Pure function: the current selection, the displayed order and a gesture
+//! give the new selection. Nothing here depends on the UI, hence the
+//! tests below (the Swift app has no test target).
 //!
-//! - clic : cet élément seul ; il devient l'ancre ;
-//! - ⌘-clic : ajoute ou retire l'élément (jamais le dernier) ; il devient
-//!   l'ancre ;
-//! - ⇧-clic : de l'ancre à l'élément, dans l'ordre affiché (remplace la
-//!   sélection, l'ancre ne bouge pas) ;
-//! - ↑/↓ : élément voisin seul ; ⇧↑/⇧↓ : étend (ou réduit) la plage depuis
-//!   l'ancre ;
-//! - ⌘A : tout ce qui est affiché ; Échap : l'élément actif seul.
+//! - click: this item alone; it becomes the anchor;
+//! - ⌘-click: adds or removes the item (never the last one); it becomes
+//!   the anchor;
+//! - ⇧-click: from the anchor to the item, in displayed order (replaces the
+//!   selection, the anchor does not move);
+//! - ↑/↓: neighbouring item alone; ⇧↑/⇧↓: extends (or shrinks) the range
+//!   from the anchor;
+//! - ⌘A: everything displayed; Esc: the active item alone.
 //!
-//! Coût linéaire en nombre de lignes, quel que soit le geste : rien de
-//! quadratique à chaque frappe, même sur des milliers d'éléments.
+//! Linear cost in the number of rows, whatever the gesture: nothing
+//! quadratic on each keystroke, even over thousands of items.
 
 use std::collections::{HashMap, HashSet};
 
-/// La sélection : les éléments, dans l'ordre affiché ; l'ancre des plages
-/// (⇧) ; l'élément actif, montré dans la colonne de détail.
+/// The selection: the items, in displayed order; the range anchor
+/// (⇧); the active item, shown in the detail column.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ListSelection {
     pub selected: Vec<String>,
@@ -30,19 +30,19 @@ pub struct ListSelection {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Gesture {
     Click(String),
-    /// ⌘-clic.
+    /// ⌘-click.
     Toggle(String),
-    /// ⇧-clic.
+    /// ⇧-click.
     Extend(String),
-    /// Flèches : `offset` lignes plus bas (négatif : plus haut) ; `extend`
-    /// avec ⇧.
+    /// Arrows: `offset` rows down (negative: up); `extend`
+    /// with ⇧.
     Step {
         offset: i32,
         extend: bool,
     },
     /// ⌘A.
     SelectAll,
-    /// Échap : l'élément actif seul.
+    /// Esc: the active item alone.
     Collapse,
 }
 
@@ -56,8 +56,8 @@ impl ListSelection {
     }
 }
 
-/// La sélection après `gesture`, sur les éléments affichés dans `order`.
-/// Les éléments sélectionnés qui ne sont plus affichés sont oubliés.
+/// The selection after `gesture`, over the items displayed in `order`.
+/// Selected items that are no longer displayed are dropped.
 #[must_use]
 pub fn apply(current: &ListSelection, order: &[String], gesture: &Gesture) -> ListSelection {
     if order.is_empty() {
@@ -101,8 +101,8 @@ pub fn apply(current: &ListSelection, order: &[String], gesture: &Gesture) -> Li
             }
             let mut positions: Vec<usize> = chosen.into_iter().collect();
             positions.sort_unstable();
-            // Ajouté : il devient actif. Retiré : l'actif reste, sinon le
-            // suivant (ou le dernier).
+            // Added: it becomes active. Removed: the active one stays,
+            // otherwise the next one (or the last).
             let focus = if positions.binary_search(&at).is_ok() {
                 at
             } else {
@@ -173,7 +173,7 @@ mod tests {
         }
     }
 
-    #[allow(clippy::needless_pass_by_value)] // plus lisible dans les tests
+    #[allow(clippy::needless_pass_by_value)] // more readable in tests
     fn run(current: &ListSelection, gesture: Gesture) -> ListSelection {
         apply(current, &order(), &gesture)
     }
@@ -182,7 +182,7 @@ mod tests {
     fn click_selects_one_and_sets_the_anchor() {
         let s = run(&sel(&["a", "b"], "a", "b"), Gesture::Click("d".into()));
         assert_eq!(s, sel(&["d"], "d", "d"));
-        // Un élément qui n'est plus affiché : rien ne change.
+        // An item no longer displayed: nothing changes.
         let s2 = run(&s, Gesture::Click("z".into()));
         assert_eq!(s2, s);
     }
@@ -193,13 +193,13 @@ mod tests {
         assert_eq!(s, sel(&["b", "d"], "b", "b"));
         let s = run(&s, Gesture::Toggle("f".into()));
         assert_eq!(s, sel(&["b", "d", "f"], "f", "f"));
-        // Retirer l'actif : le suivant devient actif.
+        // Removing the active one: the next becomes active.
         let s = run(&s, Gesture::Toggle("d".into()));
         assert_eq!(s, sel(&["b", "f"], "d", "f"));
-        // Retirer un autre : l'actif reste.
+        // Removing another: the active one stays.
         let s = run(&s, Gesture::Toggle("b".into()));
         assert_eq!(s, sel(&["f"], "b", "f"));
-        // Jamais vide.
+        // Never empty.
         let s = run(&s, Gesture::Toggle("f".into()));
         assert_eq!(s, sel(&["f"], "f", "f"));
     }
@@ -208,14 +208,14 @@ mod tests {
     fn shift_click_selects_the_range_from_the_anchor() {
         let s = run(&sel(&["b"], "b", "b"), Gesture::Extend("e".into()));
         assert_eq!(s, sel(&["b", "c", "d", "e"], "b", "e"));
-        // Vers le haut, depuis la même ancre : la plage remplace.
+        // Upwards, from the same anchor: the range replaces.
         let s = run(&s, Gesture::Extend("a".into()));
         assert_eq!(s, sel(&["a", "b"], "b", "a"));
-        // Après un ⌘-clic, l'ancre est l'élément cliqué.
+        // After a ⌘-click, the anchor is the clicked item.
         let s = run(&s, Gesture::Toggle("e".into()));
         let s = run(&s, Gesture::Extend("f".into()));
         assert_eq!(s, sel(&["e", "f"], "e", "f"));
-        // Sans sélection : l'élément seul.
+        // No selection: the item alone.
         let s = run(&ListSelection::default(), Gesture::Extend("c".into()));
         assert_eq!(s, sel(&["c"], "c", "c"));
     }
@@ -254,7 +254,7 @@ mod tests {
             },
         );
         assert_eq!(s, sel(&["a", "b", "c"], "c", "a"));
-        // Bornée aux extrémités.
+        // Clamped at the ends.
         let s = run(
             &s,
             Gesture::Step {
@@ -263,7 +263,7 @@ mod tests {
             },
         );
         assert_eq!(s, sel(&["a", "b", "c"], "c", "a"));
-        // Sans ⇧ : l'élément voisin seul.
+        // Without ⇧: the neighbouring item alone.
         let s = run(
             &s,
             Gesture::Step {
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn hidden_items_are_dropped_and_an_empty_list_clears() {
-        // La recherche a changé : « z » n'est plus affiché.
+        // The search changed: "z" is no longer displayed.
         let s = run(&sel(&["z", "b"], "z", "z"), Gesture::Toggle("d".into()));
         assert_eq!(s, sel(&["b", "d"], "d", "d"));
         let s = run(&sel(&["z"], "z", "z"), Gesture::Extend("b".into()));
@@ -322,7 +322,7 @@ mod tests {
         assert_eq!(s.selected.len(), 201);
         let s = apply(&s, &order, &Gesture::SelectAll);
         assert_eq!(s.selected.len(), 10_000);
-        // Large marge : quelques millisecondes en debug.
+        // Wide margin: a few milliseconds in debug.
         assert!(start.elapsed() < std::time::Duration::from_secs(2));
     }
 }

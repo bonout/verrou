@@ -1,19 +1,36 @@
-// Un DOM minimal pour faire tourner content.js dans node (vm), sans
-// navigateur : éléments, champs, formulaires, shadow DOM fermé, focus,
-// événements (capture, bouillonnement, `isTrusted`, reciblage hors du shadow
-// DOM) et les quelques sélecteurs dont le script a besoin.
+// A minimal DOM to run content.js in node (vm), without a browser:
+// elements, fields, forms, closed shadow DOM, focus, events (capture,
+// bubbling, `isTrusted`, retargeting out of the shadow DOM) and the few
+// selectors the script needs.
 
+import { readFileSync } from "node:fs";
 import vm from "node:vm";
+
+// `i18n` of the extension APIs, in English (extension/_locales/en): the
+// tests check the English text. An unknown message name is an error.
+const english = JSON.parse(readFileSync(new URL("../_locales/en/messages.json", import.meta.url), "utf8"));
+
+export const i18n = {
+  getMessage(name, substitutions = []) {
+    const entry = english[name];
+    if (!entry) throw new Error(`unknown message: ${name}`);
+    const values = [substitutions].flat().map(String);
+    const placeholders = Object.fromEntries(Object.entries(entry.placeholders ?? {})
+      .map(([key, { content }]) => [key.toLowerCase(), content.replace(/\$(\d)/g, (_, n) => values[n - 1] ?? "")]));
+    return entry.message.replace(/\$([A-Za-z0-9_]+)\$/g, (_, key) => placeholders[key.toLowerCase()] ?? "");
+  },
+  getUILanguage: () => "en",
+};
 
 const FOLLOWING = 4;
 const PRECEDING = 2;
 
-// Sélecteurs simples, séparés par des virgules : `tag`, `.classe`,
-// `[attr]`, `[attr=valeur]`, `tag[attr=valeur]`.
+// Simple selectors, separated by commas: `tag`, `.class`,
+// `[attr]`, `[attr=value]`, `tag[attr=value]`.
 function matches(element, selector) {
   return selector.split(",").map((part) => part.trim()).some((part) => {
     const match = /^([a-z-]*)(?:\.([\w-]+))?(?:\[([\w-]+)(?:=["']?([^\]"']*)["']?)?\])?$/i.exec(part);
-    if (!match) throw new Error(`sélecteur non géré : ${part}`);
+    if (!match) throw new Error(`unsupported selector: ${part}`);
     const [, tag, className, attr, value] = match;
     if (tag && element.tagName !== tag.toUpperCase()) return false;
     if (className && !element.className.split(" ").includes(className)) return false;
@@ -123,7 +140,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
       this.parent = null;
     }
 
-    // La racine : le document, ou une racine de shadow DOM (avec son hôte).
+    // The root: the document, or a shadow DOM root (with its host).
     get rootNode() {
       let node = this;
       while (node.parent) node = node.parent;
@@ -166,7 +183,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
           return focused && focused.rootNode === this.shadow ? focused : null;
         },
       });
-      // Fermé : la page n'y a pas accès.
+      // Closed: the page has no access to it.
       this.shadowRoot = mode === "open" ? this.shadow : null;
       return this.shadow;
     }
@@ -226,13 +243,13 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     }
 
     click() {
-      // `element.click()` venu de la page : jamais un vrai clic.
+      // `element.click()` from the page: never a real click.
       dispatch(this, new FakeEvent("click", { bubbles: true, composed: true }));
     }
   }
 
-  // Valeur des champs : sur le prototype, comme le vrai (content.js passe par
-  // son descripteur pour imiter la saisie).
+  // Value of the fields: on the prototype, like the real one (content.js
+  // goes through its descriptor to imitate typing).
   class FakeInput extends FakeElement {
     constructor() {
       super("input");
@@ -296,9 +313,9 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     }
   }
 
-  // `requestSubmit(submitter)` : comme le navigateur, refuse un bouton qui
-  // n'envoie pas ce formulaire, puis émet « submit » (avec `submitter`).
-  // `submissions` garde chaque envoi.
+  // `requestSubmit(submitter)`: like the browser, refuses a button that
+  // doesn't submit this form, then emits "submit" (with `submitter`).
+  // `submissions` keeps each submission.
   class FakeForm extends FakeElement {
     constructor() {
       super("form");
@@ -308,7 +325,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     requestSubmit(submitter = null) {
       if (submitter) {
         const type = (submitter.getAttribute("type") ?? "submit").toLowerCase();
-        if (type !== "submit") throw new TypeError("pas un bouton d'envoi");
+        if (type !== "submit") throw new TypeError("not a submit button");
         if (submitter.form !== this) throw new Error("NotFoundError");
       }
       const event = new FakeEvent("submit", { bubbles: true, extra: { submitter } });
@@ -317,7 +334,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     }
   }
 
-  // Ordre du document (shadow DOM compris, après l'hôte).
+  // Document order (shadow DOM included, after the host).
   function order() {
     const out = [];
     const walk = (node) => {
@@ -329,8 +346,8 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     return out;
   }
 
-  // Le chemin de l'événement : du nœud au document, en sortant des shadow
-  // DOM par leur hôte ; vu d'au-delà d'un hôte, la cible est l'hôte.
+  // The event's path: from the node to the document, leaving shadow DOMs
+  // through their host; seen from beyond a host, the target is the host.
   function dispatch(target, event) {
     const path = [];
     for (let node = target; node; node = node.parent ?? node.host) path.push(node);
@@ -383,14 +400,14 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     if (name === "form") return new FakeForm();
     return new FakeElement(name);
   };
-  // SVG (icône de Verrou) : un élément ordinaire suffit ici.
+  // SVG (Verrou's icon): an ordinary element is enough here.
   document.createElementNS = (_ns, tag) => new FakeElement(tag);
   document.querySelectorAll = (selector) => document.documentElement.querySelectorAll(selector);
   document.querySelector = (selector) => document.documentElement.querySelector(selector);
   document.addEventListener = (type, listener, capture = false) => {
     (document.listeners[type] ??= []).push({ listener, capture: Boolean(capture) });
   };
-  // Le focus, vu de la page : l'hôte quand il est dans un shadow DOM.
+  // The focus, seen from the page: the host when it is in a shadow DOM.
   Object.defineProperty(document, "activeElement", {
     get: () => {
       let node = document.focused;
@@ -399,7 +416,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     },
   });
 
-  // Observateurs de mutations : déclenchés à la main par les tests.
+  // Mutation observers: triggered by hand by the tests.
   const observers = [];
   class FakeMutationObserver {
     constructor(callback) {
@@ -439,7 +456,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
   context.globalThis = context;
   vm.createContext(context);
 
-  // Construit un élément : `h("input", { type: "password" })`.
+  // Builds an element: `h("input", { type: "password" })`.
   function h(tag, attributes = {}, ...children) {
     const element = document.createElement(tag);
     for (const [name, value] of Object.entries(attributes)) {
@@ -456,7 +473,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
     return element;
   }
 
-  // Un événement réel (`isTrusted`) ou venu de la page.
+  // A real event (`isTrusted`) or one from the page.
   function fire(target, type, { trusted = true, ...extra } = {}) {
     const event = new FakeEvent(type, { bubbles: true, composed: true, extra });
     event.isTrusted = trusted;

@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Construit Verrou pour iPhone en Release, signé avec votre équipe Apple, et
-# l'installe sur l'iPhone branché en USB (ou appairé en Wi-Fi).
+# Builds Verrou for iPhone in Release, signed with your Apple team, and
+# installs it on the iPhone connected over USB (or paired over Wi-Fi).
 #
-#   VERROU_TEAM=ABCDE12345 scripts/install-ios.sh [identifiant de l'iPhone]
+#   VERROU_TEAM=ABCDE12345 scripts/install-ios.sh [iPhone identifier]
 #
-# Prérequis, une fois :
-# - un compte Apple Developer (payant : le groupe d'apps et le remplissage
-#   automatique ne sont pas ouverts aux comptes gratuits), connecté dans
-#   Xcode → Réglages → Comptes, contrat de licence à jour ;
-# - le mode développeur activé sur l'iPhone ;
-# - le groupe d'apps créé sur developer.apple.com (Identifiers → App Groups) :
-#   xcodebuild l'active mais ne le crée pas. Par défaut
-#   group.app.verrou.<équipe en minuscules>, ou VERROU_APP_GROUP. Il doit être
-#   coché dans les App IDs app.verrou.ios et app.verrou.ios.autofill (créés au
-#   premier essai).
+# Prerequisites, once:
+# - an Apple Developer account (paid: the app group and AutoFill are not
+#   open to free accounts), signed in under Xcode → Settings → Accounts,
+#   license agreement up to date;
+# - developer mode turned on on the iPhone;
+# - the app group created on developer.apple.com (Identifiers → App Groups):
+#   xcodebuild enables it but doesn't create it. By default
+#   group.app.verrou.<team in lowercase>, or VERROU_APP_GROUP. It must be
+#   checked in the App IDs app.verrou.ios and app.verrou.ios.autofill (created
+#   on the first attempt).
 #
-# Un profil de développement porte get-task-allow : c'est le prix d'une
-# installation hors App Store et TestFlight.
+# A development profile carries get-task-allow: that is the price of an
+# install outside the App Store and TestFlight.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-TEAM="${VERROU_TEAM:?VERROU_TEAM=<identifiant de votre équipe Apple> est requis}"
+TEAM="${VERROU_TEAM:?VERROU_TEAM=<your Apple team identifier> is required}"
 GROUP="${VERROU_APP_GROUP:-group.app.verrou.$(tr '[:upper:]' '[:lower:]' <<<"$TEAM")}"
 
 DEVICE="${1:-}"
@@ -37,7 +37,7 @@ for d in json.load(open(sys.argv[1]))["result"]["devices"]:
         print(hw["udid"]); break
 ' "$JSON")"
 fi
-[[ -n "$DEVICE" ]] || { echo "Aucun iPhone trouvé : branchez-le et déverrouillez-le." >&2; exit 1; }
+[[ -n "$DEVICE" ]] || { echo "No iPhone found: connect it and unlock it." >&2; exit 1; }
 
 PLATFORMS=all scripts/build-apple.sh
 (cd apple && xcodegen generate --quiet)
@@ -47,10 +47,10 @@ xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Rele
   -allowProvisioningUpdates build -quiet
 
 APP="target/xcode-device.noindex/Build/Products/Release-iphoneos/Verrou.app"
-# Sans le groupe dans la signature, l'extension ne verrait pas le coffre.
+# Without the group in the signature, the extension wouldn't see the vault.
 if ! codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "$GROUP"; then
-  echo "Le groupe $GROUP manque à la signature : voir les prérequis en tête du script." >&2
+  echo "The group $GROUP is missing from the signature: see the prerequisites at the top of the script." >&2
   exit 1
 fi
 xcrun devicectl device install app --device "$DEVICE" "$APP" >/dev/null
-echo "Installé sur l'iPhone $DEVICE (équipe $TEAM, groupe $GROUP)"
+echo "Installed on the iPhone $DEVICE (team $TEAM, group $GROUP)"

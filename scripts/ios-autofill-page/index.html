@@ -1,21 +1,21 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Banc d'essai Verrou</title>
+<title>Verrou test bench</title>
 <!--
-  Page de test du remplissage automatique d'iOS (scripts/ios-autofill-e2e.sh),
-  servie par le Mac sur http://localhost (WebAuthn y est permis sans HTTPS).
-  - Formulaire de connexion : le résultat de l'envoi s'affiche (#login-result).
-  - Code à usage unique : champ autocomplete="one-time-code" (#otp-result).
-  - Après l'envoi du formulaire, passkey demandée en arrière-plan
-    (création conditionnelle, `mediation: "conditional"`) : résultat dans
-    #upgrade-result, attestation vérifiée (ni présence ni vérification).
-  - Passkeys : création puis connexion, vérifiées ici même (WebCrypto) :
-    clientDataJSON (type, défi, origine), authenticatorData (rpIdHash,
-    indicateurs, compteur croissant), signature ES256 avec la clé publique
-    de l'attestation, identifiant de l'utilisateur rendu.
+  Test page for iOS AutoFill (scripts/ios-autofill-e2e.sh), served by the
+  Mac on http://localhost (WebAuthn is allowed there without HTTPS).
+  - Sign-in form: the result of the submission is shown (#login-result).
+  - One-time code: autocomplete="one-time-code" field (#otp-result).
+  - After the form is submitted, a passkey requested in the background
+    (conditional creation, `mediation: "conditional"`): result in
+    #upgrade-result, attestation checked (neither presence nor verification).
+  - Passkeys: creation then sign-in, checked right here (WebCrypto):
+    clientDataJSON (type, challenge, origin), authenticatorData (rpIdHash,
+    flags, increasing counter), ES256 signature with the attestation's
+    public key, user handle returned.
 -->
 <style>
   body { font: 17px -apple-system, system-ui, sans-serif; margin: 16px; color: #1c1c1e; }
@@ -27,26 +27,26 @@
 </style>
 </head>
 <body>
-<h1>Banc d'essai Verrou</h1>
+<h1>Verrou test bench</h1>
 
 <form id="login" autocomplete="on">
-  <input id="username" name="username" type="text" autocomplete="username" placeholder="Identifiant">
-  <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Mot de passe">
-  <button id="login-submit" type="submit">Se connecter</button>
+  <input id="username" name="username" type="text" autocomplete="username" placeholder="Username">
+  <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password">
+  <button id="login-submit" type="submit">Sign in</button>
 </form>
 <p class="result" id="login-result">-</p>
 <p class="result" id="upgrade-result">-</p>
 
-<h2>Code à usage unique</h2>
+<h2>One-time code</h2>
 <form id="otp-form">
   <input id="otp" name="otp" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Code">
-  <button id="otp-submit" type="submit">Valider le code</button>
+  <button id="otp-submit" type="submit">Submit code</button>
 </form>
 <p class="result" id="otp-result">-</p>
 
 <h2>Passkey</h2>
-<button id="pk-create" type="button">Créer une passkey</button>
-<button id="pk-get" type="button">Se connecter avec la passkey</button>
+<button id="pk-create" type="button">Create a passkey</button>
+<button id="pk-get" type="button">Sign in with the passkey</button>
 <p class="result" id="pk-result">-</p>
 
 <script>
@@ -68,15 +68,15 @@ $("login").addEventListener("submit", (e) => {
   upgrade($("username").value);
 });
 
-// Création conditionnelle juste après la connexion par mot de passe : le
-// fournisseur qui vient de remplir le mot de passe crée la passkey sans
-// interface, ou refuse.
+// Conditional creation right after the password sign-in: the provider that
+// just filled the password creates the passkey without any interface, or
+// refuses.
 async function upgrade(name) {
   const out = $("upgrade-result");
   try {
     const capabilities = await PublicKeyCredential.getClientCapabilities?.();
-    if (!capabilities?.conditionalCreate) throw new Error("conditionalCreate non pris en charge");
-    out.textContent = "passkey conditionnelle…";
+    if (!capabilities?.conditionalCreate) throw new Error("conditionalCreate not supported");
+    out.textContent = "conditional passkey…";
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const credential = await navigator.credentials.create({ mediation: "conditional", publicKey: {
       challenge, rp: { id: location.hostname, name: "Banc d'essai" },
@@ -89,7 +89,7 @@ async function upgrade(name) {
     const attestation = cbor(new Uint8Array(credential.response.attestationObject)).value;
     const auth = parseAuthData(attestation.get("authData"));
     if (!equal(auth.rpIdHash, await sha256(enc.encode(location.hostname)))) throw new Error("rpIdHash");
-    if (!(auth.flags & 0x40)) throw new Error("indicateurs " + auth.flags);
+    if (!(auth.flags & 0x40)) throw new Error("flags " + auth.flags);
     out.textContent = `UPGRADE ok flags=0x${auth.flags.toString(16)}`;
   } catch (e) {
     out.textContent = "UPGRADE_ERROR " + e.name + ": " + e.message;
@@ -100,7 +100,7 @@ $("otp-form").addEventListener("submit", (e) => {
   $("otp-result").textContent = `otp=${$("otp").value}`;
 });
 
-// CBOR minimal (attestation) : entiers, octets, texte, tableaux, tables.
+// Minimal CBOR (attestation): integers, bytes, text, arrays, maps.
 function cbor(bytes) {
   let i = 0;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -109,7 +109,7 @@ function cbor(bytes) {
     if (info === 24) return bytes[i++];
     if (info === 25) { const v = view.getUint16(i); i += 2; return v; }
     if (info === 26) { const v = view.getUint32(i); i += 4; return v; }
-    throw new Error("CBOR : longueur non gérée");
+    throw new Error("CBOR: unsupported length");
   }
   function item() {
     const head = bytes[i++], major = head >> 5, info = head & 31;
@@ -120,7 +120,7 @@ function cbor(bytes) {
       case 3: { const n = length(info); const v = new TextDecoder().decode(bytes.slice(i, i + n)); i += n; return v; }
       case 4: { const n = length(info); return Array.from({ length: n }, item); }
       case 5: { const n = length(info); const m = new Map(); for (let k = 0; k < n; k++) { const key = item(); m.set(key, item()); } return m; }
-      default: throw new Error("CBOR : type non géré " + major);
+      default: throw new Error("CBOR: unsupported type " + major);
     }
   }
   const value = item();
@@ -139,16 +139,16 @@ function parseAuthData(data) {
 function checkClientData(json, type, challenge) {
   const client = JSON.parse(new TextDecoder().decode(json));
   if (client.type !== type) throw new Error("clientData.type " + client.type);
-  if (client.challenge !== b64u(challenge)) throw new Error("défi différent");
-  if (client.origin !== location.origin) throw new Error("origine " + client.origin);
+  if (client.challenge !== b64u(challenge)) throw new Error("different challenge");
+  if (client.origin !== location.origin) throw new Error("origin " + client.origin);
 }
 
-// DER (SEQUENCE { INTEGER r, INTEGER s }) → r ‖ s (64 octets) pour WebCrypto.
+// DER (SEQUENCE { INTEGER r, INTEGER s }) → r ‖ s (64 bytes) for WebCrypto.
 function derToRaw(der) {
   let i = 2;
   if (der[1] & 0x80) i = 2 + (der[1] & 0x7f);
   const part = () => {
-    if (der[i++] !== 0x02) throw new Error("signature DER invalide");
+    if (der[i++] !== 0x02) throw new Error("invalid DER signature");
     const n = der[i++];
     let v = der.slice(i, i + n); i += n;
     while (v.length > 32 && v[0] === 0) v = v.slice(1);
@@ -160,7 +160,7 @@ function derToRaw(der) {
 
 $("pk-create").addEventListener("click", async () => {
   const out = $("pk-result");
-  out.textContent = "création…";
+  out.textContent = "creating…";
   try {
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const userId = crypto.getRandomValues(new Uint8Array(16));
@@ -177,12 +177,12 @@ $("pk-create").addEventListener("click", async () => {
     if (attestation.get("fmt") !== "none") throw new Error("attestation " + attestation.get("fmt"));
     const auth = parseAuthData(attestation.get("authData"));
     if (!equal(auth.rpIdHash, await sha256(enc.encode(location.hostname)))) throw new Error("rpIdHash");
-    if (!(auth.flags & 0x01) || !(auth.flags & 0x40)) throw new Error("indicateurs " + auth.flags);
+    if (!(auth.flags & 0x01) || !(auth.flags & 0x40)) throw new Error("flags " + auth.flags);
     const idLength = (auth.rest[16] << 8) | auth.rest[17];
     const credentialId = auth.rest.slice(18, 18 + idLength);
-    if (!equal(credentialId, new Uint8Array(credential.rawId))) throw new Error("identifiant différent");
+    if (!equal(credentialId, new Uint8Array(credential.rawId))) throw new Error("different credential ID");
     const cose = cbor(auth.rest.slice(18 + idLength)).value;
-    if (cose.get(3) !== -7 || cose.get(-1) !== 1) throw new Error("clé non ES256");
+    if (cose.get(3) !== -7 || cose.get(-1) !== 1) throw new Error("key not ES256");
     store.set("id", b64u(credentialId));
     store.set("user", b64u(userId));
     store.set("x", b64u(cose.get(-2)));
@@ -196,10 +196,10 @@ $("pk-create").addEventListener("click", async () => {
 
 $("pk-get").addEventListener("click", async () => {
   const out = $("pk-result");
-  out.textContent = "connexion…";
+  out.textContent = "signing in…";
   try {
     const id = store.get("id");
-    if (!id) throw new Error("aucune passkey créée sur cette page");
+    if (!id) throw new Error("no passkey created on this page");
     const challenge = crypto.getRandomValues(new Uint8Array(32));
     const credential = await navigator.credentials.get({ publicKey: {
       challenge, rpId: location.hostname, userVerification: "preferred", timeout: 120000,
@@ -211,10 +211,10 @@ $("pk-get").addEventListener("click", async () => {
     const authData = new Uint8Array(response.authenticatorData);
     const auth = parseAuthData(authData);
     if (!equal(auth.rpIdHash, await sha256(enc.encode(location.hostname)))) throw new Error("rpIdHash");
-    if (!(auth.flags & 0x01)) throw new Error("présence absente");
+    if (!(auth.flags & 0x01)) throw new Error("user presence missing");
     const previous = Number(store.get("counter") ?? "0");
-    if (auth.counter <= previous) throw new Error(`compteur ${auth.counter} ≤ ${previous}`);
-    if (b64u(response.userHandle) !== store.get("user")) throw new Error("userHandle différent");
+    if (auth.counter <= previous) throw new Error(`counter ${auth.counter} ≤ ${previous}`);
+    if (b64u(response.userHandle) !== store.get("user")) throw new Error("different userHandle");
     const key = await crypto.subtle.importKey("jwk",
       { kty: "EC", crv: "P-256", x: store.get("x"), y: store.get("y"), ext: true },
       { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
@@ -223,7 +223,7 @@ $("pk-get").addEventListener("click", async () => {
     signed.set(await sha256(clientData), authData.length);
     const valid = await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key,
       derToRaw(new Uint8Array(response.signature)), signed);
-    if (!valid) throw new Error("signature invalide");
+    if (!valid) throw new Error("invalid signature");
     store.set("counter", String(auth.counter));
     out.textContent = `SIGNED ok verified=true flags=0x${auth.flags.toString(16)} counter=${auth.counter}`;
   } catch (e) {

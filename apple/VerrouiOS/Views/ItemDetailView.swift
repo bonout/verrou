@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// La fiche d'un élément : un appui copie un champ, l'œil révèle un secret
-/// (après confirmation pour un élément protégé), les codes à usage unique
-/// défilent avec leur compte à rebours.
+/// An item's page: a tap copies a field, the eye reveals a secret (after
+/// confirmation for a protected item), the one-time codes scroll with
+/// their countdown.
 struct ItemDetailView: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
@@ -17,8 +17,8 @@ struct ItemDetailView: View {
             if let detail = model.detail(id: itemID) {
                 content(detail)
             } else {
-                ContentUnavailableView("Élément introuvable", systemImage: "questionmark.folder",
-                                       description: Text("Il a peut-être été supprimé ailleurs."))
+                ContentUnavailableView("Item not found", systemImage: "questionmark.folder",
+                                       description: Text("It may have been deleted elsewhere."))
             }
         }
         .task(id: itemID) { await model.loadAttachments(of: itemID) }
@@ -28,12 +28,12 @@ struct ItemDetailView: View {
     @ViewBuilder
     private func content(_ detail: ItemDetail) -> some View {
         let summary = detail.summary
-        let fields = detail.fields.filter { !$0.id.hasPrefix("history-") }
-        let history = detail.fields.filter { $0.id.hasPrefix("history-") }
+        let fields = detail.displayFields.filter { !$0.id.hasPrefix("history-") }
+        let history = detail.displayFields.filter { $0.id.hasPrefix("history-") }
         List {
             Section {
                 DetailHeader(summary: summary)
-                // Très grand texte : les lignes des champs suffisent (elles copient aussi).
+                // Very large text: the field rows are enough (they copy too).
                 if summary.state == .active, !typeSize.isAccessibilitySize,
                    summary.category == .login || summary.hasTotp {
                     QuickCopyBar(summary: summary, fields: fields)
@@ -53,7 +53,7 @@ struct ItemDetailView: View {
                     }
                     if summary.category == .sshKey, fields.contains(where: { $0.id == "public_key" }),
                        let key = fields.first(where: { $0.id == "public_key" }) {
-                        Button("Copier la clé publique", systemImage: "doc.on.doc") {
+                        Button("Copy public key", systemImage: "doc.on.doc") {
                             model.copyField(key, of: itemID)
                         }
                     }
@@ -62,9 +62,9 @@ struct ItemDetailView: View {
 
             if summary.template == .wifi {
                 Section {
-                    Button("Afficher le QR code", systemImage: "qrcode") { model.showWifiQRCode(of: itemID) }
+                    Button("Show QR code", systemImage: "qrcode") { model.showWifiQRCode(of: itemID) }
                 } footer: {
-                    Text("Un autre téléphone le scanne avec l'appareil photo pour rejoindre le réseau.")
+                    Text("Another phone scans it with the camera to join the network.")
                 }
             }
 
@@ -86,7 +86,7 @@ struct ItemDetailView: View {
                         PasskeyRow(passkey: passkey)
                             .swipeActions {
                                 if model.canModify(summary) {
-                                    Button("Supprimer", systemImage: "trash", role: .destructive) {
+                                    Button("Delete", systemImage: "trash", role: .destructive) {
                                         deletingPasskey = passkey
                                     }
                                 }
@@ -95,7 +95,7 @@ struct ItemDetailView: View {
                 } header: {
                     SectionHeader("Passkeys")
                 } footer: {
-                    Text("Utilisables dans Brave et Firefox avec Verrou sur le Mac, et par les apps Bitwarden.")
+                    Text("Usable in Brave and Firefox with Verrou on the Mac, and by the Bitwarden apps.")
                 }
             }
 
@@ -109,7 +109,7 @@ struct ItemDetailView: View {
                         FieldRow(itemID: itemID, field: field)
                     }
                 } header: {
-                    SectionHeader("Anciens mots de passe")
+                    SectionHeader("Previous passwords")
                 }
             }
 
@@ -120,7 +120,7 @@ struct ItemDetailView: View {
                     TagsRow(tags: summary.tags)
                         .padding(.vertical, 2)
                 } header: {
-                    SectionHeader("Étiquettes")
+                    SectionHeader("Tags")
                 }
             }
 
@@ -138,33 +138,33 @@ struct ItemDetailView: View {
                 Task { await model.addAttachment(from: url, to: itemID) }
             }
         }
-        .confirmationDialog("Mettre « \(summary.title) » à la corbeille ?", isPresented: $confirmTrash,
+        .confirmationDialog("Move “\(summary.title)” to the trash?", isPresented: $confirmTrash,
                             titleVisibility: .visible) {
-            Button("Mettre à la corbeille", role: .destructive) { Task { await model.trash(itemID) } }
+            Button("Move to Trash", role: .destructive) { Task { await model.trash(itemID) } }
         } message: {
-            Text("L'élément reste restaurable depuis la corbeille pendant 30 jours.")
+            Text("The item can be restored from the trash for 30 days.")
         }
-        .confirmationDialog("Supprimer « \(deletingAttachment?.fileName ?? "") » ?",
+        .confirmationDialog("Delete “\(deletingAttachment?.fileName ?? "")”?",
                             isPresented: Binding(get: { deletingAttachment != nil }, set: { if !$0 { deletingAttachment = nil } }),
                             titleVisibility: .visible) {
-            Button("Supprimer la pièce jointe", role: .destructive) {
+            Button("Delete attachment", role: .destructive) {
                 if let entry = deletingAttachment { Task { await model.deleteAttachment(entry, of: itemID) } }
                 deletingAttachment = nil
             }
         } message: {
-            Text("Le fichier est supprimé du serveur. Cette action est définitive.")
+            Text("The file is deleted from the server. This action is permanent.")
         }
-        .confirmationDialog("Supprimer cette passkey ?",
+        .confirmationDialog("Delete this passkey?",
                             isPresented: Binding(get: { deletingPasskey != nil }, set: { if !$0 { deletingPasskey = nil } }),
                             titleVisibility: .visible) {
-            Button("Supprimer la passkey", role: .destructive) {
+            Button("Delete passkey", role: .destructive) {
                 if let passkey = deletingPasskey {
                     Task { await model.deletePasskey(itemID: itemID, credentialID: passkey.credentialId) }
                 }
                 deletingPasskey = nil
             }
         } message: {
-            Text("Le site ne vous reconnaîtra plus avec elle.")
+            Text("The site will no longer recognize you with it.")
         }
     }
 
@@ -172,53 +172,53 @@ struct ItemDetailView: View {
     private func toolbar(_ summary: ItemSummary) -> some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
             if model.canModify(summary), summary.state == .active {
-                Button("Modifier") { Task { await model.edit(itemID) } }
+                Button("Edit") { Task { await model.edit(itemID) } }
                     .disabled(model.editorBusy)
             }
             Menu {
                 if summary.category == .login {
-                    Button("Copier l'identifiant", systemImage: "person") { model.copyUsername(of: itemID) }
-                    Button("Copier le mot de passe", systemImage: "key") { model.copyPassword(of: itemID) }
+                    Button("Copy username", systemImage: "person") { model.copyUsername(of: itemID) }
+                    Button("Copy password", systemImage: "key") { model.copyPassword(of: itemID) }
                 }
                 if summary.hasTotp {
-                    Button("Copier le code", systemImage: "clock") { model.copyCode(of: itemID) }
+                    Button("Copy code", systemImage: "clock") { model.copyCode(of: itemID) }
                 }
                 if model.canModify(summary) {
                     Divider()
                     switch summary.state {
                     case .active:
-                        Button(summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris",
+                        Button(summary.favorite ? "Remove from favorites" : "Add to favorites",
                                systemImage: summary.favorite ? "star.slash" : "star") {
                             Task { await model.setFavorite(itemID, !summary.favorite) }
                         }
-                        Button("Déplacer vers un dossier…", systemImage: "folder") {
+                        Button("Move to folder…", systemImage: "folder") {
                             model.moveRequest = PhoneModel.MoveRequest(itemIDs: [itemID])
                         }
                         if summary.sharing != nil {
                             Button("Collections…", systemImage: "tray.2") { model.openSharing(itemID) }
                             if summary.canUnshare {
-                                Button("Retirer du partage…", systemImage: "person.2.slash") {
+                                Button("Remove from sharing…", systemImage: "person.2.slash") {
                                     model.requestUnshare([itemID])
                                 }
                             }
                         } else if !model.writableOrganizations.isEmpty {
-                            Button("Partager…", systemImage: "person.2") { model.openSharing(itemID) }
+                            Button("Share…", systemImage: "person.2") { model.openSharing(itemID) }
                         }
                         if summary.category == .login, !summary.hasTotp {
-                            Button("Ajouter un code (QR)", systemImage: "qrcode.viewfinder") {
+                            Button("Add a code (QR)", systemImage: "qrcode.viewfinder") {
                                 model.startOTPScan(.item(id: itemID, title: summary.title))
                             }
                         }
-                        Button("Ajouter une pièce jointe…", systemImage: "paperclip") { importingFile = true }
-                        Button("Archiver", systemImage: "archivebox") { Task { await model.setArchived(itemID, true) } }
-                        Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = true }
+                        Button("Add an attachment…", systemImage: "paperclip") { importingFile = true }
+                        Button("Archive", systemImage: "archivebox") { Task { await model.setArchived(itemID, true) } }
+                        Button("Move to Trash", systemImage: "trash", role: .destructive) { confirmTrash = true }
                     case .archived:
-                        Button("Sortir des archives", systemImage: "tray.and.arrow.up") {
+                        Button("Unarchive", systemImage: "tray.and.arrow.up") {
                             Task { await model.setArchived(itemID, false) }
                         }
-                        Button("Mettre à la corbeille", systemImage: "trash", role: .destructive) { confirmTrash = true }
+                        Button("Move to Trash", systemImage: "trash", role: .destructive) { confirmTrash = true }
                     case .trashed:
-                        Button("Restaurer", systemImage: "arrow.uturn.backward") { Task { await model.restore(itemID) } }
+                        Button("Restore", systemImage: "arrow.uturn.backward") { Task { await model.restore(itemID) } }
                     }
                 }
             } label: {
@@ -234,15 +234,15 @@ struct ItemDetailView: View {
         case .active:
             EmptyView()
         case .archived:
-            banner("Archivé : hors de la liste, de la recherche et du remplissage.", symbol: "archivebox",
-                   action: "Sortir des archives", summary: summary) { await model.setArchived(itemID, false) }
+            banner("Archived: out of the list, search and filling.", symbol: "archivebox",
+                   action: "Unarchive", summary: summary) { await model.setArchived(itemID, false) }
         case .trashed:
-            banner("À la corbeille : supprimé définitivement par le serveur après 30 jours.", symbol: "trash",
-                   action: "Restaurer", summary: summary) { await model.restore(itemID) }
+            banner("In the trash: permanently deleted by the server after 30 days.", symbol: "trash",
+                   action: "Restore", summary: summary) { await model.restore(itemID) }
         }
     }
 
-    private func banner(_ text: String, symbol: String, action: String, summary: ItemSummary,
+    private func banner(_ text: LocalizedStringKey, symbol: String, action: LocalizedStringKey, summary: ItemSummary,
                         perform: @escaping () async -> Void) -> some View {
         Section {
             Label(text, systemImage: symbol)
@@ -267,7 +267,7 @@ struct ItemDetailView: View {
                         HStack(spacing: 12) {
                             TintedSymbol(symbol: "doc.fill", tint: Theme.accent, size: 32)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.readable ? entry.fileName : "Fichier illisible")
+                                Text(entry.readable ? entry.fileName : String(localized: "Unreadable file"))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
                                 Text(ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file))
@@ -279,17 +279,17 @@ struct ItemDetailView: View {
                     }
                     .disabled(!entry.readable || model.attachmentActivity != nil)
                     .contextMenu {
-                        Button("Aperçu", systemImage: "eye") { model.openAttachment(entry, of: itemID) }
-                        Button("Partager…", systemImage: "square.and.arrow.up") { model.shareAttachment(entry, of: itemID) }
+                        Button("Preview", systemImage: "eye") { model.openAttachment(entry, of: itemID) }
+                        Button("Share…", systemImage: "square.and.arrow.up") { model.shareAttachment(entry, of: itemID) }
                         if model.canModify(summary) {
-                            Button("Supprimer", systemImage: "trash", role: .destructive) { deletingAttachment = entry }
+                            Button("Delete", systemImage: "trash", role: .destructive) { deletingAttachment = entry }
                         }
                     }
                     .swipeActions {
                         if model.canModify(summary) {
-                            Button("Supprimer", systemImage: "trash", role: .destructive) { deletingAttachment = entry }
+                            Button("Delete", systemImage: "trash", role: .destructive) { deletingAttachment = entry }
                         }
-                        Button("Partager", systemImage: "square.and.arrow.up") { model.shareAttachment(entry, of: itemID) }
+                        Button("Share", systemImage: "square.and.arrow.up") { model.shareAttachment(entry, of: itemID) }
                             .tint(.blue)
                     }
                 }
@@ -300,20 +300,20 @@ struct ItemDetailView: View {
                     }
                 }
             } header: {
-                SectionHeader("Pièces jointes")
+                SectionHeader("Attachments")
             } footer: {
-                Text("Téléchargées et déchiffrées à chaque ouverture : il faut le réseau.")
+                Text("Downloaded and decrypted on each opening: the network is needed.")
             }
         }
     }
 
     private func metadata(_ detail: ItemDetail) -> some View {
-        let format = Date.FormatStyle(date: .long, time: .shortened).locale(Locale(identifier: "fr_FR"))
+        let format = Date.FormatStyle(date: .long, time: .shortened)
         return VStack(alignment: .leading, spacing: 3) {
-            Text("Modifié le \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
-            Text("Créé le \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
+            Text("Modified \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
+            Text("Created \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
             if let used = detail.summary.lastUsedLabel {
-                Text("Utilisé sur cet iPhone \(used)")
+                Text("Used on this iPhone \(used)")
             }
         }
         .font(.caption)
@@ -321,8 +321,8 @@ struct ItemDetailView: View {
     }
 }
 
-/// Icône, titre et pastilles (type, dossier, partage, protection), étoile
-/// des favoris : l'en-tête de la fiche du Mac.
+/// Icon, title and chips (type, folder, sharing, protection), favorites
+/// star: the Mac item page's header.
 private struct DetailHeader: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -340,7 +340,7 @@ private struct DetailHeader: View {
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
-                // Les pastilles passent à la ligne, sans jamais couper leur texte.
+                // The chips wrap, without ever cutting their text.
                 FlowLayout(spacing: 6, lineSpacing: 6) {
                     ForEach(chips, id: \.text) { chip in
                         Chip(text: chip.text, symbol: chip.symbol, tint: chip.tint)
@@ -356,18 +356,18 @@ private struct DetailHeader: View {
     private var chips: [(text: String, symbol: String, tint: Color)] {
         var chips: [(text: String, symbol: String, tint: Color)] = [(summary.kindLabel, summary.symbol, summary.tint)]
         if let folder = summary.folder { chips.append((folder, "folder", .secondary)) }
-        if summary.pendingSync { chips.append(("En attente de synchronisation", "arrow.triangle.2.circlepath", .orange)) }
-        if summary.reprompt { chips.append(("Protégé", "lock.shield", .orange)) }
+        if summary.pendingSync { chips.append((String(localized: "Pending sync"), "arrow.triangle.2.circlepath", .orange)) }
+        if summary.reprompt { chips.append((String(localized: "Protected"), "lock.shield", .orange)) }
         if let sharing = summary.sharing {
             chips.append((sharing.organization, "person.2.fill", .indigo))
-            if sharing.readOnly { chips.append(("Lecture seule", "eye", .secondary)) }
-            if sharing.hidePasswords { chips.append(("Mot de passe masqué", "eye.slash", .secondary)) }
+            if sharing.readOnly { chips.append((String(localized: "Read-only"), "eye", .secondary)) }
+            if sharing.hidePasswords { chips.append((String(localized: "Hidden password"), "eye.slash", .secondary)) }
         }
         return chips
     }
 }
 
-/// L'étoile des favoris, qui rebondit quand on la touche.
+/// The favorites star, which bounces when tapped.
 private struct FavoriteButton: View {
     @Environment(PhoneModel.self) private var model
     let summary: ItemSummary
@@ -387,17 +387,17 @@ private struct FavoriteButton: View {
         }
         .buttonStyle(.borderless)
         .disabled(!model.canModify(summary) || summary.state != .active || model.editorBusy)
-        .accessibilityLabel(summary.favorite ? "Retirer des favoris" : "Ajouter aux favoris")
+        .accessibilityLabel(summary.favorite ? "Remove from favorites" : "Add to favorites")
     }
 }
 
-/// Copie en un geste : identifiant, mot de passe, code. Boutons de verre
-/// fondus ensemble sur iOS 26, en capsules teintées avant.
+/// One-gesture copy: username, password, code. Glass buttons blended
+/// together on iOS 26, tinted capsules before.
 private struct QuickCopyBar: View {
     @Environment(PhoneModel.self) private var model
     let summary: ItemSummary
     let fields: [FieldView]
-    /// Le bouton qui vient de copier : sa coche s'affiche 1,5 s.
+    /// The button that just copied: its checkmark shows for 1.5 s.
     @State private var copied: String?
     @State private var copyToken = 0
 
@@ -405,25 +405,25 @@ private struct QuickCopyBar: View {
         GlassGroup(spacing: 10) {
             HStack(spacing: 10) {
                 if summary.category == .login, fields.contains(where: { $0.fieldType == .username || $0.id == "username" }) {
-                    action("Identifiant", symbol: "person.fill") { model.copyUsername(of: summary.id) }
+                    action(String(localized: "Username"), id: "username", symbol: "person.fill") { model.copyUsername(of: summary.id) }
                 }
                 if summary.category == .login, fields.contains(where: { $0.id == "password" }) {
-                    action("Mot de passe", symbol: "key.fill") { model.copyPassword(of: summary.id) }
+                    action(String(localized: "Password"), id: "password", symbol: "key.fill") { model.copyPassword(of: summary.id) }
                 }
                 if summary.hasTotp {
-                    action("Code", symbol: "clock.fill") { model.copyCode(of: summary.id) }
+                    action(String(localized: "Code"), id: "code", symbol: "clock.fill") { model.copyCode(of: summary.id) }
                 }
             }
         }
     }
 
-    private func action(_ title: String, symbol: String, perform: @escaping () -> Void) -> some View {
+    private func action(_ title: String, id: String, symbol: String, perform: @escaping () -> Void) -> some View {
         Button {
             let before = model.copies
             perform()
             guard model.copies != before else { return }
             copied = title
-            // Échéance plutôt que tâche de la vue (voir CopiedFlag).
+            // Deadline rather than a view task (see CopiedFlag).
             copyToken += 1
             let mine = copyToken
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
@@ -439,12 +439,12 @@ private struct QuickCopyBar: View {
             .frame(maxWidth: .infinity)
         }
         .glassButton()
-        .accessibilityLabel("Copier : \(title.lowercased())")
-        .accessibilityIdentifier("quick-copy-\(title)")
+        .accessibilityLabel("Copy \(title.lowercased())")
+        .accessibilityIdentifier("quick-copy-\(id)")
     }
 }
 
-/// Symbole au-dessus du texte, dans les boutons de copie rapide.
+/// Symbol above the text, in the quick copy buttons.
 private struct StackedLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         VStack(spacing: 4) {
@@ -461,7 +461,7 @@ private struct StackedLabelStyle: LabelStyle {
     }
 }
 
-/// Une ligne de champ : un appui copie (le bouton passe à la coche), l'œil révèle.
+/// A field row: a tap copies (the button turns into a checkmark), the eye reveals.
 struct FieldRow: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
@@ -479,13 +479,13 @@ struct FieldRow: View {
             Spacer(minLength: 8)
             if field.secret && field.fieldType != .totp && !field.hidden {
                 let shown = model.revealedValue(field.id, of: itemID) != nil
-                RowIconButton(symbol: shown ? "eye.slash" : "eye", label: shown ? "Masquer" : "Afficher") {
+                RowIconButton(symbol: shown ? "eye.slash" : "eye", label: shown ? "Hide" : "Show") {
                     model.toggleReveal(field.id, of: itemID)
                 }
                 .animation(.snappy(duration: 0.25), value: shown)
             }
             if !field.hidden {
-                RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copier",
+                RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copy",
                               tint: copied ? .green : Theme.accent, action: copy)
                     .animation(.snappy(duration: 0.3), value: copied)
             }
@@ -493,12 +493,12 @@ struct FieldRow: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: copy)
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Touchez deux fois pour copier")
-        .accessibilityAction(named: "Copier", copy)
+        .accessibilityHint("Double-tap to copy")
+        .accessibilityAction(named: "Copy", copy)
         .contextMenu {
-            Button("Copier", systemImage: "doc.on.doc", action: copy)
+            Button("Copy", systemImage: "doc.on.doc", action: copy)
             if field.secret && field.fieldType != .totp && !field.hidden {
-                Button(model.revealedValue(field.id, of: itemID) == nil ? "Afficher" : "Masquer", systemImage: "eye") {
+                Button(model.revealedValue(field.id, of: itemID) == nil ? "Show" : "Hide", systemImage: "eye") {
                     model.toggleReveal(field.id, of: itemID)
                 }
             }
@@ -509,19 +509,19 @@ struct FieldRow: View {
     private func copy() {
         let before = model.copies
         model.copyField(field, of: itemID)
-        // La coche seulement si la copie a eu lieu (pas d'attente de Face ID) ;
-        // le retour haptique de réussite suit chaque copie (RootView).
+        // The checkmark only if the copy happened (no wait for Face ID); the
+        // success haptic follows each copy (RootView).
         if model.copies != before {
             copied = true
         }
     }
 }
 
-/// Petit bouton rond d'une ligne (afficher, copier) : un fond discret, pas
-/// de verre dans une liste.
+/// Small round button of a row (show, copy): a discreet background, no
+/// glass in a list.
 private struct RowIconButton: View {
     let symbol: String
-    let label: String
+    let label: LocalizedStringKey
     var tint: Color = Theme.accent
     let action: () -> Void
 
@@ -540,7 +540,7 @@ private struct RowIconButton: View {
     }
 }
 
-/// La valeur d'un champ (masquée, révélée, code à usage unique…).
+/// A field's value (hidden, revealed, one-time code…).
 private struct FieldValue: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
@@ -552,12 +552,12 @@ private struct FieldValue: View {
             TotpFieldValue(itemID: itemID)
         case .password, .concealed, .pin, .cardNumber:
             if field.hidden {
-                Text("Masqué par l'organisation").foregroundStyle(.secondary)
+                Text("Hidden by the organization").foregroundStyle(.secondary)
             } else {
-                // Révélé : brouillé puis déchiffré caractère par caractère.
+                // Revealed: scrambled then decrypted character by character.
                 DecryptReveal(value: model.revealedValue(field.id, of: itemID), fontSize: 17) { revealed in
                     if field.fieldType == .password || field.fieldType == .pin {
-                        // Copié d'un toucher sur la ligne : pas de sélection.
+                        // Copied with a tap on the row: no selection.
                         PasswordText(value: revealed, size: 17, selectable: false)
                     } else {
                         Text(revealed).font(.system(size: 17, design: .monospaced))
@@ -582,9 +582,9 @@ private struct FieldValue: View {
     }
 }
 
-/// Le code à usage unique de la fiche : ses chiffres roulent, et un léger
-/// retour haptique marque chaque nouveau code, seulement quand la fiche est
-/// à l'écran et l'app au premier plan.
+/// The item page's one-time code: its digits roll, and a light haptic marks
+/// each new code, only when the page is on screen and the app in the
+/// foreground.
 private struct TotpFieldValue: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
@@ -598,7 +598,7 @@ private struct TotpFieldValue: View {
                 if let code {
                     TotpCodeView(code: code, size: 28)
                 } else {
-                    // Élément protégé : le code n'apparaît qu'après confirmation.
+                    // Protected item: the code only appears after confirmation.
                     MaskedText(count: 6)
                 }
             }
@@ -616,14 +616,14 @@ private struct WebsiteRow: View {
     @Environment(\.openURL) private var openURL
     let url: String
     let primary: Bool
-    /// Règle de correspondance propre au site (`nil` : celle par défaut).
+    /// The site's own match rule (`nil`: the default one).
     var rule: UriMatchRule?
 
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(primary ? "Site principal" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
+                    Text(primary ? "Main site" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     if let rule {
                         Text(rule.label)
                             .font(.caption2.weight(.semibold))
@@ -631,18 +631,18 @@ private struct WebsiteRow: View {
                             .padding(.vertical, 1)
                             .background((rule == .never ? Color.orange : Color.secondary).opacity(0.15), in: Capsule())
                             .foregroundStyle(rule == .never ? Color.orange : Color.secondary)
-                            .accessibilityLabel("Correspondance : \(rule.label)")
+                            .accessibilityLabel("Match: \(rule.label)")
                     }
                 }
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
             if let link = URL(string: url), link.scheme == "https" || link.scheme == "http" {
-                RowIconButton(symbol: "safari", label: "Ouvrir dans Safari") { openURL(link) }
+                RowIconButton(symbol: "safari", label: "Open in Safari") { openURL(link) }
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.copy(url, label: "Site", secret: false) }
+        .onTapGesture { model.copy(url, label: String(localized: "Site"), secret: false) }
     }
 }
 
@@ -662,8 +662,8 @@ private struct PasskeyRow: View {
     }
 
     private var created: String {
-        let format = Date.FormatStyle(date: .abbreviated, time: .omitted).locale(Locale(identifier: "fr_FR"))
-        return "créée le \(Date(timeIntervalSince1970: TimeInterval(passkey.created)).formatted(format))"
+        let format = Date.FormatStyle(date: .abbreviated, time: .omitted)
+        return String(localized: "created \(Date(timeIntervalSince1970: TimeInterval(passkey.created)).formatted(format))")
     }
 }
 
@@ -680,13 +680,13 @@ private struct NotesRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Contenu masqué").foregroundStyle(.secondary)
-                    Text("Touchez l'œil pour afficher la note.").font(.caption).foregroundStyle(.tertiary)
+                    Text("Hidden content").foregroundStyle(.secondary)
+                    Text("Tap the eye to show the note.").font(.caption).foregroundStyle(.tertiary)
                 }
                 Spacer()
             }
             RowIconButton(symbol: notes == nil ? "eye" : "eye.slash",
-                          label: "Afficher la note") {
+                          label: "Show note") {
                 model.toggleReveal("notes", of: itemID)
             }
         }
@@ -694,7 +694,7 @@ private struct NotesRow: View {
     }
 }
 
-/// QR code d'un réseau Wi-Fi, à scanner par un autre appareil.
+/// QR code of a Wi-Fi network, for another device to scan.
 struct WifiQRSheet: View {
     @Environment(\.dismiss) private var dismiss
     let sheet: PhoneModel.QRSheet
@@ -709,8 +709,8 @@ struct WifiQRSheet: View {
                     .frame(maxWidth: 260)
                     .padding(16)
                     .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .accessibilityLabel("QR code du réseau « \(sheet.title) »")
-                Text("Scannez avec l'appareil photo d'un autre téléphone pour rejoindre « \(sheet.title) ».")
+                    .accessibilityLabel("QR code of the “\(sheet.title)” network")
+                Text("Scan with another phone's camera to join “\(sheet.title)”.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -728,7 +728,7 @@ struct WifiQRSheet: View {
     }
 }
 
-/// « Déplacer vers un dossier » : un dossier existant, aucun, ou un nouveau.
+/// "Move to folder": an existing folder, none, or a new one.
 struct MoveToFolderSheet: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -739,14 +739,14 @@ struct MoveToFolderSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Button("Aucun dossier", systemImage: "folder.badge.minus") { move(to: nil) }
+                    Button("No folder", systemImage: "folder.badge.minus") { move(to: nil) }
                     ForEach(model.folders, id: \.id) { folder in
                         Button(folder.name, systemImage: "folder") { move(to: folder) }
                     }
                 }
-                Section("Nouveau dossier") {
-                    TextField("Nom du dossier", text: $newFolder)
-                    Button("Créer et déplacer") {
+                Section("New folder") {
+                    TextField("Folder name", text: $newFolder)
+                    Button("Create and move") {
                         let name = newFolder
                         dismiss()
                         Task { await model.moveToNewFolder(name, ids: request.itemIDs) }
@@ -754,10 +754,10 @@ struct MoveToFolderSheet: View {
                     .disabled(newFolder.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
             }
-            .navigationTitle(request.itemIDs.count == 1 ? "Déplacer" : "Déplacer \(request.itemIDs.count) éléments")
+            .navigationTitle(request.itemIDs.count == 1 ? "Move" : "Move \(request.itemIDs.count) items")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
             }
         }
         .presentationDetents([.medium, .large])
@@ -769,7 +769,7 @@ struct MoveToFolderSheet: View {
     }
 }
 
-/// Feuille de partage du système (Fichiers, AirDrop, autre app).
+/// System share sheet (Files, AirDrop, another app).
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
 

@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// L'interface de l'extension : déverrouillage, puis la liste (ou la
-/// création de passkey) ; une suggestion touchée n'affiche que le
-/// déverrouillage avant de remplir.
+/// The extension's interface: unlock, then the list (or the passkey
+/// creation); a tapped suggestion only shows the unlock before filling.
 struct AutoFillRootView: View {
     @Environment(AutoFillModel.self) private var model
 
@@ -23,7 +22,7 @@ struct AutoFillRootView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { model.cancel() }
+                    Button("Cancel") { model.cancel() }
                 }
             }
         }
@@ -44,17 +43,17 @@ struct AutoFillRootView: View {
         case .register:
             PasskeyRegistrationView()
         case .provide:
-            WorkingView(label: "Remplissage…")
+            WorkingView(label: "Filling…")
         case .list, .oneTimeCodes:
             if model.phase == .working {
-                WorkingView(label: "Signature…")
+                WorkingView(label: "Signing…")
             } else {
                 CredentialListView()
             }
         case .none:
             VStack(spacing: 12) {
                 AppMark(size: 64, glow: false)
-                Text("Verrou remplit vos identifiants, codes et passkeys.")
+                Text("Verrou fills your logins, codes and passkeys.")
                     .multilineTextAlignment(.center)
             }
             .padding()
@@ -63,7 +62,7 @@ struct AutoFillRootView: View {
 }
 
 private struct WorkingView: View {
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 14) {
@@ -78,9 +77,9 @@ private struct NoAccountView: View {
     var body: some View {
         VStack(spacing: 16) {
             AppMark(size: 72)
-            Text("Aucun coffre sur cet iPhone")
+            Text("No vault on this iPhone")
                 .font(.title3.weight(.semibold))
-            Text("Ouvrez l'app Verrou et connectez-vous à votre serveur Vaultwarden : vos identifiants seront alors proposés ici.")
+            Text("Open the Verrou app and sign in to your Vaultwarden server: your logins will then be offered here.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
         }
@@ -89,7 +88,7 @@ private struct NoAccountView: View {
     }
 }
 
-// MARK: Déverrouillage
+// MARK: Unlocking
 
 private struct AutoFillLockView: View {
     @Environment(AutoFillModel.self) private var model
@@ -103,10 +102,10 @@ private struct AutoFillLockView: View {
                 Spacer(minLength: 12)
                 AppMark(size: 76)
                 VStack(spacing: 6) {
-                    Text("Déverrouiller Verrou")
+                    Text("Unlock Verrou")
                         .font(.system(.title2, design: .rounded, weight: .bold))
                     if let site = model.site {
-                        Text("pour \(site)").foregroundStyle(.secondary)
+                        Text("for \(site)").foregroundStyle(.secondary)
                     }
                     if let account = model.account {
                         Text(account.email).font(.footnote).foregroundStyle(.secondary)
@@ -117,7 +116,7 @@ private struct AutoFillLockView: View {
                 GlassGroup(spacing: 14) {
                     VStack(spacing: 14) {
                         if model.canUseBiometrics {
-                            BiometricUnlockButton(title: "Déverrouiller avec \(Biometrics.name)",
+                            BiometricUnlockButton(title: "Unlock with \(Biometrics.name)",
                                                   symbol: Biometrics.symbolName,
                                                   busy: model.phase == .unlocking) {
                                 Task { await model.unlockWithBiometrics() }
@@ -149,7 +148,7 @@ private struct AutoFillLockView: View {
     }
 }
 
-// MARK: Liste
+// MARK: List
 
 private struct CredentialListView: View {
     @Environment(AutoFillModel.self) private var model
@@ -171,33 +170,33 @@ private struct CredentialListView: View {
                 }
                 Section {
                     if model.matches.isEmpty {
-                        Text("Aucun identifiant pour ce site : cherchez dans le coffre.")
+                        Text("No login for this site: search the vault.")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(model.matches, id: \.id) { item in itemButton(item) }
                 } header: {
-                    SectionHeader(model.site.map { "Pour \($0)" } ?? "Suggestions")
+                    SectionHeader(model.site.map { String(localized: "For \($0)") } ?? String(localized: "Suggestions"))
                 }
                 Section {
                     ForEach(model.everything.prefix(100), id: \.id) { item in itemButton(item) }
                 } header: {
-                    SectionHeader("Tout le coffre")
+                    SectionHeader("Entire vault")
                 }
             } else {
-                Section(header: SectionHeader("Résultats")) {
+                Section(header: SectionHeader("Results")) {
                     let results = model.searchResults
                     if results.isEmpty {
-                        Text("Aucun résultat").foregroundStyle(.secondary)
+                        Text("No results").foregroundStyle(.secondary)
                     }
                     ForEach(results, id: \.id) { item in itemButton(item) }
                 }
             }
         }
-        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Rechercher dans le coffre")
+        .searchable(text: $model.query, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search the vault")
     }
 
     private func itemButton(_ item: ItemSummary) -> some View {
-        // La ligne de l'app (sans icône de site : rien à télécharger ici).
+        // The app's row (without a site icon: nothing to download here).
         Button { model.choose(item) } label: {
             ItemRowContent(summary: item, highlights: [], spacing: 12, subtitleFont: .subheadline,
                            showsProtection: true) {
@@ -230,7 +229,7 @@ private struct Row: View {
     }
 }
 
-// MARK: Création de passkey
+// MARK: Passkey creation
 
 private struct PasskeyRegistrationView: View {
     @Environment(AutoFillModel.self) private var model
@@ -240,10 +239,10 @@ private struct PasskeyRegistrationView: View {
             Section {
                 VStack(spacing: 10) {
                     PasskeySymbol(created: model.passkeyCreated)
-                    Text(model.passkeyCreated ? "Passkey enregistrée" : "Nouvelle passkey pour \(model.site ?? "ce site")")
+                    Text(model.passkeyCreated ? "Passkey saved" : "New passkey for \(model.site ?? String(localized: "this site"))")
                         .font(.headline)
                         .multilineTextAlignment(.center)
-                    Text("Elle est enregistrée dans votre coffre Vaultwarden, au format de Bitwarden : vos autres appareils la retrouvent.")
+                    Text("It is saved in your Vaultwarden vault, in Bitwarden's format: your other devices find it.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -255,7 +254,7 @@ private struct PasskeyRegistrationView: View {
                 Button {
                     model.register(into: nil)
                 } label: {
-                    Label("Nouvel identifiant", systemImage: "plus.circle.fill")
+                    Label("New login", systemImage: "plus.circle.fill")
                         .font(.body.weight(.semibold))
                 }
                 .disabled(model.phase == .working)
@@ -269,23 +268,23 @@ private struct PasskeyRegistrationView: View {
                                 ItemIconContent(summary: item, image: nil, size: 38, initialShadow: false)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title).foregroundStyle(.primary)
-                                    Text(item.subtitle).font(.footnote).foregroundStyle(.secondary)
+                                    Text(item.displaySubtitle).font(.footnote).foregroundStyle(.secondary)
                                 }
                             }
                         }
                         .disabled(model.phase == .working)
                     }
                 } header: {
-                    SectionHeader("Ajouter à un identifiant")
+                    SectionHeader("Add to a login")
                 } footer: {
-                    Text("Un identifiant porte une passkey : celle qu'il avait est remplacée.")
+                    Text("A login holds one passkey: the one it had is replaced.")
                 }
             }
             if model.phase == .working, !model.passkeyCreated {
                 Section {
                     HStack {
                         ProgressView()
-                        Text("Enregistrement sur le serveur…").foregroundStyle(.secondary)
+                        Text("Saving to the server…").foregroundStyle(.secondary)
                     }
                 }
             }
@@ -294,9 +293,9 @@ private struct PasskeyRegistrationView: View {
     }
 }
 
-/// La clé de la feuille de création : elle rebondit et devient une coche
-/// une fois la passkey enregistrée. Effets de symboles seulement (rien de
-/// lourd dans l'extension) ; un fondu avec « Réduire les animations ».
+/// The creation sheet's key: it bounces and becomes a checkmark once the
+/// passkey is saved. Symbol effects only (nothing heavy in the extension);
+/// a fade with "Reduce Motion".
 private struct PasskeySymbol: View {
     let created: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -330,7 +329,7 @@ private struct PasskeySymbol: View {
     }
 }
 
-// MARK: Élément protégé
+// MARK: Protected item
 
 private struct ConfirmationSheet: View {
     @Environment(AutoFillModel.self) private var model
@@ -339,10 +338,10 @@ private struct ConfirmationSheet: View {
     var body: some View {
         VStack(spacing: 18) {
             TintedSymbol(symbol: "lock.shield.fill", tint: .orange, size: 60)
-            Text("« \(model.confirmation?.title ?? "") » est protégé")
+            Text("“\(model.confirmation?.title ?? "")” is protected")
                 .font(.headline)
                 .multilineTextAlignment(.center)
-            Text("Confirmez avec \(Biometrics.name) ou votre mot de passe principal.")
+            Text("Confirm with \(Biometrics.name) or your master password.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -350,14 +349,14 @@ private struct ConfirmationSheet: View {
                 Button {
                     Task { await model.confirmWithBiometrics() }
                 } label: {
-                    Label("Confirmer avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
+                    Label("Confirm with \(Biometrics.name)", systemImage: Biometrics.symbolName)
                         .font(.body.weight(.semibold))
                         .frame(maxWidth: .infinity, minHeight: 34)
                 }
                 .controlSize(.large)
                 .glassButton(prominent: true)
             }
-            SecureField("Mot de passe principal", text: $password)
+            SecureField("Master password", text: $password)
                 .textContentType(.password)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 48)
@@ -367,7 +366,7 @@ private struct ConfirmationSheet: View {
                     password = ""
                     Task { await model.confirm(masterPassword: typed) }
                 }
-            Button("Annuler", role: .cancel) { model.confirmation = nil }
+            Button("Cancel", role: .cancel) { model.confirmation = nil }
         }
         .padding(24)
     }

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Réglages : compte et synchronisation, sécurité (Face ID, verrouillage
-/// automatique, presse-papiers), affichage, à propos, déconnexion.
+/// Settings: account and sync, security (Face ID, auto-lock, clipboard),
+/// display, about, sign-out.
 struct SettingsTab: View {
     @Environment(PhoneModel.self) private var model
     @State private var confirmLogout = false
@@ -15,9 +15,9 @@ struct SettingsTab: View {
                 }
                 if model.mode == .vaultwarden, let account = model.account {
                     Section {
-                        LabeledContent("E-mail", value: account.email)
-                        LabeledContent("Serveur", value: URL(string: account.server)?.host() ?? account.server)
-                        LabeledContent("Synchronisé", value: syncedLabel(account))
+                        LabeledContent("Email", value: account.email)
+                        LabeledContent("Server", value: URL(string: account.server)?.host() ?? account.server)
+                        LabeledContent("Synced", value: syncedLabel(account))
                         if let pending = model.pendingLabel {
                             Label(pending, systemImage: "arrow.triangle.2.circlepath")
                                 .foregroundStyle(.orange)
@@ -26,7 +26,7 @@ struct SettingsTab: View {
                             Task { await model.syncNow() }
                         } label: {
                             HStack {
-                                Text("Synchroniser maintenant")
+                                Text("Sync now")
                                 Spacer()
                                 if model.syncState == .syncing { ProgressView() }
                             }
@@ -35,59 +35,59 @@ struct SettingsTab: View {
                         Button {
                             model.sharing.sheet = .fingerprint(nil)
                         } label: {
-                            SettingsLabel("Phrase d'empreinte", symbol: "person.badge.key.fill", tint: .indigo)
+                            SettingsLabel("Fingerprint phrase", symbol: "person.badge.key.fill", tint: .indigo)
                         }
                         .foregroundStyle(.primary)
                         .accessibilityIdentifier("settings-fingerprint")
                         Button {
                             model.sharing.sheet = .join("")
                         } label: {
-                            SettingsLabel("Rejoindre une organisation", symbol: "envelope.open.fill", tint: .teal)
+                            SettingsLabel("Join an organization", symbol: "envelope.open.fill", tint: .teal)
                         }
                         .foregroundStyle(.primary)
                     } header: {
-                        SectionHeader("Compte")
+                        SectionHeader("Account")
                     } footer: {
                         if case .failed(let message) = model.syncState {
-                            Text("Dernière synchronisation impossible : \(message)").foregroundStyle(.red)
+                            Text("Last sync failed: \(message)").foregroundStyle(.red)
                         } else if model.syncState == .offline {
-                            Text("Serveur injoignable : le coffre affiché vient du cache, les modifications attendent le réseau.")
+                            Text("Server unreachable: the vault shown comes from the cache, changes are waiting for the network.")
                         }
                     }
                 }
 
                 Section {
                     Toggle(isOn: $model.biometricsWanted) {
-                        SettingsLabel("Déverrouiller avec \(Biometrics.name)", symbol: Biometrics.symbolName, tint: .green)
+                        SettingsLabel("Unlock with \(Biometrics.name)", symbol: Biometrics.symbolName, tint: .green)
                     }
                     .disabled(!Biometrics.isAvailable || model.mode == .demo)
                     Picker(selection: $model.autoLockSeconds) {
-                        Text("Immédiatement").tag(0)
-                        Text("Après 1 minute").tag(60)
-                        Text("Après 5 minutes").tag(300)
-                        Text("Après 15 minutes").tag(900)
-                        Text("Après 1 heure").tag(3600)
-                        Text("Jamais").tag(-1)
+                        Text("Immediately").tag(0)
+                        Text("After 1 minute").tag(60)
+                        Text("After 5 minutes").tag(300)
+                        Text("After 15 minutes").tag(900)
+                        Text("After 1 hour").tag(3600)
+                        Text("Never").tag(-1)
                     } label: {
-                        SettingsLabel("Verrouillage automatique", symbol: "lock.badge.clock", tint: .indigo)
+                        SettingsLabel("Auto-lock", symbol: "lock.badge.clock", tint: .indigo)
                     }
                     .pickerStyle(.navigationLink)
                     Picker(selection: $model.clipboardSeconds) {
-                        Text("Après 30 secondes").tag(30)
-                        Text("Après 90 secondes").tag(90)
-                        Text("Après 3 minutes").tag(180)
-                        Text("Après 10 minutes").tag(600)
+                        Text("After 30 seconds").tag(30)
+                        Text("After 90 seconds").tag(90)
+                        Text("After 3 minutes").tag(180)
+                        Text("After 10 minutes").tag(600)
                     } label: {
-                        SettingsLabel("Effacer le presse-papiers", symbol: "doc.on.clipboard", tint: .orange)
+                        SettingsLabel("Clear clipboard", symbol: "doc.on.clipboard", tint: .orange)
                     }
                     .pickerStyle(.navigationLink)
                     Button {
                         model.lock()
                     } label: {
-                        SettingsLabel("Verrouiller maintenant", symbol: "lock.fill", tint: Theme.accent)
+                        SettingsLabel("Lock now", symbol: "lock.fill", tint: Theme.accent)
                     }
                 } header: {
-                    SectionHeader("Sécurité")
+                    SectionHeader("Security")
                 } footer: {
                     Text(securityFooter)
                 }
@@ -98,20 +98,20 @@ struct SettingsTab: View {
 
                 Section {
                     Toggle(isOn: $model.showSiteIcons) {
-                        SettingsLabel("Icônes des sites", symbol: "photo.on.rectangle", tint: .teal)
+                        SettingsLabel("Site icons", symbol: "photo.on.rectangle", tint: .teal)
                     }
                     NavigationLink(value: PhoneModel.SettingsRoute.filling) {
-                        SettingsLabel("Coffre et remplissage", symbol: "scope", tint: .purple)
+                        SettingsLabel("Vault and filling", symbol: "scope", tint: .purple)
                     }
                     .accessibilityIdentifier("settings-filling")
                 } header: {
-                    SectionHeader("Affichage")
+                    SectionHeader("Display")
                 }
 
                 if model.mode == .vaultwarden {
                     Section {
                         ActivityNotificationsToggle {
-                            SettingsLabel("Notifications du partage", symbol: "bell.badge.fill", tint: .red)
+                            SettingsLabel("Sharing notifications", symbol: "bell.badge.fill", tint: .red)
                         }
                     } header: {
                         SectionHeader("Notifications")
@@ -124,37 +124,37 @@ struct SettingsTab: View {
                     Button {
                         model.openAudit()
                     } label: {
-                        SettingsLabel("Audit de sécurité", symbol: "checkmark.shield.fill", tint: .green)
+                        SettingsLabel("Security audit", symbol: "checkmark.shield.fill", tint: .green)
                     }
                     .accessibilityIdentifier("settings-audit")
                     NavigationLink {
                         AboutView()
                     } label: {
-                        SettingsLabel("À propos et licences", symbol: "info.circle.fill", tint: .gray)
+                        SettingsLabel("About and licenses", symbol: "info.circle.fill", tint: .gray)
                     }
                 }
 
                 if model.mode == .vaultwarden, model.account != nil {
                     Section {
-                        Button("Se déconnecter de cet iPhone", role: .destructive) { confirmLogout = true }
+                        Button("Sign out of this iPhone", role: .destructive) { confirmLogout = true }
                     } footer: {
-                        Text("Efface le compte, le cache chiffré et \(Biometrics.name) de cet iPhone. Votre coffre reste sur le serveur.")
+                        Text("Erases the account, the encrypted cache and \(Biometrics.name) from this iPhone. Your vault stays on the server.")
                     }
                 }
             }
-            .navigationTitle("Réglages")
+            .navigationTitle("Settings")
             .navigationDestination(for: PhoneModel.SettingsRoute.self) { route in
                 switch route {
                 case .filling: FillingSettingsView()
                 }
             }
-            .confirmationDialog("Se déconnecter de cet iPhone ?", isPresented: $confirmLogout, titleVisibility: .visible) {
-                Button("Se déconnecter", role: .destructive) { model.logout() }
+            .confirmationDialog("Sign out of this iPhone?", isPresented: $confirmLogout, titleVisibility: .visible) {
+                Button("Sign out", role: .destructive) { model.logout() }
             } message: {
                 if let pending = model.pendingLabel {
-                    Text("\(pending) : elles seront perdues.")
+                    Text("\(pending): they will be lost.")
                 } else {
-                    Text("Il faudra le mot de passe principal et le second facteur pour revenir.")
+                    Text("You will need the master password and the second factor to come back.")
                 }
             }
         }
@@ -162,23 +162,23 @@ struct SettingsTab: View {
 
     private var securityFooter: String {
         var parts = [
-            "Le délai compte à partir du moment où Verrou passe en arrière-plan. Hors du premier plan, l'écran de Verrou est masqué dans le sélecteur d'apps.",
-            "Les secrets copiés ne vont pas sur vos autres appareils et sont effacés par iOS au bout du délai.",
+            String(localized: "The delay counts from the moment Verrou goes to the background. Out of the foreground, Verrou's screen is hidden in the app switcher."),
+            String(localized: "Copied secrets don't go to your other devices and are cleared by iOS after the delay."),
         ]
         if !Biometrics.isAvailable {
-            parts.insert("\(Biometrics.name) n'est pas configuré sur cet iPhone.", at: 0)
+            parts.insert(String(localized: "\(Biometrics.name) is not set up on this iPhone."), at: 0)
         }
         return parts.joined(separator: " ")
     }
 
     private func syncedLabel(_ account: AccountInfo) -> String {
-        guard let synced = account.syncedAt else { return "jamais" }
+        guard let synced = account.syncedAt else { return String(localized: "never") }
         let date = Date(timeIntervalSince1970: TimeInterval(synced))
-        return date.formatted(.relative(presentation: .named).locale(Locale(identifier: "fr_FR")))
+        return date.formatted(.relative(presentation: .named))
     }
 }
 
-/// Version, licence et composants tiers.
+/// Version, license and third-party components.
 struct AboutView: View {
     var body: some View {
         Form {
@@ -193,23 +193,23 @@ struct AboutView: View {
             }
             .listRowBackground(Color.clear)
 
-            Section("Licence") {
-                Text("Verrou est un logiciel libre, sous licence GPL-3.0-or-later.")
-                Link("Code source", destination: URL(string: "https://github.com/bonout/verrou")!)
+            Section("License") {
+                Text("Verrou is free software, licensed under GPL-3.0-or-later.")
+                Link("Source code", destination: URL(string: "https://github.com/bonout/verrou")!)
             }
-            Section("Composants") {
-                credit("SDK Rust de Bitwarden", "GPL-3.0 : chiffrement, déchiffrement et synchronisation du coffre (crates GPL de bitwarden/sdk-internal uniquement).")
-                credit("EFF Long Wordlist", "Electronic Frontier Foundation, CC BY 3.0 US : phrases de passe en anglais.")
-                credit("Liste diceware française", "Tango pour Tails et le projet Tor (ulif/diceware), CC0 1.0 : phrases de passe en français.")
-                credit("UniFFI", "Mozilla, MPL-2.0 : liaison entre le cœur Rust et Swift.")
+            Section("Components") {
+                credit("Bitwarden Rust SDK", "GPL-3.0: encryption, decryption and sync of the vault (only the GPL crates of bitwarden/sdk-internal).")
+                credit("EFF Long Wordlist", "Electronic Frontier Foundation, CC BY 3.0 US: English passphrases.")
+                credit("French diceware list", "Tango for Tails and the Tor project (ulif/diceware), CC0 1.0: French passphrases.")
+                credit("UniFFI", "Mozilla, MPL-2.0: binding between the Rust core and Swift.")
             }
             Section {
-                Text("« Bitwarden » est une marque de Bitwarden, Inc. Verrou n'est ni affilié ni approuvé par Bitwarden.")
+                Text("“Bitwarden” is a trademark of Bitwarden, Inc. Verrou is neither affiliated with nor endorsed by Bitwarden.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("À propos")
+        .navigationTitle("About")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -220,7 +220,7 @@ struct AboutView: View {
         return "\(short) (\(build))"
     }
 
-    private func credit(_ title: String, _ detail: String) -> some View {
+    private func credit(_ title: LocalizedStringKey, _ detail: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
             Text(detail).font(.caption).foregroundStyle(.secondary)
@@ -230,12 +230,12 @@ struct AboutView: View {
 
 // MARK: Audit
 
-/// Audit du coffre, calculé localement : mots de passe réutilisés, faibles,
-/// sites en HTTP ; fuites connues sur demande (Have I Been Pwned, par
-/// k-anonymat : 5 caractères de l'empreinte SHA-1 de chaque mot de passe).
+/// Vault audit, computed locally: reused and weak passwords, HTTP sites;
+/// known breaches on request (Have I Been Pwned, by k-anonymity: 5
+/// characters of each password's SHA-1 hash).
 struct AuditView: View {
     @Environment(PhoneModel.self) private var model
-    /// Les cartes sont apparues (une seule fois, en cascade).
+    /// The cards have appeared (only once, cascading).
     @State private var appeared = false
 
     var body: some View {
@@ -248,18 +248,18 @@ struct AuditView: View {
                     breachesRow
                         .staggered(1, shown: appeared)
                 } footer: {
-                    Text("Seuls les 5 premiers caractères de l'empreinte SHA-1 de chaque mot de passe quittent l'iPhone.")
+                    Text("Only the first 5 characters of each password's SHA-1 hash leave the iPhone.")
                 }
                 if let breaches = model.breaches, !breaches.isEmpty {
                     Section {
                         ForEach(breaches, id: \.item.id) { breach in
                             AuditRow(summary: breach.item,
-                                     detail: "Vu \(breach.count.formatted(.number.locale(Locale(identifier: "fr_FR")))) fois dans des fuites",
+                                     detail: String(localized: "Seen \(breach.count.formatted(.number)) times in breaches"),
                                      tint: .red)
                                 .staggered(2, shown: appeared)
                         }
                     } header: {
-                        AuditHeader(title: "Compromis", count: breaches.count, tint: .red)
+                        AuditHeader(title: "Compromised", count: breaches.count, tint: .red)
                             .staggered(2, shown: appeared)
                     }
                 }
@@ -267,36 +267,36 @@ struct AuditView: View {
                     Section {
                         ForEach(Array(audit.reused.enumerated()), id: \.offset) { _, group in
                             ForEach(group, id: \.id) { summary in
-                                AuditRow(summary: summary, detail: "Même mot de passe que \(group.count - 1) autre\(group.count > 2 ? "s" : "")",
+                                AuditRow(summary: summary, detail: group.count > 2 ? String(localized: "Same password as \(group.count - 1) others") : String(localized: "Same password as \(group.count - 1) other"),
                                          tint: .orange)
                                     .staggered(3, shown: appeared)
                             }
                         }
                     } header: {
-                        AuditHeader(title: "Réutilisés", count: audit.reused.count, tint: .orange,
-                                    unit: audit.reused.count > 1 ? "groupes" : "groupe")
+                        AuditHeader(title: "Reused", count: audit.reused.count, tint: .orange,
+                                    unit: audit.reused.count > 1 ? String(localized: "groups") : String(localized: "group"))
                             .staggered(3, shown: appeared)
                     }
                 }
                 if !audit.weak.isEmpty {
                     Section {
                         ForEach(audit.weak, id: \.item.id) { weak in
-                            AuditRow(summary: weak.item, detail: "\(Int(weak.bits)) bits d'entropie estimée", tint: .orange)
+                            AuditRow(summary: weak.item, detail: String(localized: "\(Int(weak.bits)) bits of estimated entropy"), tint: .orange)
                                 .staggered(4, shown: appeared)
                         }
                     } header: {
-                        AuditHeader(title: "Faibles", count: audit.weak.count, tint: .yellow)
+                        AuditHeader(title: "Weak passwords", count: audit.weak.count, tint: .yellow)
                             .staggered(4, shown: appeared)
                     }
                 }
                 if !audit.insecure.isEmpty {
                     Section {
                         ForEach(audit.insecure, id: \.id) { summary in
-                            AuditRow(summary: summary, detail: "Le mot de passe circule en clair", tint: .yellow)
+                            AuditRow(summary: summary, detail: String(localized: "The password travels in clear"), tint: .yellow)
                                 .staggered(5, shown: appeared)
                         }
                     } header: {
-                        AuditHeader(title: "Sites en HTTP", count: audit.insecure.count, tint: .blue)
+                        AuditHeader(title: "HTTP sites", count: audit.insecure.count, tint: .blue)
                             .staggered(5, shown: appeared)
                     }
                 }
@@ -307,25 +307,25 @@ struct AuditView: View {
             }
         }
         .listStyle(.insetGrouped)
-        .navigationTitle("Audit de sécurité")
+        .navigationTitle("Security audit")
         .onChange(of: model.audit != nil, initial: true) { _, ready in
-            // Première apparition seulement : les cartes, d'abord posées
-            // invisibles, apparaissent à l'image suivante.
+            // First appearance only: the cards, first placed invisible,
+            // appear on the next frame.
             guard ready, !appeared else { return }
             DispatchQueue.main.async { appeared = true }
         }
         .onAppear { model.refreshAudit() }
         .refreshable { model.refreshAudit() }
         .onChange(of: model.passkeyAudit.focus) { _, focus in
-            // Parcours de bout en bout : la section en haut de l'écran.
+            // End-to-end run: the section at the top of the screen.
             guard focus else { return }
             withAnimation { proxy.scrollTo("passkeys", anchor: .top) }
         }
         }
     }
 
-    /// « Passkey possible » : sites qui acceptent les passkeys, d'après
-    /// passkeys.2fa.directory. Pas un problème, une amélioration : hors du
+    /// "Passkey possible": sites that accept passkeys, according to
+    /// passkeys.2fa.directory. Not a problem, an improvement: outside the
     /// score.
     @ViewBuilder private var passkeySection: some View {
         let passkeys = model.passkeyAudit
@@ -347,19 +347,19 @@ struct AuditView: View {
             Section {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text("Recherche des sites qui acceptent les passkeys…")
+                    Text("Looking for sites that accept passkeys…")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }
         } else if let error = passkeys.error, model.mode == .vaultwarden {
             Section {
-                ErrorLabel(text: "Passkey possible : l'annuaire n'a pas pu être téléchargé (\(error)).")
+                ErrorLabel(text: String(localized: "Passkey possible: the directory could not be downloaded (\(error))."))
             }
         }
     }
 
-    /// Signaux des sites (iOS 26) : l'utilisateur décide, rien n'est
-    /// supprimé automatiquement.
+    /// Site signals (iOS 26): the user decides, nothing is deleted
+    /// automatically.
     @ViewBuilder private var signalSection: some View {
         let signals = model.passkeyAudit.signals
         if !signals.isEmpty {
@@ -368,26 +368,26 @@ struct AuditView: View {
                     AuditRow(summary: finding.item, detail: signalDetail(finding), tint: .indigo)
                 }
             } header: {
-                AuditHeader(title: "Signalé par les sites", count: signals.count, tint: .indigo)
+                AuditHeader(title: "Reported by sites", count: signals.count, tint: .indigo)
             } footer: {
-                Text("Les suggestions du clavier en tiennent déjà compte. Verrou ne supprime rien : ouvrez l'élément pour retirer la passkey ou le mot de passe si vous le souhaitez.")
+                Text("The keyboard suggestions already take them into account. Verrou deletes nothing: open the item to remove the passkey or the password if you wish.")
             }
         }
     }
 
     private func signalDetail(_ finding: SignalFinding) -> String {
         switch finding.kind {
-        case .passkeyRejected: "Passkey inconnue de \(finding.site) : elle peut être supprimée"
-        case .passkeyRenamed: "Nouveau nom chez \(finding.site) : \(finding.detail ?? "")"
-        case .passwordUnused: "Mot de passe inutile pour \(finding.site) : passkey en place"
+        case .passkeyRejected: String(localized: "Passkey unknown to \(finding.site): it can be deleted")
+        case .passkeyRenamed: String(localized: "New name at \(finding.site): \(finding.detail ?? "")")
+        case .passwordUnused: String(localized: "Password not needed for \(finding.site): passkey in place")
         }
     }
 
     private func passkeyFooter(_ report: PasskeyReport) -> String {
-        var text = "Ces sites acceptent les passkeys : rien à retenir, rien à hameçonner. « Créer » ouvre la page du site dans Safari ; choisissez Verrou pour enregistrer la passkey. L'élément quitte la liste à la synchronisation suivante ; gardez le mot de passe en secours, ou retirez-le chez le site s'il permet la connexion sans mot de passe. D'après passkeys.2fa.directory"
+        var text = String(localized: "These sites accept passkeys: nothing to remember, nothing to phish. “Create” opens the site's page in Safari; choose Verrou to save the passkey. The item leaves the list at the next sync; keep the password as a fallback, or remove it at the site if it allows signing in without a password. According to passkeys.2fa.directory")
         if report.stale {
             let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
-            text += " (annuaire du \(date.formatted(.dateTime.day().month(.wide).locale(Locale(identifier: "fr_FR")))), hors ligne)"
+            text += " " + String(localized: "(directory of \(date.formatted(.dateTime.day().month(.wide))), offline)")
         }
         return text + "."
     }
@@ -398,7 +398,7 @@ struct AuditView: View {
                 Task { await model.checkBreaches() }
             } label: {
                 HStack {
-                    SettingsLabel(model.breaches == nil ? "Rechercher les fuites connues" : "Vérifier à nouveau",
+                    SettingsLabel(model.breaches == nil ? String(localized: "Look for known breaches") : String(localized: "Check again"),
                                   symbol: "exclamationmark.shield.fill", tint: .red)
                     Spacer()
                     if model.checkingBreaches { ProgressView() }
@@ -408,19 +408,19 @@ struct AuditView: View {
             if let error = model.breachError {
                 ErrorLabel(text: error)
             } else if model.breaches?.isEmpty == true {
-                Label("Aucun mot de passe trouvé dans les fuites connues", systemImage: "checkmark.seal")
+                Label("No password found in known breaches", systemImage: "checkmark.seal")
                     .foregroundStyle(.green)
             }
         }
     }
 }
 
-/// Bilan de l'audit : bouclier coloré, nombre de mots de passe examinés et
-/// compteurs par problème (les pastilles des doublons du Mac).
+/// Audit summary: colored shield, number of passwords checked and counters
+/// per problem (the Mac's duplicate chips).
 private struct AuditSummary: View {
     let audit: AuditReport
     let breaches: [BreachedPassword]?
-    /// « Passkey possible » : une amélioration, hors du score.
+    /// "Passkey possible": an improvement, outside the score.
     var passkeys = 0
 
     var body: some View {
@@ -430,9 +430,9 @@ private struct AuditSummary: View {
             HStack(spacing: 14) {
                 AuditScoreGauge(score: score, tint: tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(issues == 0 ? "Rien à signaler" : "\(issues) point\(issues > 1 ? "s" : "") à revoir")
+                    Text(issues == 0 ? "Nothing to report" : issues > 1 ? "\(issues) points to review" : "\(issues) point to review")
                         .font(.headline)
-                    Text("\(audit.checked) mots de passe examinés")
+                    Text("\(audit.checked) passwords checked")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -440,16 +440,16 @@ private struct AuditSummary: View {
             }
             if issues > 0 || passkeys > 0 {
                 FlowLayout(spacing: 6, lineSpacing: 6) {
-                    if let count = breaches?.count, count > 0 { CountCapsule(text: "\(count) compromis", tint: .red) }
+                    if let count = breaches?.count, count > 0 { CountCapsule(text: String(localized: "\(count) compromised"), tint: .red) }
                     if !audit.reused.isEmpty {
-                        CountCapsule(text: "\(audit.reused.count) réutilisé\(audit.reused.count > 1 ? "s" : "")", tint: .orange)
+                        CountCapsule(text: audit.reused.count > 1 ? String(localized: "\(audit.reused.count) reused groups") : String(localized: "\(audit.reused.count) reused group"), tint: .orange)
                     }
                     if !audit.weak.isEmpty {
-                        CountCapsule(text: "\(audit.weak.count) faible\(audit.weak.count > 1 ? "s" : "")", tint: .yellow)
+                        CountCapsule(text: audit.weak.count > 1 ? String(localized: "\(audit.weak.count) weak passwords") : String(localized: "\(audit.weak.count) weak password"), tint: .yellow)
                     }
-                    if !audit.insecure.isEmpty { CountCapsule(text: "\(audit.insecure.count) en HTTP", tint: .blue) }
+                    if !audit.insecure.isEmpty { CountCapsule(text: String(localized: "\(audit.insecure.count) over HTTP"), tint: .blue) }
                     if passkeys > 0 {
-                        CountCapsule(text: "\(passkeys) passkey\(passkeys > 1 ? "s" : "") possible\(passkeys > 1 ? "s" : "")",
+                        CountCapsule(text: passkeys > 1 ? String(localized: "\(passkeys) passkeys possible") : String(localized: "\(passkeys) passkey possible"),
                                      tint: .teal)
                     }
                 }
@@ -459,7 +459,7 @@ private struct AuditSummary: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// Part des mots de passe examinés sans aucun problème, sur 100.
+    /// Share of the passwords checked without any problem, out of 100.
     private var score: Int {
         guard audit.checked > 0 else { return 100 }
         var flagged = Set<String>()
@@ -472,8 +472,8 @@ private struct AuditSummary: View {
     }
 }
 
-/// Score de l'audit : jauge en anneau qui se remplit à la première
-/// apparition et suit les changements, le nombre roulant avec elle.
+/// Audit score: ring gauge that fills on first appearance and follows the
+/// changes, the number rolling with it.
 private struct AuditScoreGauge: View {
     let score: Int
     let tint: Color
@@ -483,7 +483,7 @@ private struct AuditScoreGauge: View {
     var body: some View {
         let value = shown ?? 0
         Gauge(value: value, in: 0...100) {
-            Text("Score de sécurité")
+            Text("Security score")
         } currentValueLabel: {
             Text("\(Int(value))")
                 .contentTransition(reduceMotion ? .opacity : .numericText(value: value))
@@ -499,12 +499,12 @@ private struct AuditScoreGauge: View {
         }
         .onChange(of: score) { _, new in shown = Double(new) }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Score de sécurité")
-        .accessibilityValue("\(score) sur 100")
+        .accessibilityLabel("Security score")
+        .accessibilityValue("\(score) out of 100")
     }
 }
 
-/// Anneau de la jauge : piste discrète, arc teinté, nombre au centre.
+/// Gauge ring: discreet track, tinted arc, number in the center.
 private struct ScoreRingGaugeStyle: GaugeStyle {
     let tint: Color
 
@@ -523,9 +523,9 @@ private struct ScoreRingGaugeStyle: GaugeStyle {
     }
 }
 
-/// En-tête d'une section de l'audit : titre et nombre en étiquette.
+/// Header of an audit section: title and number as a label.
 private struct AuditHeader: View {
-    let title: String
+    let title: LocalizedStringKey
     let count: Int
     let tint: Color
     var unit: String?
@@ -556,8 +556,8 @@ private struct AuditRow: View {
     }
 }
 
-/// Un identifiant qui pourrait passer à la passkey : la ligne mène à la
-/// fiche, « Créer » ouvre la page du site dans Safari.
+/// A login that could move to a passkey: the row leads to the item page,
+/// "Create" opens the site's page in Safari.
 private struct PasskeyCandidateRow: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.openURL) private var openURL
@@ -586,7 +586,7 @@ private struct PasskeyCandidateRow: View {
                         .imageScale(.large)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Aide de \(candidate.domain) sur les passkeys")
+                .accessibilityLabel("Help from \(candidate.domain) on passkeys")
             }
             Button {
                 model.createPasskey(for: candidate)
@@ -594,7 +594,7 @@ private struct PasskeyCandidateRow: View {
                 if model.passkeyAudit.opening == candidate.item.id {
                     ProgressView()
                 } else {
-                    Label("Créer", systemImage: "person.badge.key.fill")
+                    Label("Create", systemImage: "person.badge.key.fill")
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -602,17 +602,17 @@ private struct PasskeyCandidateRow: View {
             .buttonBorderShape(.capsule)
             .tint(.teal)
             .disabled(model.passkeyAudit.opening != nil)
-            .accessibilityLabel("Créer une passkey pour \(candidate.item.title)")
+            .accessibilityLabel("Create a passkey for \(candidate.item.title)")
             .accessibilityIdentifier("create-passkey-\(candidate.item.title)")
         }
     }
 
     private var detail: String {
-        candidate.passwordless ? "Sans mot de passe · \(candidate.domain)" : "Second facteur · \(candidate.domain)"
+        candidate.passwordless ? String(localized: "Passwordless · \(candidate.domain)") : String(localized: "Second factor · \(candidate.domain)")
     }
 }
 
-/// En-tête des réglages : le logo, le compte et l'état de la synchronisation.
+/// Settings header: the logo, the account and the sync state.
 private struct AccountHeader: View {
     @Environment(PhoneModel.self) private var model
 
@@ -632,12 +632,12 @@ private struct AccountHeader: View {
     }
 
     private var title: String {
-        guard model.mode == .vaultwarden, let account = model.account else { return "Coffre fictif" }
+        guard model.mode == .vaultwarden, let account = model.account else { return String(localized: "Demo vault") }
         return account.email
     }
 
     private var detail: String {
-        guard model.mode == .vaultwarden, let account = model.account else { return "Données de démonstration" }
+        guard model.mode == .vaultwarden, let account = model.account else { return String(localized: "Demonstration data") }
         return URL(string: account.server)?.host() ?? account.server
     }
 
@@ -650,42 +650,47 @@ private struct AccountHeader: View {
     }
 }
 
-/// Libellé d'un réglage : symbole sur un carré teinté, comme les Réglages d'iOS.
+/// A setting's label: symbol on a tinted square, like iOS Settings.
 struct SettingsLabel: View {
-    let title: String
+    let title: Text
     let symbol: String
     let tint: Color
 
-    init(_ title: String, symbol: String, tint: Color) {
-        self.title = title
+    init(_ title: LocalizedStringKey, symbol: String, tint: Color) {
+        self.title = Text(title)
+        self.symbol = symbol
+        self.tint = tint
+    }
+
+    init<S: StringProtocol>(_ title: S, symbol: String, tint: Color) {
+        self.title = Text(title)
         self.symbol = symbol
         self.tint = tint
     }
 
     var body: some View {
         Label {
-            Text(title).foregroundStyle(.primary)
+            title.foregroundStyle(.primary)
         } icon: {
             TintedSymbol(symbol: symbol, tint: tint, size: 28)
         }
     }
 }
 
-/// Remplissage automatique : comment choisir Verrou dans les Réglages
-/// d'iOS, et où il en est.
+/// AutoFill: how to choose Verrou in iOS Settings, and where it stands.
 private struct AutoFillSection: View {
     @Environment(PhoneModel.self) private var model
 
     var body: some View {
         Section {
             HStack {
-                SettingsLabel("Remplissage automatique", symbol: "key.viewfinder", tint: .blue)
+                SettingsLabel("AutoFill", symbol: "key.viewfinder", tint: .blue)
                 Spacer()
                 switch model.autofillEnabled {
                 case .some(true):
-                    Text("Activé").foregroundStyle(.green)
+                    Text("On").foregroundStyle(.green)
                 case .some(false):
-                    Text("Désactivé").foregroundStyle(.secondary)
+                    Text("Off").foregroundStyle(.secondary)
                 case .none:
                     ProgressView()
                 }
@@ -694,10 +699,10 @@ private struct AutoFillSection: View {
             .accessibilityIdentifier("autofill-status")
             if model.autofillEnabled != true {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Pour remplir vos identifiants, codes et passkeys dans Safari et les apps :")
-                    Text("1. Ouvrez **Réglages → Général → Remplissage automatique et mots de passe**.")
-                    Text("2. Activez **Verrou** dans la liste des apps.")
-                    Text("3. Touchez un champ d'identifiant : Verrou propose les comptes du site au-dessus du clavier.")
+                    Text("To fill your logins, codes and passkeys in Safari and apps:")
+                    Text("1. Open **Settings → General → AutoFill & Passwords**.")
+                    Text("2. Turn on **Verrou** in the list of apps.")
+                    Text("3. Tap a login field: Verrou offers the site's accounts above the keyboard.")
                 }
                 .font(.callout)
                 .padding(.vertical, 2)
@@ -705,13 +710,13 @@ private struct AutoFillSection: View {
             Button {
                 model.openAutofillSettings()
             } label: {
-                SettingsLabel(model.autofillEnabled == true ? "Réglages du remplissage" : "Ouvrir les Réglages",
+                SettingsLabel(model.autofillEnabled == true ? String(localized: "AutoFill settings") : String(localized: "Open Settings"),
                               symbol: "gear", tint: .gray)
             }
         } header: {
-            SectionHeader("Remplissage automatique")
+            SectionHeader("AutoFill")
         } footer: {
-            Text("Le système ne reçoit que les sites et noms d'utilisateur, pour ses suggestions. Les mots de passe, codes et passkeys ne sortent du coffre qu'après \(Biometrics.name) ou votre mot de passe principal.")
+            Text("The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after \(Biometrics.name) or your master password.")
         }
         .task { await model.refreshAutofillStatus() }
     }

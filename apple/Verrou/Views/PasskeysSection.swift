@@ -1,14 +1,14 @@
 import SwiftUI
 
-/// Passkeys d'un identifiant : site, utilisateur, date de création. La clé
-/// privée ne quitte jamais le cœur Rust ; on peut seulement la supprimer.
+/// Passkeys of a login: site, user, creation date. The private key never
+/// leaves the Rust core; it can only be deleted.
 struct PasskeysSection: View {
     let itemID: String
     let passkeys: [PasskeyInfo]
 
     var body: some View {
         if !passkeys.isEmpty {
-            SectionTitle("Passkeys")
+            SectionTitle(String(localized: "Passkeys"))
             FieldCard {
                 ForEach(Array(passkeys.enumerated()), id: \.element.credentialId) { index, passkey in
                     if index > 0 { Divider().padding(.leading, 14) }
@@ -34,7 +34,7 @@ private struct PasskeyRow: View {
     }
 
     private var created: String {
-        let format = Date.FormatStyle(date: .long, time: .omitted).locale(Locale(identifier: "fr_FR"))
+        let format = Date.FormatStyle(date: .long, time: .omitted)
         return Date(timeIntervalSince1970: TimeInterval(passkey.created)).formatted(format)
     }
 
@@ -46,12 +46,12 @@ private struct PasskeyRow: View {
                 .frame(width: 22)
             VStack(alignment: .leading, spacing: 4) {
                 Text(site).font(.caption).foregroundStyle(.secondary)
-                Text(passkey.userName ?? "Utilisateur sans nom").textSelection(.enabled)
-                Text("Créée le \(created)").font(.caption).foregroundStyle(.tertiary)
+                Text(passkey.userName ?? String(localized: "Unnamed user")).textSelection(.enabled)
+                Text("Passkey created on \(created)").font(.caption).foregroundStyle(.tertiary)
             }
             Spacer(minLength: 8)
             if model.canEdit {
-                IconButton(symbol: "trash", help: "Supprimer la passkey") { confirming = true }
+                IconButton(symbol: "trash", help: "Delete the passkey") { confirming = true }
                     .opacity(hovering ? 1 : 0)
                     .disabled(model.editorBusy)
             }
@@ -62,13 +62,13 @@ private struct PasskeyRow: View {
         .background(hovering ? Color.primary.opacity(0.035) : .clear)
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
-        .confirmationDialog("Supprimer la passkey de « \(passkey.rpId) » ?", isPresented: $confirming) {
-            Button("Supprimer", role: .destructive) {
+        .confirmationDialog("Delete the passkey of “\(passkey.rpId)”?", isPresented: $confirming) {
+            Button("Delete", role: .destructive) {
                 Task { await model.deletePasskey(itemID: itemID, credentialID: passkey.credentialId) }
             }
-            Button("Annuler", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Vous ne pourrez plus vous connecter à ce site avec elle. Retirez-la aussi des réglages de sécurité du site.")
+            Text("You will no longer be able to log in to this site with it. Also remove it from the site's security settings.")
         }
     }
 }

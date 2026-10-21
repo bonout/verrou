@@ -1,6 +1,6 @@
-//! Écritures de l'app sans attendre le réseau, contre un vrai Vaultwarden
-//! joint à travers un mandataire lent. Sans `VERROU_TEST_SERVER`, les tests
-//! ne font rien.
+//! App writes without waiting for the network, against a real Vaultwarden
+//! reached through a slow proxy. Without `VERROU_TEST_SERVER`, the tests do
+//! nothing.
 
 mod common;
 
@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 use common::{register, server, signed_in, slow};
 use verrou_ffi::{ItemDraft, LoginFields, VaultSession};
 
-/// Latence ajoutée à chaque aller-retour avec le serveur.
+/// Latency added to every round trip with the server.
 const LATENCY: Duration = Duration::from_millis(400);
-/// Une écriture locale : bien moins qu'un aller-retour.
+/// A local write: well under a round trip.
 const LOCAL: Duration = Duration::from_millis(250);
 
 fn draft(name: &str) -> ItemDraft {
@@ -48,13 +48,13 @@ async fn writes_show_at_once_and_the_send_follows() {
     let email = register(&server).await;
     let session = signed_in(slow(&server, LATENCY).await, &email).await;
 
-    // « Créer » : dans la liste tout de suite, en attente du serveur.
+    // "Create": in the list right away, waiting for the server.
     let start = Instant::now();
     let temporary = session.create_item(draft("Banque")).await.unwrap();
     assert!(start.elapsed() < LOCAL, "{:?}", start.elapsed());
     assert!(summary(&session, &temporary).unwrap().pending_sync);
 
-    // L'envoi part ; une écriture faite pendant ce temps ne l'attend pas.
+    // The upload starts; a write made meanwhile doesn't wait for it.
     let sending = tokio::spawn({
         let session = Arc::clone(&session);
         async move { session.push_changes().await }
@@ -70,11 +70,11 @@ async fn writes_show_at_once_and_the_send_follows() {
         .into_iter()
         .find(|s| s.title == "Banque")
         .unwrap();
-    assert!(shown.favorite, "visible malgré l'envoi en cours");
+    assert!(shown.favorite, "visible despite the upload in progress");
     assert!(sending.await.unwrap().unwrap().changed);
     session.push_changes().await.unwrap();
 
-    // Confirmé : l'identifiant du serveur, plus rien en attente.
+    // Confirmed: the server's id, nothing pending anymore.
     let id = session.resolve_item_id(temporary.clone());
     assert_ne!(id, temporary);
     assert!(summary(&session, &temporary).is_none());
@@ -85,7 +85,7 @@ async fn writes_show_at_once_and_the_send_follows() {
     assert!(report.rejected.is_empty() && report.conflicts.is_empty());
     assert_eq!(
         report.sent, 0,
-        "rien n'a attendu le réseau : rien à annoncer"
+        "nothing waited for the network: nothing to announce"
     );
     assert!(
         report
@@ -94,14 +94,14 @@ async fn writes_show_at_once_and_the_send_follows() {
             .any(|m| m.temporary == temporary && m.server == id)
     );
 
-    // Ailleurs, la même chose.
+    // Elsewhere, the same.
     let other = signed_in(server, &email).await;
     let seen = summary(&other, &id).unwrap();
     assert!(seen.favorite);
 }
 
-/// Six demandes de synchronisation à la fois : une en cours, une seule
-/// après elle pour toutes les autres.
+/// Six sync requests at once: one running, a single one after it for all
+/// the others.
 #[tokio::test(flavor = "multi_thread")]
 async fn simultaneous_syncs_share_their_runs() {
     let Some(server) = server() else { return };
@@ -126,6 +126,6 @@ async fn simultaneous_syncs_share_their_runs() {
             changed += 1;
         }
     }
-    assert!((1..=2).contains(&changed), "{changed} coffres installés");
+    assert!((1..=2).contains(&changed), "{changed} vaults installed");
     assert_eq!(session.pending_changes(), 0);
 }

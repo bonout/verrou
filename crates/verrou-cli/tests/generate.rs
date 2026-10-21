@@ -1,4 +1,4 @@
-//! `verrou generate` : mots de passe et phrases de passe, sans l'app.
+//! `verrou generate`: passwords and passphrases, without the app.
 
 use std::process::{Command, Output};
 
@@ -6,7 +6,7 @@ fn verrou(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_verrou"))
         .arg("generate")
         .args(args)
-        // Rien ne doit dépendre de la liaison : `generate` ne contacte pas l'app.
+        // Nothing may depend on the link: `generate` does not contact the app.
         .env("VERROU_CLI_CONFIG", "/nonexistent/verrou-cli.json")
         .output()
         .expect("verrou")
@@ -16,7 +16,7 @@ fn stdout(args: &[&str]) -> String {
     let output = verrou(args);
     assert!(
         output.status.success(),
-        "{args:?} : {}",
+        "{args:?}: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout)
@@ -103,6 +103,6 @@ fn invalid_combinations_are_refused() {
         &["--separator", "."],
     ] {
         let output = verrou(args);
-        assert!(!output.status.success(), "{args:?} aurait dû échouer");
+        assert!(!output.status.success(), "{args:?} should have failed");
     }
 }

@@ -1,36 +1,35 @@
 import SwiftUI
 
-// Identité visuelle commune au Mac, à l'iPhone et à l'extension de
-// remplissage : logo (le cadenas de l'icône et de l'extension de navigateur),
-// fond des écrans verrouillés, pastilles, compteurs, ligne d'élément.
-// Tout est dessiné (aucune image) : rien de lourd dans l'extension.
+// Visual identity shared by the Mac, the iPhone and the AutoFill
+// extension: logo (the padlock of the icon and of the browser extension),
+// lock screen background, chips, counters, item row.
+// Everything is drawn (no image): nothing heavy in the extension.
 
-// MARK: Jetons
+// MARK: Tokens
 
 extension Theme {
-    /// Dégradé du logo (haut, bas), celui de l'icône de l'app.
+    /// Logo gradient (top, bottom), the app icon's.
     static let brandTop = Color(red: 0.36, green: 0.42, blue: 1.0)
     static let brandBottom = Color(red: 0.20, green: 0.17, blue: 0.62)
-    /// Rayon des cartes de l'iPhone (champs de la fiche, générateur).
+    /// Radius of the iPhone's cards (item page fields, generator).
     static let cardRadius: CGFloat = 16
-    /// Vert de l'état « en ligne » (pied de la barre latérale du Mac).
+    /// Green of the "online" state (foot of the Mac sidebar).
     static let online = Color.green
 }
 
 // MARK: Logo
 
-/// Le cadenas de Verrou : anse, corps et trou de serrure, d'après le dessin
-/// SVG de l'extension (boîte de 24 × 24).
+/// Verrou's padlock: shackle, body and keyhole, after the extension's SVG
+/// drawing (24 × 24 box).
 struct Padlock: View {
     var size: CGFloat = 24
-    /// Ouverture de l'anse : 0 fermée, 1 levée et pivotée sur sa branche
-    /// droite (animation du déverrouillage de l'iPhone). Au-delà de 1 : léger
-    /// dépassement d'un ressort.
+    /// Shackle opening: 0 closed, 1 raised and pivoted on its right leg
+    /// (iPhone unlock animation). Beyond 1: slight spring overshoot.
     var shackle: CGFloat = 0
     var body: some View {
         Canvas { context, canvas in
             let unit = canvas.width / 24
-            // Anse levée puis pivotée autour du pied de sa branche droite.
+            // Shackle raised then pivoted around the foot of its right leg.
             var shackleContext = context
             if shackle != 0 {
                 let pivot = CGPoint(x: 16.5 * unit, y: 10.5 * unit)
@@ -60,12 +59,12 @@ struct Padlock: View {
     }
 }
 
-/// Le logo : le cadenas sur un écusson arrondi, comme l'icône de l'app.
+/// The logo: the padlock on a rounded shield, like the app icon.
 struct AppMark: View {
     var size: CGFloat = 64
-    /// Halo coloré sous le logo (écrans verrouillés) ; sans, pour les petites tailles.
+    /// Colored halo under the logo (lock screens); without it, for small sizes.
     var glow = true
-    /// Ouverture de l'anse du cadenas (`Padlock.shackle`).
+    /// Opening of the padlock's shackle (`Padlock.shackle`).
     var shackle: CGFloat = 0
 
     var body: some View {
@@ -86,10 +85,10 @@ struct AppMark: View {
     }
 }
 
-// MARK: Fond des écrans verrouillés
+// MARK: Lock screen background
 
-/// Fond des écrans verrouillé et de connexion : la couleur de la fenêtre et
-/// un halo de la couleur d'accent venu du haut.
+/// Background of the lock and sign-in screens: the window color and an
+/// accent-colored halo coming from the top.
 struct LockBackground: View {
     var body: some View {
         ZStack {
@@ -107,10 +106,10 @@ struct LockBackground: View {
     }
 }
 
-// MARK: Pastilles et compteurs
+// MARK: Chips and counters
 
-/// Pastille d'information (type, dossier, partage…) : symbole et texte sur
-/// un fond teinté, jamais coupée lettre par lettre.
+/// Information chip (type, folder, sharing…): symbol and text on a tinted
+/// background, never cut letter by letter.
 struct Chip: View {
     let text: String
     let symbol: String
@@ -129,7 +128,7 @@ struct Chip: View {
     }
 }
 
-/// Compteur à pastille de couleur : « ● 3 réutilisés ».
+/// Counter with a colored dot: "● 3 reused".
 struct CountCapsule: View {
     let text: String
     let tint: Color
@@ -147,16 +146,16 @@ struct CountCapsule: View {
     }
 }
 
-/// Étiquette pleine : niveau de confiance, gravité.
+/// Solid label: trust level, severity.
 struct Badge: View {
     let text: String
-    /// `nil` : fond neutre.
+    /// `nil`: neutral background.
     let tint: Color?
 
     var body: some View {
         Text(text)
             .font(.caption2.weight(.semibold))
-            // Texte sombre sur le jaune : le blanc n'y serait pas lisible.
+            // Dark text on yellow: white wouldn't be readable on it.
             .foregroundStyle(tint == nil ? Color.primary : tint == .yellow ? Color.black : Color.white)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -164,7 +163,7 @@ struct Badge: View {
     }
 }
 
-/// Étiquettes d'un élément (« #dev »), à la ligne quand la place manque.
+/// An item's tags ("#dev"), wrapping when space runs out.
 struct TagsRow: View {
     let tags: [String]
 
@@ -181,16 +180,16 @@ struct TagsRow: View {
     }
 }
 
-// MARK: Mise en page
+// MARK: Layout
 
-/// Des vues côte à côte qui passent à la ligne suivante quand la place
-/// manque (pastilles du détail). Chaque vue garde sa largeur idéale, au plus
-/// celle du conteneur : un texte trop long est tronqué, jamais coupé lettre
-/// par lettre.
+/// Views side by side that wrap to the next line when space runs out (the
+/// detail's chips). Each view keeps its ideal width, at most the
+/// container's: a text too long is truncated, never cut letter by
+/// letter.
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
     var lineSpacing: CGFloat = 6
-    /// Lignes centrées (en-tête de l'iPhone) plutôt qu'alignées à gauche.
+    /// Centered lines (iPhone header) rather than left-aligned.
     var centered = false
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -244,23 +243,23 @@ struct FlowLayout: Layout {
     }
 }
 
-// MARK: Ligne d'élément
+// MARK: Item row
 
-/// Titre (caractères trouvés surlignés) avec favori et partage, sous-titre,
-/// puis les indicateurs : la ligne des listes du Mac, de l'iPhone et de
-/// l'extension. Pas de géométrie ni d'ombre : la ligne reste bon marché à
-/// construire pendant le défilement.
+/// Title (found characters highlighted) with favorite and sharing,
+/// subtitle, then the indicators: the list row of the Mac, the iPhone and
+/// the extension. No geometry or shadow: the row stays cheap to build while
+/// scrolling.
 struct ItemRowContent<Icon: View>: View {
     let summary: ItemSummary
     let highlights: [UInt32]
-    /// Sur fond d'accent (ligne sélectionnée du Mac) : texte blanc.
+    /// On an accent background (selected Mac row): white text.
     var selected = false
     var spacing: CGFloat = 11
     var subtitleFont: Font = .callout
-    /// Indicateur « protégé » (iPhone, extension).
+    /// "Protected" indicator (iPhone, extension).
     var showsProtection = false
-    /// Vue des passkeys : la ligne secondaire montre le site et
-    /// l'utilisateur de la passkey au lieu du sous-titre.
+    /// Passkeys view: the secondary line shows the passkey's site and user
+    /// instead of the subtitle.
     var showsPasskey = false
     @ViewBuilder let icon: Icon
 
@@ -274,14 +273,14 @@ struct ItemRowContent<Icon: View>: View {
                         .lineLimit(1)
                     if summary.favorite {
                         Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow)
-                            .accessibilityLabel("Favori")
+                            .accessibilityLabel("Favorite")
                     }
                     if let sharing = summary.sharing {
                         Image(systemName: "person.2.fill")
                             .font(.system(size: 9))
                             .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.indigo))
                             .help(sharing.label)
-                            .accessibilityLabel("Partagé")
+                            .accessibilityLabel("Shared")
                     }
                 }
                 if showsPasskey, let line = summary.passkeyLine {
@@ -296,7 +295,7 @@ struct ItemRowContent<Icon: View>: View {
                     .lineLimit(1)
                     .accessibilityLabel("Passkey \(line)")
                 } else {
-                    Text(summary.subtitle)
+                    Text(summary.displaySubtitle)
                         .font(subtitleFont)
                         .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
@@ -307,14 +306,14 @@ struct ItemRowContent<Icon: View>: View {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.caption)
                     .foregroundStyle(selected ? .white : .orange)
-                    .help("En attente de synchronisation")
-                    .accessibilityLabel("En attente de synchronisation")
+                    .help("Pending sync")
+                    .accessibilityLabel("Pending sync")
             }
             if showsProtection, summary.reprompt {
                 Image(systemName: "lock.shield")
                     .font(.caption)
                     .foregroundStyle(selected ? .white : .orange)
-                    .accessibilityLabel("Protégé")
+                    .accessibilityLabel("Protected")
             }
             if summary.passkeyRpId != nil, !showsPasskey {
                 Image(systemName: "person.badge.key")
@@ -327,15 +326,15 @@ struct ItemRowContent<Icon: View>: View {
                 Image(systemName: "clock.badge.checkmark")
                     .font(.caption)
                     .foregroundStyle(selected ? .white : .teal)
-                    .help("Code à usage unique")
-                    .accessibilityLabel("Code à usage unique")
+                    .help("One-time code")
+                    .accessibilityLabel("One-time code")
             }
         }
         .foregroundStyle(selected ? Color.white : Color.primary)
     }
 }
 
-/// Icône et texte serrés, alignés sur la ligne de base.
+/// Icon and text tight, aligned on the baseline.
 struct CompactLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         HStack(spacing: 4) {

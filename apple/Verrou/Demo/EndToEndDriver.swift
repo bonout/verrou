@@ -3,13 +3,13 @@ import AppKit
 import CryptoKit
 import SwiftUI
 
-/// Parcours de bout en bout contre un Vaultwarden de test (builds Debug
-/// seulement) : connexion, second facteur TOTP, coffre, verrouillage,
-/// déverrouillage hors ligne, déconnexion. Lancé par `scripts/e2e.sh` avec
-/// `VERROU_E2E_SERVER`, `_EMAIL`, `_PASSWORD` et `_TOTP` (graine).
+/// End-to-end walk against a test Vaultwarden (Debug builds only): login,
+/// TOTP second factor, vault, lock, offline unlock, logout. Launched by
+/// `scripts/e2e.sh` with `VERROU_E2E_SERVER`, `_EMAIL`, `_PASSWORD` and
+/// `_TOTP` (seed).
 ///
-/// Annonce `E2E_OUT <dossier>` (captures), `E2E_OK <étape>` à chaque
-/// vérification, puis `E2E_DONE` ou `E2E_FAIL <raison>`.
+/// Announces `E2E_OUT <folder>` (captures), `E2E_OK <step>` at each check,
+/// then `E2E_DONE` or `E2E_FAIL <reason>`.
 @MainActor
 final class EndToEndDriver {
     struct Config {
@@ -61,31 +61,31 @@ final class EndToEndDriver {
     }
 
     private static let windowSize = NSSize(width: 1280, height: 800)
-    /// La fenêtre principale, retenue au début du parcours.
+    /// The main window, remembered at the start of the walk.
     private weak var mainWindow: NSWindow?
-    /// Écrans dont la mise en page a échoué : le parcours continue (pour
-    /// les signaler tous), mais ne se termine pas par `E2E_DONE`.
+    /// Screens whose layout failed: the walk goes on (to report them all),
+    /// but doesn't end with `E2E_DONE`.
     private var layoutFailures = 0
 
     private func layoutResult(_ screen: String, _ problems: [String]) {
         if problems.isEmpty {
-            log("E2E_OK mise en page : \(screen)")
+            log("E2E_OK layout: \(screen)")
         } else {
             layoutFailures += 1
-            log("E2E_FAIL mise en page cassée : \(screen) — " + problems.joined(separator: " ; "))
+            log("E2E_FAIL broken layout: \(screen) — " + problems.joined(separator: "; "))
         }
     }
 
-    /// Audit de mise en page (`LayoutAudit`, sans capture d'écran) de la
-    /// fenêtre principale : vues dans la fenêtre, `columns` colonnes non
-    /// vides, repères `identifiers` visibles en entier ; et, si `sheet`, de la
-    /// feuille posée dessus (repères `sheet`, pas plus haute que la fenêtre).
+    /// Layout audit (`LayoutAudit`, without screenshot) of the main window:
+    /// views inside the window, `columns` non-empty columns, `identifiers`
+    /// markers fully visible; and, if `sheet`, of the sheet attached to it
+    /// (`sheet` markers, not taller than the window).
     private func checkLayout(_ screen: String, _ identifiers: [String], columns: Int = 3,
                              sheet: [String]? = nil) async {
         try? await Task.sleep(for: .seconds(0.8))
         guard let window = mainWindow, window.isVisible else {
             layoutFailures += 1
-            log("E2E_FAIL \(screen) : fenêtre principale introuvable (fermée pendant le parcours ?), mise en page non vérifiée")
+            log("E2E_FAIL \(screen): main window not found (closed during the walk?), layout not checked")
             return
         }
         var problems = LayoutAudit.problems(in: window, .init(identifiers: identifiers, columns: columns,
@@ -93,23 +93,23 @@ final class EndToEndDriver {
         if let sheet {
             guard let attached = window.attachedSheet else {
                 layoutFailures += 1
-                log("E2E_FAIL \(screen) : feuille introuvable (pas ouverte, ou déjà fermée), mise en page non vérifiée")
+                log("E2E_FAIL \(screen): sheet not found (not open, or already closed), layout not checked")
                 return
             }
             problems += LayoutAudit.problems(in: attached, .init(identifiers: sheet,
                                                                  maxHeight: window.contentLayoutRect.height))
-                .map { "feuille : \($0)" }
+                .map { "sheet: \($0)" }
         }
         layoutResult(screen, problems)
     }
 
-    /// Réglages (scène `Settings`) : ouverts par leur entrée du menu de
-    /// l'app, chaque onglet audité, puis refermés. L'onglet affiché est une
-    /// préférence (`settingsTab`) : remise comme avant.
+    /// Settings (`Settings` scene): opened through their entry in the app
+    /// menu, each tab audited, then closed. The displayed tab is a preference
+    /// (`settingsTab`): put back as before.
     private func checkSettings() async {
         guard let menu = NSApp.mainMenu?.items.first?.submenu,
-              let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Réglages") }) else {
-            log("E2E_SKIP réglages : entrée « Réglages… » introuvable dans le menu de l'app")
+              let index = menu.items.firstIndex(where: { $0.keyEquivalent == "," }) else {
+            log("E2E_SKIP settings: \"Settings…\" entry not found in the app menu")
             return
         }
         let before = Set(NSApp.windows.map(ObjectIdentifier.init))
@@ -122,7 +122,7 @@ final class EndToEndDriver {
             }
         }
         guard let settings else {
-            log("E2E_SKIP réglages : la fenêtre ne s'est pas ouverte (scène Settings non pilotable)")
+            log("E2E_SKIP settings: the window didn't open (Settings scene not drivable)")
             return
         }
         let saved = UserDefaults.standard.string(forKey: "settingsTab")
@@ -130,7 +130,7 @@ final class EndToEndDriver {
         for tab in [SettingsTab.general, .security, .account, .integrations] {
             UserDefaults.standard.set(tab.rawValue, forKey: "settingsTab")
             try? await Task.sleep(for: .seconds(0.8))
-            layoutResult("réglages, onglet \(tab.rawValue)",
+            layoutResult("settings, tab \(tab.rawValue)",
                          LayoutAudit.problems(in: settings, .init(maxHeight: limit)))
         }
         if let saved {
@@ -162,83 +162,85 @@ final class EndToEndDriver {
                 try await recorder.start()
                 self.recorder = recorder
             } catch {
-                // Les vérifications ne dépendent pas des captures : on continue.
-                log("E2E_WARN captures indisponibles : \(error.localizedDescription)")
+                // The checks don't depend on the captures: carry on.
+                log("E2E_WARN captures unavailable: \(error.localizedDescription)")
             }
         }
 
-        check(model.needsLogin, "écran de connexion sans compte")
+        check(model.needsLogin, "login screen without an account")
         model.loginServer = config.server
         model.loginEmail = config.email
-        await checkLayout("écran de connexion", ["login-title"], columns: 0)
-        await snap("20-connexion")
+        await checkLayout("login screen", ["login-title"], columns: 0)
+        await snap("20-login")
 
-        await model.signIn(password: "pas le bon mot de passe")
-        check(model.loginError?.contains("incorrect") == true, "mauvais mot de passe refusé")
+        await model.signIn(password: "not the right password")
+        check(model.loginError == ErrorText.describe(VerrouError.WrongPassword)
+              || model.loginError?.range(of: "incorrect", options: .caseInsensitive) != nil,
+              "wrong password rejected")
 
         await model.signIn(password: config.password)
-        check(model.twoFactorOptions == [.authenticator], "second facteur demandé")
-        await checkLayout("second facteur", ["login-title"], columns: 0)
-        await snap("21-second-facteur")
+        check(model.twoFactorOptions == [.authenticator], "second factor requested")
+        await checkLayout("second factor", ["login-title"], columns: 0)
+        await snap("21-second-factor")
 
         await model.answerTwoFactor(.authenticator, token: "000000")
-        check(model.loginError != nil && model.lockState != .unlocked, "mauvais code refusé")
-        // Le code de la période courante peut avoir déjà servi : on tente aussi
-        // la suivante, que le serveur tolère.
+        check(model.loginError != nil && model.lockState != .unlocked, "wrong code rejected")
+        // The code of the current period may already have been used: also
+        // try the next one, which the server tolerates.
         let now = Date().timeIntervalSince1970
         for offset in [0.0, 30.0] where model.lockState != .unlocked {
             await model.answerTwoFactor(.authenticator, token: Self.totp(config.totpSecret, at: now + offset))
         }
-        check(model.lockState == .unlocked, "coffre ouvert après le second facteur")
+        check(model.lockState == .unlocked, "vault open after the second factor")
         check(model.counts?.all == 9 && model.counts?.trashed == 1,
-              "9 éléments déchiffrés, 1 à la corbeille (\(model.counts?.all ?? 0), \(model.counts?.trashed ?? 0))")
-        check(model.counts?.folders.map(\.name).sorted() == ["Personnel", "Travail"], "dossiers déchiffrés")
-        check(model.biometricEnrolled == Biometrics.isAvailable, "Touch ID enrôlé si disponible")
+              "9 items decrypted, 1 in the trash (\(model.counts?.all ?? 0), \(model.counts?.trashed ?? 0))")
+        check(model.counts?.folders.map(\.name).sorted() == ["Personnel", "Travail"], "folders decrypted")
+        check(model.biometricEnrolled == Biometrics.isAvailable, "Touch ID enrolled if available")
 
         if let github = model.summaries.first(where: { $0.title == "GitHub" }) {
             model.selection = github.id
             model.toggleReveal("password", of: github.id)
-            check(model.revealed["password"] == "hunter2-hunter2", "mot de passe révélé")
+            check(model.revealed["password"] == "hunter2-hunter2", "password revealed")
         }
         if let github = model.summaries.first(where: { $0.title == "GitHub" }), let host = github.host {
             _ = model.siteIcons.image(for: host)
             for _ in 0..<100 where model.siteIcons.images[SiteIcons.site(of: host)] == nil {
                 try? await Task.sleep(for: .milliseconds(100))
             }
-            check(model.siteIcons.images[SiteIcons.site(of: host)] != nil, "icône du site servie par Vaultwarden")
+            check(model.siteIcons.images[SiteIcons.site(of: host)] != nil, "site icon served by Vaultwarden")
         }
-        await checkLayout("liste et fiche sélectionnée", ["search", "detail-title", "sidebar-footer"])
-        await snap("22-coffre-vaultwarden")
+        await checkLayout("list and selected detail", ["search", "detail-title", "sidebar-footer"])
+        await snap("22-vaultwarden-vault")
 
         await model.syncNow()
-        check(model.syncState == .idle, "synchronisation par jeton de renouvellement")
+        check(model.syncState == .idle, "sync with the refresh token")
 
-        // Audit : calculé sur le coffre, sans réseau.
+        // Audit: computed on the vault, without network.
         model.openAudit()
-        check(model.showAudit && (model.audit?.checked ?? 0) >= 5, "audit du coffre (\(model.audit?.checked ?? 0) mots de passe)")
-        await checkLayout("volet de l'audit", ["pane-title", "sidebar-footer", "detail-title"])
+        check(model.showAudit && (model.audit?.checked ?? 0) >= 5, "vault audit (\(model.audit?.checked ?? 0) passwords)")
+        await checkLayout("audit pane", ["pane-title", "sidebar-footer", "detail-title"])
         await snap("23-audit")
         model.filter = .all
-        check(!model.showAudit, "retour à la liste")
+        check(!model.showAudit, "back to the list")
 
-        // Envois et accès d'urgence : des volets de la fenêtre principale.
+        // Sends and emergency access: panes of the main window.
         model.openSends()
         await model.reloadSends()
-        check(model.pane == .sends && model.sends.loaded, "volet des envois")
-        await checkLayout("volet des envois", ["pane-title", "sidebar-footer"])
-        await snap("25-envois")
+        check(model.pane == .sends && model.sends.loaded, "sends pane")
+        await checkLayout("sends pane", ["pane-title", "sidebar-footer"])
+        await snap("25-sends")
         model.openEmergency()
         await model.reloadEmergency()
-        check(model.pane == .emergency && model.emergency.loaded, "volet des accès d'urgence")
-        await checkLayout("volet des accès d'urgence", ["pane-title", "sidebar-footer"])
-        await snap("26-urgence")
+        check(model.pane == .emergency && model.emergency.loaded, "emergency access pane")
+        await checkLayout("emergency access pane", ["pane-title", "sidebar-footer"])
+        await snap("26-emergency")
         model.filter = .all
-        check(model.pane == nil, "retour à la liste")
+        check(model.pane == nil, "back to the list")
 
-        // Écriture : créer, modifier, mettre à la corbeille.
+        // Writing: create, edit, move to the trash.
         model.newItem(login: true)
         let generated = model.editor?.draft.login?.password ?? ""
-        check(generated.count == 20, "nouvel identifiant avec un mot de passe généré")
+        check(generated.count == 20, "new login with a generated password")
         if var draft = model.editor?.draft {
             draft.name = "Créé par Verrou"
             draft.login?.username = "e2e@verrou.test"
@@ -246,14 +248,14 @@ final class EndToEndDriver {
             await model.saveEditor(draft)
         }
         let created = model.summaries.first { $0.title == "Créé par Verrou" }
-        check(model.editor == nil && created != nil && model.selection == created?.id, "élément créé sur le serveur")
+        check(model.editor == nil && created != nil && model.selection == created?.id, "item created on the server")
         if let created {
-            // Créé hors ligne puis envoyé : l'identifiant provisoire devient celui du serveur.
+            // Created offline then sent: the temporary ID becomes the server's.
             let id = { [model] in model.session.resolveItemId(id: created.id) }
             await model.edit(id())
-            check(model.editor?.draft.login?.password == generated, "brouillon prérempli, secrets compris")
-            await checkLayout("feuille de modification", [], sheet: ["edit-title", "sheet-primary"])
-            await snap("24-modification")
+            check(model.editor?.draft.login?.password == generated, "draft prefilled, secrets included")
+            await checkLayout("edit sheet", [], sheet: ["edit-title", "sheet-primary"])
+            await snap("24-edit")
             if var draft = model.editor?.draft {
                 draft.name = "Modifié par Verrou"
                 draft.login?.password = "nouveau-mot-de-passe"
@@ -261,33 +263,33 @@ final class EndToEndDriver {
             }
             check(model.reveal("password", of: id()) == "nouveau-mot-de-passe"
                   && model.summaries.contains { $0.title == "Modifié par Verrou" },
-                  "modification enregistrée")
+                  "edit saved")
             await model.trash(id())
             let state = { [model] in model.summaries.first { $0.id == id() }?.state }
-            check(state() == .trashed && model.counts?.all == 9, "mis à la corbeille")
+            check(state() == .trashed && model.counts?.all == 9, "moved to the trash")
             model.filter = .trash
-            check(model.rows.contains { $0.id == id() }, "visible dans la corbeille")
+            check(model.rows.contains { $0.id == id() }, "visible in the trash")
             await model.restore(id())
-            check(state() == .active, "restauré")
-            // Vaultwarden refuse une modification datée de la même seconde.
+            check(state() == .active, "restored")
+            // Vaultwarden rejects a change dated the same second.
             try? await Task.sleep(for: .seconds(1.5))
             await model.setArchived(id(), true)
             model.filter = .all
-            check(state() == .archived && !model.rows.contains { $0.id == id() }, "archivé, hors de la liste")
+            check(state() == .archived && !model.rows.contains { $0.id == id() }, "archived, out of the list")
             await model.setArchived(id(), false)
             try? await Task.sleep(for: .seconds(1.5))
             await model.setFavorite(id(), true)
             check(state() == .active && model.summaries.first { $0.id == id() }?.favorite == true,
-                  "sorti des archives, mis en favori")
+                  "unarchived, made a favorite")
             check(model.selectedDetail?.fields.contains { $0.id.hasPrefix("history-") } ?? false
-                  || model.selection != id(), "historique des mots de passe")
+                  || model.selection != id(), "password history")
             await sharing(id())
             await model.trash(id())
         }
 
-        // Feuilles des doublons et de l'import, puis les réglages.
+        // Duplicates and import sheets, then the settings.
         model.openDuplicates()
-        await checkLayout("feuille des doublons", [], sheet: ["sheet-title", "sheet-primary"])
+        await checkLayout("duplicates sheet", [], sheet: ["sheet-title", "sheet-primary"])
         model.duplicatesFlow = nil
         let export = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-export.csv")
         try? "Title,URL,Username,Password,Notes,OTPAuth\nMastodon,https://mastodon.social,camille,correct-cheval-pile,,\n"
@@ -295,89 +297,89 @@ final class EndToEndDriver {
         let flow = ImportFlow(url: export)
         model.importFlow = flow
         await model.readImport(flow)
-        check(flow.review != nil, "revue d'un import (rien n'est importé)")
-        await checkLayout("feuille de l'import", [], sheet: ["sheet-title", "sheet-primary"])
+        check(flow.review != nil, "review of an import (nothing is imported)")
+        await checkLayout("import sheet", [], sheet: ["sheet-title", "sheet-primary"])
         model.closeImport()
         try? FileManager.default.removeItem(at: export)
         try? await Task.sleep(for: .seconds(0.6))
         await checkSettings()
         mainWindow?.makeKeyAndOrderFront(nil)
 
-        // Pont vers Brave, sur un port de test : écoute TCP et écriture des
-        // déclarations Native Messaging, sous le sandbox de l'app.
+        // Bridge to Brave, on a test port: TCP listening and writing of the
+        // Native Messaging declarations, under the app's sandbox.
         if ProcessInfo.processInfo.environment["VERROU_BRIDGE_PORT"] != nil {
             let bridge = BrowserBridge(model: model)
             model.browserBridge = bridge
             bridge.enabled = true
-            check(bridge.running && bridge.error == nil, "pont vers Brave à l'écoute dans le sandbox (\(bridge.error ?? "ok"))")
+            check(bridge.running && bridge.error == nil, "bridge to Brave listening in the sandbox (\(bridge.error ?? "ok"))")
             bridge.enabled = false
-            check(!bridge.running, "pont arrêté")
+            check(!bridge.running, "bridge stopped")
         }
 
         model.lock()
-        check(model.lockState == .locked && !model.needsLogin, "verrouillé, compte conservé")
+        check(model.lockState == .locked && !model.needsLogin, "locked, account kept")
         check(model.pane == nil && !model.sends.loaded && model.emergency.selection == nil,
-              "volets et envois oubliés au verrouillage")
-        await checkLayout("écran verrouillé", ["lock-title"], columns: 0)
-        await snap("23-verrouille")
+              "panes and sends forgotten on lock")
+        await checkLayout("lock screen", ["lock-title"], columns: 0)
+        await snap("23-locked")
 
-        await model.unlock(masterPassword: "faux")
-        check(model.unlockError == "Mot de passe principal incorrect.", "mauvais mot de passe au déverrouillage")
+        await model.unlock(masterPassword: "wrong")
+        check(model.unlockError == ErrorText.describe(VerrouError.WrongPassword), "wrong password on unlock")
         await model.unlock(masterPassword: config.password)
-        check(model.lockState == .unlocked && model.counts?.all == 9, "déverrouillage hors ligne par mot de passe")
+        check(model.lockState == .unlocked && model.counts?.all == 9, "offline unlock with the password")
 
         model.logout()
-        check(model.needsLogin && !model.biometricEnrolled && model.account == nil, "déconnexion")
+        check(model.needsLogin && !model.biometricEnrolled && model.account == nil, "logout")
         await recorder?.finish()
         if layoutFailures > 0 {
-            log("E2E_FAIL mise en page cassée sur \(layoutFailures) écran(s), voir plus haut")
+            log("E2E_FAIL broken layout on \(layoutFailures) screen(s), see above")
             exit(1)
         }
         log("E2E_DONE")
     }
 
-    /// Coffres partagés : créer une organisation, y partager l'élément,
-    /// créer puis supprimer une collection, ouvrir « Rejoindre ».
+    /// Shared vaults: create an organization, share the item in it, create
+    /// then delete a collection, open "Join".
     private func sharing(_ itemID: String) async {
         if model.organizations.isEmpty {
             model.openNewOrganization()
-            await checkLayout("feuille « Nouvelle organisation »", [], sheet: ["sheet-title", "sheet-primary"])
+            await checkLayout("\"New Organization\" sheet", [], sheet: ["sheet-title", "sheet-primary"])
             await model.createOrganization(name: "Famille E2E", collection: "Général")
         }
         check(model.organizationAdmin.error == nil && model.organizationAdmin.sheet == nil
               && model.organizations.first?.isOwner == true,
-              "organisation créée, propriétaire (\(model.organizationAdmin.error ?? "ok"))")
+              "organization created, owner (\(model.organizationAdmin.error ?? "ok"))")
         guard let org = model.organizations.first else { return }
-        await snap("27-organisation")
+        await snap("27-organization")
         model.selection = itemID
         model.openSharing(itemID)
-        check(model.sharingFlow != nil, "feuille « Partager »")
-        await checkLayout("feuille « Partager »", [], sheet: ["sheet-title", "sheet-primary"])
+        check(model.sharingFlow != nil, "\"Share\" sheet")
+        await checkLayout("\"Share\" sheet", [], sheet: ["sheet-title", "sheet-primary"])
         if let flow = model.sharingFlow { await model.applySharing(flow) }
         check(model.sharingFlow == nil && model.summaries.first { $0.id == itemID }?.sharing?.organizationId == org.id,
-              "élément partagé dans l'organisation")
+              "item shared in the organization")
         model.openCollectionEditor(org, collection: nil)
-        await checkLayout("feuille « Nouvelle collection »", [], sheet: ["sheet-title", "sheet-primary"])
+        await checkLayout("\"New Collection\" sheet", [], sheet: ["sheet-title", "sheet-primary"])
         if case .collection(var draft) = model.organizationAdmin.sheet {
             draft.name = "Banque E2E"
             await model.saveCollection(draft)
         }
         let banque = model.organizations.first?.collections.first { $0.name == "Banque E2E" }
-        check(banque != nil && model.organizationAdmin.sheet == nil, "collection créée, nom chiffré relu")
+        check(banque != nil && model.organizationAdmin.sheet == nil, "collection created, encrypted name read back")
         if let banque, let org = model.organizations.first {
             await model.deleteCollection(CollectionTarget(organization: org, collection: banque))
             check(model.organizations.first?.collections.contains { $0.name == "Banque E2E" } == false,
-                  "collection supprimée")
+                  "collection deleted")
         }
         model.openJoin()
-        await checkLayout("feuille « Rejoindre une organisation »", [], sheet: ["sheet-title", "sheet-primary"])
+        await checkLayout("\"Join an Organization\" sheet", [], sheet: ["sheet-title", "sheet-primary"])
         model.organizationAdmin.sheet = nil
         model.filter = .all
         model.selection = itemID
         try? await Task.sleep(for: .seconds(1.5))
     }
 
-    /// RFC 6238 (SHA-1, 6 chiffres, 30 s), pour répondre au second facteur.
+    /// RFC 6238 (SHA-1, 6 digits, 30 s), to answer the second factor.
     static func totp(_ secret: String, at time: TimeInterval) -> String {
         let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
         var bits = 0, value = 0

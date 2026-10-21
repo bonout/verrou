@@ -1,22 +1,22 @@
 import Foundation
 import os
 
-/// Temps des étapes qui se voient : lancement, Touch ID, déverrouillage,
-/// affichage, synchronisation. Aucune donnée du coffre, seulement des durées :
+/// Timing of the visible steps: launch, Touch ID, unlock, display, sync. No
+/// vault data, only durations:
 ///
 ///     log stream --predicate 'subsystem == "app.verrou.mac" AND category == "perf"'
 ///     xcrun simctl spawn booted log stream --predicate 'subsystem == "app.verrou.ios" AND category == "perf"'
 enum Perf {
-    /// Sous-système : l'identifiant de l'app (`app.verrou.mac`, `app.verrou.ios`).
+    /// Subsystem: the app's identifier (`app.verrou.mac`, `app.verrou.ios`).
     static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "app.verrou", category: "perf")
 
-    /// Millisecondes écoulées depuis `start`.
+    /// Milliseconds elapsed since `start`.
     static func ms(since start: ContinuousClock.Instant) -> Int {
         let elapsed = ContinuousClock.now - start
         return Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
     }
 
-    /// Millisecondes écoulées depuis le lancement du processus.
+    /// Milliseconds elapsed since the process launched.
     static var msSinceLaunch: Int {
         var info = kinfo_proc()
         var size = MemoryLayout<kinfo_proc>.stride
@@ -27,9 +27,8 @@ enum Perf {
         return Int((Date().timeIntervalSince1970 - started) * 1000)
     }
 
-    /// Journalise une étape ; dans un build Debug mesuré
-    /// (`scripts/ios-bench.sh`), la recopie aussi sur la sortie standard
-    /// (`PERF …`), que lit le script.
+    /// Logs a step; in a measured Debug build (`scripts/ios-bench.sh`), also
+    /// copies it to standard output (`PERF …`), which the script reads.
     static func mark(_ message: String) {
         log.notice("\(message, privacy: .public)")
         #if DEBUG
@@ -44,12 +43,12 @@ enum Perf {
     }
 
     #if os(iOS) && !AUTOFILL_EXTENSION
-    /// Les mêmes étapes, horodatées, dans `Library/Caches/perf.log` (64 Ko au
-    /// plus) : lisibles sur un iPhone sans les droits root qu'exige son
-    /// journal système, par
+    /// The same steps, timestamped, in `Library/Caches/perf.log` (64 KB at
+    /// most): readable on an iPhone without the root rights its system log
+    /// requires, with
     /// `xcrun devicectl device copy from --domain-type appDataContainer
     ///  --domain-identifier app.verrou.ios --source Library/Caches/perf.log`.
-    /// Des durées seulement, jamais une donnée du coffre.
+    /// Durations only, never vault data.
     private static let journalQueue = DispatchQueue(label: "verrou.perf.journal", qos: .utility)
     private static let journalURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appending(path: "perf.log")
@@ -78,52 +77,52 @@ enum Perf {
         || ProcessInfo.processInfo.environment["VERROU_BENCH_LAUNCH"] != nil
     #endif
 
-    /// Mesure `body` et journalise sa durée.
+    /// Measures `body` and logs its duration.
     @MainActor
     static func measure<T>(_ label: String, _ body: () throws -> T) rethrows -> T {
         let start = ContinuousClock.now
-        defer { mark("\(label) : \(ms(since: start)) ms") }
+        defer { mark("\(label): \(ms(since: start)) ms") }
         return try body()
     }
 
     static func measure<T>(_ label: String, _ body: () async throws -> T) async rethrows -> T {
         let start = ContinuousClock.now
-        defer { mark("\(label) : \(ms(since: start)) ms") }
+        defer { mark("\(label): \(ms(since: start)) ms") }
         return try await body()
     }
 
-    // MARK: Déverrouillage
+    // MARK: Unlocking
 
-    /// Instant du dernier succès de Face ID / Touch ID (ou du mot de passe),
-    /// jusqu'au premier affichage de l'accueil qui suit.
+    /// Moment of the last Face ID / Touch ID (or password) success, until the
+    /// first display of the home screen that follows.
     private static let unlockedAt = OSAllocatedUnfairLock<(at: ContinuousClock.Instant, how: String)?>(initialState: nil)
 
-    /// Face ID (ou Touch ID, le mot de passe) vient de réussir ; `how` le
-    /// nomme dans les mesures qui suivent.
+    /// Face ID (or Touch ID, the password) just succeeded; `how` names it in
+    /// the measurements that follow.
     static func unlockSucceeded(_ how: String = Biometrics.name) {
         unlockedAt.withLock { $0 = (ContinuousClock.now, how) }
     }
 
-    /// L'accueil du coffre est à l'écran : le délai depuis le succès, puis
-    /// au tour suivant de la boucle principale (l'image est validée, les
-    /// touchers sont traités) le délai depuis le lancement.
+    /// The vault home is on screen: the delay since the success, then on the
+    /// next turn of the main run loop (the frame is committed, touches are
+    /// handled) the delay since launch.
     @MainActor
     static func homeAppeared() {
         guard let (since, how) = unlockedAt.withLock({ value -> (at: ContinuousClock.Instant, how: String)? in
             defer { value = nil }
             return value
         }) else { return }
-        mark("accueil visible à +\(ms(since: since)) ms après \(how)")
+        mark("home visible at +\(ms(since: since)) ms after \(how)")
         DispatchQueue.main.async {
-            mark("accueil interactif à +\(msSinceLaunch) ms du lancement (+\(ms(since: since)) ms après \(how))")
+            mark("home interactive at +\(msSinceLaunch) ms from launch (+\(ms(since: since)) ms after \(how))")
         }
     }
 }
 
-/// Plus long blocage du fil principal pendant une période (la première
-/// synchronisation après le déverrouillage) : un fil à part poste un bloc
-/// vide sur la file principale toutes les 16 ms et mesure son retard.
-/// Coût négligeable, et seulement pendant la période observée.
+/// Longest main thread stall during a period (the first sync after
+/// unlocking): a separate thread posts an empty block on the main queue
+/// every 16 ms and measures its delay. Negligible cost, and only during the
+/// observed period.
 final class MainThreadWatch: @unchecked Sendable {
     private let state = OSAllocatedUnfairLock(initialState: (running: true, worst: 0))
 
@@ -146,7 +145,7 @@ final class MainThreadWatch: @unchecked Sendable {
         }
     }
 
-    /// Arrête l'observation ; rend le plus long retard, en millisecondes.
+    /// Stops observing; returns the longest delay, in milliseconds.
     func stop() -> Int {
         state.withLock {
             $0.running = false

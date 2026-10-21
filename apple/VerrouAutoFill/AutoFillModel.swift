@@ -4,51 +4,51 @@ import LocalAuthentication
 import Observation
 import os
 
-/// L'état de l'extension de remplissage pour une demande du système : ce
-/// qu'il veut (liste, identifiant précis, passkey, code, création de
-/// passkey), le déverrouillage, puis la réponse.
+/// The AutoFill extension's state for a system request: what it wants
+/// (list, specific login, passkey, code, passkey creation), the unlock, then
+/// the response.
 ///
-/// Une demande, un processus court : le coffre est ouvert pour elle (Face ID
-/// ou mot de passe principal), puis refermé dès la réponse donnée.
+/// One request, a short process: the vault is opened for it (Face ID or
+/// master password), then closed again as soon as the response is given.
 @MainActor
 @Observable
 final class AutoFillModel {
     enum Phase: Equatable {
-        /// Aucun compte dans le dossier partagé (app jamais ouverte, ou build
-        /// sans groupe d'apps).
+        /// No account in the shared folder (app never opened, or build
+        /// without an app group).
         case noAccount
         case locked
         case unlocking
         case ready
-        /// Écriture ou signature en cours (passkey).
+        /// Write or signature in progress (passkey).
         case working
     }
 
-    /// Ce que le système demande.
+    /// What the system requests.
     enum Request {
-        /// Liste des identifiants pour ces sites (et des passkeys du site si
-        /// `passkeys` est donné).
+        /// List of logins for these sites (and of the site's passkeys if
+        /// `passkeys` is given).
         case list(services: [ASCredentialServiceIdentifier], passkeys: PasskeyQuery?)
-        /// Liste des codes à usage unique pour ces sites (iOS 18).
+        /// List of one-time codes for these sites (iOS 18).
         case oneTimeCodes(services: [ASCredentialServiceIdentifier])
-        /// Une suggestion du système touchée par l'utilisateur.
+        /// A system suggestion tapped by the user.
         case provide(ASCredentialRequest)
-        /// Création d'une passkey.
+        /// Creation of a passkey.
         case register(ASPasskeyCredentialRequest)
-        /// Rien (configuration).
+        /// Nothing (configuration).
         case none
     }
 
-    /// Une demande de passkey du site (`prepareCredentialList(for:requestParameters:)`).
+    /// A passkey request from the site (`prepareCredentialList(for:requestParameters:)`).
     struct PasskeyQuery {
         let rpID: String
         let clientDataHash: Data
         let allowed: [Data]
-        /// Extension PRF demandée par le site (iOS 18, macOS 15).
+        /// PRF extension requested by the site (iOS 18, macOS 15).
         var prf: PasskeyPrfAssertion?
     }
 
-    /// La réponse rendue au système.
+    /// The response given back to the system.
     enum Completion {
         case password(user: String, password: String)
         case assertion(ASPasskeyAssertionCredential)
@@ -58,7 +58,7 @@ final class AutoFillModel {
         case failed(String)
     }
 
-    /// Un élément protégé attend une confirmation (Face ID ou mot de passe).
+    /// A protected item awaits a confirmation (Face ID or password).
     struct Confirmation: Identifiable {
         let id = UUID()
         let itemID: String
@@ -74,20 +74,20 @@ final class AutoFillModel {
     var query = ""
     var confirmation: Confirmation?
 
-    /// Identifiants du site (ou codes), du plus précis au moins précis.
+    /// The site's logins (or codes), from most to least specific.
     private(set) var matches: [ItemSummary] = []
-    /// Toutes les fiches du coffre (recherche), une fois ouvert.
+    /// All the vault's items (search), once open.
     private(set) var everything: [ItemSummary] = []
     private(set) var passkeys: [AutofillPasskey] = []
-    /// Création de passkey : identifiants du site qui peuvent la recevoir.
+    /// Passkey creation: the site's logins that can receive it.
     private(set) var targets: [ItemSummary] = []
-    /// Passkey créée : la feuille confirme (coche) avant de se refermer.
+    /// Passkey created: the sheet confirms (checkmark) before closing.
     private(set) var passkeyCreated = false
 
     private let complete: (Completion) -> Void
     private let log = Logger(subsystem: "app.verrou.autofill", category: "extension")
-    /// Face ID ou mot de passe principal passé pour cette demande : la
-    /// passkey pose l'indicateur « utilisateur vérifié ».
+    /// Face ID or master password passed for this request: the passkey sets
+    /// the "user verified" flag.
     private var userVerified = false
     private var finished = false
 
@@ -102,22 +102,22 @@ final class AutoFillModel {
             vault = nil
             phase = .noAccount
         }
-        Memory.log("ouverture")
+        Memory.log("open")
     }
 
     var account: AccountInfo? { vault?.account }
     var canUseBiometrics: Bool { (vault?.autofillBiometricEnrolled ?? false) && Biometrics.isAvailable }
 
-    /// Le titre de l'écran.
+    /// The screen's title.
     var title: String {
         switch request {
-        case .register: "Enregistrer une passkey"
-        case .oneTimeCodes: "Codes à usage unique"
+        case .register: String(localized: "Save a passkey")
+        case .oneTimeCodes: String(localized: "One-time codes")
         default: "Verrou"
         }
     }
 
-    /// Le site demandé, pour l'en-tête.
+    /// The requested site, for the header.
     var site: String? {
         switch request {
         case .list(let services, let passkeys): passkeys?.rpID ?? services.first.map(Self.host)
@@ -132,22 +132,22 @@ final class AutoFillModel {
         return service.identifier
     }
 
-    // MARK: Demande
+    // MARK: Request
 
     func start(_ request: Request) {
         self.request = request
         if phase == .ready { load() }
     }
 
-    // MARK: Déverrouillage
+    // MARK: Unlocking
 
-    /// Face ID tout de suite si possible (la demande vient d'un geste de
-    /// l'utilisateur).
+    /// Face ID right away if possible (the request comes from a user
+    /// gesture).
     func autoUnlock() async {
         guard phase == .locked, canUseBiometrics else { return }
-        // L'interface de l'extension n'est au premier plan qu'une fois sa
-        // feuille présentée : avant, LocalAuthentication refuse (« caller is
-        // not running foreground »). On attend, puis on réessaie un peu.
+        // The extension's interface is only in the foreground once its sheet
+        // is presented: before that, LocalAuthentication refuses ("caller is
+        // not running foreground"). We wait, then retry a little.
         for attempt in 0..<6 {
             try? await Task.sleep(for: .milliseconds(attempt == 0 ? 350 : 500))
             guard phase == .locked else { return }
@@ -155,30 +155,30 @@ final class AutoFillModel {
         }
     }
 
-    /// Rend `false` si la demande n'a pas pu s'afficher (extension pas encore
-    /// au premier plan) et que `quietWhenNotForeground` permet de réessayer.
+    /// Returns `false` if the prompt could not be shown (extension not yet in
+    /// the foreground) and `quietWhenNotForeground` allows retrying.
     @discardableResult
     func unlockWithBiometrics(quietWhenNotForeground: Bool = false) async -> Bool {
         guard let vault, phase == .locked else { return true }
         phase = .unlocking
         unlockError = nil
         do {
-            _ = try await vault.unlockForAutofill(reason: "remplir avec Verrou")
+            _ = try await vault.unlockForAutofill(reason: String(localized: "fill with Verrou"))
             userVerified = true
             didUnlock()
         } catch BiometricVault.Failure.cancelled, BiometricVault.Failure.interrupted {
             phase = .locked
         } catch BiometricVault.Failure.unavailable {
-            unlockError = "\(Biometrics.name) n'est pas disponible : saisissez votre mot de passe principal."
+            unlockError = String(localized: "\(Biometrics.name) is not available: enter your master password.")
             phase = .locked
         } catch BiometricVault.Failure.invalidated {
-            unlockError = "\(Biometrics.name) doit être réactivé : saisissez votre mot de passe principal."
+            unlockError = String(localized: "\(Biometrics.name) needs to be turned on again: enter your master password.")
             phase = .locked
         } catch let error as LAError where error.code == .notInteractive && quietWhenNotForeground {
             phase = .locked
             return false
         } catch {
-            log.error("Face ID : \(String(describing: error), privacy: .public)")
+            log.error("Face ID: \(String(describing: error), privacy: .public)")
             unlockError = ErrorText.describe(error)
             phase = .locked
         }
@@ -202,12 +202,12 @@ final class AutoFillModel {
 
     private func didUnlock() {
         phase = .ready
-        Memory.log("coffre ouvert")
+        Memory.log("vault open")
         load()
     }
 
-    /// Lit ce que la demande montre, ou y répond directement (suggestion
-    /// touchée).
+    /// Reads what the request shows, or answers it directly (tapped
+    /// suggestion).
     private func load() {
         guard let vault else { return }
         let session = vault.session
@@ -232,7 +232,7 @@ final class AutoFillModel {
         }
     }
 
-    /// Résultats de la recherche dans tout le coffre (cœur Rust).
+    /// Search results across the whole vault (Rust core).
     var searchResults: [ItemSummary] {
         guard let session = vault?.session, !query.isEmpty else { return [] }
         let filter: SidebarFilter = .category(category: .login)
@@ -241,9 +241,9 @@ final class AutoFillModel {
         return hits.prefix(50).compactMap { byID[$0.id] }
     }
 
-    // MARK: Réponses
+    // MARK: Responses
 
-    /// L'utilisateur a choisi un identifiant (ou un code) dans la liste.
+    /// The user chose a login (or a code) in the list.
     func choose(_ item: ItemSummary) {
         guarded(item.id, title: item.title) { [weak self] in
             guard let self else { return }
@@ -264,7 +264,7 @@ final class AutoFillModel {
         }
     }
 
-    /// Création : dans un identifiant existant, ou un nouveau (`nil`).
+    /// Creation: in an existing login, or a new one (`nil`).
     func register(into item: ItemSummary?) {
         guard case .register(let request) = request else { return }
         if let item {
@@ -276,20 +276,20 @@ final class AutoFillModel {
 
     func cancel() { finish(.cancel) }
 
-    /// Une suggestion touchée (QuickType, liste de Safari) : la demande
-    /// désigne déjà l'élément.
+    /// A tapped suggestion (QuickType, Safari's list): the request already
+    /// designates the item.
     private func provide(_ request: ASCredentialRequest) async {
         switch request.type {
         case .password:
             guard let identity = request.credentialIdentity as? ASPasswordCredentialIdentity,
-                  let id = identity.recordIdentifier else { return finish(.failed("identifiant inconnu")) }
+                  let id = identity.recordIdentifier else { return finish(.failed("unknown login")) }
             guarded(id, title: identity.user) { [weak self] in await self?.fillPassword(id) }
         case .passkeyAssertion:
             guard let request = request as? ASPasskeyCredentialRequest,
                   let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity
-            else { return finish(.failed("passkey inconnue")) }
+            else { return finish(.failed("unknown passkey")) }
             guard request.supportedAlgorithms.isEmpty || request.supportedAlgorithms.contains(.ES256) else {
-                return finish(.failed("le site n'accepte pas les clés ES256"))
+                return finish(.failed("the site doesn't accept ES256 keys"))
             }
             let id = identity.recordIdentifier ?? ""
             var prf: PrfInputs?
@@ -307,12 +307,12 @@ final class AutoFillModel {
                 guarded(id, title: identity.label) { [weak self] in await self?.fillCode(id) }
                 return
             }
-            finish(.failed("demande non prise en charge"))
+            finish(.failed("unsupported request"))
         }
     }
 
-    /// Un élément protégé (« redemander le mot de passe principal ») attend
-    /// sa confirmation, comme dans l'app ; sinon l'action part tout de suite.
+    /// A protected item ("re-ask for the master password") awaits its
+    /// confirmation, as in the app; otherwise the action starts right away.
     private func guarded(_ itemID: String, title: String, _ action: @escaping () async -> Void) {
         guard let session = vault?.session else { return }
         if session.needsConfirmation(id: itemID) {
@@ -323,20 +323,20 @@ final class AutoFillModel {
         }
     }
 
-    /// Confirmation d'un élément protégé par Face ID.
+    /// Confirmation of a protected item by Face ID.
     func confirmWithBiometrics() async {
         guard let confirmation, let session = vault?.session else { return }
-        switch await Biometrics.authenticate(reason: "confirmer l'accès à « \(confirmation.title) »") {
+        switch await Biometrics.authenticate(reason: String(localized: "confirm access to “\(confirmation.title)”")) {
         case .success:
             session.authorizeItem(id: confirmation.itemID)
             self.confirmation = nil
             await confirmation.action()
         case .fallback, .failure:
-            break // le mot de passe principal reste proposé
+            break // the master password stays offered
         }
     }
 
-    /// Confirmation d'un élément protégé par le mot de passe principal.
+    /// Confirmation of a protected item by the master password.
     func confirm(masterPassword: String) async {
         guard let confirmation, let session = vault?.session else { return }
         if (try? await session.verifyMasterPassword(password: masterPassword)) == true {
@@ -344,7 +344,7 @@ final class AutoFillModel {
             self.confirmation = nil
             await confirmation.action()
         } else {
-            actionError = "Mot de passe principal incorrect."
+            actionError = String(localized: "Incorrect master password.")
         }
     }
 
@@ -352,14 +352,14 @@ final class AutoFillModel {
         guard let session = vault?.session else { return }
         do {
             let credential = try session.autofillPassword(id: id)
-            // Création conditionnelle (iOS 18) : Safari peut demander, juste
-            // après, une passkey pour ce compte, en arrière-plan et coffre
-            // fermé. La clé est préparée maintenant (voir conditional.rs).
+            // Conditional creation (iOS 18): Safari may request, right after,
+            // a passkey for this account, in the background with the vault
+            // closed. The key is prepared now (see conditional.rs).
             if #available(iOS 18.0, *) {
                 do {
                     _ = try await session.preparePasskeyUpgrade(id: id)
                 } catch {
-                    log.notice("clé de passkey non préparée : \(String(describing: error), privacy: .public)")
+                    log.notice("passkey key not prepared: \(String(describing: error), privacy: .public)")
                 }
             }
             finish(.password(user: credential.username, password: credential.password))
@@ -371,11 +371,11 @@ final class AutoFillModel {
     private func fillCode(_ id: String) async {
         guard let vault else { return }
         if let code = vault.currentCode(of: id) {
-            // Noté pour le tri « Dernière utilisation » de l'app.
+            // Recorded for the app's "Last used" sort.
             vault.session.recordItemUse(id: id)
             finish(.oneTimeCode(code.code))
         } else {
-            actionError = "Cet élément n'a pas de code à usage unique."
+            actionError = String(localized: "This item has no one-time code.")
         }
     }
 
@@ -390,14 +390,14 @@ final class AutoFillModel {
                 userHandle: Data(result.userHandle), relyingParty: rpID, signature: Data(result.signature),
                 clientDataHash: clientDataHash, authenticatorData: Data(result.authenticatorData),
                 credentialID: Data(result.credentialId))
-            // PRF : sorties à côté de l'assertion (rien dans authenticatorData).
+            // PRF: outputs alongside the assertion (nothing in authenticatorData).
             if #available(iOS 18.0, *), let prf {
                 do {
                     let output = try session.passkeyPrf(rpId: rpID, credentialId: credentialID, first: prf.first,
                                                         second: prf.second, userVerified: userVerified)
                     credential.extensionOutput = PasskeyPrfOutputs.assertion(output)
                 } catch {
-                    log.error("PRF non évaluée : \(String(describing: error), privacy: .public)")
+                    log.error("PRF not evaluated: \(String(describing: error), privacy: .public)")
                 }
             }
             finish(.assertion(credential))
@@ -411,7 +411,7 @@ final class AutoFillModel {
         guard let session = vault?.session,
               let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity else { return }
         guard request.supportedAlgorithms.isEmpty || request.supportedAlgorithms.contains(.ES256) else {
-            actionError = "Ce site n'accepte pas les clés ES256 : utilisez un autre gestionnaire."
+            actionError = String(localized: "This site doesn't accept ES256 keys: use another manager.")
             return
         }
         var excluded: [Data] = []
@@ -427,8 +427,8 @@ final class AutoFillModel {
             let credential = ASPasskeyRegistrationCredential(
                 relyingParty: identity.relyingPartyIdentifier, clientDataHash: request.clientDataHash,
                 credentialID: Data(result.credentialId), attestationObject: Data(result.attestationObject))
-            // PRF demandée : la passkey la prend en charge, et donne déjà ses
-            // sorties si le site a fourni des entrées.
+            // PRF requested: the passkey supports it, and already gives its
+            // outputs if the site provided inputs.
             if #available(iOS 18.0, *), let prf = PasskeyPrfRegistration(request: request) {
                 var output: PasskeyPrfOutput?
                 if let eval = prf.eval {
@@ -438,13 +438,13 @@ final class AutoFillModel {
                 }
                 credential.extensionOutput = PasskeyPrfOutputs.registration(output)
             }
-            // Le système ne propose une passkey (`allowCredentials`) que si
-            // elle est dans son magasin d'identités : on le met à jour ici,
-            // sans attendre que l'app se synchronise.
+            // The system only offers a passkey (`allowCredentials`) if it is
+            // in its identity store: we update it here, without waiting for
+            // the app to sync.
             if let identities = try? session.autofillIdentities() {
                 await CredentialIdentities.publish(identities)
             }
-            // Courte confirmation dans la feuille (effets de symboles), puis réponse.
+            // Short confirmation in the sheet (symbol effects), then response.
             passkeyCreated = true
             try? await Task.sleep(for: .milliseconds(650))
             finish(.registration(credential))
@@ -454,12 +454,12 @@ final class AutoFillModel {
         }
     }
 
-    /// Répond une seule fois, referme le coffre (le cœur Rust efface ses
-    /// secrets) et note la mémoire.
+    /// Responds only once, closes the vault (the Rust core erases its
+    /// secrets) and logs the memory.
     private func finish(_ completion: Completion) {
         guard !finished else { return }
         finished = true
-        Memory.log("réponse")
+        Memory.log("response")
         vault?.lock()
         complete(completion)
     }

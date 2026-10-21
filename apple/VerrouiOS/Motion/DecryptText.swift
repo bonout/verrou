@@ -1,20 +1,19 @@
 import SwiftUI
 
-// Mot de passe « déchiffré » : à son apparition, chaque caractère passe par
-// des glyphes au hasard puis se fixe, de gauche à droite. Dessiné par un
-// TextRenderer (iOS 18) : aucune vue créée par caractère, seulement des
-// glyphes posés dans le contexte graphique du texte. Repli : un fondu
-// (iOS 17, « Réduire les animations »).
+// "Decrypted" password: when it appears, each character goes through
+// random glyphs then settles, from left to right. Drawn by a TextRenderer
+// (iOS 18): no view created per character, only glyphs placed in the
+// text's graphics context. Fallback: a fade (iOS 17, "Reduce Motion").
 
-/// Calendrier de l'effet pour `length` caractères : moins d'une seconde,
-/// quelle que soit la longueur.
+/// Schedule of the effect for `length` characters: under a second, whatever
+/// the length.
 struct DecryptTiming {
     let length: Int
-    /// Avant que le premier caractère se fixe.
+    /// Before the first character settles.
     var lead: Double { 0.08 }
-    /// Écart entre deux caractères qui se fixent.
+    /// Gap between two characters settling.
     var step: Double { length > 0 ? min(0.045, 0.6 / Double(length)) : 0 }
-    /// Fondu d'un caractère qui se fixe.
+    /// Fade of a settling character.
     var settle: Double { 0.1 }
     var total: Double { lead + step * Double(max(length - 1, 0)) + settle }
 }
@@ -30,16 +29,16 @@ struct DecryptRenderer: TextRenderer {
         set { elapsed = newValue }
     }
 
-    /// Glyphes du brouillage : lettres, chiffres et symboles lisibles.
+    /// Scrambling glyphs: readable letters, digits and symbols.
     private static let pool = Array("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789#$%&*+=?@")
 
     func draw(layout: Text.Layout, in context: inout GraphicsContext) {
-        // Fini : le texte tel quel.
+        // Done: the text as is.
         guard elapsed < timing.total else {
             for line in layout { context.draw(line) }
             return
         }
-        // Le brouillage change de glyphe toutes les 50 ms.
+        // The scrambling changes glyph every 50 ms.
         let tick = Int(elapsed / 0.05)
         var resolved: [Character: GraphicsContext.ResolvedText] = [:]
         var index = 0
@@ -73,7 +72,7 @@ struct DecryptRenderer: TextRenderer {
         }
     }
 
-    /// Hasard reproductible (même image, même glyphe), sans générateur.
+    /// Reproducible randomness (same frame, same glyph), without a generator.
     private static func scramble(_ index: Int, _ tick: Int) -> Int {
         var value = UInt64(truncatingIfNeeded: index &* 7919 &+ tick &* 104_729 &+ 12_345)
         value ^= value >> 33
@@ -83,21 +82,21 @@ struct DecryptRenderer: TextRenderer {
     }
 }
 
-/// Le texte se déchiffre à son apparition et, si `replays`, à chaque
-/// nouvelle valeur. Le TextRenderer est piloté par une horloge
-/// (`TimelineView`) qui ne tourne que pendant l'effet, moins d'une seconde.
+/// The text decrypts when it appears and, if `replays`, at each new value.
+/// The TextRenderer is driven by a clock (`TimelineView`) that only runs
+/// during the effect, under a second.
 ///
-/// Une transition d'insertion (protocole `Transition`) aurait été plus
-/// naturelle, mais les transitions ne s'animent pas dans les lignes d'une
-/// liste ou d'un formulaire, là où s'affichent la fiche et le générateur.
+/// An insertion transition (`Transition` protocol) would have been more
+/// natural, but transitions don't animate in the rows of a list or a form,
+/// where the item page and the generator are shown.
 @available(iOS 18, *)
 private struct DecryptingContent<Content: View>: View {
     let value: String
     let fontSize: CGFloat
     let replays: Bool
     @ViewBuilder let content: Content
-    /// Départ de l'effet : la création de la vue (apparition), puis chaque
-    /// nouvelle valeur.
+    /// Start of the effect: the view's creation (appearance), then each new
+    /// value.
     @State private var start = Date()
     @State private var running = true
 
@@ -113,16 +112,16 @@ private struct DecryptingContent<Content: View>: View {
             running = true
         }
         .task(id: start) {
-            // Horloge arrêtée une fois tous les caractères fixés.
+            // Clock stopped once all characters have settled.
             do { try await Task.sleep(for: .seconds(timing.total)) } catch { return }
             running = false
         }
     }
 }
 
-/// Valeur secrète révélée ou générée : déchiffrée à son apparition (iOS 18),
-/// en fondu sinon. `replaysOnChange` rejoue l'effet à chaque nouvelle valeur
-/// (générateur) ; sinon seulement quand la valeur apparaît (révélation).
+/// Secret value revealed or generated: decrypted when it appears (iOS 18),
+/// with a fade otherwise. `replaysOnChange` replays the effect at each new
+/// value (generator); otherwise only when the value appears (reveal).
 struct DecryptReveal<Revealed: View, Masked: View>: View {
     let value: String?
     var fontSize: CGFloat = 17
@@ -131,7 +130,7 @@ struct DecryptReveal<Revealed: View, Masked: View>: View {
     @ViewBuilder let masked: () -> Masked
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Builds Debug : `VERROU_DECRYPT_AT=<secondes>` fige l'effet (captures).
+    /// Debug builds: `VERROU_DECRYPT_AT=<seconds>` freezes the effect (screenshots).
     private static var frozen: Double? {
         #if DEBUG
         ProcessInfo.processInfo.environment["VERROU_DECRYPT_AT"].flatMap(Double.init)
@@ -151,7 +150,7 @@ struct DecryptReveal<Revealed: View, Masked: View>: View {
                         revealed(value)
                     }
                 } else {
-                    // iOS 17 ou « Réduire les animations » : un fondu.
+                    // iOS 17 or "Reduce Motion": a fade.
                     revealed(value)
                         .contentTransition(.opacity)
                         .animation(.easeInOut(duration: 0.2), value: value)
@@ -162,8 +161,8 @@ struct DecryptReveal<Revealed: View, Masked: View>: View {
                     .transition(.opacity)
             }
         }
-        // Seul le passage masqué ↔ révélé s'anime ici : une nouvelle valeur
-        // se déchiffre en place, sans fondu croisé avec l'ancienne.
+        // Only the hidden ↔ revealed change animates here: a new value
+        // decrypts in place, without a cross-fade with the old one.
         .animation(.easeInOut(duration: 0.2), value: value == nil)
     }
 }

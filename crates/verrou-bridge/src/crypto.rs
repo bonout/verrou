@@ -1,16 +1,16 @@
-//! Cryptographie du canal entre l'extension et Verrou.
+//! Cryptography of the channel between the extension and Verrou.
 //!
-//! - **Appairage** : ECDH P-256 entre une clé de l'extension (gardée dans le
-//!   navigateur) et une clé éphémère de Verrou ; HKDF-SHA256 en tire la clé du
-//!   canal. Les deux côtés affichent un code à 6 chiffres dérivé de cette
-//!   clé : l'utilisateur vérifie qu'il est le même avant d'accepter, ce qui
-//!   écarte un programme qui se glisserait au milieu.
-//! - **Messages** : AES-256-GCM, nonce aléatoire de 96 bits, données
-//!   associées = identifiant du client et sens du message (une réponse ne
-//!   peut pas être renvoyée comme requête).
+//! - **Pairing**: ECDH P-256 between a key of the extension (kept in the
+//!   browser) and an ephemeral key of Verrou; HKDF-SHA256 derives the channel
+//!   key from it. Both sides show a 6-digit code derived from this
+//!   key: the user checks it is the same before accepting, which
+//!   rules out a program slipping in between.
+//! - **Messages**: AES-256-GCM, random 96-bit nonce, associated
+//!   data = client identifier and message direction (a response
+//!   cannot be sent back as a request).
 //!
-//! Les mêmes primitives existent dans `WebCrypto`, ce qui laisse l'extension
-//! sans bibliothèque de cryptographie.
+//! The same primitives exist in `WebCrypto`, which leaves the extension
+//! without a cryptography library.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -29,22 +29,22 @@ const CODE_LABEL: &[u8] = b"verrou-bridge code";
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum CryptoError {
-    #[error("clé publique invalide")]
+    #[error("invalid public key")]
     InvalidKey,
-    #[error("message illisible")]
+    #[error("unreadable message")]
     Unreadable,
 }
 
-/// Sens d'un message chiffré.
+/// Direction of an encrypted message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
-    /// De l'extension vers Verrou.
+    /// From the extension to Verrou.
     Request,
-    /// De Verrou vers l'extension.
+    /// From Verrou to the extension.
     Response,
 }
 
-/// Clé symétrique du canal, propre à un client appairé.
+/// Symmetric channel key, specific to one paired client.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct ChannelKey([u8; 32]);
 
@@ -65,7 +65,7 @@ impl ChannelKey {
         BASE64.encode(&self.0)
     }
 
-    /// Code de vérification affiché des deux côtés : `482 913`.
+    /// Verification code shown on both sides: `482 913`.
     pub fn pairing_code(&self) -> String {
         let digest = Sha256::new()
             .chain_update(CODE_LABEL)
@@ -75,11 +75,11 @@ impl ChannelKey {
         format!("{:03} {:03}", n / 1000, n % 1000)
     }
 
-    /// Chiffre `plaintext` ; rend le nonce et le texte chiffré (base64).
+    /// Encrypts `plaintext`; returns the nonce and the ciphertext (base64).
     pub fn seal(&self, client: &str, direction: Direction, plaintext: &[u8]) -> (String, String) {
         let mut iv = [0u8; 12];
         OsRng.fill_bytes(&mut iv);
-        let cipher = Aes256Gcm::new_from_slice(&self.0).expect("clé de 32 octets");
+        let cipher = Aes256Gcm::new_from_slice(&self.0).expect("32-byte key");
         let aad = aad(client, direction);
         let sealed = cipher
             .encrypt(
@@ -89,7 +89,7 @@ impl ChannelKey {
                     aad: &aad,
                 },
             )
-            .expect("chiffrement AES-GCM");
+            .expect("AES-GCM encryption");
         (BASE64.encode(&iv), BASE64.encode(&sealed))
     }
 
@@ -109,7 +109,7 @@ impl ChannelKey {
         let data = BASE64
             .decode(data.as_bytes())
             .map_err(|_| CryptoError::Unreadable)?;
-        let cipher = Aes256Gcm::new_from_slice(&self.0).expect("clé de 32 octets");
+        let cipher = Aes256Gcm::new_from_slice(&self.0).expect("32-byte key");
         let aad = aad(client, direction);
         cipher
             .decrypt(
@@ -131,8 +131,8 @@ fn aad(client: &str, direction: Direction) -> Vec<u8> {
     format!("{client}:{tag}").into_bytes()
 }
 
-/// Une moitié d'accord de clé : la clé secrète éphémère et sa clé publique
-/// (SEC1 non compressée, 65 octets, comme `exportKey("raw")` de `WebCrypto`).
+/// One half of a key agreement: the ephemeral secret key and its public key
+/// (uncompressed SEC1, 65 bytes, like `exportKey("raw")` in `WebCrypto`).
 pub struct KeyPair {
     secret: EphemeralSecret,
     public: Vec<u8>,
@@ -153,14 +153,14 @@ impl KeyPair {
         BASE64.encode(&self.public)
     }
 
-    /// Clé du canal. `client_public` et `server_public` salent la dérivation
-    /// dans cet ordre, quel que soit le côté qui calcule.
+    /// Channel key. `client_public` and `server_public` salt the derivation
+    /// in that order, whichever side computes it.
     pub fn agree(&self, peer_base64: &str, we_are_server: bool) -> Result<ChannelKey, CryptoError> {
         let peer = BASE64
             .decode(peer_base64.as_bytes())
             .map_err(|_| CryptoError::InvalidKey)?;
         let peer_key = PublicKey::from_sec1_bytes(&peer).map_err(|_| CryptoError::InvalidKey)?;
-        // Toujours la forme non compressée, pour saler comme WebCrypto.
+        // Always the uncompressed form, to salt like WebCrypto.
         let peer = peer_key.to_encoded_point(false).as_bytes().to_vec();
         let shared = self.secret.diffie_hellman(&peer_key);
         let (client, server) = if we_are_server {
@@ -171,7 +171,7 @@ impl KeyPair {
         let salt = [client.as_slice(), server.as_slice()].concat();
         let hkdf = Hkdf::<Sha256>::new(Some(&salt), shared.raw_secret_bytes());
         let mut key = [0u8; 32];
-        hkdf.expand(INFO, &mut key).expect("32 octets");
+        hkdf.expand(INFO, &mut key).expect("32 bytes");
         Ok(ChannelKey(key))
     }
 }

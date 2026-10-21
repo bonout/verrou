@@ -1,30 +1,30 @@
 import CryptoKit
 import Foundation
 
-/// Où vivent les fichiers du compte : `account.json`, le cache chiffré du
-/// coffre, la file des modifications hors ligne, le scellement de Touch ID /
-/// Face ID (`touchid.json`) et les clés de sécurité enrôlées.
+/// Where the account's files live: `account.json`, the vault's encrypted
+/// cache, the queue of offline changes, the Touch ID / Face ID seal
+/// (`touchid.json`) and the enrolled security keys.
 ///
-/// - iPhone : le conteneur du groupe d'apps (`appGroupID`), que
-///   l'extension de remplissage automatique partage avec l'app.
-///   Sans groupe (build du simulateur non signé, ou droit absent), le dossier
-///   de l'app sert de repli ; dès que le groupe existe, un compte resté dans
-///   le repli y est déplacé une fois.
-/// - Mac signé ad hoc (par défaut) : `~/Library/Application Support/Verrou`,
-///   dans le conteneur de l'app (sandbox), comme avant. Pas de groupe d'apps :
-///   sans équipe de développeur, macOS ne le valide pas.
-/// - Mac signé par l'équipe (`VERROU_MAC_TEAM`, avec l'extension de
-///   remplissage) : le conteneur du groupe `<équipe>.app.verrou`. Le compte
-///   du conteneur de l'app y est **copié** une fois, vérifié, puis l'ancien
-///   dossier est renommé (gardé, jamais effacé) : voir `migrateMac`.
+/// - iPhone: the app group container (`appGroupID`), which the AutoFill
+///   extension shares with the app.
+///   Without a group (unsigned simulator build, or missing entitlement), the
+///   app's folder is the fallback; as soon as the group exists, an account
+///   left in the fallback is moved there once.
+/// - Mac signed ad hoc (default): `~/Library/Application Support/Verrou`,
+///   in the app's container (sandbox), as before. No app group: without a
+///   developer team, macOS doesn't validate it.
+/// - Mac signed by the team (`VERROU_MAC_TEAM`, with the AutoFill
+///   extension): the `<team>.app.verrou` group container. The account in the
+///   app's container is **copied** there once, verified, then the old
+///   folder is renamed (kept, never erased): see `migrateMac`.
 ///
-/// Rien n'y est en clair : le cache est la réponse chiffrée du serveur, la
-/// file hors ligne est chiffrée avec la clé de l'utilisateur.
+/// Nothing in it is in clear: the cache is the server's encrypted response,
+/// the offline queue is encrypted with the user's key.
 enum VerrouStorage {
-    /// Groupe d'apps partagé par l'app et ses extensions : celui de la
-    /// signature (`VERROU_APP_GROUP` sur l'iPhone, `VERROU_MAC_APP_GROUP` sur
-    /// le Mac, recopié dans l'Info.plist). Sur l'iPhone, `group.app.verrou`
-    /// par défaut ; sur le Mac, aucun (build ad hoc).
+    /// App group shared by the app and its extensions: the signing one
+    /// (`VERROU_APP_GROUP` on the iPhone, `VERROU_MAC_APP_GROUP` on the Mac,
+    /// copied into the Info.plist). On the iPhone, `group.app.verrou` by
+    /// default; on the Mac, none (ad hoc build).
     static let appGroupID: String? = {
         let declared = (Bundle.main.object(forInfoDictionaryKey: "VerrouAppGroup") as? String)
             .flatMap { $0.isEmpty || $0.hasPrefix("$(") ? nil : $0 }
@@ -34,19 +34,19 @@ enum VerrouStorage {
         return declared ?? "group.app.verrou"
         #endif
     }()
-    /// Groupe de trousseau partagé (préfixé par l'identifiant de l'équipe à la
-    /// signature) : déclaré, inutilisé (l'extension lit les scellements
-    /// Face ID du dossier partagé, voir `BiometricVault`).
+    /// Shared keychain group (prefixed with the team identifier at signing):
+    /// declared, unused (the extension reads the Face ID seals from the
+    /// shared folder, see `BiometricVault`).
     static let keychainAccessGroup = "app.verrou.shared"
 
     struct Location: Equatable {
-        /// Dossier du compte.
+        /// The account folder.
         let directory: URL
-        /// Dans le conteneur du groupe d'apps : visible des extensions.
+        /// In the app group container: visible to the extensions.
         let shared: Bool
     }
 
-    /// Le dossier du compte de cet appareil, créé au besoin.
+    /// This device's account folder, created if needed.
     static func accountLocation(fileManager: FileManager = .default) -> Location {
         let location = resolve(groupContainer: groupContainer(fileManager), fileManager: fileManager)
         try? fileManager.createDirectory(at: location.directory, withIntermediateDirectories: true)
@@ -56,20 +56,20 @@ enum VerrouStorage {
         return location
     }
 
-    /// Dossier privé de l'app (le repli, et l'emplacement du Mac ad hoc).
+    /// The app's private folder (the fallback, and the ad hoc Mac's location).
     static func privateDirectory(fileManager: FileManager = .default) -> URL {
         let support = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return support.appending(path: "Verrou", directoryHint: .isDirectory)
     }
 
-    /// Le dossier du compte dans un conteneur de groupe.
+    /// The account folder in a group container.
     static func sharedDirectory(in groupContainer: URL) -> URL {
         groupContainer.appending(path: "Library/Application Support/Verrou", directoryHint: .isDirectory)
     }
 
-    /// Choisit l'emplacement : le groupe s'il existe (après y avoir déplacé ou
-    /// copié un compte resté dans le dossier privé), sinon le dossier privé.
-    /// Séparé pour les tests.
+    /// Picks the location: the group if it exists (after moving or copying
+    /// there an account left in the private folder), otherwise the private
+    /// folder. Separate for tests.
     static func resolve(groupContainer: URL?, fileManager: FileManager = .default) -> Location {
         let fallback = privateDirectory(fileManager: fileManager)
         guard let groupContainer else { return Location(directory: fallback, shared: false) }
@@ -77,9 +77,9 @@ enum VerrouStorage {
         #if os(macOS)
         switch migrateMac(from: fallback, to: shared, fileManager: fileManager) {
         case .refused:
-            // Le groupe contient autre chose qu'un compte : on ne touche à
-            // rien, l'app garde son dossier privé (l'extension n'aura pas de
-            // coffre).
+            // The group contains something other than an account: we touch
+            // nothing, the app keeps its private folder (the extension won't
+            // have a vault).
             return Location(directory: fallback, shared: false)
         case .nothingToDo, .migrated, .finished:
             return Location(directory: shared, shared: true)
@@ -96,8 +96,8 @@ enum VerrouStorage {
     }
 
     #if os(iOS)
-    /// Un compte enregistré avant que le groupe n'existe (build non signé
-    /// puis signé) : on le déplace plutôt que de demander une reconnexion.
+    /// An account saved before the group existed (unsigned then signed
+    /// build): we move it rather than asking to sign in again.
     private static func migrate(from old: URL, to new: URL, fileManager: FileManager) {
         let oldAccount = old.appending(path: "account.json")
         guard fileManager.fileExists(atPath: oldAccount.path),
@@ -107,9 +107,9 @@ enum VerrouStorage {
         try? fileManager.moveItem(at: old, to: new)
     }
 
-    /// Le coffre chiffré ne part pas dans les sauvegardes iCloud ou Finder :
-    /// le serveur reste la référence, et le scellement Face ID ne vaut que
-    /// sur cet appareil.
+    /// The encrypted vault doesn't go into iCloud or Finder backups: the
+    /// server stays the reference, and the Face ID seal is only valid on
+    /// this device.
     private static func excludeFromBackup(_ directory: URL) {
         var url = directory
         var values = URLResourceValues()
@@ -118,45 +118,45 @@ enum VerrouStorage {
     }
     #endif
 
-    // MARK: Migration du Mac (conteneur de l'app → groupe d'apps)
+    // MARK: Mac migration (app container → app group)
 
     enum MacMigration: Equatable {
-        /// Pas de compte à migrer (aucun, ou déjà dans le groupe).
+        /// No account to migrate (none, or already in the group).
         case nothingToDo
-        /// Compte copié et vérifié ; l'ancien dossier est renommé en `backup`.
+        /// Account copied and verified; the old folder is renamed to `backup`.
         case migrated(backup: URL)
-        /// Une migration interrompue après la copie : l'ancien dossier est
-        /// renommé maintenant.
+        /// A migration interrupted after the copy: the old folder is renamed
+        /// now.
         case finished(backup: URL)
-        /// Le dossier du groupe existe, sans compte mais pas vide, ou la copie
-        /// n'a pas pu être vérifiée : rien n'est touché.
+        /// The group folder exists, without an account but not empty, or the
+        /// copy could not be verified: nothing is touched.
         case refused(String)
     }
 
-    /// Note laissée dans le dossier du groupe : d'où vient le compte.
+    /// Note left in the group folder: where the account comes from.
     static let migrationNote = "migration.json"
 
-    /// Copie le compte du dossier privé de l'app Mac (`old`) dans le groupe
-    /// (`new`), une seule fois, sans jamais rien effacer :
+    /// Copies the account from the Mac app's private folder (`old`) into the
+    /// group (`new`), only once, without ever erasing anything:
     ///
-    /// 1. rien à faire s'il n'y a pas de `account.json` dans `old`, ou s'il y
-    ///    en a déjà un dans `new` (dans ce cas, une note `migration.json`
-    ///    venue de `old` signale une migration interrompue : l'étape 4 est
-    ///    reprise) ;
-    /// 2. copie de `old` dans un dossier temporaire à côté de `new`, puis
-    ///    vérification fichier par fichier (taille et SHA-256) ;
-    /// 3. renommage atomique du dossier temporaire en `new` (même volume),
-    ///    avec la note `migration.json` ;
-    /// 4. renommage de `old` en `Verrou-avant-groupe-<date>` : l'app ne le
-    ///    relit plus (une file hors ligne périmée ne repartirait pas), et il
-    ///    reste là pour revenir en arrière à la main.
+    /// 1. nothing to do if there is no `account.json` in `old`, or if there
+    ///    already is one in `new` (in that case, a `migration.json` note
+    ///    from `old` signals an interrupted migration: step 4 is
+    ///    resumed);
+    /// 2. copy of `old` into a temporary folder next to `new`, then
+    ///    file-by-file verification (size and SHA-256);
+    /// 3. atomic rename of the temporary folder to `new` (same volume),
+    ///    with the `migration.json` note;
+    /// 4. rename of `old` to `Verrou-before-group-<date>`: the app no longer
+    ///    reads it (a stale offline queue would not be sent again), and it
+    ///    stays there to go back by hand.
     static func migrateMac(from old: URL, to new: URL, fileManager: FileManager = .default,
                            now: Date = Date()) -> MacMigration {
         let oldAccount = old.appending(path: "account.json")
         let hasOld = fileManager.fileExists(atPath: oldAccount.path)
         if fileManager.fileExists(atPath: new.appending(path: "account.json").path) {
-            // Copie faite, renommage de l'ancien dossier pas fait (arrêt
-            // brutal entre les étapes 3 et 4) : on le finit.
+            // Copy done, old folder not renamed yet (hard stop between
+            // steps 3 and 4): we finish it.
             guard hasOld, let note = try? Data(contentsOf: new.appending(path: migrationNote)),
                   let source = try? JSONDecoder().decode(MigrationNote.self, from: note),
                   source.from == old.standardizedFileURL.path,
@@ -167,7 +167,7 @@ enum VerrouStorage {
         if fileManager.fileExists(atPath: new.path) {
             let contents = (try? fileManager.contentsOfDirectory(atPath: new.path)) ?? []
             guard contents.allSatisfy({ $0 == ".DS_Store" }) else {
-                return .refused("le dossier du groupe existe déjà, sans compte : \(contents.sorted())")
+                return .refused("the group folder already exists, without an account: \(contents.sorted())")
             }
             try? fileManager.removeItem(at: new)
         }
@@ -178,7 +178,7 @@ enum VerrouStorage {
             try fileManager.copyItem(at: old, to: staging)
             guard try sameFiles(old, staging, fileManager: fileManager) else {
                 try? fileManager.removeItem(at: staging)
-                return .refused("la copie ne correspond pas à l'original")
+                return .refused("the copy doesn't match the original")
             }
             let note = try JSONEncoder().encode(MigrationNote(from: old.standardizedFileURL.path,
                                                               date: ISO8601DateFormatter().string(from: now)))
@@ -186,11 +186,11 @@ enum VerrouStorage {
             try fileManager.moveItem(at: staging, to: new)
         } catch {
             try? fileManager.removeItem(at: staging)
-            return .refused("copie impossible : \(error.localizedDescription)")
+            return .refused("copy failed: \(error.localizedDescription)")
         }
         guard let backup = try? retire(old, now: now, fileManager: fileManager) else {
-            // Le compte est dans le groupe ; l'ancien dossier reste en place,
-            // le prochain lancement réessaie de le renommer (étape 1).
+            // The account is in the group; the old folder stays in place,
+            // the next launch tries again to rename it (step 1).
             return .migrated(backup: old)
         }
         return .migrated(backup: backup)
@@ -201,10 +201,10 @@ enum VerrouStorage {
         let date: String
     }
 
-    /// `old` → `old-avant-groupe-<date>` (un suffixe s'il existe déjà).
+    /// `old` → `old-before-group-<date>` (a suffix if it already exists).
     private static func retire(_ old: URL, now: Date, fileManager: FileManager) throws -> URL {
         let stamp = ISO8601DateFormatter.string(from: now, timeZone: .gmt, formatOptions: [.withFullDate])
-        let base = old.deletingLastPathComponent().appending(path: "\(old.lastPathComponent)-avant-groupe-\(stamp)")
+        let base = old.deletingLastPathComponent().appending(path: "\(old.lastPathComponent)-before-group-\(stamp)")
         var backup = base
         var n = 2
         while fileManager.fileExists(atPath: backup.path) {
@@ -215,7 +215,7 @@ enum VerrouStorage {
         return backup
     }
 
-    /// Mêmes fichiers (chemins relatifs), mêmes tailles, mêmes SHA-256.
+    /// Same files (relative paths), same sizes, same SHA-256.
     static func sameFiles(_ a: URL, _ b: URL, fileManager: FileManager = .default) throws -> Bool {
         let left = try fingerprints(a, fileManager: fileManager)
         let right = try fingerprints(b, fileManager: fileManager)

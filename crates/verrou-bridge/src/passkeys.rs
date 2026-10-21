@@ -1,19 +1,19 @@
-//! Passkeys pour l'extension : ce que la page peut obtenir, et rien de plus.
+//! Passkeys for the extension: what the page can get, and nothing more.
 //!
-//! - **Lister** : les passkeys du site (`rpId`, vérifié sur l'adresse de la
-//!   page donnée par le navigateur), avec titre et nom d'utilisateur. Ni clé,
-//!   ni compteur.
-//! - **Utiliser** : une passkey du site signe le défi de la page ; la clé
-//!   privée reste dans Verrou ([`verrou_core::passkey::assert`]). Le nouveau
-//!   compteur est enregistré dans le coffre avant que la réponse parte.
-//! - **Créer** : Verrou crée la clé, l'enregistre dans un identifiant du site
-//!   (ou un nouveau) et ne rend à la page que la clé publique et
-//!   l'attestation.
+//! - **List**: the site's passkeys (`rpId`, checked against the page address
+//!   given by the browser), with title and user name. Neither key
+//!   nor counter.
+//! - **Use**: a passkey of the site signs the page's challenge; the private
+//!   key stays in Verrou ([`verrou_core::passkey::assert`]). The new
+//!   counter is saved in the vault before the response leaves.
+//! - **Create**: Verrou creates the key, saves it in a login of the site
+//!   (or a new one) and only returns the public key and the
+//!   attestation to the page.
 //!
-//! Comme pour les mots de passe : HTTPS seulement (HTTP vers `localhost`),
-//! coffre déverrouillé, élément protégé confirmé dans Verrou (voir
-//! [`crate::Backend::gate`]), et la vérification de l'utilisateur demandée par
-//! le site passe par Touch ID dans Verrou.
+//! As for passwords: HTTPS only (HTTP to `localhost`),
+//! vault unlocked, protected item confirmed in Verrou (see
+//! [`crate::Backend::gate`]), and user verification requested by
+//! the site goes through Touch ID in Verrou.
 
 use verrou_core::passkey::{
     self, AssertionRequest, ES256, RegistrationRequest, b64url, b64url_decode,
@@ -27,18 +27,18 @@ use crate::protocol::{
     PasskeyTarget, PasskeyTargetsQuery, PasskeyUse, PrfCreated, PrfRequest, PrfValues,
 };
 
-/// Longueur maximale des textes venus de la page (noms, identifiants).
+/// Maximum length of texts coming from the page (names, identifiers).
 const MAX_TEXT: usize = 256;
-/// Nombre maximal d'identifiants d'accréditation dans une liste.
+/// Maximum number of credential identifiers in a list.
 const MAX_IDS: usize = 64;
 
-/// Refus d'une création : la passkey est déjà dans le coffre (la page reçoit
-/// `InvalidStateError`, comme le prévoit `WebAuthn`).
-pub const ALREADY_SAVED: &str = "cette passkey est déjà dans Verrou";
+/// Refusal of a creation: the passkey is already in the vault (the page gets
+/// `InvalidStateError`, as `WebAuthn` specifies).
+pub const ALREADY_SAVED: &str = "this passkey is already in Verrou";
 
 fn site(page_url: &str, requested: Option<&str>) -> Result<String, String> {
     if !page_allowed(page_url) {
-        return Err("page non sécurisée (HTTPS exigé)".to_owned());
+        return Err("insecure page (HTTPS required)".to_owned());
     }
     passkey::origin_and_rp_id(page_url, requested)
         .map(|(_, rp_id)| rp_id)
@@ -47,7 +47,7 @@ fn site(page_url: &str, requested: Option<&str>) -> Result<String, String> {
 
 fn ids(list: &[String]) -> Result<Vec<Vec<u8>>, String> {
     if list.len() > MAX_IDS {
-        return Err("trop d'identifiants de passkey".to_owned());
+        return Err("too many passkey identifiers".to_owned());
     }
     Ok(list.iter().filter_map(|id| b64url_decode(id)).collect())
 }
@@ -65,7 +65,7 @@ fn username_of(item: &Item) -> String {
         .unwrap_or_default()
 }
 
-/// Passkeys proposées à la page pour `navigator.credentials.get`.
+/// Passkeys offered to the page for `navigator.credentials.get`.
 pub fn list(vault: &Vault, query: &PasskeyQuery) -> Result<Vec<PasskeySuggestion>, String> {
     let rp_id = site(&query.url, query.rp_id.as_deref())?;
     let allow = ids(&query.allow)?;
@@ -95,25 +95,25 @@ pub fn list(vault: &Vault, query: &PasskeyQuery) -> Result<Vec<PasskeySuggestion
         .collect())
 }
 
-/// La passkey demandée, si elle appartient au site de la page.
+/// The requested passkey, if it belongs to the page's site.
 pub fn find<'v>(vault: &'v Vault, request: &PasskeyUse) -> Result<(&'v Item, &'v Passkey), String> {
     let rp_id = site(&request.url, request.rp_id.as_deref())?;
     let credential = b64url_decode(&request.credential)
-        .ok_or_else(|| "identifiant de passkey illisible".to_owned())?;
+        .ok_or_else(|| "unreadable passkey identifier".to_owned())?;
     let passkey = vault
         .passkeys_for(&rp_id)
         .into_iter()
         .find(|p| p.item == request.item && p.raw_id().as_deref() == Some(credential.as_slice()))
-        .ok_or_else(|| "cette passkey n'appartient pas à ce site".to_owned())?;
+        .ok_or_else(|| "this passkey does not belong to this site".to_owned())?;
     let item = vault
         .get(&passkey.item)
-        .ok_or_else(|| "élément introuvable".to_owned())?;
+        .ok_or_else(|| "item not found".to_owned())?;
     Ok((item, passkey))
 }
 
-/// Évalue la PRF de la passkey pour les entrées de la page (base64url).
-/// Sans vérification de l'utilisateur (Touch ID refusé ou non demandé), pas
-/// de sortie : la page ne reçoit rien plutôt qu'une erreur.
+/// Evaluates the passkey's PRF for the page's inputs (base64url).
+/// Without user verification (Touch ID refused or not requested), no
+/// output: the page gets nothing rather than an error.
 fn prf_results(
     passkey: &Passkey,
     values: &PrfValues,
@@ -122,11 +122,11 @@ fn prf_results(
     if !user_verified {
         return Ok(None);
     }
-    let first = b64url_decode(&values.first).ok_or_else(|| "entrée PRF illisible".to_owned())?;
+    let first = b64url_decode(&values.first).ok_or_else(|| "unreadable PRF input".to_owned())?;
     let second = values
         .second
         .as_deref()
-        .map(|s| b64url_decode(s).ok_or_else(|| "entrée PRF illisible".to_owned()))
+        .map(|s| b64url_decode(s).ok_or_else(|| "unreadable PRF input".to_owned()))
         .transpose()?;
     let out = passkey_prf::evaluate_inputs(passkey, &first, second.as_deref(), true)
         .map_err(|e| e.to_string())?;
@@ -136,9 +136,9 @@ fn prf_results(
     }))
 }
 
-/// Les entrées PRF de la page pour cette passkey : `evalByCredential` si
-/// elle y figure (identifiant brut, quel que soit l'encodage base64url),
-/// sinon `eval`.
+/// The page's PRF inputs for this passkey: `evalByCredential` if
+/// it is listed there (raw identifier, whatever the base64url encoding),
+/// otherwise `eval`.
 fn prf_inputs<'r>(request: &'r PrfRequest, credential_id: &[u8]) -> Option<&'r PrfValues> {
     request
         .eval_by_credential
@@ -149,14 +149,15 @@ fn prf_inputs<'r>(request: &'r PrfRequest, credential_id: &[u8]) -> Option<&'r P
         .or(request.eval.as_ref())
 }
 
-/// Signe le défi de la page ; l'écriture à faire : le nouveau compteur.
+/// Signs the page's challenge; the write to do: the new counter.
 pub fn plan_assertion(
     vault: &Vault,
     request: &PasskeyUse,
     user_verified: bool,
 ) -> Result<(Write, PasskeyAssertion), String> {
     let (item, passkey) = find(vault, request)?;
-    let challenge = b64url_decode(&request.challenge).ok_or_else(|| "défi illisible".to_owned())?;
+    let challenge =
+        b64url_decode(&request.challenge).ok_or_else(|| "unreadable challenge".to_owned())?;
     let assertion = passkey::assert(
         passkey,
         &AssertionRequest {
@@ -192,8 +193,8 @@ pub fn plan_assertion(
     ))
 }
 
-/// Identifiants du site qui peuvent recevoir une nouvelle passkey, et si
-/// l'une des passkeys exclues par le site est déjà dans le coffre.
+/// The site's logins that can receive a new passkey, and whether
+/// one of the passkeys excluded by the site is already in the vault.
 pub fn targets(
     vault: &Vault,
     query: &PasskeyTargetsQuery,
@@ -216,16 +217,16 @@ pub fn targets(
     Ok((excluded, logins))
 }
 
-/// Vérifie une demande de création avant de demander quoi que ce soit à
-/// l'utilisateur. Rend la clé de l'accord (l'élément visé, ou le site pour
-/// un nouvel élément) et le titre à montrer.
+/// Checks a creation request before asking the user anything.
+/// Returns the approval key (the target item, or the site for
+/// a new item) and the title to show.
 pub fn check_creation(
     vault: &Vault,
     request: &PasskeyCreation,
 ) -> Result<(String, String), String> {
     let rp_id = site(&request.url, request.rp_id.as_deref())?;
     if !request.algorithms.is_empty() && !request.algorithms.contains(&ES256) {
-        return Err("le site n'accepte pas les clés ES256".to_owned());
+        return Err("the site does not accept ES256 keys".to_owned());
     }
     let exclude = ids(&request.exclude)?;
     if vault
@@ -240,16 +241,16 @@ pub fn check_creation(
             let item = logins_for(vault, &request.url)
                 .into_iter()
                 .find(|i| &i.id == id)
-                .ok_or_else(|| "cet identifiant ne correspond pas à ce site".to_owned())?;
+                .ok_or_else(|| "this login does not match this site".to_owned())?;
             Ok((item.id.clone(), item.title.clone()))
         }
         None => Ok((format!("passkey:{rp_id}"), rp_id)),
     }
 }
 
-/// Crée la passkey : l'écriture à faire (dans l'élément visé, ou un nouvel
-/// identifiant) et la réponse pour la page (son `item` reste à remplir avec
-/// l'élément écrit).
+/// Creates the passkey: the write to do (in the target item, or a new
+/// login) and the response for the page (its `item` is still to be filled
+/// with the written item).
 pub fn plan_creation(
     vault: &Vault,
     request: &PasskeyCreation,
@@ -257,9 +258,9 @@ pub fn plan_creation(
     now: i64,
 ) -> Result<(Write, PasskeyRegistration), String> {
     check_creation(vault, request)?;
-    let user_id =
-        b64url_decode(&request.user_id).ok_or_else(|| "utilisateur illisible".to_owned())?;
-    let challenge = b64url_decode(&request.challenge).ok_or_else(|| "défi illisible".to_owned())?;
+    let user_id = b64url_decode(&request.user_id).ok_or_else(|| "unreadable user".to_owned())?;
+    let challenge =
+        b64url_decode(&request.challenge).ok_or_else(|| "unreadable challenge".to_owned())?;
     let rp_name = clip(request.rp_name.as_deref());
     let user_name = clip(request.user_name.as_deref());
     let user_display_name = clip(request.user_display_name.as_deref());
@@ -317,8 +318,8 @@ pub fn plan_creation(
     ))
 }
 
-/// [`crate::access::apply_in_memory`] pour les passkeys : faux coffres
-/// (tests, serveur de test de l'extension).
+/// [`crate::access::apply_in_memory`] for passkeys: fake vaults
+/// (tests, the extension's test server).
 pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, String) {
     let mut passkeys = vault.passkeys().to_vec();
     match write {
@@ -341,7 +342,7 @@ pub(crate) fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vau
                 };
                 crate::access::apply_in_memory(vault, created, new_id)
             };
-            // Comme Bitwarden : une passkey par identifiant.
+            // Like Bitwarden: one passkey per login.
             passkeys.retain(|p| p.item != id);
             id.clone_into(&mut passkey.item);
             passkeys.push(*passkey);
@@ -429,7 +430,7 @@ mod tests {
             login("github", "https://github.com", "camille"),
             login("banque", "https://banque.fr", "camille"),
         ]);
-        // Dans l'identifiant du site.
+        // In the site's login.
         let request = creation("https://github.com/settings", Some("github"));
         let (write, registration) = plan_creation(&vault, &request, false, 0).unwrap();
         let (vault, id) = apply_in_memory(&vault, write, "nouveau");
@@ -437,7 +438,7 @@ mod tests {
         assert_eq!(vault.passkeys_of("github").len(), 1);
         assert!(registration.attestation_object.len() > 100);
 
-        // La page la retrouve, sans secret.
+        // The page finds it again, without secrets.
         let query = PasskeyQuery {
             url: "https://github.com/login".to_owned(),
             rp_id: None,
@@ -449,7 +450,7 @@ mod tests {
         assert_eq!(found[0].user_name, "camille");
         let json = serde_json::to_string(&found).unwrap();
         assert!(!json.contains(vault.passkeys()[0].key.expose()));
-        // Pas pour un autre site, ni en HTTP.
+        // Not for another site, nor over HTTP.
         let elsewhere = PasskeyQuery {
             url: "https://banque.fr/".to_owned(),
             ..query.clone()
@@ -461,7 +462,7 @@ mod tests {
         };
         assert!(list(&vault, &insecure).is_err());
 
-        // Deux utilisations : le compteur avance, enregistré à chaque fois.
+        // Two uses: the counter moves forward, saved each time.
         let mut vault = vault;
         for expected in 1..=2 {
             let use_ = PasskeyUse {
@@ -482,7 +483,7 @@ mod tests {
             vault = apply_in_memory(&vault, write, "x").0;
             assert_eq!(vault.passkeys()[0].counter, expected);
         }
-        // Une autre page ne l'obtient pas.
+        // Another page does not get it.
         let stolen = PasskeyUse {
             url: "https://banque.fr/".to_owned(),
             rp_id: Some("github.com".to_owned()),
@@ -494,7 +495,7 @@ mod tests {
         };
         assert!(plan_assertion(&vault, &stolen, false).is_err());
 
-        // Le site l'exclut : déjà enregistrée.
+        // The site excludes it: already saved.
         let mut again = creation("https://github.com/", None);
         again.exclude = vec![registration.credential.clone()];
         assert_eq!(
@@ -515,8 +516,8 @@ mod tests {
         assert!(logins[0].has_passkey);
     }
 
-    /// PRF : sorties à la création (`eval`), les mêmes à la connexion pour
-    /// la même entrée, `evalByCredential` prioritaire, rien sans Touch ID.
+    /// PRF: outputs at creation (`eval`), the same at sign-in for
+    /// the same input, `evalByCredential` takes precedence, nothing without Touch ID.
     #[test]
     fn prf_at_creation_and_assertion() {
         let vault = Vault::new(vec![login("github", "https://github.com", "camille")]);
@@ -537,7 +538,7 @@ mod tests {
         assert_ne!(Some(&at_creation.first), at_creation.second.as_ref());
         let (vault, _) = apply_in_memory(&vault, write, "x");
 
-        // Sans Touch ID : la passkey sait faire, mais pas de sortie.
+        // Without Touch ID: the passkey is capable, but no output.
         let (_, quiet) = plan_creation(
             &Vault::new(vec![login("github", "https://github.com", "camille")]),
             &request,
@@ -571,7 +572,7 @@ mod tests {
         let (_, without_uv) = plan_assertion(&vault, &use_with(eval, false), false).unwrap();
         assert_eq!(without_uv.prf, None);
 
-        // `evalByCredential` (identifiant avec remplissage `=` : même octets).
+        // `evalByCredential` (identifier with `=` padding: same bytes).
         let mut by_credential = PrfRequest {
             eval: Some(values(b"sel-a", None)),
             ..PrfRequest::default()
@@ -601,17 +602,17 @@ mod tests {
             login("github", "https://github.com", "camille"),
             login("banque", "https://banque.fr", "camille"),
         ]);
-        // L'identifiant d'un autre site ne reçoit pas la passkey.
+        // Another site's login does not receive the passkey.
         assert!(check_creation(&vault, &creation("https://github.com/", Some("banque"))).is_err());
-        // Un rpId d'un autre site est refusé.
+        // An rpId of another site is refused.
         let mut foreign = creation("https://github.com/", None);
         foreign.rp_id = Some("banque.fr".to_owned());
         assert!(check_creation(&vault, &foreign).is_err());
-        // Sans ES256, le navigateur s'en charge.
+        // Without ES256, the browser handles it.
         let mut rsa = creation("https://github.com/", None);
         rsa.algorithms = vec![-257];
         assert!(check_creation(&vault, &rsa).is_err());
-        // Nouvel élément : titre et site tirés de la page.
+        // New item: title and site taken from the page.
         let (write, _) = plan_creation(
             &vault,
             &creation("https://www.exemple.fr/inscription", None),
@@ -627,7 +628,7 @@ mod tests {
             passkey,
         } = &write
         else {
-            panic!("passkey attendue");
+            panic!("expected a passkey");
         };
         assert_eq!(item, &None);
         assert_eq!(

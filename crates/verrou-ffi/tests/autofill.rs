@@ -1,6 +1,6 @@
-//! L'extension de remplissage automatique d'iOS (session invitée) contre un
-//! vrai Vaultwarden, à côté de l'app qui partage son dossier. Sans
-//! `VERROU_TEST_SERVER`, les tests ne font rien.
+//! The iOS `AutoFill` extension (guest session) against a real Vaultwarden,
+//! next to the app that shares its folder. Without `VERROU_TEST_SERVER`,
+//! the tests do nothing.
 
 mod common;
 
@@ -33,9 +33,9 @@ async fn guest(dir: &str) -> std::sync::Arc<VaultSession> {
     guest
 }
 
-/// L'extension voit les modifications pas encore envoyées de l'app, crée
-/// et utilise une passkey directement sur le serveur, et ne touche jamais
-/// la file de l'app : celle-ci l'envoie ensuite une seule fois.
+/// The extension sees the app's changes not yet sent, creates and uses a
+/// passkey directly on the server, and never touches the app's queue: the
+/// app then sends it only once.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     let Some(server) = server() else { return };
@@ -46,7 +46,7 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     let result = app.login(server, email, PASSWORD.to_owned()).await.unwrap();
     assert!(matches!(result, LoginResult::Unlocked { .. }));
 
-    // Une modification de l'app, dans sa file, pas encore envoyée.
+    // A change from the app, in its queue, not yet sent.
     let pending = app
         .create_item(login("Exemple", "https://www.exemple.fr/connexion"))
         .await
@@ -55,7 +55,7 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     let outbox = std::path::Path::new(&dir).join("outbox.json");
     let before = std::fs::read(&outbox).unwrap();
 
-    // L'extension la voit et la remplit.
+    // The extension sees it and fills it.
     let extension = guest(&dir).await;
     let matches = extension
         .autofill_matches(vec!["exemple.fr".to_owned()])
@@ -72,7 +72,7 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
             .any(|i| i.kind == AutofillIdentityKind::OneTimeCode)
     );
 
-    // Création d'une passkey pour `localhost`, dans un nouvel identifiant.
+    // Creating a passkey for `localhost`, in a new login.
     let hash = Sha256::digest(b"clientDataJSON de la creation").to_vec();
     let created = extension
         .passkey_registration(PasskeyCreationRequest {
@@ -93,10 +93,10 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
             .starts_with(b"\xa3\x63fmt\x64none")
     );
 
-    // La file de l'app n'a pas bougé (ni envoyée, ni réécrite).
+    // The app's queue hasn't moved (neither sent nor rewritten).
     assert_eq!(std::fs::read(&outbox).unwrap(), before);
 
-    // Exclue par le site : pas de seconde passkey.
+    // Excluded by the site: no second passkey.
     let refused = extension
         .passkey_registration(PasskeyCreationRequest {
             rp_id: "localhost".to_owned(),
@@ -110,7 +110,7 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
         .await;
     assert!(refused.is_err());
 
-    // Connexion avec la passkey : compteur 1, enregistré avant la réponse.
+    // Sign-in with the passkey: counter 1, saved before the response.
     let sign = |session: std::sync::Arc<VaultSession>, n: u8| {
         let credential = created.credential_id.clone();
         async move {
@@ -125,14 +125,14 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     assert_eq!(first.user_handle, b"utilisateur-7");
     assert_eq!(first.item_id, created.item_id);
 
-    // Une nouvelle extension (nouveau processus) repart du cache enregistré :
-    // le compteur continue.
+    // A new extension (new process) starts from the saved cache: the
+    // counter goes on.
     let next = guest(&dir).await;
     let second = sign(next, 2).await;
     assert_eq!(&second.authenticator_data[33..37], &2u32.to_be_bytes());
     assert_eq!(std::fs::read(&outbox).unwrap(), before);
 
-    // L'app envoie sa file une fois, puis voit la passkey de l'extension.
+    // The app sends its queue once, then sees the extension's passkey.
     app.sync().await.unwrap();
     assert_eq!(app.pending_changes(), 0);
     let titles: Vec<String> = app
@@ -150,16 +150,16 @@ async fn the_extension_writes_passkeys_without_touching_the_app_outbox() {
     assert_eq!(passkeys.len(), 1);
     assert_eq!(passkeys[0].rp_id, "localhost");
 
-    // Après la synchronisation de l'app, l'extension voit toujours le compteur.
+    // After the app's sync, the extension still sees the counter.
     let third = sign(guest(&dir).await, 3).await;
     assert_eq!(&third.authenticator_data[33..37], &3u32.to_be_bytes());
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Création conditionnelle : la clé est préparée pendant le remplissage
-/// (extension, coffre ouvert), la demande d'arrière-plan arrive dans un
-/// nouveau processus au coffre fermé, puis l'app range la passkey dans
-/// l'identifiant à sa synchronisation suivante. Le mot de passe reste.
+/// Conditional creation: the key is prepared during the fill (extension,
+/// vault open), the background request arrives in a new process with the
+/// vault closed, then the app files the passkey into the login on its next
+/// sync. The password stays.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_conditional_passkey_joins_the_filled_login_later() {
     let Some(server) = server() else { return };
@@ -173,7 +173,7 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
         .await
         .unwrap();
     app.sync().await.unwrap();
-    // Identifiant donné par le serveur à l'envoi de la file.
+    // Id given by the server when the queue is sent.
     let id = app
         .summaries()
         .unwrap()
@@ -182,13 +182,13 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
         .unwrap()
         .id;
 
-    // 1. Remplissage dans l'extension : la clé est préparée.
+    // 1. Fill in the extension: the key is prepared.
     let extension = guest(&dir).await;
     extension.autofill_password(id.clone()).unwrap();
     assert!(extension.prepare_passkey_upgrade(id.clone()).await.unwrap());
     extension.lock();
 
-    // 2. Demande d'arrière-plan, coffre fermé (nouveau processus).
+    // 2. Background request, vault closed (new process).
     let background = VaultSession::for_autofill(dir.clone());
     let hash = Sha256::digest(b"clientDataJSON conditionnel").to_vec();
     let request = |user: &str| PasskeyCreationRequest {
@@ -204,7 +204,7 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
         .conditional_passkey_registration(request("Camille@exemple.fr"))
         .unwrap();
     assert_eq!(created.item_id, id);
-    // Ni présence ni vérification dans les indicateurs.
+    // Neither presence nor verification in the flags.
     let auth_data_flags = created
         .attestation_object
         .windows(32)
@@ -213,14 +213,14 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
         .unwrap();
     assert_eq!(auth_data_flags & 0x05, 0);
     assert_eq!(background.pending_passkeys(), 1);
-    // Ticket consommé : une seconde demande est refusée.
+    // Ticket consumed: a second request is refused.
     assert!(
         background
             .conditional_passkey_registration(request("camille@exemple.fr"))
             .is_err()
     );
 
-    // 3. L'app, coffre ouvert : la passkey rejoint l'identifiant.
+    // 3. The app, vault open: the passkey joins the login.
     let titles = Box::pin(app.finish_pending_passkeys()).await.unwrap();
     assert_eq!(titles, vec!["Banc d'essai".to_owned()]);
     assert_eq!(app.pending_passkeys(), 0);
@@ -228,13 +228,13 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
     assert_eq!(passkeys.len(), 1);
     assert_eq!(passkeys[0].rp_id, "localhost");
     assert_eq!(passkeys[0].user_name.as_deref(), Some("Camille@exemple.fr"));
-    // Le mot de passe est toujours là.
+    // The password is still there.
     let filler = guest(&dir).await;
     assert_eq!(
         filler.autofill_password(id.clone()).unwrap().password,
         "mot-de-passe-du-site"
     );
-    // La passkey signe, avec la clé dont le site a reçu la partie publique.
+    // The passkey signs, with the key whose public part the site received.
     let signed = filler
         .passkey_assertion(
             "localhost".to_owned(),
@@ -245,6 +245,6 @@ async fn a_conditional_passkey_joins_the_filled_login_later() {
         .await
         .unwrap();
     assert_eq!(signed.user_handle, b"utilisateur-9");
-    // L'identifiant a maintenant une passkey : plus de clé préparée.
+    // The login now has a passkey: no more prepared key.
     assert!(!filler.prepare_passkey_upgrade(id).await.unwrap());
 }

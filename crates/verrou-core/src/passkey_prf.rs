@@ -1,44 +1,42 @@
-//! Extension PRF de `WebAuthn` (`prf`), pour les passkeys du coffre.
+//! `WebAuthn` PRF extension (`prf`), for the vault's passkeys.
 //!
-//! Un site demande une valeur pseudo-aléatoire liée à la passkey et à un sel
-//! de son choix (`eval.first`, `eval.second`) ; il s'en sert comme clé de
-//! chiffrement (coffres chiffrés de bout en bout, déverrouillage par
-//! passkey). La valeur doit rester **la même** pour la même passkey et le
-//! même sel, sur tous les appareils, et différer d'un sel à l'autre.
+//! A site asks for a pseudo-random value tied to the passkey and to a salt
+//! of its choice (`eval.first`, `eval.second`); it uses it as an encryption
+//! key (end-to-end encrypted vaults, passkey unlock). The value must stay
+//! **the same** for the same passkey and the same salt, on every device, and
+//! differ from one salt to another.
 //!
-//! Calcul, comme l'extension CTAP2 `hmac-secret` qui porte la PRF sur une
-//! clé matérielle, et comme `passkey-rs` (la bibliothèque du SDK de
-//! Bitwarden) :
+//! Computation, like the CTAP2 `hmac-secret` extension that carries the PRF
+//! on a hardware key, and like `passkey-rs` (the library of the Bitwarden
+//! SDK):
 //!
 //! ```text
-//! sel       = SHA-256("WebAuthn PRF" ‖ 0x00 ‖ entrée du site)   (côté client)
-//! sortie    = HMAC-SHA256(secret de la passkey, sel)             (côté authentificateur)
+//! salt      = SHA-256("WebAuthn PRF" ‖ 0x00 ‖ site input)       (client side)
+//! output    = HMAC-SHA256(passkey secret, salt)                  (authenticator side)
 //! ```
 //!
-//! **Le secret de la passkey.** Le format des passkeys de Bitwarden
-//! (`login.fido2Credentials`) n'a aucun champ pour un secret `hmac-secret` :
-//! le SDK de Bitwarden n'évalue pas la PRF pour les passkeys du coffre
-//! (`CredentialExtensions { hmac_secret: None }`, PM-30510). Plutôt que
-//! d'inventer un champ que les apps officielles effaceraient en réécrivant
-//! l'élément, Verrou **dérive** le secret de ce que la passkey contient déjà :
+//! **The passkey secret.** The Bitwarden passkey format
+//! (`login.fido2Credentials`) has no field for an `hmac-secret` secret:
+//! the Bitwarden SDK does not evaluate the PRF for vault passkeys
+//! (`CredentialExtensions { hmac_secret: None }`, PM-30510). Rather than
+//! inventing a field the official apps would erase when rewriting the item,
+//! Verrou **derives** the secret from what the passkey already contains:
 //!
 //! ```text
-//! secret = HKDF-SHA256(ikm  = scalaire privé P-256 (32 octets),
+//! secret = HKDF-SHA256(ikm  = P-256 private scalar (32 bytes),
 //!                      salt = "verrou.passkey.prf.v1",
-//!                      info = identifiant brut de l'accréditation)
+//!                      info = raw credential identifier)
 //! ```
 //!
-//! Conséquences : toute passkey du coffre (créée par Verrou ou par une app
-//! Bitwarden) a une PRF, stable sur tous les appareils où Verrou tourne ; qui
-//! détient la clé privée peut la recalculer (comme pour un secret rangé à
-//! côté). Si Bitwarden ajoute un jour un champ, ses sorties différeront de
-//! celles-ci : les données chiffrées par un site avec la PRF de Verrou ne
-//! s'ouvriraient pas avec les apps officielles (aujourd'hui, elles n'ont pas
-//! de PRF du tout).
+//! Consequences: every vault passkey (created by Verrou or by a Bitwarden
+//! app) has a PRF, stable on every device where Verrou runs; whoever holds
+//! the private key can recompute it (as with a secret stored alongside). If
+//! Bitwarden one day adds a field, its outputs will differ from these: data
+//! a site encrypted with Verrou's PRF would not open with the official apps
+//! (today, they have no PRF at all).
 //!
-//! La PRF n'est rendue qu'après vérification de l'utilisateur (Face ID,
-//! Touch ID ou mot de passe principal) : comme `hmac-secret` avec
-//! `CredRandomWithUV` seul.
+//! The PRF is only returned after user verification (Face ID, Touch ID or
+//! master password): like `hmac-secret` with `CredRandomWithUV` only.
 
 use hmac::{Hmac, Mac as _};
 use p256::ecdsa::SigningKey;
@@ -50,32 +48,32 @@ use crate::passkey::{Passkey, PasskeyError, b64url_decode};
 
 type HmacSha256 = Hmac<Sha256>;
 
-/// Préfixe du hachage des entrées (`WebAuthn` niveau 3, §10.1.4).
+/// Prefix of the input hash (`WebAuthn` level 3, §10.1.4).
 const SALT_PREFIX: &[u8] = b"WebAuthn PRF\0";
-/// Sel HKDF propre à Verrou : changer la dérivation exige une nouvelle version.
+/// Verrou's own HKDF salt: changing the derivation requires a new version.
 const SECRET_SALT: &[u8] = b"verrou.passkey.prf.v1";
-/// Taille d'une entrée acceptée (une page peut envoyer n'importe quoi).
+/// Size of an accepted input (a page can send anything).
 const MAX_INPUT: usize = 1024;
 
-/// Les sels d'une évaluation, déjà hachés (32 octets chacun).
+/// The salts of an evaluation, already hashed (32 bytes each).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrfSalts {
     pub first: [u8; 32],
     pub second: Option<[u8; 32]>,
 }
 
-/// Les sorties de la PRF : des clés, effacées de la mémoire à la fin.
+/// The PRF outputs: keys, wiped from memory at the end.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrfOutputs {
     pub first: Zeroizing<[u8; 32]>,
     pub second: Option<Zeroizing<[u8; 32]>>,
 }
 
-/// Hache une entrée du site en sel (`SHA-256("WebAuthn PRF" ‖ 0 ‖ entrée)`),
-/// ce que fait le client (navigateur, système) avant l'authentificateur.
+/// Hashes a site input into a salt (`SHA-256("WebAuthn PRF" ‖ 0 ‖ input)`),
+/// which the client (browser, system) does before the authenticator.
 pub fn salt(input: &[u8]) -> Result<[u8; 32], PasskeyError> {
     if input.len() > MAX_INPUT {
-        return Err(PasskeyError::BadRequest("entrée PRF trop longue"));
+        return Err(PasskeyError::BadRequest("PRF input too long"));
     }
     let mut hasher = Sha256::new();
     hasher.update(SALT_PREFIX);
@@ -83,7 +81,7 @@ pub fn salt(input: &[u8]) -> Result<[u8; 32], PasskeyError> {
     Ok(hasher.finalize().into())
 }
 
-/// Les sels des entrées brutes du site (`eval.first`, `eval.second`).
+/// The salts of the site's raw inputs (`eval.first`, `eval.second`).
 pub fn salts(first: &[u8], second: Option<&[u8]>) -> Result<PrfSalts, PasskeyError> {
     Ok(PrfSalts {
         first: salt(first)?,
@@ -92,14 +90,14 @@ pub fn salts(first: &[u8], second: Option<&[u8]>) -> Result<PrfSalts, PasskeyErr
 }
 
 fn hmac(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
-    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepte toute longueur de clé");
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key length");
     for part in parts {
         mac.update(part);
     }
     mac.finalize().into_bytes().into()
 }
 
-/// HKDF-SHA256 (RFC 5869), un seul bloc de sortie (32 octets).
+/// HKDF-SHA256 (RFC 5869), a single output block (32 bytes).
 fn hkdf_32(salt: &[u8], ikm: &[u8], info: &[u8]) -> Zeroizing<[u8; 32]> {
     let mut prk = hmac(salt, &[ikm]);
     let okm = Zeroizing::new(hmac(&prk, &[info, &[1]]));
@@ -107,8 +105,8 @@ fn hkdf_32(salt: &[u8], ikm: &[u8], info: &[u8]) -> Zeroizing<[u8; 32]> {
     okm
 }
 
-/// Le secret `hmac-secret` de la passkey, dérivé de sa clé privée et de son
-/// identifiant (voir l'en-tête du module).
+/// The passkey's `hmac-secret` secret, derived from its private key and its
+/// identifier (see the module header).
 fn credential_secret(passkey: &Passkey) -> Result<Zeroizing<[u8; 32]>, PasskeyError> {
     let mut der = b64url_decode(passkey.key.expose()).ok_or(PasskeyError::BadKey)?;
     let key = SigningKey::from_pkcs8_der(&der).map_err(|_| PasskeyError::BadKey);
@@ -119,8 +117,8 @@ fn credential_secret(passkey: &Passkey) -> Result<Zeroizing<[u8; 32]>, PasskeyEr
     Ok(hkdf_32(SECRET_SALT, scalar.as_slice(), &credential_id))
 }
 
-/// Évalue la PRF de la passkey pour des sels déjà hachés (ce que reçoit un
-/// authentificateur CTAP2). Refusée sans vérification de l'utilisateur.
+/// Evaluates the passkey's PRF for already hashed salts (what a CTAP2
+/// authenticator receives). Refused without user verification.
 pub fn evaluate(
     passkey: &Passkey,
     salts: &PrfSalts,
@@ -128,7 +126,7 @@ pub fn evaluate(
 ) -> Result<PrfOutputs, PasskeyError> {
     if !user_verified {
         return Err(PasskeyError::BadRequest(
-            "la PRF exige la vérification de l'utilisateur",
+            "the PRF requires user verification",
         ));
     }
     let secret = credential_secret(passkey)?;
@@ -140,9 +138,9 @@ pub fn evaluate(
     })
 }
 
-/// Évalue la PRF pour les entrées brutes du site (ce que reçoivent le
-/// fournisseur d'iOS et de macOS, et l'extension de navigateur) : hachage
-/// `WebAuthn`, puis [`evaluate`].
+/// Evaluates the PRF for the site's raw inputs (what the iOS and macOS
+/// provider and the browser extension receive): `WebAuthn` hashing, then
+/// [`evaluate`].
 pub fn evaluate_inputs(
     passkey: &Passkey,
     first: &[u8],
@@ -171,8 +169,8 @@ mod tests {
             .collect()
     }
 
-    /// Passkey au scalaire fixe (1, 2, …, 32) et à l'identifiant fixe, au
-    /// format de Bitwarden : les vecteurs ci-dessous en dépendent.
+    /// Passkey with a fixed scalar (1, 2, …, 32) and a fixed identifier, in the
+    /// Bitwarden format: the vectors below depend on it.
     fn fixed_passkey() -> Passkey {
         let scalar: Vec<u8> = (1..=32).collect();
         let key = SigningKey::from_slice(&scalar).unwrap();
@@ -192,7 +190,7 @@ mod tests {
         }
     }
 
-    /// RFC 5869, cas de test 1 (L = 32 : les 32 premiers octets de l'OKM).
+    /// RFC 5869, test case 1 (L = 32: the first 32 bytes of the OKM).
     #[test]
     fn hkdf_matches_rfc5869() {
         let ikm = [0x0b; 22];
@@ -204,8 +202,8 @@ mod tests {
         );
     }
 
-    /// Hachage des entrées : `SHA-256("WebAuthn PRF" ‖ 0x00 ‖ entrée)`,
-    /// recalculé ici sans passer par `salt`.
+    /// Input hashing: `SHA-256("WebAuthn PRF" ‖ 0x00 ‖ input)`,
+    /// recomputed here without going through `salt`.
     #[test]
     fn salts_use_the_webauthn_prefix() {
         let mut message = b"WebAuthn PRF".to_vec();
@@ -222,15 +220,14 @@ mod tests {
         assert!(salt(&[0; MAX_INPUT + 1]).is_err());
     }
 
-    /// Vecteurs (calculés indépendamment, avec `hmac` et `hashlib` de
-    /// Python) : secret et sorties de la passkey fixe. Ils figent la
-    /// dérivation ; s'ils changent, les données qu'un site a chiffrées avec
-    /// la PRF ne s'ouvrent plus.
+    /// Vectors (computed independently, with Python's `hmac` and `hashlib`):
+    /// secret and outputs of the fixed passkey. They freeze the derivation; if
+    /// they change, data a site encrypted with the PRF no longer opens.
     #[test]
     fn outputs_match_the_test_vectors() {
         let passkey = fixed_passkey();
         let secret = credential_secret(&passkey).unwrap();
-        // secret = HKDF(salt, scalaire 01..20, identifiant brut)
+        // secret = HKDF(salt, scalar 01..20, raw identifier)
         let expected_secret = hkdf_32(
             SECRET_SALT,
             &(1..=32).collect::<Vec<u8>>(),
@@ -251,7 +248,7 @@ mod tests {
             hex(out.second.as_ref().unwrap().as_slice()),
             "13d10b5e1bb2dc5de5fbd92273f9389b9fae9f274d6909c944742f8e38ca199b"
         );
-        // Sortie = HMAC-SHA256(secret, sel), comme hmac-secret.
+        // Output = HMAC-SHA256(secret, salt), like hmac-secret.
         let salt1 = salt(b"salt-1").unwrap();
         assert_eq!(*out.first, hmac(secret.as_slice(), &[&salt1]));
     }
@@ -266,7 +263,7 @@ mod tests {
         assert_ne!(a.first, b.first);
         assert!(a.second.is_none());
 
-        // Même clé, autre identifiant : autre secret.
+        // Same key, other identifier: other secret.
         let mut other = fixed_passkey();
         other.credential_id = "b64.AQID".into();
         assert_ne!(
@@ -274,8 +271,8 @@ mod tests {
             a.first
         );
 
-        // Passkey créée pour le système : sa PRF ne dépend que de ce qui est
-        // gardé dans le coffre (la relire donne la même sortie).
+        // Passkey created for the system: its PRF depends only on what is
+        // kept in the vault (reading it back gives the same output).
         let mut rng = rand_chacha::ChaCha20Rng::seed_from_u64(7);
         let (created, _) = register_for_system(
             &SystemRegistrationRequest {

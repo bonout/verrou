@@ -1,6 +1,6 @@
 [package]
 name = "verrou-ffi"
-description = "Liaison UniFFI entre le cœur Rust et les applications Apple."
+description = "UniFFI binding between the Rust core and the Apple apps."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,21 +24,21 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 zeroize.workspace = true
 sha2.workspace = true
 tokio.workspace = true
-# Clés des passkeys créées pour le remplissage automatique d'iOS.
+# Keys of the passkeys created for iOS AutoFill.
 rand.workspace = true
-# Fichiers de l'extension iOS (création conditionnelle, signaux des sites)
-# et réglages de l'appareil (`match-rules.json`, `usage.json`).
+# Files of the iOS extension (conditional creation, site signals)
+# and device settings (`match-rules.json`, `usage.json`).
 serde.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-# Tests contre un vrai Vaultwarden (`VERROU_TEST_SERVER`) : inscription d'un
-# compte jetable, comme les tests de `verrou-vaultwarden`.
+# Tests against a real Vaultwarden (`VERROU_TEST_SERVER`): registration of a
+# throwaway account, like the tests of `verrou-vaultwarden`.
 bitwarden-core.workspace = true
 bitwarden-crypto.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
-# Mesure de latence (`tests/latency.rs`) : un mandataire TCP qui retarde.
+# Latency measurement (`tests/latency.rs`): a TCP proxy that delays.
 tokio = { workspace = true, features = ["net", "time", "io-util"] }
 uuid.workspace = true
 

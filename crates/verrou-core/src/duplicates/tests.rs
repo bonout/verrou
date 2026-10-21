@@ -59,7 +59,7 @@ fn imported(url: &str, username: &str, password: &str) -> ImportedItem {
     }
 }
 
-/// (gardé, [(élément, degré)]) de chaque groupe, pour des assertions lisibles.
+/// (kept, [(item, level)]) of each group, for readable assertions.
 type Shape<'a> = Vec<(Confidence, Vec<(&'a str, Option<Confidence>)>)>;
 
 fn summary(groups: &[DuplicateGroup]) -> Shape<'_> {
@@ -81,7 +81,7 @@ fn group_with<'g>(groups: &'g [DuplicateGroup], id: &str) -> &'g DuplicateGroup 
     groups
         .iter()
         .find(|g| g.members.iter().any(|m| m.id == id))
-        .unwrap_or_else(|| panic!("{id} dans aucun groupe"))
+        .unwrap_or_else(|| panic!("{id} in no group"))
 }
 
 fn ids(group: &DuplicateGroup) -> Vec<&str> {
@@ -130,7 +130,7 @@ fn imported_logins_are_classified() {
     assert_eq!(statuses[0], &Status::Exact(Existing::Vault("gh".into())));
     assert_eq!(
         result[0].reason.as_deref(),
-        Some("même site (github.com), même identifiant, même mot de passe")
+        Some("same site (github.com), same username, same password")
     );
     assert_eq!(
         (&result[1].status, result[1].decision),
@@ -140,17 +140,13 @@ fn imported_logins_are_classified() {
         )
     );
     assert_eq!(statuses[2], &Status::AddsTotp("gh".into()));
-    assert_eq!(
-        result[3].decision,
-        Decision::Skip,
-        "plus ancien que le coffre"
-    );
+    assert_eq!(result[3].decision, Decision::Skip, "older than the vault");
     assert_eq!(statuses[4], &Status::New);
     assert_eq!(result[4].reason, None);
     assert_eq!(statuses[5], &Status::Exact(Existing::Import(4)));
     assert_eq!(statuses[6], &Status::NewPassword(Existing::Import(4)));
     assert_eq!(result[6].decision, Decision::Create);
-    assert_eq!(statuses[7], &Status::New, "github.io n'est pas github.com");
+    assert_eq!(statuses[7], &Status::New, "github.io is not github.com");
 }
 
 #[test]
@@ -170,20 +166,20 @@ fn import_uses_the_same_signals_but_only_skips_certain_duplicates() {
     let mut no_site_other_password = imported("", "", "autre");
     no_site_other_password.title = "MAIF".to_owned();
     let items = vec![
-        // Autre sous-domaine de connexion, casse et étiquette `+` : certain.
+        // Other sign-in subdomain, case and `+` tag: certain.
         imported(
             "http://connect.maif.fr:8080/espace-perso",
             "Camille+import@Exemple.fr",
             "lilas",
         ),
-        // Même compte, nouveau mot de passe : complète le coffre.
+        // Same account, new password: completes the vault.
         imported("https://maif.fr", "camille@exemple.fr", "nouveau"),
-        // Titre seul, sans identifiant, même mot de passe : probable.
+        // Title only, no username, same password: probable.
         no_site,
-        // Titre seul, sans identifiant, autre mot de passe : à vérifier, créé.
+        // Title only, no username, different password: to review, created.
         no_site_other_password,
-        // Autre sous-domaine, même identifiant et mot de passe, le titre du
-        // coffre nomme le domaine : probable, à compléter.
+        // Other subdomain, same username and password, the vault's title
+        // names the domain: probable, to complete.
         imported("https://assurance.maif.fr", "camille@exemple.fr", "lilas"),
     ];
     let result = classify(&items, &vault);
@@ -196,14 +192,14 @@ fn import_uses_the_same_signals_but_only_skips_certain_duplicates() {
     assert_eq!(result[2].decision, Decision::Update);
     assert_eq!(
         result[2].reason.as_deref(),
-        Some("titre « Maif » ↔ maif.fr, un identifiant manquant, même mot de passe")
+        Some("title \"Maif\" ↔ maif.fr, one username missing, same password")
     );
     assert_eq!(result[3].status, Status::New);
     assert_eq!(result[3].decision, Decision::Create);
     assert_eq!(result[4].status, Status::Similar(maif()));
 
-    // Deux services d'un même domaine, même identifiant et mot de passe :
-    // à vérifier, donc créé.
+    // Two services on the same domain, same username and password:
+    // to review, so created.
     let vault = vec![titled(
         login("nc", "https://cloud.example.net", "camille", "ldap", 1),
         "Nextcloud",
@@ -224,7 +220,7 @@ fn logins_without_site_compare_titles() {
     );
 }
 
-// MARK: Coffre
+// MARK: Vault
 
 #[test]
 fn sites_keep_services_apart() {
@@ -244,13 +240,13 @@ fn sites_keep_services_apart() {
     assert_eq!(
         find_duplicates(&items),
         Vec::new(),
-        "deux services, la corbeille ne compte pas"
+        "two services, the trash doesn't count"
     );
     let mut import = imported("https://cloud.example.net", "camille", "a");
     import.title = "Nextcloud".to_owned();
     assert_eq!(classify(&[import], &items[2..])[0].status, Status::New);
 
-    // Même mot de passe sur deux sous-domaines : au plus « à vérifier ».
+    // Same password on two subdomains: at most "to review".
     let shared = vec![
         login(
             "Nextcloud",
@@ -273,7 +269,7 @@ fn sites_keep_services_apart() {
     assert!(!groups[0].members.iter().any(|m| m.preselected));
     assert_eq!(
         groups[0].reason,
-        "même domaine (example.net), autre sous-domaine, même identifiant, même mot de passe"
+        "same domain (example.net), different subdomain, same username, same password"
     );
 }
 
@@ -296,7 +292,7 @@ fn duplicates_in_the_vault_suggest_the_best_item() {
     let groups = find_duplicates(&items);
     assert_eq!(groups.len(), 2);
     assert_eq!(groups[0].label, "banque.fr");
-    assert_eq!(ids(&groups[0]), vec!["b2", "b1"], "le plus récent");
+    assert_eq!(ids(&groups[0]), vec!["b2", "b1"], "the most recent");
     assert_eq!(groups[0].confidence, Confidence::Certain);
     assert!(groups[0].same_password);
     assert!(groups[0].members[1].preselected);
@@ -304,14 +300,14 @@ fn duplicates_in_the_vault_suggest_the_best_item() {
     assert_eq!(
         ids(&groups[1]),
         vec!["ancien", "récent", "autre"],
-        "le code TOTP d'abord ; l'autre compte, rattaché, en dernier"
+        "the TOTP code first; the other account, attached, last"
     );
     assert_eq!(groups[1].confidence, Confidence::Probable);
     assert_eq!(level(&groups[1], "récent"), Some(Confidence::Probable));
     assert_eq!(level(&groups[1], "autre"), Some(Confidence::Review));
     assert_eq!(
         groups[1].members[2].reason,
-        "même site (github.com), autre identifiant, même mot de passe"
+        "same site (github.com), different username, same password"
     );
     assert!(!groups[1].members.iter().any(|m| m.preselected));
     assert!(!groups[1].same_password);
@@ -338,12 +334,12 @@ fn shared_copies_are_not_duplicates_of_personal_ones() {
     assert_eq!(
         find_duplicates(&[shared("org-1", "org", false), shared("org-2", "org", true)]).len(),
         0,
-        "lecture seule : impossible à mettre à la corbeille"
+        "read-only: cannot be trashed"
     );
     assert_eq!(
         find_duplicates(&[shared("a", "org", false), shared("b", "autre", false)]).len(),
         0,
-        "deux organisations"
+        "two organisations"
     );
     let groups = find_duplicates(&[
         personal,
@@ -364,7 +360,7 @@ fn imported_variants_of_the_same_accounts_are_grouped() {
         Some(Confidence::Review),
     );
     let expected: Shape = vec![
-        // Certains d'abord, par site.
+        // Certain ones first, by site.
         (Confidence::Certain, vec![("dup-7", None), ("dup-8", c)]),
         (
             Confidence::Certain,
@@ -386,13 +382,13 @@ fn imported_variants_of_the_same_accounts_are_grouped() {
     assert_eq!(maif.username, "camille.martin@exemple.fr");
     assert_eq!(
         maif.members[1].reason,
-        "même site (maif.fr), même identifiant, même mot de passe"
+        "same site (maif.fr), same username, same password"
     );
     assert_eq!(
         maif.members[3].reason,
-        "titre « Maif » ↔ maif.fr, un identifiant manquant, même mot de passe"
+        "title \"Maif\" ↔ maif.fr, one username missing, same password"
     );
-    // Certain : les copies cochées ; probable : suggéré seulement.
+    // Certain: copies checked; probable: suggested only.
     let preselected: Vec<bool> = maif.members.iter().map(|m| m.preselected).collect();
     assert_eq!(preselected, [false, true, true, false]);
     assert!(maif.same_password && maif.mergeable);
@@ -400,27 +396,27 @@ fn imported_variants_of_the_same_accounts_are_grouped() {
     let google = group_with(&groups, "dup-4");
     assert_eq!(
         google.members[2].reason,
-        "même site (google.com), même identifiant, autre mot de passe"
+        "same site (google.com), same username, different password"
     );
     assert!(
         google.members[1]
             .reason
-            .starts_with("même domaine (google.com)")
+            .starts_with("same domain (google.com)")
     );
     let slack = group_with(&groups, "dup-15");
     assert_eq!(
         slack.members[1].reason,
-        "même app (com.tinyspeck.slackmacgap), même identifiant, même mot de passe"
+        "same app (com.tinyspeck.slackmacgap), same username, same password"
     );
     let cards = group_with(&groups, "dup-100");
-    assert_eq!(cards.members[1].reason, "même numéro de carte");
+    assert_eq!(cards.members[1].reason, "same card number");
     assert!(!cards.mergeable);
     let netflix = group_with(&groups, "dup-9");
     assert_eq!(
         netflix.reason,
-        "même site (netflix.com), autre identifiant, même mot de passe"
+        "same site (netflix.com), different username, same password"
     );
-    // Nextcloud et Vaultwarden : deux services, jamais regroupés.
+    // Nextcloud and Vaultwarden: two services, never grouped.
     assert!(
         groups
             .iter()
@@ -464,10 +460,10 @@ fn passkeys_and_attachments_decide_what_is_kept() {
             attachments: 1,
         },
     );
-    // Sans les passkeys, l'élément sans adresse ni titre parlant reste seul.
+    // Without the passkeys, the item with no URL or meaningful title stays alone.
     assert_eq!(ids(&find_duplicates(&items)[0]), vec!["récent", "pièce"]);
-    // Le site de la passkey le rapproche, et ce qui ne se fusionne pas
-    // décide de l'élément gardé.
+    // The passkey's site brings it closer, and what can't be merged
+    // decides the kept item.
     let groups = find_duplicates_with(&items, &extras);
     assert_eq!(ids(&groups[0]), vec!["passkey", "pièce", "récent"]);
     assert_eq!(groups[0].confidence, Confidence::Certain);
@@ -483,8 +479,8 @@ fn group_keys_ignore_order() {
 
 #[test]
 fn large_buckets_still_find_every_kind_of_duplicate() {
-    // Un domaine partagé par des centaines de comptes : le paquet se
-    // subdivise sans rien perdre.
+    // A domain shared by hundreds of accounts: the bucket is
+    // subdivided without losing anything.
     let mut items: Vec<Item> = (0..300)
         .map(|n| {
             login(
@@ -519,7 +515,7 @@ fn large_buckets_still_find_every_kind_of_duplicate() {
     assert_eq!(
         group_with(&groups, "anonyme").confidence,
         Confidence::Probable,
-        "sans identifiant, même mot de passe"
+        "no username, same password"
     );
 }
 
@@ -535,9 +531,9 @@ fn an_item_without_username_joins_only_an_unambiguous_account() {
     assert_eq!(groups[0].confidence, Confidence::Review);
     assert_eq!(
         groups[0].members[1].reason,
-        "même site (amazon.fr), un identifiant manquant, autre mot de passe"
+        "same site (amazon.fr), one username missing, different password"
     );
-    // Deux comptes sur le site : lequel ? Aucun groupe.
+    // Two accounts on the site: which one? No group.
     let two = vec![
         login("camille", "https://amazon.fr", "camille", "a", 2),
         login("dominique", "https://amazon.fr", "dominique", "b", 3),

@@ -1,18 +1,17 @@
-//! « Changer le mot de passe » : trouver la page où le faire sur un site.
+//! "Change password": find the page where to do it on a site.
 //!
-//! Ordre : une page connue d'avance pour quelques grands sites
-//! (`verrou_core::change_password::known_url`, sans requête), puis la norme
-//! du W3C « A Well-Known URL for Changing Passwords », vérifiée sur l'hôte
-//! de l'élément puis sur son domaine enregistrable, et à défaut l'accueil du
-//! site.
+//! Order: a page known in advance for a few big sites
+//! (`verrou_core::change_password::known_url`, without request), then the
+//! W3C "A Well-Known URL for Changing Passwords" standard, checked on the
+//! item's host then on its registrable domain, and failing that the site's
+//! home page.
 //!
-//! Confidentialité : seulement sur demande de l'utilisateur, pour un seul
-//! élément à la fois, jamais en masse. Les requêtes partent vers le site
-//! qu'il s'apprête à ouvrir, et vers lui seul (redirections comprises) : le
-//! site apprend qu'on le visite, ce qu'il apprendrait de toute façon. HTTPS
-//! seulement, sans cookie (reqwest n'en garde pas sans la fonctionnalité
-//! `cookies`), sans en-tête `Referer`, avec un délai court ; le corps des
-//! réponses n'est pas lu.
+//! Privacy: only at the user's request, for a single item at a time, never
+//! in bulk. The requests go to the site they are about to open, and to it
+//! alone (redirects included): the site learns it is being visited, which
+//! it would learn anyway. HTTPS only, no cookie (reqwest keeps none without
+//! the `cookies` feature), no `Referer` header, with a short timeout; the
+//! response bodies are not read.
 
 use std::time::Duration;
 
@@ -24,35 +23,35 @@ use verrou_core::change_password::{
 
 use crate::Error;
 
-/// Au-delà, le site est jugé injoignable : on ouvre son accueil.
+/// Beyond this, the site is deemed unreachable: its home page is opened.
 const TIMEOUT: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const MAX_REDIRECTS: usize = 10;
 
-/// D'où vient l'adresse proposée.
+/// Where the proposed address comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
-    /// Table des grands sites, sans requête.
+    /// Table of big sites, without request.
     Known,
-    /// Le site suit la norme : adresse finale après redirections.
+    /// The site follows the standard: final address after redirects.
     WellKnown,
-    /// Le site n'indique pas sa page (ou ne répond pas) : son accueil.
+    /// The site doesn't give its page (or doesn't answer): its home page.
     Home,
 }
 
-/// Page à ouvrir pour changer le mot de passe.
+/// Page to open to change the password.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Page {
     pub url: String,
     pub source: Source,
 }
 
-/// La page de changement du mot de passe pour l'hôte (ou l'adresse) d'un
-/// identifiant. Erreur seulement s'il n'y a pas de site.
+/// The password change page for a login's host (or address). An error only
+/// if there is no site.
 pub async fn find(site: &str) -> Result<Page, Error> {
     let hosts = candidate_hosts(site);
     let Some(host) = hosts.first() else {
-        return Err(Error::Invalid("cet élément n'a pas de site".to_owned()));
+        return Err(Error::Invalid("this item has no site".to_owned()));
     };
     if let Some(url) = known_url(host) {
         return Ok(Page {
@@ -68,7 +67,7 @@ pub async fn find(site: &str) -> Result<Page, Error> {
     Ok(resolve(&prober, &origins, origin(host)).await)
 }
 
-/// Premier site qui suit la norme, sinon `home`.
+/// First site that follows the standard, otherwise `home`.
 async fn resolve(prober: &Prober, origins: &[Url], home: String) -> Page {
     for site in origins {
         if let Some(url) = prober.probe(site).await {
@@ -84,8 +83,8 @@ async fn resolve(prober: &Prober, origins: &[Url], home: String) -> Page {
     }
 }
 
-/// Adresse autorisée : HTTPS. HTTP seulement vers la boucle locale, et
-/// seulement si `loopback_http` (le serveur factice des tests).
+/// Allowed address: HTTPS. HTTP only to the loopback, and only if
+/// `loopback_http` (the tests' fake server).
 fn allowed(url: &Url, loopback_http: bool) -> bool {
     match url.scheme() {
         "https" => true,
@@ -112,12 +111,12 @@ struct Prober {
 
 impl Prober {
     fn new(loopback_http: bool) -> Result<Self, Error> {
-        // Une redirection vers HTTP (ou ailleurs qu'en HTTPS) arrête la
-        // course : la réponse 3xx n'est pas « OK », le site est jugé sans
-        // page de changement.
+        // A redirect to HTTP (or anything other than HTTPS) stops the chase:
+        // the 3xx response is not "OK", the site is deemed to have no change
+        // page.
         let policy = redirect::Policy::custom(move |attempt| {
             if attempt.previous().len() >= MAX_REDIRECTS {
-                attempt.error("trop de redirections")
+                attempt.error("too many redirects")
             } else if allowed(attempt.url(), loopback_http) {
                 attempt.follow()
             } else {
@@ -139,17 +138,17 @@ impl Prober {
         })
     }
 
-    /// Statut et adresse finale (après redirections) d'une requête GET ;
-    /// `None` si le site ne répond pas.
+    /// Status and final address (after redirects) of a GET request; `None`
+    /// if the site doesn't answer.
     async fn get(&self, url: Url) -> Option<(StatusCode, Url)> {
         let response = self.client.get(url).send().await.ok()?;
         Some((response.status(), response.url().clone()))
     }
 
-    /// Adresse finale de `/.well-known/change-password` si `site` suit la
-    /// norme : cette adresse répond « OK » (2xx) après redirections, et une
-    /// ressource qui ne doit pas exister ne répond pas « OK » (sinon le site
-    /// répond 2xx à tout, et sa réponse ne prouve rien).
+    /// Final address of `/.well-known/change-password` if `site` follows the
+    /// standard: this address answers "OK" (2xx) after redirects, and a
+    /// resource that must not exist doesn't answer "OK" (otherwise the site
+    /// answers 2xx to everything, and its answer proves nothing).
     async fn probe(&self, site: &Url) -> Option<Url> {
         if !allowed(site, self.loopback_http) {
             return None;
@@ -175,12 +174,11 @@ mod tests {
 
     use super::*;
 
-    /// Réponse du serveur factice : statut, et `Location` éventuel.
+    /// The fake server's answer: status, and optional `Location`.
     type Routes = HashMap<&'static str, (u16, Option<String>)>;
 
-    /// Serveur HTTP minimal sur la boucle locale ; les chemins absents
-    /// répondent `fallback`. Rend son origine et le journal des chemins
-    /// demandés.
+    /// Minimal HTTP server on the loopback; missing paths answer `fallback`.
+    /// Returns its origin and the log of requested paths.
     fn server(routes: Routes, fallback: u16) -> (Url, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
@@ -195,7 +193,7 @@ mod tests {
                     continue;
                 }
                 let path = line.split_whitespace().nth(1).unwrap_or("/").to_owned();
-                // Le reste de la requête (en-têtes), jusqu'à la ligne vide.
+                // The rest of the request (headers), up to the empty line.
                 let mut header = String::new();
                 while reader.read_line(&mut header).is_ok_and(|n| n > 2) {
                     header.clear();
@@ -251,7 +249,7 @@ mod tests {
         assert_eq!(prober().probe(&base).await, None);
         let (base, _) = server(Routes::from([(WELL_KNOWN_PATH, (500, None))]), 404);
         assert_eq!(prober().probe(&base).await, None);
-        // Redirection vers une page absente.
+        // Redirect to a missing page.
         let (base, _) = server(
             Routes::from([(WELL_KNOWN_PATH, (301, Some("/nulle-part".to_owned())))]),
             404,
@@ -270,8 +268,8 @@ mod tests {
 
     #[tokio::test]
     async fn redirect_to_plain_http_elsewhere_is_not_followed() {
-        // Une redirection vers un hôte en HTTP (hors boucle locale) n'est
-        // pas suivie : aucune requête ne part en clair.
+        // A redirect to a host over HTTP (outside the loopback) is not
+        // followed: no request goes out in clear.
         let (base, _) = server(
             Routes::from([(
                 WELL_KNOWN_PATH,
@@ -293,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn plain_http_is_refused_outside_tests() {
         let (base, log) = server(Routes::from([(WELL_KNOWN_PATH, (200, None))]), 404);
-        // Le client de production n'autorise que HTTPS : rien ne part.
+        // The production client only allows HTTPS: nothing goes out.
         let strict = Prober::new(false).unwrap();
         assert_eq!(strict.probe(&base).await, None);
         assert!(log.lock().unwrap().is_empty());
@@ -339,7 +337,7 @@ mod tests {
 
     #[tokio::test]
     async fn known_sites_need_no_request() {
-        // Aucune requête : la table suffit (le test passe hors ligne).
+        // No request: the table is enough (the test passes offline).
         let page = find("https://accounts.google.com/signin").await.unwrap();
         assert_eq!(page.source, Source::Known);
         assert!(page.url.starts_with("https://myaccount.google.com/"));

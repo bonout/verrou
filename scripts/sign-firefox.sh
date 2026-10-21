@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# Extension Firefox installable pour de bon : signée par Mozilla (distribution
-# « unlisted », hors du catalogue addons.mozilla.org), ou non signée pour
+# Firefox extension installable for good: signed by Mozilla ("unlisted"
+# distribution, outside the addons.mozilla.org catalog), or unsigned for
 # Firefox Developer Edition / Nightly.
 #
 #   AMO_JWT_ISSUER=user:… AMO_JWT_SECRET=… scripts/sign-firefox.sh
 #   scripts/sign-firefox.sh --unsigned
 #
-# Le Firefox ordinaire n'installe durablement que des modules signés par
-# Mozilla. Clés d'API : https://addons.mozilla.org/developers/addon/api/key/
-# (compte Mozilla de l'utilisateur ; « Émetteur JWT » et « Secret JWT »).
-# La signature « unlisted » est automatique (quelques minutes), le module
-# n'est pas publié ; le fichier .xpi signé s'installe par about:addons ›
-# ⚙ › « Installer un module depuis un fichier… ».
+# Regular Firefox only installs add-ons signed by Mozilla for good. API keys:
+# https://addons.mozilla.org/developers/addon/api/key/ (the user's Mozilla
+# account; "JWT issuer" and "JWT secret").
+# "Unlisted" signing is automatic (a few minutes), the add-on is not
+# published; the signed .xpi file is installed through about:addons ›
+# ⚙ › "Install Add-on From File…".
 #
-# Le dossier signé est produit comme dans Verrou.app (firefox-extension.sh,
-# puis stamp-extension.sh sur les deux dossiers) : même contenu, même
-# version que l'extension livrée par l'app compilée depuis ce dépôt. Mozilla
-# refuse de signer deux fois la même version : modifier l'extension change
-# la version.
+# The signed folder is produced as in Verrou.app (firefox-extension.sh, then
+# stamp-extension.sh on both folders): same content, same version as the
+# extension shipped by the app built from this repository. Mozilla refuses
+# to sign the same version twice: changing the extension changes the
+# version.
 #
-# --unsigned : un .xpi non signé (pour Developer Edition ou Nightly, avec
-# `xpinstall.signatures.required` à false dans about:config) ; sans clés.
+# --unsigned: an unsigned .xpi (for Developer Edition or Nightly, with
+# `xpinstall.signatures.required` set to false in about:config); no keys.
 #
-# Rien n'est lancé automatiquement : ni la CI ni la compilation n'appellent
-# ce script. `web-ext` (l'outil de Mozilla) est téléchargé par npx.
+# Nothing runs automatically: neither CI nor the build calls this script.
+# `web-ext` (Mozilla's tool) is downloaded by npx.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,16 +34,16 @@ unsigned=false
 case "${1:-}" in
   "") ;;
   --unsigned) unsigned=true ;;
-  *) echo "usage : sign-firefox.sh [--unsigned]" >&2; exit 1 ;;
+  *) echo "usage: sign-firefox.sh [--unsigned]" >&2; exit 1 ;;
 esac
 
 if ! $unsigned; then
   [[ -n "${AMO_JWT_ISSUER:-}" && -n "${AMO_JWT_SECRET:-}" ]] || {
-    echo "sign-firefox : AMO_JWT_ISSUER et AMO_JWT_SECRET sont nécessaires (clés d'API de addons.mozilla.org)" >&2
+    echo "sign-firefox: AMO_JWT_ISSUER and AMO_JWT_SECRET are required (addons.mozilla.org API keys)" >&2
     exit 1
   }
 fi
-command -v npx >/dev/null || { echo "sign-firefox : npx (Node.js) introuvable" >&2; exit 1; }
+command -v npx >/dev/null || { echo "sign-firefox: npx (Node.js) not found" >&2; exit 1; }
 
 rm -rf "$WORK"
 mkdir -p "$WORK" "$OUT"
@@ -56,13 +56,13 @@ if $unsigned; then
   npx --yes web-ext@8 build --source-dir "$WORK/extension-firefox" --artifacts-dir "$WORK/build" --overwrite-dest
   zip="$(ls "$WORK"/build/*.zip | head -n 1)"
   cp "$zip" "$OUT/verrou-$version-unsigned.xpi"
-  echo "non signé : $OUT/verrou-$version-unsigned.xpi"
+  echo "unsigned: $OUT/verrou-$version-unsigned.xpi"
   exit 0
 fi
 
-# Les clés passent par l'environnement de web-ext, pas par sa ligne de
-# commande (visible dans la liste des processus).
+# The keys go through web-ext's environment, not its command line (visible
+# in the process list).
 WEB_EXT_API_KEY="$AMO_JWT_ISSUER" WEB_EXT_API_SECRET="$AMO_JWT_SECRET" \
   npx --yes web-ext@8 sign --channel=unlisted \
     --source-dir "$WORK/extension-firefox" --artifacts-dir "$OUT"
-echo "signé : $(ls -t "$OUT"/*.xpi | head -n 1) (version $version)"
+echo "signed: $(ls -t "$OUT"/*.xpi | head -n 1) (version $version)"

@@ -1,20 +1,20 @@
-//! Domaines équivalents du compte (`/api/settings/domains`).
+//! The account's equivalent domains (`/api/settings/domains`).
 //!
-//! Bitwarden range ces réglages côté serveur : les groupes choisis par
-//! l'utilisateur (`equivalentDomains`) et la liste globale du serveur
-//! (`globalEquivalentDomains`), dont l'utilisateur peut exclure des groupes.
-//! La règle de correspondance « domaine » les honore (voir
-//! `verrou_core::matching`). Ils ne sont pas secrets : le serveur les garde
-//! en clair, Verrou les garde dans le dossier du compte.
+//! Bitwarden keeps these settings on the server: the groups chosen by the
+//! user (`equivalentDomains`) and the server's global list
+//! (`globalEquivalentDomains`), from which the user can exclude groups.
+//! The "domain" match rule honours them (see `verrou_core::matching`).
+//! They are not secret: the server keeps them in clear, Verrou keeps them
+//! in the account folder.
 
 use serde_json::Value;
 
 use crate::api::Api;
 use crate::{Connection, Error};
 
-/// Groupes actifs : ceux de l'utilisateur, puis les groupes globaux non
-/// exclus. Les domaines sont en minuscules, sans doublon dans un groupe ;
-/// un groupe de moins de deux domaines est ignoré.
+/// Active groups: the user's, then the global groups not excluded. Domains
+/// are lower-case, without duplicates within a group; a group of fewer than
+/// two domains is ignored.
 pub(crate) fn parse(settings: &Value) -> Vec<Vec<String>> {
     let group = |list: &Value| -> Option<Vec<String>> {
         let mut domains: Vec<String> = list
@@ -54,7 +54,7 @@ pub(crate) fn parse(settings: &Value) -> Vec<Vec<String>> {
     custom.chain(global).collect()
 }
 
-/// `equivalentDomains` → `EquivalentDomains` (anciens serveurs).
+/// `equivalentDomains` → `EquivalentDomains` (old servers).
 fn capitalised(name: &str) -> String {
     let mut chars = name.chars();
     chars
@@ -63,8 +63,8 @@ fn capitalised(name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Les groupes du compte ; `None` si le serveur ne les donne pas (ancien
-/// serveur, refus). Une erreur de réseau remonte.
+/// The account's groups; `None` if the server doesn't give them (old
+/// server, refusal). A network error is passed up.
 pub(crate) async fn fetch(api: &Api, access: &str) -> Result<Option<Vec<Vec<String>>>, Error> {
     match api
         .call(reqwest::Method::GET, access, "settings/domains", None)
@@ -77,8 +77,8 @@ pub(crate) async fn fetch(api: &Api, access: &str) -> Result<Option<Vec<Vec<Stri
 }
 
 impl Connection {
-    /// Relit les domaines équivalents du compte. Rend `true` s'ils ont
-    /// changé. Une erreur (serveur ancien, réseau) garde les précédents.
+    /// Reloads the account's equivalent domains. Returns `true` if they
+    /// changed. An error (old server, network) keeps the previous ones.
     pub(crate) async fn refresh_domains(&mut self, access: &str) -> Result<bool, Error> {
         let Some(domains) = fetch(&self.api, access).await? else {
             return Ok(false);
@@ -92,8 +92,8 @@ impl Connection {
         Ok(true)
     }
 
-    /// Les groupes de domaines équivalents connus (vide avant la première
-    /// synchronisation qui les lit).
+    /// The known groups of equivalent domains (empty before the first sync
+    /// that reads them).
     pub fn equivalent_domains(&self) -> Vec<Vec<String>> {
         self.account.equivalent_domains.clone().unwrap_or_default()
     }

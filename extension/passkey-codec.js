@@ -1,11 +1,11 @@
-// Passkeys : passage entre les options de `navigator.credentials` et les
-// messages de Verrou (octets en base64url), et fabrication des
-// `PublicKeyCredential` rendus à la page.
+// Passkeys: conversion between the `navigator.credentials` options and
+// Verrou's messages (bytes in base64url), and making of the
+// `PublicKeyCredential`s returned to the page.
 //
-// Sans état ni réseau : chargé dans la page (monde MAIN) juste avant
-// passkey-page.js, qui le récupère et l'efface de `globalThis`, et dans les
-// tests Node. Rien de secret ne passe ici : Verrou ne rend que la clé
-// publique, l'attestation et les signatures.
+// No state, no network: loaded in the page (MAIN world) right before
+// passkey-page.js, which takes it and deletes it from `globalThis`, and in
+// the Node tests. Nothing secret goes through here: Verrou only returns the
+// public key, the attestation and the signatures.
 
 globalThis.__verrouPasskeyCodec = (() => {
   const MAX_IDS = 64;
@@ -13,7 +13,7 @@ globalThis.__verrouPasskeyCodec = (() => {
   function bytesOf(source) {
     if (source instanceof ArrayBuffer) return new Uint8Array(source);
     if (ArrayBuffer.isView(source)) return new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
-    throw new TypeError("BufferSource attendu");
+    throw new TypeError("BufferSource expected");
   }
 
   function encode(source) {
@@ -37,14 +37,14 @@ globalThis.__verrouPasskeyCodec = (() => {
     .slice(0, MAX_IDS)
     .map((c) => encode(c.id));
 
-  // Entrées `AuthenticationExtensionsPRFValues` (BufferSource) → base64url.
+  // `AuthenticationExtensionsPRFValues` inputs (BufferSource) → base64url.
   function prfValues(values) {
     if (!values || values.first === undefined) return null;
     return { first: encode(values.first), second: values.second === undefined ? null : encode(values.second) };
   }
 
-  // `extensions.prf` → requête PRF pour Verrou (`evalByCredential` : les
-  // identifiants sont déjà en base64url dans les options), ou null.
+  // `extensions.prf` → PRF request for Verrou (`evalByCredential`: the
+  // credential IDs are already in base64url in the options), or null.
   function prfRequest(extensions, withByCredential) {
     const prf = extensions?.prf;
     if (!prf || typeof prf !== "object") return null;
@@ -58,7 +58,7 @@ globalThis.__verrouPasskeyCodec = (() => {
     return { eval: prfValues(prf.eval), eval_by_credential: byCredential };
   }
 
-  // Sorties de Verrou (base64url) → `{ first, second? }` en ArrayBuffer.
+  // Outputs of Verrou (base64url) → `{ first, second? }` as ArrayBuffer.
   function prfOutputs(results) {
     if (!results?.first) return null;
     const out = { first: decode(results.first) };
@@ -66,7 +66,7 @@ globalThis.__verrouPasskeyCodec = (() => {
     return out;
   }
 
-  // Résultats d'extension rendus à la page, et leur forme JSON.
+  // Extension results returned to the page, and their JSON form.
   function extensionResults(results) {
     const json = structuredClone(results);
     if (json.prf?.results) {
@@ -75,8 +75,8 @@ globalThis.__verrouPasskeyCodec = (() => {
     return json;
   }
 
-  // `PublicKeyCredentialCreationOptions` → requête `passkey_create` (sans
-  // l'adresse : le service worker y met celle de l'onglet).
+  // `PublicKeyCredentialCreationOptions` → `passkey_create` request (without
+  // the address: the service worker puts the tab's in it).
   function createRequest(publicKey) {
     const { rp = {}, user = {}, authenticatorSelection = {} } = publicKey;
     return {
@@ -90,15 +90,15 @@ globalThis.__verrouPasskeyCodec = (() => {
         .filter((p) => p?.type === "public-key")
         .map((p) => Number(p.alg)),
       exclude: ids(publicKey.excludeCredentials),
-      // « preferred » par défaut : Verrou demande Touch ID. La PRF l'exige.
+      // "preferred" by default: Verrou asks for Touch ID. PRF requires it.
       uv: authenticatorSelection.userVerification !== "discouraged" || Boolean(publicKey.extensions?.prf),
       attestation: text(publicKey.attestation) ?? "none",
-      // `evalByCredential` est refusé à la création (WebAuthn §10.1.4).
+      // `evalByCredential` is refused at creation (WebAuthn §10.1.4).
       prf: prfRequest(publicKey.extensions, false),
     };
   }
 
-  // `PublicKeyCredentialRequestOptions` → requête `passkey_list` / `passkey_get`.
+  // `PublicKeyCredentialRequestOptions` → `passkey_list` / `passkey_get` request.
   function getRequest(publicKey) {
     return {
       rp_id: text(publicKey.rpId),
@@ -109,8 +109,8 @@ globalThis.__verrouPasskeyCodec = (() => {
     };
   }
 
-  // Donne aux objets les prototypes du navigateur (`instanceof`), en gardant
-  // leurs propriétés propres.
+  // Gives the objects the browser's prototypes (`instanceof`), keeping their
+  // own properties.
   function adopt(credential, Response) {
     const Credential = globalThis.PublicKeyCredential;
     if (Response) Object.setPrototypeOf(credential.response, Response.prototype);
@@ -120,7 +120,7 @@ globalThis.__verrouPasskeyCodec = (() => {
 
   const copy = (buffer) => buffer.slice(0);
 
-  // Réponse `registration` de Verrou → credential de `navigator.credentials.create`.
+  // Verrou's `registration` reply → credential of `navigator.credentials.create`.
   function registrationCredential(reply, extensions = {}) {
     const clientDataJSON = decode(reply.client_data);
     const attestationObject = decode(reply.attestation_object);
@@ -165,7 +165,7 @@ globalThis.__verrouPasskeyCodec = (() => {
     }, globalThis.AuthenticatorAttestationResponse);
   }
 
-  // Réponse `assertion` de Verrou → credential de `navigator.credentials.get`.
+  // Verrou's `assertion` reply → credential of `navigator.credentials.get`.
   function assertionCredential(reply) {
     const outputs = prfOutputs(reply.prf);
     const results = outputs ? { prf: { results: outputs } } : {};

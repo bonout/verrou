@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# Vitrine de l'app iPhone (build Debug) sur le coffre fictif, dans un
-# simulateur sans fenêtre : chaque écran en clair et en sombre, capturé par
+# Showcase of the iPhone app (Debug build) on the fake vault, in a
+# windowless simulator: each screen in light and dark mode, captured by
 # `simctl io screenshot` (apple/VerrouiOSUITests/ShowcaseUITests.swift).
 #
-#   scripts/ios-showcase.sh                 # captures dans target/ios-showcase/{clair,sombre}
-#   RECORD=docs/media/ios-app.mp4 scripts/ios-showcase.sh   # la vidéo seulement
+#   scripts/ios-showcase.sh                 # screenshots in target/ios-showcase/{clair,sombre}
+#   RECORD=docs/media/ios-app.mp4 scripts/ios-showcase.sh   # the video only
 #
-# Variables : OUT, SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
-# SIM_RUNTIME, APPEARANCES (défaut « light dark »), RECORD (vidéo de
-# testRecording, avec des pauses de RECORD_PAUSE secondes, défaut 1 ;
-# RECORD_TEST choisit un autre test, par exemple testMotionUnlock).
+# Variables: OUT, SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
+# SIM_RUNTIME, APPEARANCES (default "light dark"), RECORD (video of
+# testRecording, with pauses of RECORD_PAUSE seconds, default 1;
+# RECORD_TEST picks another test, for example testMotionUnlock).
 #
-# Rien ne s'affiche sur l'écran du Mac : `simctl boot` n'ouvre pas
-# Simulator.app, et les captures ne s'affichent nulle part.
+# Nothing shows on the Mac's screen: `simctl boot` doesn't open
+# Simulator.app, and the screenshots aren't displayed anywhere.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -53,12 +53,12 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
     ARCHS="$(uname -m)" build-for-testing -quiet
 fi
 
-# Simulateur sans fenêtre, en français, heure et barre d'état fixes.
+# Windowless simulator, in English, fixed time and status bar.
 DEV="$(xcrun simctl create "Verrou Showcase" "$SIM_DEVICE_TYPE" "$SIM_RUNTIME")"
 xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
-xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array fr-FR
-xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string fr_FR
+xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array en-US
+xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string en_US
 xcrun simctl spawn "$DEV" defaults write com.apple.Preferences DidShowContinuousPathIntroduction -bool true
 xcrun simctl shutdown "$DEV"
 xcrun simctl boot "$DEV"
@@ -70,7 +70,7 @@ xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit.enrollmentChanged
 xcrun simctl install "$DEV" "$APP"
 sleep 5
 
-# Répond aux demandes de capture du test : req/<nom> → <dossier>/<nom>.png.
+# Answers the test's screenshot requests: req/<name> → <folder>/<name>.png.
 start_shooter() {
   local dest="$1"
   mkdir -p "$dest" "$WORK/req" "$WORK/ack"
@@ -112,7 +112,7 @@ if [[ -n "$RECORD" ]]; then
   rm -f "$RECORD"
   xcrun simctl io "$DEV" recordVideo --codec=h264 --force "$RECORD" >"$WORK/record.log" 2>&1 &
   RECORD_PID=$!
-  # Repères pour découper la vidéo : RECORD_START ici, SHOWCASE_MARK dans le journal du test.
+  # Markers to cut the video: RECORD_START here, SHOWCASE_MARK in the test's log.
   echo "RECORD_START $(python3 -I -c 'import time; print(time.time())')"
   sleep 2
   run_test "${RECORD_TEST:-testRecording}" "$OUT/record.log" || status=$?
@@ -121,7 +121,7 @@ if [[ -n "$RECORD" ]]; then
   wait "$RECORD_PID" 2>/dev/null || true
   RECORD_PID=""
   grep -E "Test Case .*(passed|failed)|error: |SHOWCASE_MARK" "$OUT/record.log" || true
-  echo "vidéo : $RECORD"
+  echo "video: $RECORD"
 else
   for appearance in ${APPEARANCES:-light dark}; do
     label="$( [[ "$appearance" == dark ]] && echo sombre || echo clair )"
@@ -131,7 +131,7 @@ else
     run_test testShowcase "$OUT/$label.log" || status=$?
     stop_shooter
     grep -E "Test Case .*(passed|failed)|error: " "$OUT/$label.log" || true
-    echo "$label : $(ls "$OUT/$label" | wc -l | tr -d ' ') captures dans $OUT/$label"
+    echo "$label: $(ls "$OUT/$label" | wc -l | tr -d ' ') screenshots in $OUT/$label"
   done
 fi
-[[ $status == 0 ]] || { echo "ÉCHEC de la vitrine (journaux dans $OUT)" >&2; exit 1; }
+[[ $status == 0 ]] || { echo "showcase FAILED (logs in $OUT)" >&2; exit 1; }

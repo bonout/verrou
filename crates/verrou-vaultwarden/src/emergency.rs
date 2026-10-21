@@ -1,21 +1,20 @@
-//! Accès d'urgence : confier son coffre à un proche de confiance.
+//! Emergency access: entrusting one's vault to a trusted person.
 //!
-//! Le **concédant** invite un contact (lecture seule, ou prise de contrôle),
-//! avec un délai d'attente. Une fois l'invitation acceptée, il la
-//! **confirme** : la clé de son coffre (clé de l'utilisateur) est chiffrée
-//! pour la clé publique du contact (RSA-OAEP-SHA1, par le SDK) et confiée au
-//! serveur, qui ne peut pas la lire. Le contact peut ensuite **demander**
-//! l'accès ; le concédant l'approuve ou le refuse, sinon l'accès est
-//! accordé de lui-même à la fin du délai. En lecture seule, le contact reçoit
-//! alors les éléments du concédant et la clé chiffrée pour lui, qu'il ouvre
-//! avec sa clé privée.
+//! The **grantor** invites a contact (read-only, or takeover), with a wait
+//! time. Once the invitation is accepted, they **confirm** it: their vault
+//! key (the user key) is encrypted for the contact's public key
+//! (RSA-OAEP-SHA1, by the SDK) and handed to the server, which can't read
+//! it. The contact can then **request** access; the grantor approves or
+//! rejects it, otherwise access is granted by itself at the end of the
+//! wait time. Read-only, the contact then receives the grantor's items and
+//! the key encrypted for them, which they open with their private key.
 //!
-//! Avant de confirmer, le concédant vérifie l'**empreinte** de la clé
-//! publique du contact (la phrase de 5 mots des apps Bitwarden) : sans cette
-//! vérification, un serveur malveillant pourrait substituer sa propre clé.
+//! Before confirming, the grantor checks the **fingerprint** of the
+//! contact's public key (the 5-word phrase of the Bitwarden apps): without
+//! this check, a malicious server could substitute its own key.
 //!
-//! La prise de contrôle (changer le mot de passe principal du concédant)
-//! n'est pas faite ici : elle reste dans le coffre web.
+//! Takeover (changing the grantor's master password) is not done here: it
+//! stays in the web vault.
 
 use std::collections::HashMap;
 
@@ -32,14 +31,14 @@ use verrou_core::Item;
 
 use crate::{Connection, Error, convert};
 
-/// Délai d'attente le plus long proposé par les apps Bitwarden.
+/// Longest wait time offered by the Bitwarden apps.
 pub const MAX_WAIT_DAYS: u32 = 90;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmergencyKind {
-    /// Lecture seule du coffre.
+    /// Read-only access to the vault.
     View,
-    /// Prise de contrôle (nouveau mot de passe principal) : coffre web.
+    /// Takeover (new master password): web vault.
     Takeover,
 }
 
@@ -54,24 +53,24 @@ impl EmergencyKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EmergencyStatus {
-    /// Invitation envoyée, pas encore acceptée.
+    /// Invitation sent, not accepted yet.
     Invited,
-    /// Acceptée par le contact : au concédant de confirmer.
+    /// Accepted by the contact: up to the grantor to confirm.
     Accepted,
-    /// Confirmée : le contact peut demander l'accès.
+    /// Confirmed: the contact can request access.
     Confirmed,
-    /// Accès demandé : le délai court.
+    /// Access requested: the wait time is running.
     RecoveryInitiated,
-    /// Accès accordé (approuvé, ou délai écoulé).
+    /// Access granted (approved, or wait time elapsed).
     RecoveryApproved,
 }
 
-/// Un accès d'urgence, vu de l'un ou l'autre côté.
+/// An emergency access, seen from either side.
 #[derive(Clone, Debug)]
 pub struct EmergencyAccess {
     pub id: String,
-    /// L'autre personne : le contact (vu du concédant) ou le concédant (vu
-    /// du contact). Absent tant qu'une invitation n'est pas acceptée.
+    /// The other person: the contact (seen from the grantor) or the grantor
+    /// (seen from the contact). Missing until an invitation is accepted.
     pub user_id: Option<String>,
     pub name: Option<String>,
     pub email: Option<String>,
@@ -113,19 +112,19 @@ impl EmergencyAccess {
     }
 }
 
-/// Les deux listes : mes contacts de confiance, et ceux qui m'ont choisi.
+/// The two lists: my trusted contacts, and those who chose me.
 #[derive(Clone, Debug, Default)]
 pub struct EmergencyOverview {
-    /// Contacts à qui j'ai confié mon coffre (je suis le concédant).
+    /// Contacts I entrusted my vault to (I am the grantor).
     pub trusted: Vec<EmergencyAccess>,
-    /// Personnes qui m'ont confié le leur (je suis leur contact).
+    /// People who entrusted theirs to me (I am their contact).
     pub granted: Vec<EmergencyAccess>,
 }
 
-/// Le coffre d'un concédant, ouvert en lecture seule.
+/// A grantor's vault, opened read-only.
 pub struct GrantorVault {
     pub items: Vec<Item>,
-    /// Éléments qui ne se déchiffrent pas avec la clé du concédant.
+    /// Items that don't decrypt with the grantor's key.
     pub failures: usize,
 }
 
@@ -140,14 +139,14 @@ fn list(body: &Value, user_key: &str) -> Vec<EmergencyAccess> {
         .unwrap_or_default()
 }
 
-/// Empreinte d'une clé publique (DER, SPKI) pour un utilisateur : la phrase
-/// que les apps Bitwarden montrent pour vérifier une clé.
+/// Fingerprint of a public key (DER, SPKI) for a user: the phrase the
+/// Bitwarden apps show to verify a key.
 pub fn key_fingerprint(user_id: &str, public_key_der: &[u8]) -> Result<String, Error> {
     fingerprint(user_id, &SpkiPublicKeyBytes::from(public_key_der)).map_err(Error::crypto)
 }
 
 impl Connection {
-    /// Contacts d'urgence et concédants, depuis le serveur.
+    /// Emergency contacts and grantors, from the server.
     pub async fn emergency_access(&mut self) -> Result<EmergencyOverview, Error> {
         let access = self.access_token().await?;
         let trusted = self
@@ -164,9 +163,9 @@ impl Connection {
         })
     }
 
-    /// Invite un contact d'urgence. Sans serveur de courrier, Vaultwarden
-    /// accepte aussitôt l'invitation d'un compte existant : il ne reste qu'à
-    /// la confirmer.
+    /// Invites an emergency contact. Without a mail server, Vaultwarden
+    /// accepts an existing account's invitation at once: all that is left is
+    /// to confirm it.
     pub async fn invite_emergency_contact(
         &mut self,
         email: &str,
@@ -175,11 +174,11 @@ impl Connection {
     ) -> Result<(), Error> {
         let email = email.trim();
         if !email.contains('@') {
-            return Err(Error::Invalid("adresse e-mail invalide".to_owned()));
+            return Err(Error::Invalid("invalid email address".to_owned()));
         }
         if email.eq_ignore_ascii_case(&self.account.email) {
             return Err(Error::Invalid(
-                "vous ne pouvez pas être votre propre contact d'urgence".to_owned(),
+                "you cannot be your own emergency contact".to_owned(),
             ));
         }
         check_wait(wait_time_days)?;
@@ -200,7 +199,7 @@ impl Connection {
             .map(drop)
     }
 
-    /// Change le type d'accès ou le délai d'attente d'un contact.
+    /// Changes a contact's access type or wait time.
     pub async fn update_emergency_contact(
         &mut self,
         id: &str,
@@ -213,8 +212,8 @@ impl Connection {
             .await
     }
 
-    /// Empreinte de la clé publique d'un contact, à comparer avec la sienne
-    /// (Réglages → Mon compte, dans les apps Bitwarden) avant de confirmer.
+    /// Fingerprint of a contact's public key, to compare with theirs
+    /// (Settings → My account, in the Bitwarden apps) before confirming.
     pub async fn emergency_contact_fingerprint(
         &mut self,
         grantee_id: &str,
@@ -223,10 +222,10 @@ impl Connection {
         key_fingerprint(grantee_id, &der)
     }
 
-    /// Confirme un contact qui a accepté l'invitation : la clé du coffre est
-    /// chiffrée pour sa clé publique. `fingerprint` est l'empreinte que
-    /// l'utilisateur a vérifiée : si la clé du serveur ne lui correspond
-    /// plus, rien n'est envoyé.
+    /// Confirms a contact who accepted the invitation: the vault key is
+    /// encrypted for their public key. `fingerprint` is the fingerprint the
+    /// user checked: if the server's key no longer matches it, nothing is
+    /// sent.
     pub async fn confirm_emergency_contact(
         &mut self,
         id: &str,
@@ -236,7 +235,7 @@ impl Connection {
         let der = self.public_key(grantee_id).await?;
         if key_fingerprint(grantee_id, &der)? != fingerprint {
             return Err(Error::Crypto(
-                "la clé du contact a changé depuis la vérification".to_owned(),
+                "the contact's key has changed since it was verified".to_owned(),
             ));
         }
         let public_key =
@@ -257,13 +256,13 @@ impl Connection {
         .await
     }
 
-    /// Retire un contact (concédant) ou renonce à un accès (contact).
+    /// Removes a contact (grantor) or gives up an access (contact).
     pub async fn delete_emergency_access(&mut self, id: &str) -> Result<(), Error> {
         self.emergency_call(Method::DELETE, &format!("emergency-access/{id}"), None)
             .await
     }
 
-    /// Contact : demande l'accès au coffre du concédant. Le délai commence.
+    /// Contact: requests access to the grantor's vault. The wait time starts.
     pub async fn request_emergency_access(&mut self, id: &str) -> Result<(), Error> {
         self.emergency_call(
             Method::POST,
@@ -273,7 +272,7 @@ impl Connection {
         .await
     }
 
-    /// Concédant : accorde l'accès demandé sans attendre la fin du délai.
+    /// Grantor: grants the requested access without waiting for the end of the wait time.
     pub async fn approve_emergency_access(&mut self, id: &str) -> Result<(), Error> {
         self.emergency_call(
             Method::POST,
@@ -283,14 +282,14 @@ impl Connection {
         .await
     }
 
-    /// Concédant : refuse (ou retire) l'accès demandé.
+    /// Grantor: rejects (or withdraws) the requested access.
     pub async fn reject_emergency_access(&mut self, id: &str) -> Result<(), Error> {
         self.emergency_call(Method::POST, &format!("emergency-access/{id}/reject"), None)
             .await
     }
 
-    /// Contact, accès accordé en lecture seule : les éléments du concédant,
-    /// déchiffrés avec sa clé, elle-même ouverte par ma clé privée.
+    /// Contact, read-only access granted: the grantor's items, decrypted with
+    /// their key, itself opened by my private key.
     pub async fn open_grantor_vault(&mut self, id: &str) -> Result<GrantorVault, Error> {
         let access = self.access_token().await?;
         let body = self
@@ -303,10 +302,10 @@ impl Connection {
             )
             .await?;
         let response: EmergencyAccessViewResponseModel = serde_json::from_value(body)
-            .map_err(|e| Error::Server(format!("coffre illisible ({e})")))?;
+            .map_err(|e| Error::Server(format!("unreadable vault ({e})")))?;
         let wrapped: UnsignedSharedKey = response
             .key_encrypted
-            .ok_or_else(|| Error::Server("clé du concédant absente".to_owned()))?
+            .ok_or_else(|| Error::Server("grantor key missing".to_owned()))?
             .parse()
             .map_err(Error::crypto)?;
         self.decrypt_grantor_ciphers(&wrapped, response.ciphers.unwrap_or_default())
@@ -321,9 +320,7 @@ impl Connection {
         let mut ctx = key_store.context();
         let grantor_key = wrapped
             .decapsulate(PrivateKeySlotId::UserPrivateKey, &mut ctx)
-            .map_err(|_| {
-                Error::Crypto("la clé du concédant ne s'ouvre pas avec la vôtre".to_owned())
-            })?;
+            .map_err(|_| Error::Crypto("the grantor's key does not open with yours".to_owned()))?;
         let no_folders = HashMap::new();
         let mut items = Vec::new();
         let mut failures = 0;
@@ -332,7 +329,7 @@ impl Connection {
                 .ok()
                 .and_then(|cipher| cipher.decrypt(&mut ctx, grantor_key).ok());
             match view.and_then(|v| convert::item(&v, &no_folders)) {
-                // Le concédant prête ses éléments actifs : la corbeille reste chez lui.
+                // The grantor lends their active items: the trash stays with them.
                 Some(item)
                     if item.is_active() || item.state == verrou_core::ItemState::Archived =>
                 {
@@ -360,10 +357,10 @@ impl Connection {
         let key = body
             .get("publicKey")
             .and_then(Value::as_str)
-            .ok_or_else(|| Error::Server("clé publique absente".to_owned()))?;
+            .ok_or_else(|| Error::Server("public key missing".to_owned()))?;
         BASE64
             .decode(key.as_bytes())
-            .map_err(|_| Error::Server("clé publique illisible".to_owned()))
+            .map_err(|_| Error::Server("unreadable public key".to_owned()))
     }
 
     async fn emergency_call(
@@ -382,7 +379,7 @@ fn check_wait(days: u32) -> Result<(), Error> {
         Ok(())
     } else {
         Err(Error::Invalid(format!(
-            "le délai d'attente va de 1 à {MAX_WAIT_DAYS} jours"
+            "the wait time ranges from 1 to {MAX_WAIT_DAYS} days"
         )))
     }
 }
@@ -401,7 +398,7 @@ mod tests {
             { "id": "c", "type": 9, "status": 0 },
         ]});
         let parsed = list(&trusted, "granteeId");
-        assert_eq!(parsed.len(), 2, "type inconnu ignoré");
+        assert_eq!(parsed.len(), 2, "unknown type ignored");
         assert_eq!(parsed[0].user_id.as_deref(), Some("u1"));
         assert_eq!(parsed[0].status, EmergencyStatus::Accepted);
         assert_eq!(parsed[0].kind, EmergencyKind::View);
@@ -426,8 +423,8 @@ mod tests {
         assert!(check_wait(MAX_WAIT_DAYS + 1).is_err());
     }
 
-    /// Vecteur du SDK de Bitwarden (`bitwarden-crypto`, `fingerprint.rs`) :
-    /// une clé publique, un identifiant, la phrase attendue.
+    /// Vector from Bitwarden's SDK (`bitwarden-crypto`, `fingerprint.rs`): a
+    /// public key, an id, the expected phrase.
     #[test]
     fn fingerprint_matches_the_bitwarden_vector() {
         let user_id = "a09726a0-9590-49d1-a5f5-afe300b6a515";

@@ -1,4 +1,4 @@
-//! Comportement de la recherche sur le coffre fictif.
+//! Search behaviour on the mock vault.
 
 #![allow(clippy::assert_is_empty)]
 
@@ -64,7 +64,7 @@ fn secrets_are_not_indexed() {
     let password = github.field("password").unwrap().value.expose().to_owned();
     let hits = v.search(&password, &Filter::All, Sort::Relevance);
     assert!(hits.iter().all(|h| v.items()[h.index].title != "GitHub"));
-    // Le corps des notes non plus.
+    // Nor the body of notes.
     assert!(titles(&v, "Martin-5G", &Filter::All).is_empty());
 }
 
@@ -78,8 +78,14 @@ fn filters_and_inline_filters() {
     assert!(banks.iter().all(|t| !t.contains("GitHub")));
     let homelab = titles(&v, "dossier:maison", &Filter::Favorites);
     assert!(homelab.contains(&"Vaultwarden".to_owned()));
+    assert_eq!(titles(&v, "folder:maison", &Filter::Favorites), homelab);
     let typed = titles(&v, "type:carte visa", &Filter::All);
     assert_eq!(typed, vec!["Visa Boursorama".to_owned()]);
+    assert_eq!(titles(&v, "type:card visa", &Filter::All), typed);
+    assert_eq!(
+        titles(&v, "type:login", &Filter::All),
+        titles(&v, "type:identifiant", &Filter::All)
+    );
     let excluded = titles(&v, "github !pro", &Filter::All);
     assert!(excluded.contains(&"GitHub".to_owned()));
     assert!(!excluded.contains(&"GitHub — compte pro".to_owned()));
@@ -124,7 +130,7 @@ fn app_suggestions_use_macapp_uris() {
     assert_eq!(suggested, ["Slack"]);
     assert!(v.app_suggestions("com.apple.Terminal").is_empty());
     assert!(v.app_suggestions("").is_empty());
-    // Une adresse d'app n'est pas un site : ni hôte, ni suggestion web.
+    // An app address is not a site: no host, no web suggestion.
     let slack = v.items().iter().find(|i| i.title == "Slack").unwrap();
     assert_eq!(slack.primary_host().as_deref(), Some("slack.com"));
     assert!(
@@ -133,13 +139,10 @@ fn app_suggestions_use_macapp_uris() {
     );
 }
 
-/// Garde-fou de performance, en version optimisée seulement : 10 000 éléments,
-/// une frappe doit rester bien sous la durée d'une image à 60 Hz.
+/// Performance guard, optimized builds only: 10,000 items,
+/// a keystroke must stay well under one frame at 60 Hz.
 #[test]
-#[cfg_attr(
-    debug_assertions,
-    ignore = "mesure significative en --release uniquement"
-)]
+#[cfg_attr(debug_assertions, ignore = "measurement only meaningful in --release")]
 fn search_is_fast_on_10k_items() {
     let v = Vault::new(mock::vault_items(10_000, 7));
     let queries = [
@@ -158,7 +161,7 @@ fn search_is_fast_on_10k_items() {
         let _ = v.search(q, &Filter::All, Sort::Relevance);
     }
     let per_query = start.elapsed() / queries.len() as u32;
-    assert!(per_query.as_millis() < 16, "{per_query:?} par requête");
+    assert!(per_query.as_millis() < 16, "{per_query:?} per query");
 }
 
 fn vault_with_passkeys() -> Vault {
@@ -176,7 +179,13 @@ fn passkey_keyword_and_filter() {
         "Google".to_owned(),
     ];
     expected.sort();
-    for query in ["passkey:", "has:passkey", "PASSKEY:", "avec:passkey"] {
+    for query in [
+        "passkey:",
+        "has:passkey",
+        "PASSKEY:",
+        "with:passkey",
+        "avec:passkey",
+    ] {
         let mut found = titles(&v, query, &Filter::All);
         found.sort();
         assert_eq!(found, expected, "{query}");
@@ -185,14 +194,14 @@ fn passkey_keyword_and_filter() {
     filtered.sort();
     assert_eq!(filtered, expected);
     assert_eq!(v.counts().passkeys, 3);
-    // Par site de la passkey, et combiné à un mot.
+    // By passkey site, and combined with a word.
     assert_eq!(titles(&v, "passkey:github", &Filter::All), vec!["GitHub"]);
     assert_eq!(titles(&v, "passkey:google", &Filter::All), vec!["Google"]);
     assert_eq!(titles(&v, "passkey: apple", &Filter::All), vec!["Apple ID"]);
     assert!(titles(&v, "passkey:netflix", &Filter::All).is_empty());
-    // Sans passkeys connues : rien.
+    // No known passkeys: nothing.
     assert!(titles(&vault(), "has:passkey", &Filter::All).is_empty());
-    // `has:totp` et un `has:` inconnu (cherché comme un mot).
+    // `has:totp` and an unknown `has:` (searched as a word).
     assert!(titles(&v, "has:totp github", &Filter::All).contains(&"GitHub".to_owned()));
     assert!(titles(&v, "has:inconnu", &Filter::All).is_empty());
 }
@@ -214,7 +223,7 @@ fn sort_by_creation_and_last_use() {
         .map(|h| v.items()[h.index].title.as_str())
         .collect();
     assert_eq!(&order[..2], &["Netflix", "GitHub"]);
-    // Les autres suivent, dans l'ordre alphabétique.
+    // The others follow, in alphabetical order.
     let by_title: Vec<&str> = v
         .search("", &Filter::All, Sort::Title)
         .iter()
@@ -222,7 +231,7 @@ fn sort_by_creation_and_last_use() {
         .filter(|t| !["Netflix", "GitHub"].contains(t))
         .collect();
     assert_eq!(&order[2..], &by_title[..]);
-    // Avec une recherche : seulement les résultats, dans le même ordre.
+    // With a query: only the results, in the same order.
     let hits = v.search_with_usage("git", &Filter::All, Sort::LastUsed, &usage);
     assert_eq!(v.items()[hits[0].index].title, "GitHub");
 }

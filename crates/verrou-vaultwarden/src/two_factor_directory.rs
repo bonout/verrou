@@ -1,10 +1,10 @@
-//! Liste des sites qui proposent la double authentification, d'après
-//! 2fa.directory, gardée en cache sur le disque.
+//! List of the sites that offer two-factor authentication, from
+//! 2fa.directory, cached on disk.
 //!
-//! Confidentialité : la liste est téléchargée **en entier** (environ 400 Ko),
-//! sans rien envoyer du coffre ; la comparaison avec les sites des
-//! identifiants se fait sur le Mac (`verrou_core::watchtower`). Hors ligne,
-//! la dernière copie sert, même périmée.
+//! Privacy: the list is downloaded **in full** (about 400 KB), without
+//! sending anything from the vault; the comparison with the logins' sites
+//! happens on the Mac (`verrou_core::watchtower`). Offline, the last copy
+//! is used, even if stale.
 
 use std::path::Path;
 use std::time::Duration;
@@ -14,18 +14,18 @@ use verrou_core::watchtower::TwoFactorDirectory;
 use crate::Error;
 use crate::directory_cache;
 
-/// Tous les sites qui proposent au moins une méthode (TOTP, SMS, clé…).
+/// All the sites that offer at least one method (TOTP, SMS, key…).
 pub const URL: &str = "https://api.2fa.directory/v3/tfa.json";
-/// Une copie plus jeune n'est pas retéléchargée.
+/// A younger copy is not downloaded again.
 pub const MAX_AGE: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const FILE: &str = "2fa-directory.json";
 
-/// La liste chargée, et d'où elle vient.
+/// The loaded list, and where it comes from.
 pub struct Loaded {
     pub directory: TwoFactorDirectory,
-    /// Horodatage Unix du téléchargement de cette copie.
+    /// Unix timestamp of this copy's download.
     pub fetched_at: i64,
-    /// `true` : copie de plus de `MAX_AGE`, faute de réseau.
+    /// `true`: copy older than `MAX_AGE`, for lack of network.
     pub stale: bool,
 }
 
@@ -35,9 +35,9 @@ fn parse(data: &[u8]) -> Option<TwoFactorDirectory> {
         .filter(|d| !d.is_empty())
 }
 
-/// La liste, depuis le cache de `dir` s'il a moins de `MAX_AGE`, sinon
-/// téléchargée (et mise en cache). Réseau indisponible : la copie périmée,
-/// ou l'erreur s'il n'y en a pas.
+/// The list, from the cache in `dir` if it is younger than `MAX_AGE`,
+/// otherwise downloaded (and cached). Network unavailable: the stale copy,
+/// or the error if there is none.
 pub async fn load(dir: &Path) -> Result<Loaded, Error> {
     let loaded = directory_cache::load(dir, FILE, MAX_AGE, parse, || {
         directory_cache::download(URL, "2fa.directory")
@@ -86,10 +86,10 @@ mod tests {
         fs::remove_dir_all(dir).unwrap();
     }
 
-    /// Contre le vrai service (réseau) :
+    /// Against the real service (network):
     /// `cargo test -p verrou-vaultwarden -- --ignored two_factor_directory`.
     #[tokio::test]
-    #[ignore = "réseau : api.2fa.directory"]
+    #[ignore = "network: api.2fa.directory"]
     async fn real_service_lists_github() {
         let dir = temp_dir();
         let loaded = load(&dir).await.unwrap();

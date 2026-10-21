@@ -1,4 +1,4 @@
-//! Tests contre un vrai Vaultwarden, jetable :
+//! Tests against a real, disposable Vaultwarden:
 //!
 //! ```sh
 //! docker run -d --rm --name verrou-vw -p 127.0.0.1:8099:80 \
@@ -9,8 +9,8 @@
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test server
 //! ```
 //!
-//! Sans `VERROU_TEST_SERVER`, les tests ne font rien (et le disent).
-//! Chaque test crée son propre compte : ils peuvent tourner en parallèle.
+//! Without `VERROU_TEST_SERVER`, the tests do nothing (and say so).
+//! Each test creates its own account: they can run in parallel.
 
 use std::num::NonZeroU32;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -41,7 +41,7 @@ const ITERATIONS: u32 = 600_000;
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
@@ -74,8 +74,8 @@ fn auth_hash(email: &str) -> String {
         .to_string()
 }
 
-/// Compte de test, connecté par un client SDK distinct de celui de Verrou :
-/// c'est lui qui remplit le coffre, comme le ferait l'app officielle.
+/// Test account, signed in by an SDK client separate from Verrou's: it
+/// fills the vault, as the official app would.
 struct Seeder {
     http: reqwest::Client,
     server: String,
@@ -118,7 +118,7 @@ impl Seeder {
             .send()
             .await
             .unwrap();
-        assert!(response.status().is_success(), "inscription refusée");
+        assert!(response.status().is_success(), "registration refused");
         Self::connect(http, server, email).await
     }
 
@@ -255,7 +255,7 @@ impl Seeder {
         assert!(response.status().is_success());
     }
 
-    /// Active le second facteur TOTP et renvoie sa graine.
+    /// Enables the TOTP second factor and returns its seed.
     async fn enable_totp(&self, email: &str) -> String {
         let secret = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
         let code = Totp::parse(secret).unwrap().generate(now()).code;
@@ -267,7 +267,7 @@ impl Seeder {
             .send()
             .await
             .unwrap();
-        assert!(response.status().is_success(), "activation TOTP refusée");
+        assert!(response.status().is_success(), "TOTP activation refused");
         secret.to_owned()
     }
 
@@ -326,9 +326,9 @@ impl Seeder {
     }
 }
 
-/// Envoie la file, comme l'app juste après une écriture (sans attendre en
-/// arrière-plan) : rien n'est refusé. Rend l'identifiant de `id` sur le
-/// serveur (une création porte d'abord un identifiant provisoire).
+/// Sends the outbox, like the app right after a write (without waiting in
+/// the background): nothing is refused. Returns the server id of `id` (a
+/// creation first carries a temporary id).
 async fn sent(connection: &mut verrou_vaultwarden::Connection, id: &str) -> String {
     connection.sync().await.unwrap();
     let report = connection.take_report();
@@ -343,7 +343,7 @@ async fn sent(connection: &mut verrou_vaultwarden::Connection, id: &str) -> Stri
 fn unlocked(step: LoginStep) -> verrou_vaultwarden::Unlocked {
     match step {
         LoginStep::Unlocked(unlocked) => *unlocked,
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
@@ -364,7 +364,7 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
     assert_eq!(
         items.iter().filter(|i| i.is_active()).count(),
         4,
-        "l'élément à la corbeille est à part"
+        "the trashed item is kept apart"
     );
 
     let github = items.iter().find(|i| i.title == "GitHub").unwrap();
@@ -400,7 +400,7 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
         "12 rue des Lilas\n74000 Annecy\nFrance"
     );
 
-    // Le fichier du compte ne contient aucun secret en clair.
+    // The account file contains no plain-text secret.
     let file = std::fs::read_to_string(store.dir().join("account.json")).unwrap();
     for secret in [
         "hunter2",
@@ -409,16 +409,13 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
         "4242 4242 4242 4242",
         PASSWORD,
     ] {
-        assert!(
-            !file.contains(secret),
-            "« {secret} » en clair sur le disque"
-        );
+        assert!(!file.contains(secret), "`{secret}` in plain text on disk");
     }
 
     let user_key = first.connection.user_key().await.unwrap();
     drop(first);
 
-    // Hors ligne : mauvais puis bon mot de passe.
+    // Offline: wrong then right password.
     assert!(matches!(
         unlock_with_password(&store, &SecretString::new("pas le bon")).await,
         Err(Error::WrongPassword)
@@ -431,12 +428,12 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
         4
     );
 
-    // Synchronisation par le jeton de renouvellement : rien n'a changé
-    // depuis le cache, rien à déchiffrer de nouveau.
+    // Sync with the refresh token: nothing changed since the cache,
+    // nothing new to decrypt.
     assert!(again.connection.sync().await.unwrap().is_none());
     drop(again);
 
-    // Chemin de Touch ID : la clé de l'utilisateur suffit.
+    // Touch ID path: the user key is enough.
     let by_key = unlock_with_user_key(&store, &user_key).await.unwrap();
     assert_eq!(
         by_key.vault.items.iter().filter(|i| i.is_active()).count(),
@@ -458,9 +455,8 @@ async fn login_decrypts_the_vault_and_unlocks_offline() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Chemin de la clé de sécurité, avec de fausses réponses `hmac-secret` :
-/// une clé principale et une de secours. Laisse une clé enrôlée, que la
-/// déconnexion doit effacer.
+/// Security key path, with fake `hmac-secret` answers: a main key and a
+/// backup one. Leaves an enrolled key, which logging out must erase.
 async fn security_key_unlock(store: &Store, by_key: Unlocked, user_key: &SecretString) {
     let store = store.clone();
     let main = HmacSecret::from_bytes([1; 32]);
@@ -509,8 +505,8 @@ async fn security_key_unlock(store: &Store, by_key: Unlocked, user_key: &SecretS
     let file = std::fs::read_to_string(store.dir().join("security-keys.json")).unwrap();
     assert!(!file.contains(user_key.expose()));
 
-    // Copie scellée d'une autre clé de coffre (la clé a changé depuis
-    // l'enrôlement) : périmée, toutes les clés enrôlées sont retirées.
+    // Sealed copy of another vault key (the key changed since
+    // enrollment): stale, all enrolled keys are removed.
     let other_key = SecretString::new(data_encoding::BASE64.encode(&[7; 64]));
     let stale = unlock_keys::seal(&other_key, &main, &[1, 1], &main_salt, "Principale", 0).unwrap();
     unlock_keys::add(&store, stale).unwrap();
@@ -518,15 +514,15 @@ async fn security_key_unlock(store: &Store, by_key: Unlocked, user_key: &SecretS
         unlock_with_security_key(&store, Some(&[1, 1]), &main).await,
         Err(Error::Crypto(_))
     ));
-    // Le SDK accepterait cette clé bien formée (et un coffre vide) : Verrou
-    // la vérifie, pour Touch ID aussi.
+    // The SDK would accept this well-formed key (and an empty vault): Verrou
+    // checks it, for Touch ID too.
     assert!(matches!(
         unlock_with_user_key(&store, &other_key).await,
         Err(Error::Crypto(_))
     ));
     assert_eq!(store.load_security_keys().unwrap(), []);
 
-    // Pour la déconnexion, qui doit l'oublier.
+    // For logout, which must forget it.
     let again = unlock_keys::seal(user_key, &main, &[1, 1], &main_salt, "Principale", 0).unwrap();
     unlock_keys::add(&store, again).unwrap();
 }
@@ -552,7 +548,7 @@ async fn totp_second_factor() {
         .await
         .unwrap()
     else {
-        panic!("le second facteur aurait dû être demandé");
+        panic!("the second factor should have been asked for");
     };
     assert_eq!(pending.methods(), [TwoFactorMethod::Authenticator]);
 
@@ -565,8 +561,8 @@ async fn totp_second_factor() {
         Err(Error::TwoFactorRejected(_))
     ));
 
-    // Le code de l'activation est déjà consommé (le serveur refuse qu'on le
-    // rejoue) : on prend celui de la période suivante, toléré par le serveur.
+    // The activation code is already used (the server refuses a replay):
+    // take the next period's, which the server tolerates.
     let code = Totp::parse(&secret).unwrap().generate(now() + 30).code;
     let right = TwoFactorAnswer {
         provider: TwoFactorMethod::Authenticator.provider(),
@@ -577,8 +573,8 @@ async fn totp_second_factor() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Clé de sécurité logicielle : produit, pour la même requête, exactement ce
-/// que produirait une `YubiKey` (attestation « none », signatures P-256).
+/// Software security key: produces, for the same request, exactly what a
+/// `YubiKey` would ("none" attestation, P-256 signatures).
 struct SoftwareKey {
     signing: p256::ecdsa::SigningKey,
     credential_id: Vec<u8>,
@@ -602,7 +598,7 @@ impl SoftwareKey {
         sha2::Sha256::digest(self.rp_id.as_bytes()).to_vec()
     }
 
-    /// Données d'authentification d'un enregistrement, avec la clé publique COSE.
+    /// Authenticator data of a registration, with the COSE public key.
     fn attestation_object(&self) -> Vec<u8> {
         use ciborium::Value as C;
         let point = self.signing.verifying_key().to_encoded_point(false);
@@ -622,7 +618,7 @@ impl SoftwareKey {
         let mut cose_bytes = Vec::new();
         ciborium::into_writer(&cose, &mut cose_bytes).unwrap();
         let mut auth_data = self.rp_hash();
-        auth_data.push(0x41); // présence + données attestées
+        auth_data.push(0x41); // presence + attested data
         auth_data.extend_from_slice(&0u32.to_be_bytes());
         auth_data.extend_from_slice(&[0u8; 16]); // AAGUID
         auth_data.extend_from_slice(
@@ -642,13 +638,13 @@ impl SoftwareKey {
         bytes
     }
 
-    /// Ce que fait la `YubiKey` quand on la touche.
+    /// What the `YubiKey` does when touched.
     fn sign(&self, request: &AssertionRequest) -> AssertionResponse {
         use p256::ecdsa::signature::Signer as _;
         assert_eq!(request.rp_id, self.rp_id);
         assert!(request.allow_credentials.contains(&self.credential_id));
         let mut auth_data = self.rp_hash();
-        auth_data.push(0x01); // présence de l'utilisateur
+        auth_data.push(0x01); // user presence
         auth_data.extend_from_slice(&1u32.to_be_bytes());
         let mut signed = auth_data.clone();
         signed.extend_from_slice(&request.client_data_hash);
@@ -663,7 +659,7 @@ impl SoftwareKey {
 }
 
 impl Seeder {
-    /// Enregistre la clé logicielle comme second facteur `WebAuthn`.
+    /// Registers the software key as a `WebAuthn` second factor.
     async fn enable_security_key(&self, email: &str) -> SoftwareKey {
         let options: Value = self
             .http
@@ -718,7 +714,7 @@ impl Seeder {
         let status = response.status();
         assert!(
             status.is_success(),
-            "enregistrement refusé : {}",
+            "registration refused: {}",
             response.text().await.unwrap()
         );
         key
@@ -737,16 +733,16 @@ async fn security_key_second_factor() {
         .await
         .unwrap()
     else {
-        panic!("le second facteur aurait dû être demandé");
+        panic!("the second factor should have been asked for");
     };
     let Some(TwoFactorMethod::WebAuthn { challenge }) = pending.methods().first().cloned() else {
         panic!(
-            "clé de sécurité absente des méthodes : {:?}",
+            "security key missing from the methods: {:?}",
             pending.methods()
         );
     };
 
-    // La requête vient du code de Verrou ; seule la signature est logicielle.
+    // The request comes from Verrou's code; only the signature is software.
     let request = assertion_request(pending.server(), &challenge).unwrap();
     let mut forged = key.sign(&request);
     forged.signature[10] ^= 0xff;
@@ -759,18 +755,18 @@ async fn security_key_second_factor() {
             pending.answer(&rejected).await,
             Err(Error::TwoFactorRejected(_))
         ),
-        "une signature altérée doit être refusée"
+        "a tampered signature must be refused"
     );
 
-    // Le serveur a consommé le défi : on en redemande un.
+    // The server used up the challenge: ask for a new one.
     let LoginStep::TwoFactor(pending) = login(&store, &server, &email, SecretString::new(PASSWORD))
         .await
         .unwrap()
     else {
-        panic!("le second facteur aurait dû être redemandé");
+        panic!("the second factor should have been asked for again");
     };
     let Some(TwoFactorMethod::WebAuthn { challenge }) = pending.methods().first().cloned() else {
-        panic!("clé de sécurité absente");
+        panic!("security key missing");
     };
     let request = assertion_request(pending.server(), &challenge).unwrap();
     let answer = TwoFactorAnswer {
@@ -783,7 +779,7 @@ async fn security_key_second_factor() {
 }
 
 impl Seeder {
-    /// L'élément tel que le serveur le garde, déchiffré par un autre client.
+    /// The item as the server keeps it, decrypted by another client.
     async fn fetch(&self, id: &str) -> CipherView {
         let model: bitwarden_api_api::models::CipherDetailsResponseModel = self
             .http
@@ -800,13 +796,13 @@ impl Seeder {
     }
 }
 
-/// Crée un identifiant rangé et favori, puis une note ; rend l'identifiant
-/// de l'identifiant créé et le coffre.
+/// Creates a login in a folder and favorite, then a note; returns the id
+/// of the created login and the vault.
 async fn create_login_and_note(
     connection: &mut verrou_vaultwarden::Connection,
     travail: &str,
 ) -> (String, verrou_vaultwarden::Decrypted) {
-    // Création d'un identifiant, rangé et favori.
+    // Creating a login, in a folder and favorite.
     let (id, vault) = connection
         .create(Draft {
             name: "Doctolib".to_owned(),
@@ -833,7 +829,7 @@ async fn create_login_and_note(
     );
     assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 5);
 
-    // Une note sécurisée : un brouillon sans identifiant.
+    // A secure note: a draft without a login.
     let (note, vault) = connection
         .create(Draft {
             name: "Digicode".to_owned(),
@@ -868,7 +864,7 @@ async fn create_edit_and_trash() {
         .find(|(_, name)| name == "Travail")
         .map(|(id, _)| id.clone())
         .unwrap();
-    // Une seconde session, ouverte avant les modifications : son cache vieillira.
+    // A second session, opened before the edits: its cache will go stale.
     let mut stale = unlock_with_password(&store, &SecretString::new(PASSWORD))
         .await
         .unwrap()
@@ -876,7 +872,7 @@ async fn create_edit_and_trash() {
 
     let (id, vault) = create_login_and_note(&mut connection, &travail).await;
 
-    // Modification de GitHub : le mot de passe change, le reste est intact.
+    // Editing GitHub: the password changes, the rest is intact.
     let github = vault.items.iter().find(|i| i.title == "GitHub").unwrap();
     let github_id = github.id.clone();
     let mut draft = connection.draft(&github_id).await.unwrap();
@@ -889,16 +885,16 @@ async fn create_edit_and_trash() {
     login_draft.password = Some(SecretString::new("nouveau-mot-de-passe"));
     login_draft.uris.push("https://gist.github.com".to_owned());
     draft.name = "GitHub perso".to_owned();
-    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    // Vaultwarden tolerates a one-second gap on the revision date.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let vault = connection.update(&github_id, draft.clone()).await.unwrap();
     let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
     assert_eq!(github.title, "GitHub perso");
     assert_eq!(github.urls.len(), 2);
-    assert!(github.has_totp(), "la graine TOTP est gardée");
+    assert!(github.has_totp(), "the TOTP seed is kept");
     assert!(
         github.fields.iter().any(|f| f.label == "PIN"),
-        "champs personnalisés gardés"
+        "custom fields kept"
     );
     sent(&mut connection, &github_id).await;
     let stored = seeder.fetch(&github_id).await;
@@ -913,7 +909,7 @@ async fn create_edit_and_trash() {
     amend_like_the_extension(&mut connection, &seeder, &github_id).await;
     link_to_a_mac_app(&mut connection, &seeder, &github_id).await;
 
-    // Un autre type : seul le titre change, la carte reste entière.
+    // Another type: only the title changes, the card stays whole.
     let visa = vault
         .items
         .iter()
@@ -938,7 +934,7 @@ async fn create_edit_and_trash() {
         "4242 4242 4242 4242"
     );
 
-    // Corbeille : l'élément y passe, le serveur le garde (restaurable).
+    // Trash: the item goes there, the server keeps it (restorable).
     let vault = connection.trash(&id).await.unwrap();
     assert_eq!(
         vault.items.iter().find(|i| i.id == id).map(|i| i.state),
@@ -956,8 +952,8 @@ async fn create_edit_and_trash() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Une copie périmée ne peut pas écraser la modification : elle devient
-/// une copie, la version du serveur reste.
+/// A stale copy cannot overwrite the edit: it becomes a copy, the server
+/// version stays.
 async fn stale_edit_becomes_a_copy(
     stale: &mut verrou_vaultwarden::Connection,
     github_id: &str,
@@ -965,7 +961,7 @@ async fn stale_edit_becomes_a_copy(
 ) {
     "GitHub ailleurs".clone_into(&mut draft.name);
     stale.update(github_id, draft).await.unwrap();
-    let refreshed = stale.sync().await.unwrap().expect("le serveur a changé");
+    let refreshed = stale.sync().await.unwrap().expect("the server changed");
     assert_eq!(
         stale.take_report().conflicts,
         [format!(
@@ -976,8 +972,8 @@ async fn stale_edit_becomes_a_copy(
     assert!(refreshed.items.iter().any(|i| i.title == "GitHub perso"));
 }
 
-/// Ce que l'extension écrit : nouveau mot de passe et graine TOTP d'un
-/// identifiant existant ; son identifiant n'est pas remplacé.
+/// What the extension writes: new password and TOTP seed of an existing
+/// login; its username is not replaced.
 async fn amend_like_the_extension(
     connection: &mut verrou_vaultwarden::Connection,
     seeder: &Seeder,
@@ -1026,9 +1022,9 @@ async fn amend_like_the_extension(
     );
 }
 
-/// Remplissage dans les apps (⌘\) : l'app se relie par une adresse
-/// `macapp://`, gardée sur le serveur avec la règle « jamais » (les
-/// extensions Bitwarden ne la proposent sur aucune page).
+/// Autofill in apps (⌘\): the app is linked by a `macapp://` address,
+/// kept on the server with the "never" rule (the Bitwarden extensions
+/// suggest it on no page).
 async fn link_to_a_mac_app(
     connection: &mut verrou_vaultwarden::Connection,
     seeder: &Seeder,
@@ -1056,7 +1052,7 @@ async fn link_to_a_mac_app(
     assert_eq!(app.r#match, Some(bitwarden_vault::UriMatchType::Never));
 }
 
-/// Corbeille → restauration, archives aller-retour, favori, historique visible.
+/// Trash -> restore, archive round trip, favorite, visible history.
 async fn archive_restore_and_favorite(
     connection: &mut verrou_vaultwarden::Connection,
     trashed: &str,
@@ -1065,16 +1061,16 @@ async fn archive_restore_and_favorite(
     let state = |vault: &verrou_vaultwarden::Decrypted, id: &str| {
         vault.items.iter().find(|i| i.id == id).map(|i| i.state)
     };
-    // L'élément à la corbeille revient.
+    // The trashed item comes back.
     let vault = connection.restore(trashed).await.unwrap();
     assert_eq!(state(&vault, trashed), Some(ItemState::Active));
 
-    // Archives : hors de la liste et du remplissage, puis de retour.
+    // Archive: out of the list and of autofill, then back.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let vault = connection.set_archived(github_id, true).await.unwrap();
     assert_eq!(state(&vault, github_id), Some(ItemState::Archived));
     let index = verrou_core::Vault::new(vault.items);
-    // (La copie de conflit faite plus haut reste proposée.)
+    // (The conflict copy made above is still suggested.)
     assert!(
         index
             .suggestions_for("https://github.com")
@@ -1084,14 +1080,12 @@ async fn archive_restore_and_favorite(
     let vault = connection.set_archived(github_id, false).await.unwrap();
     assert_eq!(state(&vault, github_id), Some(ItemState::Active));
 
-    // Favori, et anciens mots de passe lisibles dans l'élément.
+    // Favorite, and old passwords readable in the item.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let vault = connection.set_favorite(github_id, false).await.unwrap();
     let github = vault.items.iter().find(|i| i.id == github_id).unwrap();
     assert!(!github.favorite);
-    let history = github
-        .field("history-0")
-        .expect("historique des mots de passe");
+    let history = github.field("history-0").expect("password history");
     assert_eq!(history.value.expose(), "nouveau-mot-de-passe");
     assert_eq!(
         github
@@ -1101,13 +1095,13 @@ async fn archive_restore_and_favorite(
             .expose(),
         "depuis-brave"
     );
-    // Restauration, archives aller-retour et favori : acceptés dans l'ordre.
+    // Restore, archive round trip and favorite: accepted in order.
     sent(connection, github_id).await;
 }
 
-/// Modèle Wi-Fi et champs personnalisés : le champ `verrou:type` part au
-/// serveur comme un champ texte ordinaire, revient comme modèle, et survit à
-/// la modification des autres champs.
+/// Wi-Fi template and custom fields: the `verrou:type` field goes to the
+/// server as an ordinary text field, comes back as a template, and
+/// survives edits to the other fields.
 #[tokio::test]
 async fn templates_and_custom_fields() {
     let Some(server) = server() else { return };
@@ -1144,26 +1138,29 @@ async fn templates_and_custom_fields() {
     let id = sent(&mut connection, &id).await;
     assert_eq!(wifi.template(), Some(verrou_core::Template::Wifi));
     assert_eq!(wifi.subtitle, "Martin-5G");
-    let password = wifi.field_labelled("Mot de passe").unwrap();
+    // French labels written by earlier versions: still the template's fields.
+    let password = wifi
+        .field_labelled(verrou_core::template::WIFI_PASSWORD)
+        .unwrap();
     assert_eq!(password.kind, FieldKind::Concealed);
     assert_eq!(password.value.expose(), "lilas-27");
 
-    // Ce que voit un autre client (le coffre web) : un champ texte de plus.
+    // What another client (the web vault) sees: one more text field.
     let stored = seeder.fetch(&id).await;
     let marker = stored
         .fields
         .unwrap()
         .into_iter()
         .find(|f| f.name.as_deref() == Some("verrou:type"))
-        .expect("champ du modèle sur le serveur");
+        .expect("template field on the server");
     assert_eq!(marker.value.as_deref(), Some("wifi"));
     assert_eq!(marker.r#type, bitwarden_vault::FieldType::Text);
 
-    // Renommer, supprimer, ajouter une case à cocher : le modèle reste.
+    // Rename, delete, add a checkbox: the template stays.
     let mut draft = connection.draft(&id).await.unwrap();
     assert_eq!(draft.template, Some(verrou_core::Template::Wifi));
     let mut fields = draft.fields.take().unwrap();
-    assert_eq!(fields.len(), 3, "le champ réservé n'est pas proposé");
+    assert_eq!(fields.len(), 3, "the reserved field is not offered");
     fields.remove(2);
     "Clé WPA".clone_into(&mut fields[1].name);
     fields.push(field("Réseau invité", "true", CustomFieldKind::Boolean));
@@ -1181,7 +1178,7 @@ async fn templates_and_custom_fields() {
     assert_eq!(labels, ["Nom du réseau (SSID)", "Clé WPA", "Réseau invité"]);
     assert_eq!(
         wifi.field_labelled("Réseau invité").unwrap().value.expose(),
-        "Oui"
+        "Yes"
     );
     sent(&mut connection, &id).await;
     let stored = seeder.fetch(&id).await;
@@ -1189,8 +1186,7 @@ async fn templates_and_custom_fields() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Export des Mots de passe d'Apple : déjà présent, nouveau mot de passe,
-/// nouveaux éléments.
+/// Apple Passwords export: already present, new password, new items.
 const APPLE_EXPORT: &str = "Title,URL,Username,Password,Notes,OTPAuth\n\
     github.com (camille),https://github.com/,camille,hunter2-hunter2,,\n\
     github.com (camille),https://github.com/login,Camille,nouveau-gh,,\n\
@@ -1249,7 +1245,7 @@ async fn import_in_bulk_then_clean_duplicates() {
             _ => {}
         }
     }
-    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    // Vaultwarden tolerates a one-second gap on the revision date.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let report = connection.import(plan).await.unwrap();
     assert_eq!((report.created, report.updated), (2, 1));
@@ -1264,8 +1260,8 @@ async fn import_in_bulk_then_clean_duplicates() {
     assert_eq!(doctolib.folder.as_deref(), Some("Import Apple"));
     assert_eq!(doctolib.field("password").unwrap().value.expose(), "d0ct0");
 
-    // Le nouveau mot de passe remplace l'ancien, gardé dans l'historique ;
-    // le reste de l'élément (code TOTP, sites) est intact.
+    // The new password replaces the old one, kept in the history; the rest
+    // of the item (TOTP code, sites) is intact.
     let stored = seeder.fetch(&github_id).await;
     assert_eq!(
         stored.password_history.unwrap()[0].password,
@@ -1277,14 +1273,14 @@ async fn import_in_bulk_then_clean_duplicates() {
     assert_eq!(
         github_login.uris.unwrap().len(),
         1,
-        "même hôte : pas de site en plus"
+        "same host: no extra site"
     );
 
     import_again_then_trash_duplicates(&mut connection, &seeder).await;
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Un second import crée un doublon, que la corbeille en masse retire.
+/// A second import creates a duplicate, which bulk trash removes.
 async fn import_again_then_trash_duplicates(
     connection: &mut verrou_vaultwarden::Connection,
     seeder: &Seeder,
@@ -1293,7 +1289,7 @@ async fn import_again_then_trash_duplicates(
     use verrou_core::import::parse;
     use verrou_vaultwarden::{Destination, ImportPlan};
 
-    // Vers un dossier existant : il n'est pas recréé.
+    // Into an existing folder: it is not created again.
     let mut again = parse(APPLE_EXPORT.as_bytes(), None).unwrap();
     let duplicate = again.items.remove(3);
     let report = connection
@@ -1305,21 +1301,24 @@ async fn import_again_then_trash_duplicates(
         .await
         .unwrap();
     assert_eq!(report.created, 1);
-    assert_eq!(report.vault.folders.len(), 2, "Travail et Import Apple");
+    assert_eq!(report.vault.folders.len(), 2, "Travail and Import Apple");
 
-    // Les doublons : Forum, deux fois ; un seul part à la corbeille, en une
-    // requête.
+    // The duplicates: Forum, twice; only one goes to the trash, in one
+    // request.
     let groups = find_duplicates(&report.vault.items);
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].label, "forum.fr");
     assert!(groups[0].same_password);
-    assert!(groups[0].members[1].preselected, "certain : coché d'office");
+    assert!(
+        groups[0].members[1].preselected,
+        "certain: checked by default"
+    );
     let extra = groups[0].ids()[1..].to_vec();
     let vault = connection.trash_many(&extra).await.unwrap();
     assert_eq!(find_duplicates(&vault.items), Vec::new());
     assert_eq!(vault.items.iter().filter(|i| i.is_active()).count(), 6);
     assert!(seeder.fetch(&extra[0]).await.deleted_date.is_some());
-    // Un élément introuvable : rien n'est envoyé.
+    // An item that can't be found: nothing is sent.
     assert!(matches!(
         connection
             .trash_many(&[uuid::Uuid::new_v4().to_string()])
@@ -1328,10 +1327,10 @@ async fn import_again_then_trash_duplicates(
     ));
 }
 
-// MARK: Fusion de doublons
+// MARK: Merging duplicates
 
-/// Le même compte, importé trois fois : fusionné dans l'élément gardé, les
-/// copies à la corbeille.
+/// The same account, imported three times: merged into the kept item, the
+/// copies in the trash.
 #[tokio::test]
 async fn merge_duplicates_into_the_kept_item() {
     use verrou_core::duplicates::{Confidence, find_duplicates};
@@ -1350,7 +1349,7 @@ async fn merge_duplicates_into_the_kept_item() {
     let groups = find_duplicates(&first.vault.items);
     assert_eq!(groups.len(), 1, "{groups:#?}");
     let group = &groups[0];
-    assert_eq!(group.kept(), with_totp, "le code à usage unique d'abord");
+    assert_eq!(group.kept(), with_totp, "the one-time code first");
     assert_eq!(group.confidence, Confidence::Certain);
     let level = |id: &str| {
         group
@@ -1363,7 +1362,7 @@ async fn merge_duplicates_into_the_kept_item() {
     assert_eq!(level(&plain), Some(Confidence::Certain));
     assert_eq!(level(&stale), Some(Confidence::Probable));
 
-    // Vaultwarden tolère une seconde d'écart sur la date de révision.
+    // Vaultwarden tolerates a one-second gap on the revision date.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let outcome = connection
         .merge_duplicates(group.kept(), &group.ids()[1..])
@@ -1372,7 +1371,7 @@ async fn merge_duplicates_into_the_kept_item() {
     assert_eq!(outcome.trashed, 2);
     assert_eq!(
         outcome.summary.uris, 1,
-        "www.maif.fr ; connect.maif.fr déjà là"
+        "www.maif.fr; connect.maif.fr already there"
     );
     assert_eq!(outcome.summary.notes, 2);
     assert_eq!(outcome.summary.fields, 1);
@@ -1400,16 +1399,16 @@ async fn merge_duplicates_into_the_kept_item() {
     assert_eq!(
         stored.password_history.unwrap()[0].password,
         "ancien-maif",
-        "le mot de passe périmé, gardé dans l'historique"
+        "the stale password, kept in the history"
     );
     let notes = stored.notes.unwrap();
     assert!(notes.contains("Contrat habitation") && notes.contains("Contrat auto"));
-    assert!(notes.contains("— Fusionné depuis « "));
+    assert!(notes.contains("— Merged from \""));
     assert_eq!(stored.fields.unwrap()[0].name.as_deref(), Some("Agence"));
     for id in [&plain, &stale] {
         assert!(
             seeder.fetch(id).await.deleted_date.is_some(),
-            "{id} à la corbeille"
+            "{id} in the trash"
         );
     }
     merging_is_refused(&mut connection, &seeder, &with_totp, &plain).await;
@@ -1425,9 +1424,9 @@ fn seeded_login(username: &str, password: &str, uri: Option<&str>, totp: Option<
     })
 }
 
-/// Le même compte, trois fois (le plus ancien d'abord : son mot de passe
-/// est périmé), et deux services d'un même domaine, qui ne sont pas des
-/// doublons. Rend (périmé, simple, avec code).
+/// The same account, three times (the oldest first: its password is
+/// stale), and two services on the same domain, which are not duplicates.
+/// Returns (stale, plain, with code).
 async fn seed_maif(seeder: &Seeder) -> (String, String, String) {
     let stale = seeder
         .cipher(json!({
@@ -1465,7 +1464,7 @@ async fn seed_maif(seeder: &Seeder) -> (String, String, String) {
     (stale, plain, with_totp)
 }
 
-/// Une copie à la corbeille ne se fusionne plus ; une carte non plus.
+/// A copy in the trash can no longer be merged; nor can a card.
 async fn merging_is_refused(
     connection: &mut verrou_vaultwarden::Connection,
     seeder: &Seeder,
@@ -1496,7 +1495,7 @@ async fn merging_is_refused(
 
 // MARK: Passkeys
 
-/// Vérifie une assertion `WebAuthn` (ES256) avec une clé publique SPKI.
+/// Verifies a `WebAuthn` assertion (ES256) with an SPKI public key.
 fn verify_assertion(public_key: &[u8], assertion: &verrou_core::passkey::Assertion) {
     use p256::ecdsa::signature::Verifier as _;
     use p256::pkcs8::DecodePublicKey as _;
@@ -1505,7 +1504,7 @@ fn verify_assertion(public_key: &[u8], assertion: &verrou_core::passkey::Asserti
     let mut message = assertion.authenticator_data.clone();
     message.extend_from_slice(&sha2::Sha256::digest(&assertion.client_data_json));
     let signature = p256::ecdsa::DerSignature::try_from(assertion.signature.as_slice()).unwrap();
-    key.verify(&message, &signature).expect("signature valide");
+    key.verify(&message, &signature).expect("valid signature");
 }
 
 fn assertion_for(passkey: &verrou_core::Passkey, page: &str) -> verrou_core::passkey::Assertion {
@@ -1521,11 +1520,11 @@ fn assertion_for(passkey: &verrou_core::Passkey, page: &str) -> verrou_core::pas
     .unwrap()
 }
 
-/// Une passkey écrite par un client Bitwarden est utilisable dans Verrou, et
-/// celle que Verrou crée se relit, champ par champ, avec le SDK des apps
-/// officielles ; le compteur avance et la suppression ne touche qu'à elle.
+/// A passkey written by a Bitwarden client is usable in Verrou, and the
+/// one Verrou creates reads back, field by field, with the official apps'
+/// SDK; the counter moves on and deletion only touches it.
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // one full walkthrough, readable in one go
 async fn passkeys_round_trip_with_bitwarden() {
     use p256::pkcs8::{EncodePrivateKey as _, EncodePublicKey as _};
     use verrou_core::passkey::{RegistrationRequest, b64url, register};
@@ -1534,7 +1533,7 @@ async fn passkeys_round_trip_with_bitwarden() {
     let email = unique_email();
     let seeder = Seeder::register(&server, &email).await;
 
-    // Comme le ferait l'extension Bitwarden : clé PKCS#8 P-256, identifiant UUID.
+    // As the Bitwarden extension would: PKCS#8 P-256 key, UUID id.
     let key = p256::ecdsa::SigningKey::random(&mut rand::rngs::OsRng);
     let bitwarden_id = seeder
         .cipher(json!({
@@ -1583,7 +1582,7 @@ async fn passkeys_round_trip_with_bitwarden() {
     assert_eq!(theirs.user_name.as_deref(), Some("camille"));
     assert_eq!(theirs.counter, 0);
     assert!(theirs.discoverable);
-    // Verrou signe avec la passkey de Bitwarden, puis enregistre le compteur.
+    // Verrou signs with Bitwarden's passkey, then saves the counter.
     let assertion = assertion_for(&theirs, "https://webauthn.io/");
     verify_assertion(
         key.verifying_key().to_public_key_der().unwrap().as_bytes(),
@@ -1601,7 +1600,7 @@ async fn passkeys_round_trip_with_bitwarden() {
     assert_eq!(credentials[0].counter, "1");
     assert_eq!(credentials[0].user_display_name.as_deref(), Some("Camille"));
 
-    // Verrou crée une passkey dans l'identifiant GitHub…
+    // Verrou creates a passkey in the GitHub login…
     let (ours, registration) = register(
         &RegistrationRequest {
             page_url: "https://github.com/settings/security",
@@ -1628,9 +1627,9 @@ async fn passkeys_round_trip_with_bitwarden() {
     assert_eq!(
         github.field("password").unwrap().value.expose(),
         "hunter2-hunter2",
-        "le reste de l'élément est gardé"
+        "the rest of the item is kept"
     );
-    // … que le SDK de Bitwarden relit tel quel.
+    // … which Bitwarden's SDK reads back as is.
     let stored = seeder.fetch(&github_id).await;
     let credential = &stored.login.unwrap().fido2_credentials.unwrap()[0];
     assert_eq!(credential.credential_id, ours.credential_id);
@@ -1653,7 +1652,7 @@ async fn passkeys_round_trip_with_bitwarden() {
     assert_eq!(credential.discoverable, "true");
     assert_eq!(credential.creation_date.timestamp(), 1_760_000_000);
 
-    // Relue du cache (hors ligne), elle signe pour GitHub.
+    // Read back from the cache (offline), it signs for GitHub.
     let reopened = unlock_with_password(&store, &SecretString::new(PASSWORD))
         .await
         .unwrap();
@@ -1669,7 +1668,7 @@ async fn passkeys_round_trip_with_bitwarden() {
         &assertion_for(read_back, "https://github.com/login"),
     );
 
-    // Une passkey dans un nouvel identifiant, pour un site inconnu.
+    // A passkey in a new login, for an unknown site.
     let (fresh, _) = register(
         &RegistrationRequest {
             page_url: "https://exemple.fr/inscription",
@@ -1703,7 +1702,7 @@ async fn passkeys_round_trip_with_bitwarden() {
     assert_eq!(item.subtitle, "dominique");
     assert!(vault.passkeys.iter().any(|p| p.item == created));
 
-    // Suppression : seule la passkey part.
+    // Deletion: only the passkey goes.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let vault = connection
         .delete_passkey(&github_id, &ours.credential_id)
@@ -1724,8 +1723,8 @@ async fn passkeys_round_trip_with_bitwarden() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Une clé SSH générée par Verrou : un élément « clé SSH » (type 5) tel que
-/// les apps Bitwarden le lisent, la clé privée au format OpenSSH.
+/// An SSH key generated by Verrou: an "SSH key" item (type 5) as the
+/// Bitwarden apps read it, the private key in OpenSSH format.
 #[tokio::test]
 async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
     use bitwarden_vault::CipherType;
@@ -1763,7 +1762,7 @@ async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
     let parsed = ssh_key::PrivateKey::from_openssh(private.value.expose()).unwrap();
     assert_eq!(parsed.public_key().to_openssh().unwrap(), public_key);
 
-    // Ce qu'un autre client Bitwarden lit sur le serveur.
+    // What another Bitwarden client reads on the server.
     let id = sent(&mut connection, &id).await;
     let stored = seeder.fetch(&id).await;
     assert_eq!(stored.r#type, CipherType::SshKey);
@@ -1780,21 +1779,21 @@ async fn generated_ssh_key_is_a_bitwarden_ssh_item() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Contenu de test : assez gros pour plusieurs blocs, avec un repère qu'on
-/// ne doit jamais retrouver en clair sur le disque ni sur le serveur.
+/// Test content: big enough for several blocks, with a marker that must
+/// never be found in plain text on disk or on the server.
 fn sample_file(size: usize) -> Vec<u8> {
     let marker = b"REPERE-EN-CLAIR-";
     let mut bytes: Vec<u8> = marker.iter().copied().cycle().take(size).collect();
-    // De la variété après le repère, pour que les blocs diffèrent.
+    // Some variety after the marker, so the blocks differ.
     for (i, byte) in bytes.iter_mut().enumerate().skip(marker.len()) {
         *byte = byte.wrapping_add((i / 7) as u8);
     }
     bytes
 }
 
-/// Pièces jointes : ajout (v2), synchronisation, lecture par Verrou et par le
-/// SDK officiel, conservation après modification de l'élément, suppression ;
-/// puis un document (note + fichier) et un import avec fichier.
+/// Attachments: upload (v2), sync, reading by Verrou and by the official
+/// SDK, kept after the item is edited, deletion; then a document (note +
+/// file) and an import with a file.
 #[tokio::test]
 async fn attachments_upload_download_and_delete() {
     let Some(server) = server() else { return };
@@ -1818,7 +1817,7 @@ async fn attachments_upload_download_and_delete() {
         .clone();
     assert_eq!(connection.attachments(&github).await.unwrap(), Vec::new());
 
-    // Ajout : le serveur ne reçoit que du chiffré.
+    // Upload: the server only receives ciphertext.
     let contents = sample_file(300_000);
     connection
         .add_attachment(&github, " relevé de compte.pdf ", &contents)
@@ -1827,10 +1826,10 @@ async fn attachments_upload_download_and_delete() {
     let list = connection.attachments(&github).await.unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].file_name.as_deref(), Some("relevé de compte.pdf"));
-    assert!(list[0].size > contents.len() as u64, "taille du chiffré");
+    assert!(list[0].size > contents.len() as u64, "ciphertext size");
     let attachment = list[0].id.clone();
 
-    // Lecture : mêmes octets.
+    // Read: same bytes.
     let (name, downloaded) = connection
         .download_attachment(&github, &attachment)
         .await
@@ -1838,7 +1837,7 @@ async fn attachments_upload_download_and_delete() {
     assert_eq!(name, "relevé de compte.pdf");
     assert_eq!(downloaded.as_slice(), contents.as_slice());
 
-    // Rien en clair dans le cache (ni le nom, ni le contenu).
+    // Nothing in plain text in the cache (neither the name nor the content).
     let mut on_disk = Vec::new();
     for entry in std::fs::read_dir(store.dir()).unwrap() {
         on_disk.extend(std::fs::read(entry.unwrap().path()).unwrap());
@@ -1849,7 +1848,7 @@ async fn attachments_upload_download_and_delete() {
 
     official_sdk_reads(&seeder, &github, &contents).await;
 
-    // Modifier l'élément garde sa pièce jointe, lisible.
+    // Editing the item keeps its attachment, readable.
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     let mut draft = connection.draft(&github).await.unwrap();
     draft.name = "GitHub (pièces)".to_owned();
@@ -1860,7 +1859,7 @@ async fn attachments_upload_download_and_delete() {
         .unwrap();
     assert_eq!(again.as_slice(), contents.as_slice());
 
-    // Une autre session la voit après synchronisation.
+    // Another session sees it after sync.
     let mut other = unlock_with_password(&store, &SecretString::new(PASSWORD))
         .await
         .unwrap()
@@ -1868,7 +1867,7 @@ async fn attachments_upload_download_and_delete() {
     other.sync().await.unwrap();
     assert_eq!(other.attachments(&github).await.unwrap().len(), 1);
 
-    // Suppression.
+    // Deletion.
     connection
         .delete_attachment(&github, &attachment)
         .await
@@ -1887,7 +1886,7 @@ async fn attachments_upload_download_and_delete() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Le SDK officiel, comme une app Bitwarden, relit le fichier envoyé par
+/// The official SDK, like a Bitwarden app, reads back the file sent by
 /// Verrou.
 async fn official_sdk_reads(seeder: &Seeder, id: &str, contents: &[u8]) {
     let model: bitwarden_api_api::models::CipherDetailsResponseModel = seeder
@@ -1916,7 +1915,7 @@ async fn official_sdk_reads(seeder: &Seeder, id: &str, contents: &[u8]) {
         .bytes()
         .await
         .unwrap();
-    assert_eq!(encrypted[0], 2, "EncArrayBuffer de type 2");
+    assert_eq!(encrypted[0], 2, "type 2 EncArrayBuffer");
     assert!(!String::from_utf8_lossy(&encrypted).contains("REPERE-EN-CLAIR"));
     let plain = seeder
         .sdk
@@ -1927,12 +1926,12 @@ async fn official_sdk_reads(seeder: &Seeder, id: &str, contents: &[u8]) {
     assert_eq!(plain, contents);
 }
 
-/// Un document (note + fichier), puis un import avec fichier.
+/// A document (note + file), then an import with a file.
 async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
     use verrou_core::import::{ImportKind, ImportedFile, ImportedItem};
     use verrou_vaultwarden::{Destination, ImportPlan};
 
-    // Un document : une note au nom du fichier, le fichier joint.
+    // A document: a note named after the file, the file attached.
     let scan = sample_file(4_096);
     let (document, vault) = connection
         .create_document("Passeport.pdf", &scan, None)
@@ -1949,7 +1948,7 @@ async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
         .unwrap();
     assert_eq!(read.as_slice(), scan.as_slice());
 
-    // Import d'un élément avec fichier (comme un document de 1Password).
+    // Import of an item with a file (like a 1Password document).
     let imported = ImportedItem {
         kind: ImportKind::SecureNote,
         title: "Bail".to_owned(),
@@ -1993,20 +1992,20 @@ async fn document_and_import(connection: &mut verrou_vaultwarden::Connection) {
     assert_eq!(read.as_slice(), b"loyer : 800");
 }
 
-/// Compte du parcours de bout en bout des apps (`scripts/e2e.sh`,
-/// `scripts/ios-e2e.sh`) : pas un test, un outil, lancé à la main.
+/// Account for the apps' end-to-end walkthrough (`scripts/e2e.sh`,
+/// `scripts/ios-e2e.sh`): not a test, a tool, run by hand.
 ///
 /// ```sh
 /// VERROU_TEST_SERVER=http://localhost:8118 VERROU_SEED_EMAIL=camille@verrou.test \
 ///   cargo test -p verrou-vaultwarden --test server -- --ignored --nocapture seed_walkthrough_account
 /// ```
 ///
-/// 9 éléments actifs (identifiants, carte, identité, notes, réseau Wi-Fi,
-/// un élément protégé), 1 à la corbeille, les dossiers « Personnel » et
-/// « Travail », second facteur TOTP. Affiche `SEED_EMAIL`, `SEED_PASSWORD`
-/// et `SEED_TOTP`.
+/// 9 active items (logins, card, identity, notes, Wi-Fi network, a
+/// protected item), 1 in the trash, the "Personnel" and "Travail"
+/// folders, TOTP second factor. Prints `SEED_EMAIL`, `SEED_PASSWORD` and
+/// `SEED_TOTP`.
 #[tokio::test]
-#[ignore = "outil : prépare le compte du parcours de bout en bout"]
+#[ignore = "tool: prepares the end-to-end walkthrough account"]
 async fn seed_walkthrough_account() {
     let Some(server) = server() else { return };
     let email = std::env::var("VERROU_SEED_EMAIL").unwrap_or_else(|_| unique_email());
@@ -2045,7 +2044,7 @@ async fn seed_walkthrough_account() {
         "7391-ronce-Ardoise",
         "https://www.banque.fr",
     );
-    // Élément protégé : ses secrets demandent une confirmation.
+    // Protected item: its secrets require a confirmation.
     bank["reprompt"] = json!(1);
     seeder.cipher(bank).await;
     seeder

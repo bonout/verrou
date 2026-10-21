@@ -1,5 +1,5 @@
-//! Codes à usage unique (RFC 6238), à partir d'une graine Base32 ou d'une URI
-//! `otpauth://`.
+//! One-time codes (RFC 6238), from a Base32 seed or an
+//! `otpauth://` URI.
 
 use hmac::{Hmac, Mac};
 use thiserror::Error;
@@ -7,8 +7,7 @@ use url::Url;
 
 macro_rules! hmac_digest {
     ($hash:ty, $key:expr, $msg:expr) => {{
-        let mut mac =
-            Hmac::<$hash>::new_from_slice($key).expect("HMAC accepte toute longueur de clé");
+        let mut mac = Hmac::<$hash>::new_from_slice($key).expect("HMAC accepts any key length");
         mac.update($msg);
         mac.finalize().into_bytes().to_vec()
     }};
@@ -23,24 +22,24 @@ pub enum Algorithm {
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum TotpError {
-    #[error("graine TOTP vide")]
+    #[error("empty TOTP seed")]
     Empty,
-    #[error("graine TOTP illisible (Base32 attendu)")]
+    #[error("unreadable TOTP seed (Base32 expected)")]
     InvalidSecret,
-    #[error("URI otpauth invalide")]
+    #[error("invalid otpauth URI")]
     InvalidUri,
-    #[error("paramètre TOTP non pris en charge : {0}")]
+    #[error("unsupported TOTP parameter: {0}")]
     Unsupported(String),
-    #[error("les codes HOTP (à compteur) ne sont pas pris en charge, seulement les codes TOTP")]
+    #[error("HOTP (counter-based) codes are not supported, only TOTP codes")]
     Hotp,
-    #[error("ce QR code ne contient pas de code à usage unique")]
+    #[error("this QR code does not contain a one-time code")]
     NotOtp,
-    #[error("export Google Authenticator illisible")]
+    #[error("unreadable Google Authenticator export")]
     InvalidMigration,
 }
 
-/// Paramètres d'un générateur TOTP. La graine décodée est effacée à la
-/// libération.
+/// Parameters of a TOTP generator. The decoded seed is wiped when
+/// dropped.
 #[derive(Clone, Debug)]
 pub struct Totp {
     secret: zeroize::Zeroizing<Vec<u8>>,
@@ -49,12 +48,12 @@ pub struct Totp {
     pub algorithm: Algorithm,
 }
 
-/// Un code et sa fenêtre de validité.
+/// A code and its validity window.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TotpCode {
     pub code: String,
     pub period: u64,
-    /// Secondes restantes avant le code suivant.
+    /// Seconds left before the next code.
     pub remaining: u64,
 }
 
@@ -130,12 +129,12 @@ impl Totp {
         }
     }
 
-    /// Graine décodée (lecture des QR codes).
+    /// Decoded seed (QR code reading).
     pub(crate) fn secret(&self) -> &[u8] {
         &self.secret
     }
 
-    /// Code valable à l'instant `unix_time` (secondes).
+    /// Code valid at the instant `unix_time` (seconds).
     pub fn generate(&self, unix_time: u64) -> TotpCode {
         let counter = unix_time / self.period;
         let msg = counter.to_be_bytes();
@@ -144,7 +143,7 @@ impl Totp {
             Algorithm::Sha256 => hmac_digest!(sha2::Sha256, &self.secret, &msg),
             Algorithm::Sha512 => hmac_digest!(sha2::Sha512, &self.secret, &msg),
         };
-        // Troncature dynamique, RFC 4226 §5.3.
+        // Dynamic truncation, RFC 4226 §5.3.
         let offset = (digest[digest.len() - 1] & 0x0f) as usize;
         let binary = (u32::from(digest[offset]) & 0x7f) << 24
             | u32::from(digest[offset + 1]) << 16
@@ -180,7 +179,7 @@ fn decode_base32(input: &str) -> Result<zeroize::Zeroizing<Vec<u8>>, TotpError> 
 mod tests {
     use super::*;
 
-    // Vecteurs de la RFC 6238, annexe B (graine ASCII « 12345678901234567890 »).
+    // Vectors from RFC 6238, appendix B (ASCII seed "12345678901234567890").
     const RFC_SECRET: &str = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
 
     #[test]

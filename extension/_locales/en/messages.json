@@ -1,0 +1,492 @@
+{
+  "extDescription": {
+    "message": "Fills and saves your logins in Verrou, the password manager for Vaultwarden."
+  },
+  "settingBridge": {
+    "message": "Brave, Firefox and the terminal"
+  },
+  "verrouNotResponding": {
+    "message": "Verrou is not responding"
+  },
+  "verrouNotRespondingDetail": {
+    "message": "Verrou is not responding ($DETAIL$)",
+    "placeholders": {
+      "detail": {
+        "content": "$1"
+      }
+    }
+  },
+  "verrouLocked": {
+    "message": "Verrou is locked"
+  },
+  "verrouUnreachable": {
+    "message": "Verrou can't be reached"
+  },
+  "unlock": {
+    "message": "Unlock"
+  },
+  "unlockWait": {
+    "message": "Unlock Verrou…"
+  },
+  "unlockHint": {
+    "message": "Touch ID or master password"
+  },
+  "confirmInVerrou": {
+    "message": "Confirm in Verrou"
+  },
+  "confirmInVerrouWait": {
+    "message": "Confirm in Verrou…"
+  },
+  "close": {
+    "message": "Close"
+  },
+  "cancel": {
+    "message": "Cancel"
+  },
+  "ok": {
+    "message": "OK"
+  },
+  "save": {
+    "message": "Save"
+  },
+  "saving": {
+    "message": "Saving…"
+  },
+  "saveFailed": {
+    "message": "Could not save"
+  },
+  "newLogin": {
+    "message": "New login"
+  },
+  "otherLogin": {
+    "message": "Fill with another login…"
+  },
+  "noTab": {
+    "message": "no tab"
+  },
+  "pairRefused": {
+    "message": "Pairing refused in Verrou."
+  },
+  "pairBusy": {
+    "message": "A pairing is already in progress: try again in a moment."
+  },
+  "pairNoAnswer": {
+    "message": "Verrou is not responding. Is it installed, with \"$SETTING$\" turned on in its settings? ($DETAIL$)",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      },
+      "detail": {
+        "content": "$2"
+      }
+    }
+  },
+  "pillClose": {
+    "message": "Close Verrou on this page"
+  },
+  "pillOtherLogins": {
+    "message": "Other logins"
+  },
+  "pillProtected": {
+    "message": "\"$TITLE$\" is protected",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillUnpairedTitle": {
+    "message": "The extension is not linked to Verrou"
+  },
+  "pillUnpairedHint": {
+    "message": "Link it from its icon in the toolbar"
+  },
+  "pillOpenApp": {
+    "message": "Open the Verrou app"
+  },
+  "pillGenerate": {
+    "message": "Generate a password"
+  },
+  "pillLinkHint": {
+    "message": "Link this site to a Verrou login"
+  },
+  "pillPasskey": {
+    "message": "Passkey · $USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillSignInPasskey": {
+    "message": "Sign in with a passkey"
+  },
+  "pillCodeOf": {
+    "message": "Code for $TITLE$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillFillCode": {
+    "message": "Fill the code"
+  },
+  "pillSignIn": {
+    "message": "Sign in"
+  },
+  "pillNoCode": {
+    "message": "No code for this site"
+  },
+  "pillNoLogin": {
+    "message": "No login for this site"
+  },
+  "pillNoCard": {
+    "message": "No card in Verrou"
+  },
+  "pillNoAddress": {
+    "message": "No address in Verrou"
+  },
+  "pillFillCard": {
+    "message": "Fill card $CARD$",
+    "placeholders": {
+      "card": {
+        "content": "$1"
+      }
+    }
+  },
+  "pillFillAddress": {
+    "message": "Fill the address"
+  },
+  "pillOtherCards": {
+    "message": "Other cards"
+  },
+  "pillOtherAddresses": {
+    "message": "Other addresses"
+  },
+  "pillSuggestPassword": {
+    "message": "Suggest a strong password"
+  },
+  "fieldButton": {
+    "message": "Verrou: logins for this site"
+  },
+  "bannerLabel": {
+    "message": "Verrou: saving"
+  },
+  "bannerNoUsername": {
+    "message": "no username"
+  },
+  "bannerSaveTitle": {
+    "message": "Save in Verrou?"
+  },
+  "bannerUpdateTitle": {
+    "message": "Update the password of \"$TITLE$\"?",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      }
+    }
+  },
+  "bannerNotNow": {
+    "message": "Not now"
+  },
+  "bannerNever": {
+    "message": "Never for this site"
+  },
+  "bannerUpdate": {
+    "message": "Update"
+  },
+  "bannerPasswordUpdated": {
+    "message": "Password updated"
+  },
+  "bannerSaved": {
+    "message": "Saved in Verrou"
+  },
+  "passkeyUseBrowser": {
+    "message": "Use the browser"
+  },
+  "passkeyOfflineTitle": {
+    "message": "Verrou can't be reached: the passkey is left to the browser"
+  },
+  "passkeyOfflineHint": {
+    "message": "Open Verrou, and turn on \"$SETTING$\" in its settings.",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      }
+    }
+  },
+  "passkeyUnpairedTitle": {
+    "message": "The extension is not linked to Verrou: the passkey is left to the browser"
+  },
+  "passkeyUnpairedHint": {
+    "message": "Link the extension from its icon in the toolbar."
+  },
+  "passkeyOutdatedTitle": {
+    "message": "Verrou was just updated: the passkey is left to the browser"
+  },
+  "passkeyOutdatedHint": {
+    "message": "Reload the page to use Verrou's passkeys."
+  },
+  "passkeyAlgorithmTitle": {
+    "message": "Verrou doesn't support this key type: the passkey is left to the browser"
+  },
+  "passkeyAlgorithmHint": {
+    "message": "The site doesn't accept ES256 keys, the only ones Verrou can create."
+  },
+  "passkeyOtherTitle": {
+    "message": "Verrou couldn't take the request: the passkey is left to the browser"
+  },
+  "passkeyLockedTitle": {
+    "message": "Passkey: Verrou is locked"
+  },
+  "passkeyTimedOut": {
+    "message": "Verrou didn't respond in time"
+  },
+  "passkeySignInTitle": {
+    "message": "Sign in with a Verrou passkey?"
+  },
+  "passkeyOtherDevice": {
+    "message": "Another device or browser"
+  },
+  "passkeySigningIn": {
+    "message": "Signing in…"
+  },
+  "passkeySignInFailed": {
+    "message": "Could not sign in"
+  },
+  "passkeyExists": {
+    "message": "This passkey is already in Verrou"
+  },
+  "passkeyReplaces": {
+    "message": "replaces its passkey"
+  },
+  "passkeySaveTitle": {
+    "message": "Save a passkey in Verrou?"
+  },
+  "passkeyNoName": {
+    "message": "no name"
+  },
+  "passkeySaved": {
+    "message": "Passkey saved in Verrou"
+  },
+  "popupPairing": {
+    "message": "Pairing…"
+  },
+  "popupCheckCode": {
+    "message": "Check that Verrou shows the same code, then accept:"
+  },
+  "popupCodesDiffer": {
+    "message": "If the codes differ, refuse in Verrou."
+  },
+  "popupConnecting": {
+    "message": "Connecting…"
+  },
+  "popupConnectingToVerrou": {
+    "message": "Connecting to Verrou…"
+  },
+  "popupUnpaired": {
+    "message": "Not linked"
+  },
+  "popupPair": {
+    "message": "Link to Verrou"
+  },
+  "popupPairIntro": {
+    "message": "Link the extension to the Verrou app on this Mac to fill your logins."
+  },
+  "popupUnlocked": {
+    "message": "Unlocked"
+  },
+  "popupScanQr": {
+    "message": "Add the QR code on screen"
+  },
+  "popupEnterKeyLink": {
+    "message": "or enter the key by hand"
+  },
+  "popupNoLogins": {
+    "message": "No logins for this site."
+  },
+  "popupTwoFactor": {
+    "message": "Two-factor authentication"
+  },
+  "popupTwoFactorIntro": {
+    "message": "The site shows a QR code for an authenticator app: Verrou can keep it and generate the codes."
+  },
+  "popupAutoSubmit": {
+    "message": "Submit the form after filling"
+  },
+  "popupAutoSubmitHint": {
+    "message": "Only for a sign-in, when nothing is left to type and no captcha is visible."
+  },
+  "popupSearchLogin": {
+    "message": "Search for a login"
+  },
+  "popupChooseLogin": {
+    "message": "Choose the login to use on $HOST$.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupThisSite": {
+    "message": "this site"
+  },
+  "popupAddAndFill": {
+    "message": "Add and fill"
+  },
+  "popupFailed": {
+    "message": "Failed: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupConfirmLink": {
+    "message": "Add $HOST$ to \"$TITLE$\"? Verrou will then suggest it on this site. Check the address carefully: a phishing site often imitates the one it targets.",
+    "placeholders": {
+      "host": {
+        "content": "$1"
+      },
+      "title": {
+        "content": "$2"
+      }
+    }
+  },
+  "popupQrUnsupported": {
+    "message": "this browser can't read QR codes: enter the key by hand"
+  },
+  "popupCaptureFailed": {
+    "message": "could not capture the tab ($REASON$)",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupReading": {
+    "message": "Reading…"
+  },
+  "popupNoQr": {
+    "message": "No two-factor QR code visible: bring it up on screen, or enter the key."
+  },
+  "popupRetry": {
+    "message": "Try again"
+  },
+  "popupEnterKey": {
+    "message": "Enter the key by hand"
+  },
+  "popupContinue": {
+    "message": "Continue"
+  },
+  "popupSecretKey": {
+    "message": "The secret key shown by the site (\"setup key\"):"
+  },
+  "popupVerificationCode": {
+    "message": "Verification code"
+  },
+  "popupEnteredKey": {
+    "message": "Entered key"
+  },
+  "popupReplacesCode": {
+    "message": "$USERNAME$ · replaces the current code",
+    "placeholders": {
+      "username": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupForThisSite": {
+    "message": "for this site"
+  },
+  "popupAddToVerrou": {
+    "message": "Add to Verrou"
+  },
+  "popupCodeAdded": {
+    "message": "Code added. Verrou now generates this site's codes: enter the current code to finish turning it on at the site."
+  },
+  "popupAddFailed": {
+    "message": "Could not add: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupAddCodeTo": {
+    "message": "Add this verification code to:"
+  },
+  "popupBack": {
+    "message": "Back"
+  },
+  "popupUnpair": {
+    "message": "Unlink this extension"
+  },
+  "popupVersionHowFirefox": {
+    "message": "In about:debugging › This Firefox, reload it, or load the manifest.json from the \"extension-firefox\" folder of Verrou.app (Verrou Settings › Browsers and Terminal › Firefox extension › Copy Path). Installed add-on (.xpi): install the one from the new version."
+  },
+  "popupVersionHowBrave": {
+    "message": "In brave://extensions, load the \"extension\" folder of Verrou.app (Verrou Settings › Browsers and Terminal › Copy Path), or reload it."
+  },
+  "popupVersionTitle": {
+    "message": "This extension is not the one Verrou ships"
+  },
+  "popupVersionText": {
+    "message": "It is version $RUNNING$, Verrou ships $BUNDLED$. $HOW$",
+    "placeholders": {
+      "running": {
+        "content": "$1"
+      },
+      "bundled": {
+        "content": "$2"
+      },
+      "how": {
+        "content": "$3"
+      }
+    }
+  },
+  "popupAllowSites": {
+    "message": "Allow Verrou on sites"
+  },
+  "popupAccessGranted": {
+    "message": "Access granted: reload the pages already open."
+  },
+  "popupAccessDenied": {
+    "message": "Access denied: Verrou won't be able to fill anything."
+  },
+  "popupRequestFailed": {
+    "message": "Request failed: $REASON$",
+    "placeholders": {
+      "reason": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupNoSiteAccess": {
+    "message": "Verrou has no access to sites"
+  },
+  "popupSiteAccessText": {
+    "message": "Firefox asks for your consent so the extension can fill your logins and offer your passkeys on pages."
+  },
+  "popupOffline": {
+    "message": "Offline"
+  },
+  "popupOfflineText": {
+    "message": "Open the app and turn on \"$SETTING$\" in its settings. Until then, no filling and no passkeys: the browser takes over.",
+    "placeholders": {
+      "setting": {
+        "content": "$1"
+      }
+    }
+  },
+  "popupLocked": {
+    "message": "Locked"
+  },
+  "popupUnlockVerrou": {
+    "message": "Unlock Verrou"
+  },
+  "popupVerrouLocked": {
+    "message": "Verrou is locked."
+  }
+}

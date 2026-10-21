@@ -1,6 +1,6 @@
-// Protocole de l'extension avec Verrou, indépendant du navigateur : le
-// transport (Native Messaging dans Brave, un processus dans les tests) est
-// fourni par l'appelant.
+// The extension's protocol with Verrou, independent of the browser: the
+// transport (Native Messaging in Brave, a process in the tests) is provided
+// by the caller.
 //
 //   transport = { post(message), onMessage(callback), onDisconnect(callback) }
 
@@ -14,8 +14,8 @@ export class BridgeError extends Error {
 }
 
 export class Channel {
-  // `connect()` ouvre un transport ; il est rouvert à la demande après une
-  // déconnexion.
+  // `connect()` opens a transport; it is reopened on demand after a
+  // disconnection.
   constructor(connect) {
     this.connect = connect;
     this.transport = null;
@@ -52,7 +52,7 @@ export class Channel {
 
   receive(message) {
     if (message?.type === "error" && message.code === "app_unavailable") {
-      const error = new BridgeError("offline", "Verrou n'a pas pu être ouvert");
+      const error = new BridgeError("offline", "Verrou could not be opened");
       for (const waiter of this.queue.splice(0)) waiter.reject(error);
       this.pairing?.fail(error);
       return;
@@ -65,7 +65,7 @@ export class Channel {
       this.pairing.fail(new BridgeError(message.code));
       return;
     }
-    // Verrou répond dans l'ordre des requêtes d'une même connexion.
+    // Verrou answers in the order of the requests of a same connection.
     const waiter = this.queue.shift();
     if (!waiter) return;
     if (message?.type === "response") {
@@ -79,7 +79,7 @@ export class Channel {
     }
   }
 
-  // Commande chiffrée ; rend la réponse déchiffrée (`{ id, result, … }`).
+  // Encrypted command; returns the decrypted reply (`{ id, result, … }`).
   async request(command) {
     if (!this.client) throw new BridgeError("unpaired");
     const { id: client, key } = this.client;
@@ -92,8 +92,8 @@ export class Channel {
     });
   }
 
-  // Appairage. `onCode(code)` reçoit le code à comparer avec celui de
-  // Verrou ; la promesse rend le client appairé `{ id, key }`.
+  // Pairing. `onCode(code)` receives the code to compare with Verrou's;
+  // the promise returns the paired client `{ id, key }`.
   async pair(name, onCode) {
     if (this.pairing) throw new BridgeError("busy");
     const ours = await wire.generateKeyPair();
@@ -101,8 +101,8 @@ export class Channel {
     try {
       return await new Promise((resolve, reject) => {
         let channel = null;
-        // Les étapes s'enchaînent dans l'ordre d'arrivée : « paired » peut
-        // arriver pendant le calcul de la clé.
+        // The steps run in order of arrival: "paired" can arrive while the
+        // key is being computed.
         let chain = Promise.resolve();
         const handle = async (message) => {
             try {
@@ -114,7 +114,7 @@ export class Channel {
               } else if (message.type === "paired" && channel) {
                 resolve(channel);
               } else {
-                reject(new BridgeError("refused", "Appairage refusé dans Verrou"));
+                reject(new BridgeError("refused", "Pairing refused in Verrou"));
               }
             } catch (error) {
               reject(error);

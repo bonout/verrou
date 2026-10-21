@@ -2,40 +2,39 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// Partage avec les autres comptes du serveur, sur l'iPhone : partager des
-/// éléments dans un coffre partagé, gérer les organisations, leurs
-/// collections, leurs membres et leurs groupes, rejoindre une organisation
-/// avec le lien d'invitation. Même cœur Rust que le Mac : il vérifie les
-/// droits avant d'envoyer, chiffre avec la clé de l'organisation (qui ne
-/// quitte jamais le SDK) et refuse clairement hors ligne.
+/// Sharing with the server's other accounts, on the iPhone: sharing items
+/// into a shared vault, managing organizations, their collections, their
+/// members and their groups, joining an organization with the invitation
+/// link. Same Rust core as the Mac: it checks permissions before sending,
+/// encrypts with the organization's key (which never leaves the SDK) and
+/// clearly refuses offline.
 @MainActor
 @Observable
 final class PhoneSharingModel {
-    /// « Partager… » ou « Collections… » ouvert.
+    /// "Share…" or "Collections…" open.
     var shareFlow: SharingFlow?
     var sheet: PhoneSharingSheet?
-    /// Organisations rejointes, en attente de la confirmation d'un
-    /// administrateur.
+    /// Joined organizations, awaiting an administrator's confirmation.
     var pending: [PendingMembershipView] = []
-    /// Membres à confirmer, par organisation administrée.
+    /// Members to confirm, per administered organization.
     var toConfirm: [String: Int] = [:]
-    /// Membres et groupes lus, par organisation.
+    /// Members and groups read, per organization.
     var members: [String: [OrganizationMember]] = [:]
     var groups: [String: [OrganizationGroup]] = [:]
     var loading: Set<String> = []
     var busy = false
-    /// Erreur affichée dans la feuille ouverte.
+    /// Error shown in the open sheet.
     var error: String?
-    /// Empreinte d'un membre à vérifier avant de le confirmer.
+    /// A member's fingerprint to verify before confirming them.
     var confirmation: MemberConfirmation?
     var confirmLeave: OrganizationView?
     var confirmDelete: CollectionTarget?
     var confirmRemove: MemberTarget?
     var confirmRevoke: MemberTarget?
-    /// Envois (Bitwarden Send) du compte ; `nil` : pas encore lus.
+    /// The account's Sends (Bitwarden Send); `nil`: not read yet.
     var sends: [SendSummary]?
     var sendComposer: SendComposer?
-    /// Lien de l'envoi qui vient d'être créé (il porte sa clé).
+    /// Link of the Send just created (it carries its key).
     var createdLink: String?
 
     var totalToConfirm: Int { toConfirm.values.reduce(0, +) }
@@ -61,14 +60,14 @@ final class PhoneSharingModel {
     }
 }
 
-/// Les feuilles de la gestion des coffres partagés.
+/// The sheets of shared vault management.
 enum PhoneSharingSheet: Identifiable {
     case newOrganization
     case rename(OrganizationView)
     case collection(CollectionDraft)
     case member(MemberDraft, organizationID: String)
     case group(GroupDraft, organizationID: String)
-    /// Lien déjà connu (collé ou reçu), sinon vide.
+    /// Link already known (pasted or received), otherwise empty.
     case join(String)
     case fingerprint(PendingMembershipView?)
 
@@ -109,10 +108,9 @@ extension PhoneModel {
         organizations.first { $0.id == id }
     }
 
-    // MARK: Partager des éléments
+    // MARK: Sharing items
 
-    /// Les éléments qu'un partage peut déplacer : personnels, modifiables,
-    /// hors de la corbeille.
+    /// The items a share can move: personal, editable, not in the trash.
     func shareableIDs(_ ids: [String]) -> [String] {
         ids.filter { id in
             guard let summary = summary(id: id) else { return false }
@@ -120,7 +118,7 @@ extension PhoneModel {
         }
     }
 
-    /// « Partager… » (élément personnel) ou « Collections… » (déjà partagé).
+    /// "Share…" (personal item) or "Collections…" (already shared).
     func openSharing(_ itemID: String) {
         guard canEdit, let summary = summary(id: itemID), canModify(summary) else { return }
         if let sharing = summary.sharing {
@@ -132,17 +130,17 @@ extension PhoneModel {
         }
     }
 
-    /// « Partager… » sur une sélection : seuls les éléments personnels
-    /// modifiables partent, les autres sont comptés.
+    /// "Share…" on a selection: only the editable personal items go, the
+    /// others are counted.
     func openSharing(items ids: [String]) {
         let personal = shareableIDs(ids)
         guard canEdit, !personal.isEmpty else { return }
         guard let org = writableOrganizations.first else {
-            toast = Toast(message: "Aucun coffre partagé",
-                          detail: "Créez une organisation depuis l'accueil (Coffres partagés)", failure: true)
+            toast = Toast(message: String(localized: "No shared vault"),
+                          detail: String(localized: "Create an organization from the home screen (Shared vaults)"), failure: true)
             return
         }
-        let title = personal.count == 1 ? summary(id: personal[0])?.title ?? "" : "\(personal.count) éléments"
+        let title = personal.count == 1 ? summary(id: personal[0])?.title ?? "" : String(localized: "\(personal.count) items")
         let first = org.collections.first { !$0.readOnly }
         openShareFlow(SharingFlow(itemIDs: personal, title: title, current: nil, organizationID: org.id,
                                  collectionIDs: Set(first.map { [$0.id] } ?? [])))
@@ -153,8 +151,8 @@ extension PhoneModel {
         sharing.shareFlow = flow
     }
 
-    /// Exécute la feuille : partage (un ou plusieurs éléments), ou nouvelles
-    /// collections. Rend `true` si la feuille peut se fermer.
+    /// Runs the sheet: share (one or more items), or new collections.
+    /// Returns `true` if the sheet can close.
     @discardableResult
     func applySharing(_ flow: SharingFlow) async -> Bool {
         guard !flow.busy else { return false }
@@ -162,7 +160,7 @@ extension PhoneModel {
             let protected = flow.itemIDs.filter { session.needsConfirmation(id: $0) }
             if let first = protected.first {
                 let title = protected.count == 1 ? summary(id: first)?.title ?? flow.title
-                                                 : "\(protected.count) éléments protégés"
+                                                 : String(localized: "\(protected.count) protected items")
                 guard await confirmAccess(itemID: first, title: title) else { return false }
                 protected.forEach { session.authorizeItem(id: $0) }
             }
@@ -179,11 +177,11 @@ extension PhoneModel {
             if flow.current != nil {
                 try await session.setItemCollections(id: flow.itemID, collectionIds: ordered)
                 afterWrite()
-                toast = Toast(message: "Collections enregistrées", detail: org?.name)
+                toast = Toast(message: String(localized: "Collections saved"), detail: org?.name)
             } else if !flow.isBulk {
                 try await session.shareItem(id: flow.itemID, organizationId: flow.organizationID, collectionIds: ordered)
                 afterWrite()
-                toast = Toast(message: "Élément partagé", detail: org?.name)
+                toast = Toast(message: String(localized: "Item shared"), detail: org?.name)
             } else {
                 flow.progress = (0, flow.itemIDs.count)
                 let result = try await session.shareItems(ids: flow.itemIDs, organizationId: flow.organizationID,
@@ -199,22 +197,22 @@ extension PhoneModel {
         }
     }
 
-    // MARK: Invitations et confirmations
+    // MARK: Invitations and confirmations
 
-    /// Après une synchronisation : ce qui est nouveau pour le compte (cœur
-    /// Rust, une seule fois chaque chose), posté en notifications locales ;
-    /// organisations en attente de confirmation (sans réseau) et membres à
-    /// confirmer dans celles qu'on administre (réseau), pour les bandeaux.
-    /// `notify` faux : tout est marqué vu sans notification (juste après
-    /// une action de ce compte).
+    /// After a sync: what is new for the account (Rust core, each thing only
+    /// once), posted as local notifications; organizations awaiting
+    /// confirmation (no network) and members to confirm in the ones we
+    /// administer (network), for the banners. `notify` false: everything is
+    /// marked seen without notification (right after an action of this
+    /// account).
     func refreshSharingStatus(notify: Bool = true) async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         let manages = organizations.contains(where: \.canManageMembers)
         guard let report = try? await session.checkActivity(network: manages, emergency: false,
                                                             notify: notify && ActivityNotifier.enabled),
               lockState == .unlocked else { return }
-        // Assignés seulement s'ils changent : l'accueil ne se redessine pas
-        // à chaque synchronisation pour rien.
+        // Assigned only if they change: the home screen isn't redrawn for
+        // nothing at each sync.
         if sharing.pending != report.pending { sharing.pending = report.pending }
         if !manages {
             if !sharing.toConfirm.isEmpty { sharing.toConfirm = [:] }
@@ -224,16 +222,16 @@ extension PhoneModel {
             if sharing.toConfirm != toConfirm { sharing.toConfirm = toConfirm }
         }
         ActivityNotifier.shared.post(report.notices)
-        // Pastille : ce qui attend une action.
+        // Badge: what awaits an action.
         ActivityNotifier.shared.setBadge(sharing.totalToConfirm + sharing.pending.count)
-        // L'autorisation se demande quand le partage concerne ce compte,
-        // jamais au premier lancement.
+        // Authorization is requested when sharing concerns this account,
+        // never on first launch.
         if report.organizations > 0 || !report.pending.isEmpty {
             await ActivityNotifier.shared.requestAuthorizationIfNeeded()
         }
     }
 
-    /// Le toucher d'une notification du partage : l'écran qui en parle.
+    /// Tapping a sharing notification: the screen that talks about it.
     func openActivity(_ route: ActivityRoute) {
         guard lockState == .unlocked else {
             pendingActivityRoute = route
@@ -247,8 +245,8 @@ extension PhoneModel {
         }
     }
 
-    /// « N membres à confirmer » : les membres de la première organisation
-    /// qui en a.
+    /// "N members to confirm": the members of the first organization that
+    /// has some.
     func openFirstMembersToConfirm() {
         guard let id = organizations.first(where: { (sharing.toConfirm[$0.id] ?? 0) > 0 })?.id else { return }
         tab = .vault
@@ -260,21 +258,23 @@ extension PhoneModel {
             let name = try await self.session.joinOrganization(link: link)
             self.afterWrite()
             await self.refreshSharingStatus()
-            self.toast = Toast(message: "Invitation acceptée",
-                               detail: "Un administrateur de \(name) doit vous confirmer : lisez-lui votre phrase d'empreinte",
+            self.toast = Toast(message: String(localized: "Invitation accepted"),
+                               detail: String(localized: "An administrator of \(CoreText.organization(name)) must confirm you: read them your fingerprint phrase"),
                                seconds: 8)
         }
     }
 
-    // MARK: Organisations
+    // MARK: Organizations
 
     func createOrganization(name: String, collection: String) async -> Bool {
         await sharingAction {
+            // Without a name, the core would name the first collection "General" in English.
+            let collection = collection.trimmingCharacters(in: .whitespaces).isEmpty ? String(localized: "General") : collection
             let id = try await self.session.createOrganization(name: name, collectionName: collection)
             self.afterWrite()
             self.tab = .vault
             self.vaultPath = [.organization(id)]
-            self.toast = Toast(message: "Organisation créée", detail: "Invitez ses membres depuis « Membres »")
+            self.toast = Toast(message: String(localized: "Organization created"), detail: String(localized: "Invite its members from “Members”"))
         }
     }
 
@@ -282,7 +282,7 @@ extension PhoneModel {
         await sharingAction {
             try await self.session.renameOrganization(organizationId: organization.id, name: name)
             self.afterWrite()
-            self.toast = Toast(message: "Organisation renommée", detail: name.trimmingCharacters(in: .whitespaces))
+            self.toast = Toast(message: String(localized: "Organization renamed"), detail: name.trimmingCharacters(in: .whitespaces))
         }
     }
 
@@ -292,19 +292,19 @@ extension PhoneModel {
             try await self.session.leaveOrganization(organizationId: organization.id)
             self.vaultPath = []
             self.afterWrite()
-            self.toast = Toast(message: "Vous avez quitté \(organization.name)",
-                               detail: "Ses éléments ne sont plus dans votre coffre")
+            self.toast = Toast(message: String(localized: "You left \(organization.name)"),
+                               detail: String(localized: "Its items are no longer in your vault"))
         }
         if !left, let error = sharing.error {
             sharing.error = nil
-            toast = Toast(message: "Impossible de quitter \(organization.name)", detail: error, failure: true)
+            toast = Toast(message: String(localized: "Could not leave \(organization.name)"), detail: error, failure: true)
         }
     }
 
     // MARK: Collections
 
-    /// L'éditeur d'une collection (`nil` : nouvelle) ; la feuille lit
-    /// elle-même membres, groupes et accès (`loadCollectionDraft`).
+    /// A collection's editor (`nil`: new); the sheet itself reads members,
+    /// groups and access (`loadCollectionDraft`).
     func openCollectionEditor(_ organization: OrganizationView, collection: CollectionView?) {
         sharing.error = nil
         sharing.sheet = .collection(CollectionDraft(organizationID: organization.id, collectionID: collection?.id,
@@ -319,11 +319,11 @@ extension PhoneModel {
                     : try await self.session.collectionAccess(organizationId: draft.organizationID, collectionId: id)
                 try await self.session.updateCollection(organizationId: draft.organizationID, collectionId: id,
                                                         name: draft.name, access: access)
-                self.toast = Toast(message: "Collection enregistrée", detail: draft.name)
+                self.toast = Toast(message: String(localized: "Collection saved"), detail: draft.name)
             } else {
                 _ = try await self.session.createCollection(organizationId: draft.organizationID,
                                                             name: draft.name, access: draft.accessList)
-                self.toast = Toast(message: "Collection créée", detail: draft.name)
+                self.toast = Toast(message: String(localized: "Collection created"), detail: draft.name)
             }
             self.afterWrite()
         }
@@ -335,14 +335,14 @@ extension PhoneModel {
             try await session.deleteCollection(organizationId: target.organization.id, collectionId: target.collection.id)
             vaultPath.removeAll { $0 == .list(.collection(id: target.collection.id)) }
             afterWrite()
-            toast = Toast(message: "Collection « \(target.collection.name) » supprimée",
-                          detail: "Ses éléments restent dans l'organisation")
+            toast = Toast(message: String(localized: "Collection “\(target.collection.name)” deleted"),
+                          detail: String(localized: "Its items stay in the organization"))
         } catch {
-            toast = Toast(message: "Suppression impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not delete"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
-    // MARK: Membres
+    // MARK: Members
 
     func loadMembers(_ organizationID: String) async {
         guard mode == .vaultwarden, lockState == .unlocked, !sharing.loading.contains(organizationID) else { return }
@@ -357,7 +357,7 @@ extension PhoneModel {
                 sharing.groups[organizationID] = try await session.organizationGroups(organizationId: organizationID)
             }
         } catch {
-            toast = Toast(message: "Membres illisibles", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not read members"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
@@ -382,15 +382,15 @@ extension PhoneModel {
             if let member = draft.member {
                 try await self.session.editOrganizationMember(organizationId: organizationID, memberId: member.id,
                                                              role: draft.role, collections: draft.collections)
-                self.toast = Toast(message: "Accès de \(member.displayName) enregistrés", detail: nil)
+                self.toast = Toast(message: String(localized: "Access for \(member.displayName) saved"), detail: nil)
             } else {
                 let invited = try await self.session.inviteOrganizationMembers(
                     organizationId: organizationID, emails: draft.emails, role: draft.role, collections: draft.collections)
-                self.toast = Toast(message: invited.count == 1 ? "Invitation envoyée" : "\(invited.count) invitations envoyées",
-                                   detail: "\(invited.joined(separator: ", ")) : voir « Et ensuite ? » sous les invitations")
-                // Sans courriel, le serveur accepte d'office un compte
-                // existant : ce membre à confirmer n'est pas une nouvelle
-                // pour qui l'invite.
+                self.toast = Toast(message: invited.count == 1 ? String(localized: "Invitation sent") : String(localized: "\(invited.count) invitations sent"),
+                                   detail: String(localized: "\(invited.joined(separator: ", ")): see “What's next?” under the invitations"))
+                // Without email, the server automatically accepts an existing
+                // account: this member to confirm is not news for the one who
+                // invites.
                 await self.refreshSharingStatus(notify: false)
             }
             await self.loadMembers(organizationID)
@@ -406,12 +406,12 @@ extension PhoneModel {
             toast = Toast(message: done, detail: nil)
             await loadMembers(organizationID)
         } catch {
-            toast = Toast(message: "Action impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Action failed"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
-    /// Avant de confirmer : l'empreinte de la clé publique du membre, relue
-    /// sur le serveur, à comparer de vive voix avec la sienne.
+    /// Before confirming: the fingerprint of the member's public key, read
+    /// again from the server, to compare out loud with theirs.
     func prepareConfirmation(_ member: OrganizationMember, in organizationID: String) async {
         do {
             let fingerprint = try await session.organizationMemberFingerprint(organizationId: organizationID,
@@ -419,20 +419,20 @@ extension PhoneModel {
             sharing.confirmation = MemberConfirmation(organizationID: organizationID, member: member,
                                                       fingerprint: fingerprint)
         } catch {
-            toast = Toast(message: "Empreinte illisible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not read fingerprint"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
     func confirmMember(_ confirmation: MemberConfirmation) async {
         sharing.confirmation = nil
-        await memberAction("\(confirmation.member.displayName) est confirmé", in: confirmation.organizationID) {
+        await memberAction(String(localized: "\(confirmation.member.displayName) is confirmed"), in: confirmation.organizationID) {
             try await self.session.confirmOrganizationMember(organizationId: confirmation.organizationID,
                                                              memberId: confirmation.member.id,
                                                              fingerprint: confirmation.fingerprint)
         }
     }
 
-    // MARK: Groupes
+    // MARK: Groups
 
     func saveGroup(_ group: GroupDraft, in organizationID: String) async -> Bool {
         await sharingAction {
@@ -440,7 +440,7 @@ extension PhoneModel {
                 organizationId: organizationID, id: group.id, name: group.name,
                 members: group.members.sorted(), collections: group.collections)
             self.sharing.groups[organizationID] = try await self.session.organizationGroups(organizationId: organizationID)
-            self.toast = Toast(message: group.id == nil ? "Groupe créé" : "Groupe enregistré", detail: group.name)
+            self.toast = Toast(message: group.id == nil ? String(localized: "Group created") : String(localized: "Group saved"), detail: group.name)
         }
     }
 
@@ -448,16 +448,16 @@ extension PhoneModel {
         do {
             try await session.deleteOrganizationGroup(organizationId: organizationID, id: group.id)
             sharing.groups[organizationID] = try await session.organizationGroups(organizationId: organizationID)
-            toast = Toast(message: "Groupe « \(group.name) » supprimé", detail: nil)
+            toast = Toast(message: String(localized: "Group “\(group.name)” deleted"), detail: nil)
         } catch {
-            toast = Toast(message: "Suppression impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not delete"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
-    // MARK: Commun
+    // MARK: Common
 
-    /// Action d'une feuille : rend `true` si elle a réussi (la feuille se
-    /// ferme), sinon l'erreur s'affiche dans la feuille.
+    /// A sheet's action: returns `true` if it succeeded (the sheet closes),
+    /// otherwise the error is shown in the sheet.
     @discardableResult
     func sharingAction(_ action: @escaping () async throws -> Void) async -> Bool {
         guard !sharing.busy else { return false }

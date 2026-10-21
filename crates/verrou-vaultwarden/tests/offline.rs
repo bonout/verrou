@@ -1,10 +1,10 @@
-//! Modifications hors ligne contre un vrai Vaultwarden : voir `server.rs`
-//! pour lancer le serveur. Sans `VERROU_TEST_SERVER`, les tests ne font rien.
+//! Offline edits against a real Vaultwarden: see `server.rs` to start the
+//! server. Without `VERROU_TEST_SERVER`, the tests do nothing.
 //!
-//! « Hors ligne » : le compte enregistré pointe vers un port fermé de la
-//! machine, puis le coffre est rouvert (comme après un verrouillage). Le
-//! retour du réseau remet la bonne adresse et rouvre le coffre : la file
-//! doit avoir survécu, chiffrée, et partir à la synchronisation.
+//! "Offline": the saved account points at a closed port on the machine,
+//! then the vault is reopened (as after a lock). The network coming back
+//! restores the right address and reopens the vault: the outbox must have
+//! survived, encrypted, and go out on sync.
 
 use std::num::NonZeroU32;
 use std::time::Duration;
@@ -24,7 +24,7 @@ const ITERATIONS: u32 = 600_000;
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
@@ -71,22 +71,22 @@ async fn register(server: &str) -> String {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "registration refused");
     email
 }
 
-/// Le compte, connecté par Verrou dans `store`.
+/// The account, signed in by Verrou in `store`.
 async fn sign_in(store: &Store, server: &str, email: &str) -> (Connection, Decrypted) {
     match login(store, server, email, SecretString::new(PASSWORD))
         .await
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => (unlocked.connection, unlocked.vault),
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
-/// Une adresse où rien n'écoute : connexion refusée tout de suite.
+/// An address where nothing listens: connection refused right away.
 fn dead_server() -> String {
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -94,7 +94,7 @@ fn dead_server() -> String {
     format!("http://127.0.0.1:{port}")
 }
 
-/// Rouvre le coffre (comme après un verrouillage) en pointant vers `server`.
+/// Reopens the vault (as after a lock), pointing at `server`.
 async fn reopen(store: &Store, server: &str) -> (Connection, Decrypted) {
     let mut account = store.load_account().unwrap().unwrap();
     server.clone_into(&mut account.server);
@@ -119,8 +119,8 @@ fn login_draft(name: &str, password: &str) -> Draft {
     }
 }
 
-/// Envoie la file, comme l'app juste après une écriture ; rend les
-/// identifiants du serveur de `ids` (créés sous un identifiant provisoire).
+/// Sends the outbox, like the app right after a write; returns the
+/// server ids of `ids` (created under a temporary id).
 async fn sent<const N: usize>(connection: &mut Connection, ids: [&str; N]) -> [String; N] {
     connection.sync().await.unwrap();
     let report = connection.take_report();
@@ -163,7 +163,7 @@ async fn offline_edits_wait_encrypted_then_reach_the_server() {
     let [github, notes] = sent(&mut online, [&github, &notes]).await;
     drop(online);
 
-    // Hors ligne : modification, création, corbeille, favori.
+    // Offline: edit, create, trash, favorite.
     let (mut offline, _) = reopen(&store, &dead_server()).await;
     let mut draft = offline.draft(&github).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("hors-ligne-1"));
@@ -189,19 +189,19 @@ async fn offline_edits_wait_encrypted_then_reach_the_server() {
             .unwrap()
             .favorite
     );
-    // La création et son favori ne font qu'une modification en attente.
+    // The creation and its favorite make a single pending change.
     assert_eq!(vault.pending_changes, 3);
     assert_eq!(offline.pending_changes(), 3);
-    assert_eq!(store.pending_changes(), 3, "lisible sans déverrouiller");
+    assert_eq!(store.pending_changes(), 3, "readable without unlocking");
 
-    // Ce qui ne se fait qu'avec le serveur est refusé clairement.
+    // What only works with the server is refused clearly.
     match offline.add_attachment(&github, "a.txt", b"x").await {
-        Err(Error::Invalid(message)) => assert!(message.contains("hors ligne"), "{message}"),
-        other => panic!("inattendu : {:?}", other.err()),
+        Err(Error::Invalid(message)) => assert!(message.contains("offline"), "{message}"),
+        other => panic!("unexpected: {:?}", other.err()),
     }
     assert!(matches!(offline.sync().await, Err(Error::Network(_))));
 
-    // La file est sur le disque, chiffrée.
+    // The outbox is on disk, encrypted.
     let file = std::fs::read_to_string(store.dir().join("outbox.json")).unwrap();
     for secret in [
         "hors-ligne-1",
@@ -210,28 +210,31 @@ async fn offline_edits_wait_encrypted_then_reach_the_server() {
         "GitHub",
         "camille",
     ] {
-        assert!(!file.contains(secret), "« {secret} » en clair dans la file");
+        assert!(
+            !file.contains(secret),
+            "`{secret}` in plain text in the outbox"
+        );
     }
     drop(offline);
 
-    // Verrouillé puis rouvert, toujours hors ligne : rien n'est perdu.
+    // Locked then reopened, still offline: nothing is lost.
     let (offline, vault) = reopen(&store, &dead_server()).await;
     assert_eq!(password(&vault, &github), "hors-ligne-1");
     assert_eq!(offline.pending_changes(), 3);
     drop(offline);
 
-    // Retour du réseau : la file part avant la lecture du coffre.
+    // Network back: the outbox goes out before the vault is read.
     let (mut reconnected, _) = reopen(&store, &server).await;
     let vault = reconnected
         .sync()
         .await
         .unwrap()
-        .expect("le coffre a changé");
+        .expect("the vault changed");
     let report = reconnected.take_report();
     assert_eq!(report.sent, 3);
     assert!(report.conflicts.is_empty() && report.rejected.is_empty());
     let [(from, created)] = report.remapped.as_slice() else {
-        panic!("une création attendue : {:?}", report.remapped)
+        panic!("one creation expected: {:?}", report.remapped)
     };
     assert_eq!(from, &temporary);
     assert_ne!(created, &temporary);
@@ -246,7 +249,7 @@ async fn offline_edits_wait_encrypted_then_reach_the_server() {
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Un autre appareil voit tout ce qui a été fait hors ligne.
+/// Another device sees everything done offline.
 async fn seen_elsewhere(server: &str, email: &str, github: &str, created: &str, notes: &str) {
     let other = temp_store();
     let (_, seen) = sign_in(&other, server, email).await;
@@ -255,7 +258,7 @@ async fn seen_elsewhere(server: &str, email: &str, github: &str, created: &str, 
     let item = |id: &str| seen.items.iter().find(|i| i.id == id).unwrap();
     assert!(item(created).favorite);
     assert_eq!(item(notes).state, ItemState::Trashed);
-    // L'ancien mot de passe a rejoint l'historique, comme en ligne.
+    // The old password went into the history, as online.
     assert!(
         item(github)
             .field("history-0")
@@ -282,7 +285,7 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     offline.update(&bank, draft).await.unwrap();
     drop(offline);
 
-    // Pendant ce temps, un autre appareil modifie le même élément.
+    // Meanwhile, another device edits the same item.
     tokio::time::sleep(Duration::from_secs(2)).await;
     let mut draft = elsewhere.draft(&bank).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("version-serveur"));
@@ -297,17 +300,17 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     assert_eq!(
         password(&vault, &bank),
         "version-serveur",
-        "la version du serveur revient"
+        "the server version comes back"
     );
     let copy = vault.items.iter().find(|i| i.title == copy_title).unwrap();
     assert_eq!(
         password(&vault, &copy.id),
         "version-locale",
-        "la version locale est gardée"
+        "the local version is kept"
     );
     assert_eq!(vault.pending_changes, 0);
 
-    // Sur le serveur aussi.
+    // On the server too.
     let seen = elsewhere.sync().await.unwrap().unwrap();
     assert_eq!(password(&seen, &copy.id), "version-locale");
     assert_eq!(password(&seen, &bank), "version-serveur");
@@ -316,9 +319,8 @@ async fn an_item_changed_elsewhere_meanwhile_keeps_both_versions() {
     std::fs::remove_dir_all(other.dir()).unwrap();
 }
 
-/// Une création hors ligne modifiée avant d'être envoyée part en une
-/// fois, avec sa modification ; l'archive suit, sous l'identifiant du
-/// serveur.
+/// An offline creation edited before it is sent goes in one go, with
+/// its edit; the archive follows, under the server id.
 #[tokio::test]
 async fn a_creation_edited_before_it_is_sent_goes_as_one() {
     let Some(server) = server() else { return };
@@ -337,15 +339,12 @@ async fn a_creation_edited_before_it_is_sent_goes_as_one() {
 
     let (mut reconnected, vault) = reopen(&store, &server).await;
     assert_eq!(vault.pending_items, std::slice::from_ref(&temporary));
-    // L'éditeur a été ouvert sur l'identifiant provisoire.
+    // The editor was opened on the temporary id.
     let mut draft = reconnected.draft(&temporary).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("glycine"));
     let vault = reconnected.update(&temporary, draft).await.unwrap();
-    assert_eq!(password(&vault, &temporary), "glycine", "tout de suite");
-    assert_eq!(
-        vault.pending_changes, 2,
-        "la création garde sa modification"
-    );
+    assert_eq!(password(&vault, &temporary), "glycine", "right away");
+    assert_eq!(vault.pending_changes, 2, "the creation keeps its edit");
 
     let vault = reconnected.sync().await.unwrap().unwrap();
     let id = reconnected.resolve(&temporary);
@@ -356,13 +355,13 @@ async fn a_creation_edited_before_it_is_sent_goes_as_one() {
     assert_eq!(vault.pending_changes, 0);
     let report = reconnected.take_report();
     assert_eq!(report.remapped, [(temporary, id)]);
-    assert_eq!(report.sent, 2, "elles avaient attendu le serveur");
+    assert_eq!(report.sent, 2, "they had waited for the server");
 
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
 
-/// Fusion hors ligne : l'élément gardé et la corbeille attendent dans la
-/// file, puis partent au retour du réseau.
+/// Offline merge: the kept item and the trash wait in the outbox, then
+/// go out when the network is back.
 #[tokio::test]
 async fn merging_duplicates_offline_waits_then_reaches_the_server() {
     let Some(server) = server() else { return };
@@ -402,7 +401,7 @@ async fn merging_duplicates_offline_waits_then_reaches_the_server() {
         .sync()
         .await
         .unwrap()
-        .expect("le coffre a changé");
+        .expect("the vault changed");
     let report = reconnected.take_report();
     assert_eq!(report.sent, 2);
     assert!(report.conflicts.is_empty() && report.rejected.is_empty());

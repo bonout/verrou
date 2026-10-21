@@ -1,6 +1,6 @@
-//! Génération de clés SSH, rangées comme les apps Bitwarden les créent :
-//! élément de type « clé SSH » (type 5) avec la clé privée au format
-//! OpenSSH (sans phrase de passe), la clé publique et son empreinte SHA256.
+//! SSH key generation, stored the way the Bitwarden apps create them: an
+//! item of type "SSH key" (type 5) with the private key in OpenSSH format
+//! (without passphrase), the public key and its SHA256 fingerprint.
 
 use bitwarden_vault::{CipherType, SshKeyView};
 use chrono::Utc;
@@ -13,36 +13,35 @@ use verrou_core::SecretString;
 use crate::edit::new_view;
 use crate::{Connection, Decrypted, Draft, Error};
 
-/// Taille des clés RSA générées (comme l'option « RSA 4096 » de Bitwarden).
+/// Size of the generated RSA keys (like Bitwarden's "RSA 4096" option).
 const RSA_BITS: usize = 4096;
 
-/// Algorithme d'une nouvelle clé.
+/// Algorithm of a new key.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SshKeyAlgorithm {
-    /// Par défaut : courte, rapide, acceptée partout depuis OpenSSH 6.5.
+    /// Default: short, fast, accepted everywhere since OpenSSH 6.5.
     #[default]
     Ed25519,
-    /// Pour les serveurs anciens qui n'acceptent que RSA.
+    /// For old servers that only accept RSA.
     Rsa4096,
 }
 
-/// Une clé fraîchement générée, aux formats que Bitwarden range.
+/// A freshly generated key, in the formats Bitwarden stores.
 #[derive(Clone, Debug)]
 pub struct GeneratedKey {
-    /// Clé privée OpenSSH (`-----BEGIN OPENSSH PRIVATE KEY-----`), fins de
-    /// ligne LF.
+    /// OpenSSH private key (`-----BEGIN OPENSSH PRIVATE KEY-----`), LF line
+    /// endings.
     pub private_key: SecretString,
-    /// Clé publique sur une ligne (`ssh-ed25519 AAAA…`), sans commentaire.
+    /// Public key on one line (`ssh-ed25519 AAAA…`), without comment.
     pub public_key: String,
-    /// Empreinte comme l'affiche `ssh-keygen -l` : `SHA256:…`.
+    /// Fingerprint as `ssh-keygen -l` shows it: `SHA256:…`.
     pub fingerprint: String,
 }
 
-/// Tire une nouvelle clé du générateur du système.
+/// Draws a new key from the system's generator.
 pub fn generate(algorithm: SshKeyAlgorithm) -> Result<GeneratedKey, Error> {
     let mut rng = UnwrapErr(SysRng);
-    let failed =
-        |e: ssh_key::Error| Error::Invalid(format!("génération de la clé impossible ({e})"));
+    let failed = |e: ssh_key::Error| Error::Invalid(format!("could not generate the key ({e})"));
     let key = match algorithm {
         SshKeyAlgorithm::Ed25519 => {
             PrivateKey::random(&mut rng, Algorithm::Ed25519).map_err(failed)?
@@ -61,8 +60,8 @@ pub fn generate(algorithm: SshKeyAlgorithm) -> Result<GeneratedKey, Error> {
 }
 
 impl Connection {
-    /// Range une clé tirée par [`generate`] dans le coffre personnel ; rend
-    /// l'identifiant de l'élément et le coffre resynchronisé.
+    /// Stores a key drawn by [`generate`] in the personal vault; returns the
+    /// item's id and the resynced vault.
     pub async fn create_ssh_key(
         &mut self,
         name: String,
@@ -107,27 +106,27 @@ mod tests {
             parsed.fingerprint(HashAlg::Sha256).to_string(),
             key.fingerprint
         );
-        // `SHA256:` puis 43 caractères base64 sans remplissage, comme `ssh-keygen -l`.
+        // `SHA256:` then 43 base64 characters without padding, like `ssh-keygen -l`.
         let digest = key.fingerprint.strip_prefix("SHA256:").unwrap();
         assert_eq!(digest.len(), 43);
         assert!(!digest.ends_with('='));
-        // Deux tirages, deux clés.
+        // Two draws, two keys.
         assert_ne!(
             generate(SshKeyAlgorithm::Ed25519).unwrap().public_key,
             key.public_key
         );
     }
 
-    /// L'empreinte est celle que calcule `ssh-keygen -l`, et la clé privée
-    /// est lisible par OpenSSH (`ssh-keygen -y` en retrouve la clé publique).
-    /// Sans `ssh-keygen` sur la machine, le test ne fait rien.
+    /// The fingerprint is the one `ssh-keygen -l` computes, and the private
+    /// key is readable by OpenSSH (`ssh-keygen -y` derives its public key).
+    /// Without `ssh-keygen` on the machine, the test does nothing.
     #[test]
     fn openssh_reads_the_generated_key() {
         use std::os::unix::fs::PermissionsExt as _;
         use std::process::Command;
 
         if Command::new("ssh-keygen").arg("-?").output().is_err() {
-            eprintln!("ssh-keygen absent : test ignoré");
+            eprintln!("ssh-keygen missing: test skipped");
             return;
         }
         let key = generate(SshKeyAlgorithm::Ed25519).unwrap();
@@ -165,15 +164,15 @@ mod tests {
         std::fs::remove_dir_all(dir).unwrap();
     }
 
-    /// RSA 4096 : lent en mode debug, d'où `--include-ignored`.
+    /// RSA 4096: slow in debug mode, hence `--include-ignored`.
     #[test]
-    #[ignore = "génération RSA 4096 lente sans optimisations"]
+    #[ignore = "RSA 4096 generation is slow without optimisations"]
     fn rsa_key_is_4096_bits() {
         let key = generate(SshKeyAlgorithm::Rsa4096).unwrap();
         let parsed = PrivateKey::from_openssh(key.private_key.expose()).unwrap();
         assert_eq!(parsed.algorithm(), Algorithm::Rsa { hash: None });
         let KeypairData::Rsa(rsa) = parsed.key_data() else {
-            panic!("clé RSA attendue");
+            panic!("expected an RSA key");
         };
         assert_eq!(
             rsa.public().n().as_positive_bytes().unwrap().len() * 8,

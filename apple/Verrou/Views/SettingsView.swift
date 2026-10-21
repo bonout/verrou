@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Réglages (⌘,), en onglets : Général, Sécurité (verrouillage, Touch ID,
-/// clés de sécurité), Compte (synchronisation, import, déconnexion),
-/// Navigateurs et terminal.
+/// Settings (⌘,), in tabs: General, Security (locking, Touch ID, security
+/// keys), Account (sync, import, logout), Browsers and terminal.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("settingsTab") private var tab = SettingsTab.general
@@ -10,16 +9,16 @@ struct SettingsView: View {
     var body: some View {
         TabView(selection: $tab) {
             GeneralSettings()
-                .tabItem { Label("Général", systemImage: "gearshape") }
+                .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
             SecuritySettings()
-                .tabItem { Label("Sécurité", systemImage: "lock.shield") }
+                .tabItem { Label("Security", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
             AccountSettings()
-                .tabItem { Label("Compte", systemImage: "person.crop.circle") }
+                .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account)
             FillingSettings()
-                .tabItem { Label("Coffre et remplissage", systemImage: "rectangle.and.hand.point.up.left") }
+                .tabItem { Label("Vault and Filling", systemImage: "rectangle.and.hand.point.up.left") }
                 .tag(SettingsTab.filling)
             Group {
                 if let bridge = model.browserBridge {
@@ -27,13 +26,13 @@ struct SettingsView: View {
                 } else {
                     SettingsPane {
                         Section {
-                            Text("Indisponible dans ce mode.")
+                            Text("Unavailable in this mode.")
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
             }
-            .tabItem { Label("Navigateurs et terminal", systemImage: "terminal") }
+            .tabItem { Label("Browsers and Terminal", systemImage: "terminal") }
             .tag(SettingsTab.integrations)
         }
         .frame(width: 500)
@@ -44,7 +43,7 @@ enum SettingsTab: String {
     case general, security, account, filling, integrations
 }
 
-/// Formulaire d'un onglet : largeur fixe, hauteur ajustée au contenu.
+/// Form of a tab: fixed width, height fitted to the content.
 private struct SettingsPane<Content: View>: View {
     @ViewBuilder var content: Content
 
@@ -55,21 +54,21 @@ private struct SettingsPane<Content: View>: View {
     }
 }
 
-/// Texte affiché à la place d'un onglet qui demande un compte relié.
+/// Text shown instead of a tab that needs a linked account.
 private struct NoAccountSection: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Section {
             Text(model.mode == .demo
-                 ? "Coffre fictif : aucun compte n'est relié en mode démonstration."
-                 : "Aucun compte n'est relié : connectez-vous depuis la fenêtre principale.")
+                 ? "Mock vault: no account is linked in demo mode."
+                 : "No account is linked: log in from the main window.")
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-/// Démarrage et apparence.
+/// Startup and appearance.
 private struct GeneralSettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage("showMenuBarExtra") private var showMenuBarExtra = true
@@ -80,11 +79,11 @@ private struct GeneralSettings: View {
         @Bindable var model = model
         SettingsPane {
             Section {
-                Toggle("Ouvrir Verrou à l'ouverture de session", isOn: $launchAtLogin)
+                Toggle("Open Verrou at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { _, wanted in setLaunchAtLogin(wanted) }
-                Toggle("Afficher dans la barre des menus", isOn: $showMenuBarExtra)
+                Toggle("Show in the menu bar", isOn: $showMenuBarExtra)
                 if model.mode == .vaultwarden {
-                    Toggle("Afficher les icônes des sites", isOn: $model.showSiteIcons)
+                    Toggle("Show site icons", isOn: $model.showSiteIcons)
                 }
             } footer: {
                 Text(footer)
@@ -108,9 +107,9 @@ private struct GeneralSettings: View {
     private var footer: String {
         if let launchAtLoginError { return launchAtLoginError }
         if LaunchAtLogin.needsApproval {
-            return "À autoriser dans Réglages Système → Général → Ouverture."
+            return String(localized: "To allow in System Settings → General → Login Items.")
         }
-        return "Les icônes viennent de votre serveur Vaultwarden, qui ne reçoit que le nom des sites ; elles ne sont pas gardées sur le disque."
+        return String(localized: "Icons come from your Vaultwarden server, which only receives the names of the sites; they are not kept on disk.")
     }
 
     private func setLaunchAtLogin(_ wanted: Bool) {
@@ -119,13 +118,13 @@ private struct GeneralSettings: View {
             try LaunchAtLogin.set(wanted)
             launchAtLoginError = nil
         } catch {
-            launchAtLoginError = "Impossible de modifier l'ouverture de session : \(error.localizedDescription)"
+            launchAtLoginError = String(localized: "Couldn't change opening at login: \(error.localizedDescription)")
         }
         launchAtLogin = LaunchAtLogin.isEnabled || LaunchAtLogin.needsApproval
     }
 }
 
-/// Verrouillage automatique, Touch ID, clés de sécurité.
+/// Auto-lock, Touch ID, security keys.
 private struct SecuritySettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage(AutoLock.minutesKey) private var autoLockMinutes = 10
@@ -136,20 +135,20 @@ private struct SecuritySettings: View {
             if model.account == nil || model.mode == .demo {
                 NoAccountSection()
             } else {
-                Section("Verrouillage") {
-                    Picker("Verrouiller après", selection: $autoLockMinutes) {
-                        Text("1 minute d'inactivité").tag(1)
-                        Text("5 minutes d'inactivité").tag(5)
-                        Text("10 minutes d'inactivité").tag(10)
-                        Text("30 minutes d'inactivité").tag(30)
-                        Text("1 heure d'inactivité").tag(60)
-                        Text("Jamais").tag(0)
+                Section("Locking") {
+                    Picker("Lock after", selection: $autoLockMinutes) {
+                        Text("1 minute of inactivity").tag(1)
+                        Text("5 minutes of inactivity").tag(5)
+                        Text("10 minutes of inactivity").tag(10)
+                        Text("30 minutes of inactivity").tag(30)
+                        Text("1 hour of inactivity").tag(60)
+                        Text("Never").tag(0)
                     }
-                    Toggle("Verrouiller à la mise en veille et au verrouillage de l'écran", isOn: $lockOnSleep)
+                    Toggle("Lock on sleep and when the screen locks", isOn: $lockOnSleep)
                 }
 
                 Section {
-                    Toggle("Déverrouiller avec Touch ID", isOn: touchID)
+                    Toggle("Unlock with Touch ID", isOn: touchID)
                         .disabled(!Biometrics.isAvailable)
                 } footer: {
                     Text(touchIDFooter)
@@ -174,16 +173,16 @@ private struct SecuritySettings: View {
             })
     }
 
-    private var touchIDFooter: String {
-        if !Biometrics.isAvailable { return "Touch ID n'est pas disponible sur ce Mac." }
+    private var touchIDFooter: LocalizedStringKey {
+        if !Biometrics.isAvailable { return "Touch ID is not available on this Mac." }
         if model.touchIDWanted && !model.biometricEnrolled {
-            return "S'active au prochain déverrouillage par mot de passe."
+            return "Turns on at the next password unlock."
         }
-        return "La clé du coffre est scellée par le Secure Enclave : ajouter ou retirer une empreinte désactive Touch ID."
+        return "The vault key is sealed by the Secure Enclave: adding or removing a fingerprint turns off Touch ID."
     }
 }
 
-/// Serveur, synchronisation, import, déconnexion.
+/// Server, sync, import, logout.
 private struct AccountSettings: View {
     @Environment(AppModel.self) private var model
     @State private var confirmLogout = false
@@ -191,56 +190,60 @@ private struct AccountSettings: View {
     var body: some View {
         SettingsPane {
             if let account = model.account, model.mode != .demo {
-                Section("Compte") {
-                    LabeledContent("Serveur", value: account.server)
-                    LabeledContent("E-mail", value: account.email)
+                Section("Account") {
+                    LabeledContent("Server", value: account.server)
+                    LabeledContent("Email", value: account.email)
                     OwnFingerprintRow()
-                    LabeledContent("Dernière synchronisation") {
+                    LabeledContent("Last sync") {
                         Text(account.syncedAt.map {
                             Date(timeIntervalSince1970: TimeInterval($0)).formatted(date: .abbreviated, time: .shortened)
-                        } ?? "jamais")
+                        } ?? String(localized: "never"))
                     }
-                    Button("Synchroniser maintenant") { Task { await model.syncNow() } }
+                    Button("Sync Now") { Task { await model.syncNow() } }
                         .disabled(model.lockState != .unlocked || model.syncState == .syncing)
                 }
 
                 Section {
-                    LabeledContent("Importer") {
-                        Button("Choisir un fichier…") { model.startImport() }
+                    LabeledContent("Import") {
+                        Button("Choose a File…") { model.startImport() }
                             .disabled(!model.canEdit)
                     }
                 } footer: {
-                    Text("Exports des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV). Les doublons sont repérés avant l'import ; Coffre → Nettoyer les doublons… traite ceux du coffre.")
+                    Text("Exports from Apple Passwords (CSV), 1Password (1PUX or CSV) or Proton Pass (unencrypted ZIP or CSV). Duplicates are spotted before the import; Vault → Clean Up Duplicates… handles those of the vault.")
                         .foregroundStyle(.secondary)
                 }
 
                 Section {
-                    Button("Se déconnecter de ce Mac…", role: .destructive) {
+                    Button("Log Out of This Mac…", role: .destructive) {
                         model.refreshPending()
                         confirmLogout = true
                     }
                 } footer: {
-                    Text("Efface le cache, les jetons et les modifications pas encore synchronisées de ce Mac. Le coffre reste intact sur le serveur.")
+                    Text("Erases the cache, the tokens and the changes not yet synced from this Mac. The vault stays intact on the server.")
                         .foregroundStyle(.secondary)
                 }
             } else {
                 NoAccountSection()
             }
         }
-        .confirmationDialog("Se déconnecter de ce Mac ?", isPresented: $confirmLogout) {
-            Button("Se déconnecter", role: .destructive) { model.logout() }
+        .confirmationDialog("Log out of this Mac?", isPresented: $confirmLogout) {
+            Button("Log Out", role: .destructive) { model.logout() }
         } message: {
             if model.pendingChanges > 0 {
-                Text("\(model.pendingChanges == 1 ? "1 modification non synchronisée sera perdue" : "\(model.pendingChanges) modifications non synchronisées seront perdues"). Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+                if model.pendingChanges == 1 {
+                    Text("1 unsynced change will be lost. You will need your master password and your second factor to log in again.")
+                } else {
+                    Text("\(model.pendingChanges) unsynced changes will be lost. You will need your master password and your second factor to log in again.")
+                }
             } else {
-                Text("Il faudra votre mot de passe principal et votre second facteur pour vous reconnecter.")
+                Text("You will need your master password and your second factor to log in again.")
             }
         }
     }
 }
 
-/// Clés de sécurité qui déverrouillent le coffre (YubiKey, hmac-secret) :
-/// liste, ajout, retrait.
+/// Security keys that unlock the vault (YubiKey, hmac-secret): list, add,
+/// remove.
 struct SecurityKeysSection: View {
     @Environment(AppModel.self) private var model
     @State private var adding = false
@@ -249,23 +252,23 @@ struct SecurityKeysSection: View {
         Section {
             ForEach(model.unlockKeys, id: \.id) { key in
                 LabeledContent {
-                    Button("Retirer", role: .destructive) { model.removeUnlockKey(key) }
+                    Button("Remove", role: .destructive) { model.removeUnlockKey(key) }
                 } label: {
                     Text(key.label)
-                    Text("Ajoutée le \(Date(timeIntervalSince1970: TimeInterval(key.created)).formatted(date: .abbreviated, time: .shortened))")
+                    Text("Added on \(Date(timeIntervalSince1970: TimeInterval(key.created)).formatted(date: .abbreviated, time: .shortened))")
                 }
             }
-            Button("Ajouter une clé de sécurité pour déverrouiller…") {
+            Button("Add a Security Key to Unlock…") {
                 model.enrollError = nil
                 adding = true
             }
             .disabled(model.lockState != .unlocked)
         } header: {
-            Text("Clés de sécurité")
+            Text("Security keys")
         } footer: {
             Text(model.unlockKeys.isEmpty
-                 ? "Une YubiKey (FIDO2, avec un code PIN) peut déverrouiller le coffre : code PIN, puis un contact. Ajoutez-en une de secours."
-                 : "Le code PIN et la clé sont tous deux nécessaires. Une reconnexion ou une déconnexion retire ces clés.")
+                 ? "A YubiKey (FIDO2, with a PIN) can unlock the vault: PIN, then a touch. Add a backup one."
+                 : "Both the PIN and the key are needed. Logging in again or logging out removes these keys.")
                 .foregroundStyle(.secondary)
         }
         .sheet(isPresented: $adding) {
@@ -274,7 +277,7 @@ struct SecurityKeysSection: View {
     }
 }
 
-/// Ajout d'une clé : un nom, puis l'échange avec la clé (code PIN, deux contacts).
+/// Adding a key: a name, then the exchange with the key (PIN, two touches).
 private struct AddSecurityKeySheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -282,16 +285,16 @@ private struct AddSecurityKeySheet: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Ajouter une clé de sécurité")
+            Text("Add a security key")
                 .font(.headline)
             if model.keyExchange == .enroll {
                 SecurityKeyPanel()
-                Text("La clé vous sera demandée deux fois : pour créer son accréditation, puis pour lire son secret.")
+                Text("You will be asked for the key twice: to create its credential, then to read its secret.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             } else {
-                TextField("Nom (par exemple « YubiKey de secours »)", text: $label)
+                TextField("Name (for example “Backup YubiKey”)", text: $label)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 320)
                     .onSubmit(start)
@@ -302,9 +305,9 @@ private struct AddSecurityKeySheet: View {
                         .multilineTextAlignment(.center)
                 }
                 HStack {
-                    Button("Fermer") { dismiss() }
+                    Button("Close") { dismiss() }
                         .keyboardShortcut(.cancelAction)
-                    Button("Commencer", action: start)
+                    Button("Start", action: start)
                         .keyboardShortcut(.defaultAction)
                         .disabled(model.lockState != .unlocked)
                 }
@@ -322,33 +325,38 @@ private struct AddSecurityKeySheet: View {
     }
 }
 
-/// Brave, Firefox et le terminal : activation, extensions à charger, clients reliés.
+/// Brave, Firefox and the terminal: activation, extensions to load, linked clients.
 struct BrowserSection: View {
     @Bindable var bridge: BrowserBridge
 
     var body: some View {
         Section {
-            Toggle("Brave, Firefox et le terminal", isOn: $bridge.enabled)
+            Toggle("Brave, Firefox and the terminal", isOn: $bridge.enabled)
             if bridge.enabled {
                 if let folder = bridge.extensionFolder {
-                    extensionRow("Extension Brave", folder: folder)
+                    extensionRow("Brave extension", folder: folder)
                 }
-                // Firefox charge un fichier, pas un dossier : le chemin copié
-                // est celui du manifeste (about:debugging).
+                // Firefox loads a file, not a folder: the copied path is the
+                // manifest's (about:debugging).
                 if let folder = bridge.firefoxExtensionFolder {
-                    extensionRow("Extension Firefox", folder: folder, copying: folder.appending(path: "manifest.json"))
+                    extensionRow("Firefox extension", folder: folder, copying: folder.appending(path: "manifest.json"))
                 }
             }
             ForEach(bridge.clients, id: \.id) { client in
                 LabeledContent {
-                    Button("Délier", role: .destructive) { bridge.revoke(client) }
+                    Button("Unlink", role: .destructive) { bridge.revoke(client) }
                 } label: {
                     Label(client.name, systemImage: client.kind == .cli ? "terminal" : "globe")
-                    Text("\(client.kind == .cli ? "Terminal" : "Navigateur"), relié le \(Date(timeIntervalSince1970: TimeInterval(client.created)).formatted(date: .abbreviated, time: .shortened))")
+                    let linked = Date(timeIntervalSince1970: TimeInterval(client.created)).formatted(date: .abbreviated, time: .shortened)
+                    if client.kind == .cli {
+                        Text("Terminal, linked on \(linked)")
+                    } else {
+                        Text("Browser, linked on \(linked)")
+                    }
                 }
             }
         } header: {
-            Text("Navigateurs et terminal")
+            Text("Browsers and terminal")
         } footer: {
             Text(footer)
                 .foregroundStyle(bridge.error == nil ? Color.secondary : Color.red)
@@ -356,16 +364,16 @@ struct BrowserSection: View {
         .onAppear { bridge.refreshClients() }
     }
 
-    /// Une extension livrée : copier son chemin (`copying`, par défaut le
-    /// dossier) ou l'afficher dans le Finder.
-    private func extensionRow(_ title: String, folder: URL, copying: URL? = nil) -> some View {
+    /// A shipped extension: copy its path (`copying`, by default the folder)
+    /// or show it in the Finder.
+    private func extensionRow(_ title: LocalizedStringKey, folder: URL, copying: URL? = nil) -> some View {
         LabeledContent(title) {
             HStack {
-                Button("Copier le chemin") {
+                Button("Copy Path") {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString((copying ?? folder).path, forType: .string)
                 }
-                Button("Afficher") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                Button("Show") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
             }
         }
     }
@@ -373,36 +381,35 @@ struct BrowserSection: View {
     private var footer: String {
         if let error = bridge.error { return error }
         if !bridge.enabled {
-            return "L'extension Verrou remplit vos identifiants dans Brave ou Firefox, site par site ; la commande « verrou » et son agent SSH lisent le coffre depuis le terminal, avec votre accord. Rien ne sort du Mac."
+            return String(localized: "The Verrou extension fills your logins in Brave or Firefox, site by site; the “verrou” command and its SSH agent read the vault from the terminal, with your approval. Nothing leaves the Mac.")
         }
-        let terminal = "Terminal : « verrou link », puis chaque secret ou signature SSH demande Touch ID."
+        let terminal = String(localized: "Terminal: “verrou link”, then each secret or SSH signature asks for Touch ID.")
         if let note = bridge.browserNote, bridge.clients.isEmpty {
             return "\(note). \(terminal)"
         }
         if bridge.clients.isEmpty {
-            return "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Dans Firefox : about:debugging, « Ce Firefox », « Charger un module complémentaire temporaire… », puis ⌘⇧G et collez le chemin du manifeste (à refaire à chaque démarrage de Firefox, voir le guide). Cliquez ensuite sur l'icône Verrou du navigateur pour relier l'extension. \(terminal)"
+            return String(localized: "In Brave: brave://extensions, “Developer mode”, “Load unpacked”, then ⌘⇧G and paste the path. In Firefox: about:debugging, “This Firefox”, “Load Temporary Add-on…”, then ⌘⇧G and paste the manifest path (to redo at each Firefox start, see the guide). Then click the browser's Verrou icon to link the extension. \(terminal)")
         }
-        return "L'extension ne reçoit que les identifiants du site ouvert, en HTTPS, coffre déverrouillé. Le terminal cherche sans voir les secrets ; chacun demande Touch ID."
+        return String(localized: "The extension only receives the logins of the open site, over HTTPS, with the vault unlocked. The terminal searches without seeing the secrets; each one asks for Touch ID.")
     }
 }
 
-/// Vérification des nouveaux mots de passe dans les fuites connues
-/// (`AppModel.checkNewPasswords`).
+/// Check of new passwords in known leaks (`AppModel.checkNewPasswords`).
 private struct NewPasswordBreachSection: View {
     @AppStorage(Watchtower.checkNewPasswordsKey) private var checkNewPasswords = true
 
     var body: some View {
         Section {
-            Toggle("Vérifier les nouveaux mots de passe dans les fuites connues", isOn: $checkNewPasswords)
+            Toggle("Check new passwords in known leaks", isOn: $checkNewPasswords)
         } footer: {
-            Text("À chaque mot de passe créé ou modifié dans Verrou (éditeur, Brave, import), Have I Been Pwned est interrogé en arrière-plan. Seuls les 5 premiers caractères de son empreinte SHA-1 quittent ce Mac.")
+            Text("For each password created or changed in Verrou (editor, Brave, import), Have I Been Pwned is queried in the background. Only the first 5 characters of its SHA-1 hash leave this Mac.")
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-/// Filtre ouvert au déverrouillage, règles de correspondance des sites
-/// (défaut de ce Mac, dossiers) et domaines équivalents du compte.
+/// Filter opened on unlock, site match rules (this Mac's default, folders)
+/// and the account's equivalent domains.
 private struct FillingSettings: View {
     @Environment(AppModel.self) private var model
 
@@ -410,39 +417,39 @@ private struct FillingSettings: View {
         @Bindable var model = model
         SettingsPane {
             Section {
-                Picker("Au déverrouillage, afficher", selection: $model.defaultFilter) {
+                Picker("On unlock, show", selection: $model.defaultFilter) {
                     ForEach(DefaultFilter.allCases) { filter in
                         Text(filter.label).tag(filter)
                     }
                 }
-                Picker("Trier la liste par", selection: $model.sort) {
+                Picker("Sort the list by", selection: $model.sort) {
                     ForEach(ResultOrder.menu, id: \.self) { order in
                         Text(order.label).tag(order)
                     }
                 }
             } footer: {
-                Text("Gardés sur ce Mac. « Dernière utilisation » suit ce que vous remplissez, copiez ou affichez ici : seulement des identifiants d'éléments et des dates, jamais envoyés au serveur.")
+                Text("Kept on this Mac. “Last used” follows what you fill, copy or show here: only item IDs and dates, never sent to the server.")
                     .foregroundStyle(.secondary)
             }
 
             Section {
-                Picker("Correspondance par défaut", selection: defaultRule) {
+                Picker("Default match", selection: defaultRule) {
                     ForEach(UriMatchRule.all) { rule in
                         Text(rule.label).tag(rule)
                     }
                 }
                 .layoutMark("default-match")
             } header: {
-                Text("Correspondance des sites")
+                Text("Site matching")
             } footer: {
-                Text("Pour les sites qui n'ont pas leur propre règle (à choisir dans la modification d'un identifiant). \(defaultRule.wrappedValue.explanation)")
+                Text("For sites that don't have their own rule (chosen when editing a login). \(defaultRule.wrappedValue.explanation)")
                     .foregroundStyle(.secondary)
             }
 
             Section {
                 ForEach(model.matchSettings?.folderRules ?? [], id: \.folderId) { rule in
                     HStack {
-                        Label(rule.folderName.isEmpty ? "Dossier supprimé" : rule.folderName, systemImage: "folder")
+                        Label(rule.folderName.isEmpty ? String(localized: "Deleted folder") : rule.folderName, systemImage: "folder")
                         Spacer()
                         Picker(rule.folderName, selection: folderRule(rule.folderId)) {
                             ForEach(UriMatchRule.all) { option in
@@ -457,7 +464,7 @@ private struct FillingSettings: View {
                             Image(systemName: "minus.circle.fill").foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
-                        .help("Revenir à la règle par défaut pour ce dossier")
+                        .help("Go back to the default rule for this folder")
                     }
                 }
                 let free = model.folders.filter { folder in
@@ -468,25 +475,26 @@ private struct FillingSettings: View {
                         Button(folder.name) { model.setFolderMatchRule(folder.id, .host) }
                     }
                 } label: {
-                    Label("Règle pour un dossier…", systemImage: "plus.circle.fill")
+                    Label("Rule for a Folder…", systemImage: "plus.circle.fill")
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .disabled(free.isEmpty)
             } header: {
-                Text("Par dossier")
+                Text("By folder")
             } footer: {
-                Text("Bitwarden n'a pas de règle par dossier : celle-ci reste sur ce Mac, et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail).")
+                Text("Bitwarden has no per-folder rule: this one stays on this Mac, and only applies to sites without their own rule (for example “Host” for the Work folder).")
                     .foregroundStyle(.secondary)
             }
 
             Section {
                 let groups = model.matchSettings?.equivalentDomains ?? []
                 if groups.isEmpty {
-                    Text(model.mode == .vaultwarden ? "Lus à la prochaine synchronisation." : "Aucun dans le coffre fictif.")
+                    Text(model.mode == .vaultwarden ? "Read at the next sync." : "None in the mock vault.")
                         .foregroundStyle(.secondary)
                 } else {
-                    DisclosureGroup("\(groups.count) groupe\(groups.count > 1 ? "s" : "") de domaines") {
+                    DisclosureGroup(groups.count > 1 ? String(localized: "\(groups.count) domain groups")
+                                                      : String(localized: "\(groups.count) domain group")) {
                         ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                             Text(group.joined(separator: " · "))
                                 .font(.callout)
@@ -496,9 +504,9 @@ private struct FillingSettings: View {
                     }
                 }
             } header: {
-                Text("Domaines équivalents")
+                Text("Equivalent domains")
             } footer: {
-                Text("Réglages de votre compte, lus sur le serveur (coffre web → Paramètres → Domaines) : la règle « Domaine de base » propose aussi l'identifiant sur les domaines du même groupe.")
+                Text("Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.")
                     .foregroundStyle(.secondary)
             }
         }

@@ -2,27 +2,27 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Où ranger un élément partagé : une organisation et une ou plusieurs de
-/// ses collections.
+/// Where to put a shared item: an organization and one or more of its
+/// collections.
 struct SharedDestination: Equatable, Hashable {
     var organizationID: String
     var collectionIDs: [String]
 }
 
 extension AppModel {
-    /// L'élément peut-il être modifié (coffre Vaultwarden ouvert, et pas une
-    /// collection en lecture seule) ?
+    /// Can the item be edited (Vaultwarden vault open, and not a read-only
+    /// collection)?
     func canModify(_ summary: ItemSummary?) -> Bool {
         canEdit && summary?.sharing?.readOnly != true
     }
 
-    /// Organisations où le compte peut ranger un élément.
+    /// Organizations where the account can put an item.
     var writableOrganizations: [OrganizationView] {
         organizations.filter(\.writable)
     }
 
-    /// Destination proposée pour un nouvel élément : l'organisation ou la
-    /// collection affichée dans la barre latérale, si on peut y écrire.
+    /// Destination suggested for a new item: the organization or the
+    /// collection displayed in the sidebar, if it can be written to.
     var destinationFromFilter: SharedDestination? {
         switch filter {
         case .organization(let id):
@@ -38,7 +38,7 @@ extension AppModel {
         }
     }
 
-    /// Ouvre « Partager… » ou « Collections… » pour l'élément.
+    /// Opens "Share…" or "Collections…" for the item.
     func openSharing(_ itemID: String) {
         guard canEdit, let summary = summaries.first(where: { $0.id == itemID }), canModify(summary) else { return }
         if let sharing = summary.sharing {
@@ -50,19 +50,19 @@ extension AppModel {
         }
     }
 
-    /// « Partager… » sur plusieurs éléments : seuls les éléments personnels
-    /// modifiables et hors de la corbeille partent ; les autres sont comptés.
+    /// "Share…" on several items: only personal items that can be edited and
+    /// are not in the trash go; the others are counted.
     func openSharing(items ids: [String]) {
         let personal = shareableIDs(ids)
         guard canEdit, !personal.isEmpty else { return }
-        let title = personal.count == 1 ? summary(id: personal[0])?.title ?? "" : "\(personal.count) éléments"
+        let title = personal.count == 1 ? summary(id: personal[0])?.title ?? "" : String(localized: "\(personal.count) items")
         openSharing(items: personal, title: title)
     }
 
     private func openSharing(items ids: [String], title: String) {
         guard let org = writableOrganizations.first else {
-            toast = Toast(message: "Aucun coffre partagé",
-                          detail: "Créez une organisation (Coffres partagés → Nouvelle organisation…)", failure: true)
+            toast = Toast(message: String(localized: "No shared vault"),
+                          detail: String(localized: "Create an organization (Shared Vaults → New Organization…)"), failure: true)
             return
         }
         let first = org.collections.first { !$0.readOnly }
@@ -70,8 +70,7 @@ extension AppModel {
                                   organizationID: org.id, collectionIDs: Set(first.map { [$0.id] } ?? []))
     }
 
-    /// Les éléments qu'un partage peut déplacer : personnels, modifiables,
-    /// hors de la corbeille.
+    /// The items a share can move: personal, editable, not in the trash.
     func shareableIDs(_ ids: [String]) -> [String] {
         ids.filter { id in
             guard let summary = summary(id: id) else { return false }
@@ -79,15 +78,14 @@ extension AppModel {
         }
     }
 
-    /// Exécute la feuille : partage (un ou plusieurs éléments), ou nouvelles
-    /// collections.
+    /// Runs the sheet: share (one or several items), or new collections.
     func applySharing(_ flow: SharingFlow) async {
         guard !flow.busy else { return }
         if flow.current == nil {
             let protected = flow.itemIDs.filter { session.needsConfirmation(id: $0) }
             if let first = protected.first {
                 let title = protected.count == 1 ? summary(id: first)?.title ?? flow.title
-                                                 : "\(protected.count) éléments protégés"
+                                                 : String(localized: "\(protected.count) protected items")
                 guard await confirmAccess(itemID: first, title: title) else { return }
                 protected.forEach { session.authorizeItem(id: $0) }
             }
@@ -98,7 +96,7 @@ extension AppModel {
             flow.busy = false
             flow.progress = nil
         }
-        // L'ordre des collections de l'organisation, pour un envoi stable.
+        // The order of the organization's collections, for a stable upload.
         let ordered = organizations.first { $0.id == flow.organizationID }?
             .collections.map(\.id).filter(flow.collectionIDs.contains) ?? Array(flow.collectionIDs)
         let name = organizations.first { $0.id == flow.organizationID }?.name
@@ -106,11 +104,11 @@ extension AppModel {
             if flow.current != nil {
                 try await session.setItemCollections(id: flow.itemID, collectionIds: ordered)
                 afterWrite(select: flow.itemID)
-                toast = Toast(message: "Collections enregistrées", detail: name)
+                toast = Toast(message: String(localized: "Collections saved"), detail: name)
             } else if !flow.isBulk {
                 try await session.shareItem(id: flow.itemID, organizationId: flow.organizationID, collectionIds: ordered)
                 afterWrite(select: flow.itemID)
-                toast = Toast(message: "Élément partagé", detail: name)
+                toast = Toast(message: String(localized: "Item shared"), detail: name)
             } else {
                 flow.progress = (0, flow.itemIDs.count)
                 let result = try await session.shareItems(ids: flow.itemIDs, organizationId: flow.organizationID,
@@ -126,7 +124,7 @@ extension AppModel {
         }
     }
 
-    /// Page de l'organisation dans le coffre web (membres, collections, droits).
+    /// The organization's page in the web vault (members, collections, rights).
     func openWebVault(organizationID: String?) {
         let org = organizations.first { $0.id == organizationID } ?? organizations.first
         guard let link = org?.manageUrl, let url = URL(string: link) else { return }

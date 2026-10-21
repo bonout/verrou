@@ -1,44 +1,44 @@
 #!/usr/bin/env bash
-# Parcours de bout en bout de l'app iPhone (build Debug) dans un simulateur
-# sans fenêtre, contre un Vaultwarden jetable.
+# End-to-end walk through the iPhone app (Debug build) in a windowless
+# simulator, against a throwaway Vaultwarden.
 #
 #   scripts/ios-e2e.sh
 #
-# Ce que fait le script :
-#   1. construit le cœur Rust (macOS de cette machine + simulateur), puis
-#      l'app iPhone pour le simulateur, signée ad hoc (sauf SKIP_BUILD=1) ;
-#   2. lance un Vaultwarden jetable dans Docker (conteneur verrou-vw-ios,
-#      port 8118), sauf si VERROU_E2E_SERVER désigne déjà un serveur, et y
-#      crée le compte du parcours (crates/verrou-vaultwarden/tests/server.rs,
-#      seed_walkthrough_account), plus un second compte, invité dans le coffre
-#      partagé que le parcours crée ;
-#   3. intercale un relais TCP (port libre) que le script coupe pour simuler la
-#      perte du réseau ;
-#   4. crée un simulateur « Verrou E2E » (iPhone 17 Pro), le démarre sans
-#      ouvrir Simulator.app, le passe en français, enrôle un visage Face ID,
-#      installe et lance l'app avec le pilote de bout en bout
-#      (apple/VerrouiOS/Demo/EndToEndDriver.swift) ;
-#   5. répond au pilote (captures, Face ID reconnu, réseau coupé ou rétabli)
-#      puis efface simulateur, relais et conteneur.
+# What the script does:
+#   1. builds the Rust core (this machine's macOS + simulator), then the
+#      iPhone app for the simulator, ad hoc signed (unless SKIP_BUILD=1);
+#   2. starts a throwaway Vaultwarden in Docker (container verrou-vw-ios,
+#      port 8118), unless VERROU_E2E_SERVER already points to a server, and
+#      creates the walk's account in it (crates/verrou-vaultwarden/tests/server.rs,
+#      seed_walkthrough_account), plus a second account, invited into the
+#      shared vault the walk creates;
+#   3. puts a TCP relay (free port) in between, which the script cuts to
+#      simulate a network loss;
+#   4. creates a "Verrou E2E" simulator (iPhone 17 Pro), boots it without
+#      opening Simulator.app, switches it to English, enrolls a Face ID face,
+#      installs and launches the app with the end-to-end driver
+#      (apple/VerrouiOS/Demo/EndToEndDriver.swift);
+#   5. answers the driver (screenshots, Face ID match, network cut or
+#      restored) then deletes the simulator, relay and container.
 #
-# Le pilote peut aussi demander une taille de texte (`E2E_TEXT <taille>`,
-# `simctl ui content_size`), pour vérifier les grandes tailles, et
-# l'apparence (`E2E_APPEARANCE light|dark`), pour les captures en mode sombre.
+# The driver can also ask for a text size (`E2E_TEXT <size>`,
+# `simctl ui content_size`), to check the large sizes, and for the
+# appearance (`E2E_APPEARANCE light|dark`), for dark mode screenshots.
 #
-# QR codes : scripts/ios-qr-fixtures.swift génère des captures d'écran de
-# QR codes de double authentification, ajoutées à la photothèque du
-# simulateur (`simctl addmedia`) ; le pilote les lit par le chemin du
-# sélecteur de Photos (le simulateur n'a pas de caméra), vérifie l'aperçu,
-# l'enregistrement et le code affiché. `E2E_ONLY=otp` : connexion puis
-# cette étape seulement.
+# QR codes: scripts/ios-qr-fixtures.swift generates screenshots of two-factor
+# QR codes, added to the simulator's photo library (`simctl addmedia`); the
+# driver reads them through the Photos picker's path (the simulator has no
+# camera), checks the preview, the saving and the code shown.
+# `E2E_ONLY=otp`: sign-in then this step only.
 #
-# Variables : OUT (captures, défaut target/ios-e2e), SKIP_BUILD=1, E2E_ONLY=otp,
+# Variables: OUT (screenshots, default target/ios-e2e), SKIP_BUILD=1, E2E_ONLY=otp,
 # KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, VW_CONTAINER
-# et VW_PORT (autre conteneur, pour deux exécutions en parallèle),
-# VERROU_E2E_SERVER (+ _EMAIL, _PASSWORD, _TOTP : un compte déjà prêt).
+# and VW_PORT (another container, for two runs in parallel),
+# VERROU_E2E_SERVER (+ _EMAIL, _PASSWORD, _TOTP: an account already set up).
 #
-# Tout se passe sans fenêtre : `simctl boot` ne lance pas Simulator.app et
-# les captures (`simctl io screenshot`) ne s'affichent nulle part.
+# Everything happens without a window: `simctl boot` doesn't launch
+# Simulator.app and the screenshots (`simctl io screenshot`) aren't displayed
+# anywhere.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -53,7 +53,7 @@ runtimes = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS
 print(runtimes[-1]["identifier"])')}"
 CONTAINER="${VW_CONTAINER:-verrou-vw-ios}"
 VW_PORT="${VW_PORT:-8118}"
-# Port libre pour le relais (le même pendant tout le parcours).
+# Free port for the relay (the same during the whole walk).
 RELAY_PORT="${RELAY_PORT:-$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')}"
 WORK="$(mktemp -d)"
 LOG="$WORK/app.log"
@@ -74,13 +74,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Construction
+# 1. Build
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   HOST="$(uname -m | sed 's/arm64/aarch64/')-apple-darwin"
   SIM="$( [[ "$(uname -m)" == arm64 ]] && echo aarch64-apple-ios-sim || echo x86_64-apple-ios )"
-  # Rust en release : en debug, les futures du SDK de Bitwarden dépassent la
-  # pile de 512 Ko des fils de Swift Concurrency (écriture puis
-  # synchronisation : EXC_BAD_ACCESS sur la page de garde).
+  # Rust in release: in debug, the Bitwarden SDK's futures overflow the
+  # 512 KB stack of Swift Concurrency threads (write then sync:
+  # EXC_BAD_ACCESS on the guard page).
   PROFILE="${PROFILE:-release}" PLATFORMS=all TARGETS="$HOST" IOS_TARGETS="" SIM_TARGETS="$SIM" scripts/build-apple.sh
   (cd apple && xcodegen generate --quiet)
   xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
@@ -88,7 +88,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
     ARCHS="$(uname -m)" build -quiet
 fi
 
-# 2. Serveur et compte
+# 2. Server and account
 if [[ -z "${VERROU_E2E_SERVER:-}" ]]; then
   if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
     docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
@@ -106,20 +106,20 @@ if [[ -z "${VERROU_E2E_SERVER:-}" ]]; then
   VERROU_E2E_EMAIL="$(sed -n 's/^SEED_EMAIL=//p' <<< "$SEED")"
   VERROU_E2E_PASSWORD="$(sed -n 's/^SEED_PASSWORD=//p' <<< "$SEED")"
   VERROU_E2E_TOTP="$(sed -n 's/^SEED_TOTP=//p' <<< "$SEED")"
-  [[ -n "$VERROU_E2E_TOTP" ]] || { echo "compte du parcours impossible à créer" >&2; exit 1; }
-  # Second compte : le membre invité dans le coffre partagé.
+  [[ -n "$VERROU_E2E_TOTP" ]] || { echo "could not create the walk's account" >&2; exit 1; }
+  # Second account: the member invited into the shared vault.
   MEMBER_SEED="$(VERROU_TEST_SERVER="http://localhost:$VW_PORT" VERROU_SEED_EMAIL="membre-$EMAIL" \
     cargo test -q -p verrou-vaultwarden --test server -- --ignored --nocapture seed_walkthrough_account 2>/dev/null)"
   VERROU_E2E_MEMBER_EMAIL="$(sed -n 's/^SEED_EMAIL=//p' <<< "$MEMBER_SEED")"
   VERROU_E2E_MEMBER_PASSWORD="$(sed -n 's/^SEED_PASSWORD=//p' <<< "$MEMBER_SEED")"
   VERROU_E2E_MEMBER_TOTP="$(sed -n 's/^SEED_TOTP=//p' <<< "$MEMBER_SEED")"
-  [[ -n "$VERROU_E2E_MEMBER_TOTP" ]] || { echo "compte du membre impossible à créer" >&2; exit 1; }
+  [[ -n "$VERROU_E2E_MEMBER_TOTP" ]] || { echo "could not create the member's account" >&2; exit 1; }
   UPSTREAM_PORT=$VW_PORT
 else
   UPSTREAM_PORT="$(python3 -I -c 'import sys, urllib.parse; print(urllib.parse.urlparse(sys.argv[1]).port or 80)' "$VERROU_E2E_SERVER")"
 fi
 
-# 3. Relais TCP : le couper simule la perte du réseau (connexion refusée).
+# 3. TCP relay: cutting it simulates a network loss (connection refused).
 cat > "$WORK/relay.py" <<'PY'
 import asyncio, sys
 listen, upstream = int(sys.argv[1]), int(sys.argv[2])
@@ -149,7 +149,7 @@ start_relay() {
   python3 -I "$WORK/relay.py" "$RELAY_PORT" "$UPSTREAM_PORT" &
   RELAY_PID=$!
   for _ in $(seq 20); do nc -z 127.0.0.1 "$RELAY_PORT" 2>/dev/null && return; sleep 0.25; done
-  echo "relais impossible à lancer sur le port $RELAY_PORT" >&2
+  echo "could not start the relay on port $RELAY_PORT" >&2
   exit 1
 }
 stop_relay() {
@@ -159,13 +159,13 @@ stop_relay() {
 }
 start_relay
 
-# 4. Simulateur sans fenêtre, en français, avec Face ID enrôlé
+# 4. Windowless simulator, in English, with Face ID enrolled
 DEV="$(xcrun simctl create "Verrou E2E" "$SIM_DEVICE_TYPE" "$SIM_RUNTIME")"
 xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
-xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array fr-FR
-xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string fr_FR
-# Pas de présentation du clavier glissé sur les captures.
+xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array en-US
+xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string en_US
+# No swipe keyboard introduction on the screenshots.
 xcrun simctl spawn "$DEV" defaults write com.apple.Preferences DidShowContinuousPathIntroduction -bool true
 xcrun simctl shutdown "$DEV"
 xcrun simctl boot "$DEV"
@@ -175,18 +175,18 @@ xcrun simctl status_bar "$DEV" override --time "9:41" --dataNetwork wifi --wifiB
 xcrun simctl spawn "$DEV" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
 xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit.enrollmentChanged
 xcrun simctl install "$DEV" "$APP"
-# QR codes de double authentification : captures d'écran générées, ajoutées
-# à la photothèque (choix dans Photos sur le simulateur, ou sur l'appareil)
-# et lues par le pilote par le même chemin que le sélecteur de Photos.
+# Two-factor QR codes: generated screenshots, added to the photo library
+# (picked in Photos on the simulator, or on the device) and read by the
+# driver through the same path as the Photos picker.
 QR_DIR="$WORK/qr"
 xcrun swift "$ROOT/scripts/ios-qr-fixtures.swift" "$QR_DIR" >/dev/null
 xcrun simctl addmedia "$DEV" "$QR_DIR"/qr-*.png
-# Laisse passer les notifications du premier démarrage avant les captures.
+# Lets the first boot's notifications go by before the screenshots.
 sleep 8
 
 rm -rf "$OUT" && mkdir -p "$OUT" "$WORK/ack"
-# Un serveur local passe aussi par le relais (coupure du réseau) ; un
-# serveur distant est joint directement.
+# A local server also goes through the relay (network cut); a remote
+# server is reached directly.
 APP_SERVER="http://localhost:$RELAY_PORT"
 if [[ -n "${VERROU_E2E_SERVER:-}" ]] && ! grep -qE '^https?://(localhost|127\.0\.0\.1)(:|/|$)' <<< "$VERROU_E2E_SERVER"; then
   APP_SERVER="$VERROU_E2E_SERVER"
@@ -204,12 +204,12 @@ SIMCTL_CHILD_VERROU_E2E_ONLY="${E2E_ONLY:-}" \
   xcrun simctl launch --console --terminate-running-process "$DEV" app.verrou.ios > "$LOG" 2>&1 &
 LAUNCH_PID=$!
 
-# 5. Réponses au pilote
+# 5. Answers to the driver
 handled=0
 status=2
 deadline=$((SECONDS + 900))
 while (( SECONDS < deadline )) && [[ $status == 2 ]]; do
-  # Les lignes du pilote pas encore traitées (bash 3 : pas de mapfile).
+  # The driver's lines not handled yet (bash 3: no mapfile).
   new_lines="$(grep '^E2E_' "$LOG" 2>/dev/null | sed -n "$((handled + 1)),\$p" || true)"
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
@@ -242,9 +242,9 @@ done
 xcrun simctl terminate "$DEV" app.verrou.ios >/dev/null 2>&1 || true
 kill "$LAUNCH_PID" 2>/dev/null || true
 if [[ $status != 0 ]]; then
-  echo "--- journal de l'app ---" >&2
+  echo "--- app log ---" >&2
   tail -40 "$LOG" >&2
-  echo "ÉCHEC du parcours iPhone" >&2
+  echo "iPhone walk FAILED" >&2
   exit 1
 fi
-echo "captures : $OUT"
+echo "screenshots: $OUT"

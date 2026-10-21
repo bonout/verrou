@@ -2,9 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Build signé par l'équipe (scripts/install-macos.sh avec VERROU_MAC_TEAM) :
-	     les droits de Verrou.entitlements, plus le groupe d'apps et le
-	     fournisseur d'identifiants partagés avec VerrouAutoFillMac. -->
+	<!-- Build signed by the team (scripts/install-macos.sh with VERROU_MAC_TEAM):
+	     the entitlements of Verrou.entitlements, plus the app group and the
+	     credential provider shared with VerrouAutoFillMac. -->
 	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
 	<true/>
 	<key>com.apple.security.application-groups</key>

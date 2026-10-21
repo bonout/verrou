@@ -1,44 +1,42 @@
-//! Écritures d'éléments : la file d'attente (« outbox ») et son envoi.
+//! Item writes: the queue ("outbox") and its sending.
 //!
-//! Toute création, modification, mise à la corbeille, restauration, archive,
-//! favori ou rangement dans un dossier passe par cette file, en ligne comme
-//! hors ligne : elle s'applique tout de suite au coffre affiché, et
-//! l'interface n'attend pas le réseau. L'élément y est gardé **chiffré par
-//! le SDK**, exactement comme il partira (même date de révision connue) ; la
-//! file entière est en plus chiffrée par la clé de l'utilisateur
-//! (`outbox.json`, voir `store`). Rien n'y est en clair.
+//! Every creation, edit, trashing, restore, archive, favorite or move to a
+//! folder goes through this queue, online as well as offline: it applies
+//! right away to the displayed vault, and the interface doesn't wait for the
+//! network. The item is kept there **encrypted by the SDK**, exactly as it
+//! will be sent (same known revision date); the whole queue is also
+//! encrypted by the user key (`outbox.json`, see `store`). Nothing in it is
+//! in the clear.
 //!
-//! Le coffre affiché est le cache du serveur, auquel la file est
-//! superposée (`Outbox::apply`) : verrouiller, relancer l'app ou rouvrir
-//! la session ne perd rien.
+//! The displayed vault is the server's cache, with the queue overlaid on it
+//! (`Outbox::apply`): locking, relaunching the app or reopening the session
+//! loses nothing.
 //!
-//! L'envoi suit aussitôt, en arrière-plan (`sync_shared`), puis une
-//! synchronisation ; hors ligne, il attend le retour du réseau. Dans
-//! l'ordre : d'abord les créations et modifications, puis la corbeille, les
-//! archives et les dossiers, par lots (elles changent la date de révision
-//! de l'élément sur le serveur : envoyées avant une modification, elles la
-//! feraient passer pour périmée). Un élément créé porte un identifiant
-//! provisoire, remplacé par celui du serveur.
+//! Sending follows right away, in the background (`sync_shared`), then a
+//! sync; offline, it waits for the network to come back. In order: first
+//! creations and edits, then trash, archives and folders, in batches (they
+//! change the item's revision date on the server: sent before an edit, they
+//! would make it look stale). A created item carries a provisional id,
+//! replaced by the server's.
 //!
-//! Sans bloquer : une entrée est prise sous le verrou de la connexion
-//! (`begin`), envoyée sans le tenir (le réseau peut prendre des secondes, et
-//! l'écriture suivante ne doit pas l'attendre), puis le verrou est repris
-//! pour noter la réponse (`finish`). Une entrée en cours d'envoi n'est plus
-//! fusionnée avec une modification suivante du même élément : celle-ci se
-//! place derrière, et repart de la date de révision rendue par le serveur
-//! (`Outbox::rebase`) au lieu de passer pour périmée.
+//! Without blocking: an entry is taken under the connection's lock
+//! (`begin`), sent without holding it (the network can take seconds, and the
+//! next write must not wait for it), then the lock is taken again to record
+//! the response (`finish`). An entry being sent is no longer merged with a
+//! later edit of the same item: that one goes behind it, and starts again
+//! from the revision date returned by the server (`Outbox::rebase`) instead
+//! of looking stale.
 //!
-//! Conflit : l'élément a changé (ou disparu) sur le serveur entre-temps. Le
-//! serveur refuse la modification (date de révision) ; Verrou garde les
-//! deux versions : la version locale devient une copie, « titre (conflit
-//! hors ligne) », et la version du serveur revient à la synchronisation.
-//! Rien n'est perdu sans le dire : une modification que le serveur refuse
-//! pour une autre raison (et dont la copie est refusée aussi) est retirée de
-//! la file (le coffre affiché revient à la version du serveur) et signalée.
+//! Conflict: the item changed (or disappeared) on the server in the
+//! meantime. The server rejects the edit (revision date); Verrou keeps both
+//! versions: the local version becomes a copy, "title (offline conflict)",
+//! and the server's version comes back with the sync. Nothing is lost
+//! silently: an edit the server rejects for another reason (and whose copy
+//! is rejected too) is removed from the queue (the displayed vault goes back
+//! to the server's version) and reported.
 //!
-//! Une modification envoyée reste dans la file (`sent`) jusqu'à la
-//! synchronisation suivante : si le réseau tombe entre les deux, le coffre
-//! affiché la montre toujours.
+//! A sent edit stays in the queue (`sent`) until the next sync: if the
+//! network drops in between, the displayed vault still shows it.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -56,15 +54,25 @@ use crate::import::BATCH;
 use crate::store::OutboxFile;
 use crate::{Connection, Decrypted, Error};
 
-/// Après une erreur réseau, les envois déclenchés par une écriture
-/// attendent ce délai avant de retenter le réseau. La synchronisation
-/// (périodique ou ⌘R), elle, réessaie toujours.
+/// After a network error, sends triggered by a write wait this long before
+/// trying the network again. The sync (periodic or ⌘R) always retries.
 const RETRY_AFTER: Duration = Duration::from_secs(20);
 
-/// Suffixe du titre de la copie gardée en cas de conflit.
-pub const CONFLICT_SUFFIX: &str = " (conflit hors ligne)";
+/// Suffix of the title of the copy kept on conflict.
+pub const CONFLICT_SUFFIX: &str = " (offline conflict)";
 
-/// Corbeille, restauration, archives : `PUT /api/ciphers/{id}/{action}`.
+/// The suffix earlier versions wrote (in French): still recognised in an
+/// outbox saved by them.
+const LEGACY_CONFLICT_SUFFIX: &str = " (conflit hors ligne)";
+
+/// The title of a conflict copy without its suffix, current or legacy.
+fn strip_conflict_suffix(title: &str) -> Option<&str> {
+    title
+        .strip_suffix(CONFLICT_SUFFIX)
+        .or_else(|| title.strip_suffix(LEGACY_CONFLICT_SUFFIX))
+}
+
+/// Trash, restore, archives: `PUT /api/ciphers/{id}/{action}`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Action {
@@ -97,44 +105,43 @@ impl Action {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum Change {
-    /// Élément créé ou modifié, chiffré par le SDK tel qu'il partira.
+    /// Item created or edited, encrypted by the SDK as it will be sent.
     Save {
-        /// Créé : `id` est provisoire, l'envoi est un `POST`.
+        /// Created: `id` is provisional, the send is a `POST`.
         created: bool,
         cipher: Box<EncryptionContext>,
-        /// Copie gardée après un conflit : refusée à son tour, la
-        /// modification est signalée et retirée.
+        /// Copy kept after a conflict: if it is rejected too, the edit is
+        /// reported and removed.
         #[serde(default)]
         conflict: bool,
     },
     Action {
         action: Action,
         at: DateTime<Utc>,
-        /// Date de révision rendue par le serveur, une fois envoyée.
+        /// Revision date returned by the server, once sent.
         #[serde(default)]
         revision: Option<DateTime<Utc>>,
     },
-    /// Rangé dans ce dossier (`None` : aucun), `PUT /api/ciphers/move` : le
-    /// dossier est propre au compte, l'élément n'est pas réécrit.
+    /// Moved to this folder (`None`: none), `PUT /api/ciphers/move`: the
+    /// folder belongs to the account, the item is not rewritten.
     Move { folder: Option<String> },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct Entry {
-    /// Identifiant de l'élément (provisoire pour une création pas encore
-    /// envoyée).
+    /// Item id (provisional for a creation not sent yet).
     pub id: String,
-    /// Titre, pour le bilan de l'envoi (la file entière est chiffrée).
+    /// Title, for the send report (the whole queue is encrypted).
     pub title: String,
     pub change: Change,
-    /// Accepté par le serveur, gardé jusqu'à la synchronisation suivante.
+    /// Accepted by the server, kept until the next sync.
     #[serde(default)]
     pub sent: bool,
-    /// Numéro d'ordre dans la session (pas enregistré).
+    /// Sequence number in the session (not saved).
     #[serde(skip)]
     seq: u64,
-    /// A attendu le serveur (hors ligne, ou depuis une session précédente) :
-    /// son envoi est annoncé dans le bilan.
+    /// Waited for the server (offline, or since a previous session): its
+    /// sending is announced in the report.
     #[serde(skip)]
     deferred: bool,
 }
@@ -155,8 +162,7 @@ impl Entry {
         matches!(self.change, Change::Save { .. })
     }
 
-    /// Le lot dont l'entrée peut faire partie (corbeille, archives,
-    /// dossiers).
+    /// The batch the entry can be part of (trash, archives, folders).
     fn batch(&self) -> Option<Batch> {
         match &self.change {
             Change::Save { .. } => None,
@@ -166,24 +172,24 @@ impl Entry {
     }
 }
 
-/// Ce qui part en une requête groupée.
+/// What goes out in one grouped request.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Batch {
     Action(Action),
     Move(Option<String>),
 }
 
-/// La file, dans l'ordre des modifications.
+/// The queue, in the order of the changes.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub(crate) struct Outbox {
     entries: Vec<Entry>,
-    /// Prochain numéro d'ordre.
+    /// Next sequence number.
     #[serde(skip)]
     next: u64,
-    /// Entrées en cours d'envoi : ni fusionnées, ni annulées, ni reprises.
+    /// Entries being sent: not merged, cancelled or taken again.
     #[serde(skip)]
     in_flight: HashSet<u64>,
-    /// Entrées d'un lot refusé : renvoyées une à une, pour savoir laquelle.
+    /// Entries of a rejected batch: sent again one by one, to find out which one.
     #[serde(skip)]
     singles: HashSet<u64>,
 }
@@ -201,12 +207,12 @@ impl Outbox {
         self.unsent().next().is_some()
     }
 
-    /// Modifications pas encore acceptées par le serveur.
+    /// Changes not yet accepted by the server.
     pub fn pending_changes(&self) -> usize {
         self.unsent().count()
     }
 
-    /// Éléments qui attendent le serveur, sans doublon.
+    /// Items waiting for the server, without duplicates.
     pub fn pending_items(&self) -> Vec<String> {
         let mut seen = HashSet::new();
         self.unsent()
@@ -215,8 +221,8 @@ impl Outbox {
             .collect()
     }
 
-    /// Numérote une file relue du disque : tout ce qu'elle contient a
-    /// attendu le serveur.
+    /// Numbers a queue read back from disk: everything in it has waited for
+    /// the server.
     fn renumber(&mut self) {
         for entry in &mut self.entries {
             entry.seq = self.next;
@@ -235,15 +241,15 @@ impl Outbox {
         self.entries.iter().position(|e| e.seq == seq)
     }
 
-    /// Peut encore être fusionnée ou annulée : ni envoyée, ni en cours.
+    /// Can still be merged or cancelled: neither sent nor in flight.
     fn is_open(&self, entry: &Entry) -> bool {
         !entry.sent && !self.in_flight.contains(&entry.seq)
     }
 
-    /// Ajoute une création ou une modification. Une seule modification par
-    /// élément attend : la nouvelle remplace la précédente (elle en part,
-    /// puisqu'elle est faite sur le coffre affiché), et une création reste
-    /// une création. Celle qui est en cours d'envoi n'est pas touchée.
+    /// Adds a creation or an edit. Only one edit per item waits: the new
+    /// one replaces the previous one (it builds on it, since it is made on
+    /// the displayed vault), and a creation stays a creation. The one being
+    /// sent is not touched.
     pub fn push_save(
         &mut self,
         id: String,
@@ -277,10 +283,9 @@ impl Outbox {
         ));
     }
 
-    /// Ajoute une action. Celle qui défait la précédente action en attente
-    /// sur l'élément (restaurer ce qu'on vient de mettre à la corbeille,
-    /// sortir des archives) l'annule simplement, si elle n'est pas déjà
-    /// partie.
+    /// Adds an action. One that undoes the item's previous pending action
+    /// (restoring what was just trashed, unarchiving) simply cancels it, if
+    /// it hasn't gone out already.
     pub fn push_action(&mut self, id: String, title: String, action: Action, at: DateTime<Utc>) {
         let last = self
             .entries
@@ -304,8 +309,8 @@ impl Outbox {
         ));
     }
 
-    /// Range l'élément dans un dossier ; un rangement en attente du même
-    /// élément est remplacé.
+    /// Moves the item to a folder; a pending move of the same item is
+    /// replaced.
     pub fn push_move(&mut self, id: String, title: String, folder: Option<String>) {
         let previous = self
             .entries
@@ -318,9 +323,9 @@ impl Outbox {
         self.push(Entry::new(id, title, Change::Move { folder }));
     }
 
-    /// Superpose la file aux éléments du cache : remplace (ou ajoute) les
-    /// éléments modifiés (ou créés), date la corbeille et les archives,
-    /// range dans les dossiers.
+    /// Overlays the queue on the cache's items: replaces (or adds) the
+    /// edited (or created) items, dates trash and archives, moves into
+    /// folders.
     pub fn apply(&self, ciphers: &mut Vec<Cipher>) {
         let mut positions: HashMap<_, usize> = ciphers
             .iter()
@@ -368,7 +373,7 @@ impl Outbox {
         }
     }
 
-    /// Identifiant provisoire remplacé par celui du serveur.
+    /// Provisional id replaced by the server's.
     fn remap(&mut self, from: &str, to: &str) {
         let parsed = to.parse().ok();
         for entry in self.entries.iter_mut().filter(|e| e.id == from) {
@@ -379,10 +384,9 @@ impl Outbox {
         }
     }
 
-    /// Le serveur a donné une nouvelle date de révision à l'élément (par
-    /// une écriture de Verrou) : les modifications qui attendent derrière
-    /// en repartent. Elles ont été faites sur le coffre affiché, qui montrait
-    /// déjà cette écriture.
+    /// The server gave the item a new revision date (through a Verrou
+    /// write): the edits waiting behind start again from it. They were made
+    /// on the displayed vault, which already showed that write.
     fn rebase(&mut self, id: &str, revision: DateTime<Utc>) {
         let in_flight = &self.in_flight;
         for entry in self
@@ -396,26 +400,25 @@ impl Outbox {
         }
     }
 
-    /// Le réseau manque : ce qui attend sera annoncé une fois parti.
+    /// The network is missing: what waits will be announced once sent.
     fn mark_deferred(&mut self) {
         for entry in self.entries.iter_mut().filter(|e| !e.sent) {
             entry.deferred = true;
         }
     }
 
-    /// Oublie ce que le serveur a accepté : la synchronisation qui vient
-    /// d'arriver le contient. Rend `true` si la file a changé.
+    /// Forgets what the server accepted: the sync that just arrived
+    /// contains it. Returns `true` if the queue changed.
     pub fn purge_sent(&mut self) -> bool {
         let before = self.entries.len();
         self.entries.retain(|e| !e.sent);
         self.entries.len() != before
     }
 
-    /// La prochaine requête, marquée en cours d'envoi : créations et
-    /// modifications d'abord, dans l'ordre, puis corbeille, archives et
-    /// dossiers, par lots. `None` : rien à envoyer, ou un envoi déjà en
-    /// cours. Une modification que le SDK ne sait pas mettre en requête est
-    /// retirée et signalée dans `rejected`.
+    /// The next request, marked as being sent: creations and edits first,
+    /// in order, then trash, archives and folders, in batches. `None`:
+    /// nothing to send, or a send already in progress. An edit the SDK
+    /// cannot turn into a request is removed and reported in `rejected`.
     fn begin(&mut self, rejected: &mut Vec<(String, String)>) -> Option<Job> {
         if !self.in_flight.is_empty() {
             return None;
@@ -428,7 +431,7 @@ impl Outbox {
                 created, cipher, ..
             } = &entry.change
             else {
-                unreachable!("une modification");
+                unreachable!("an edit");
             };
             let (seq, id, created) = (entry.seq, entry.id.clone(), *created);
             let collections = cipher.cipher.organization_id.map(|_| {
@@ -451,7 +454,7 @@ impl Outbox {
                     });
                 }
                 Err(error) => {
-                    let index = self.position(seq).expect("l'entrée vient d'être lue");
+                    let index = self.position(seq).expect("the entry was just read");
                     let entry = self.entries.remove(index);
                     rejected.push((entry.title, error.to_string()));
                 }
@@ -459,9 +462,9 @@ impl Outbox {
         }
     }
 
-    /// Le prochain lot d'actions (ou de rangements) du même genre, dans
-    /// l'ordre. Un élément dont une action d'un autre genre attend avant
-    /// n'en fait pas partie : chaque élément garde l'ordre de ses actions.
+    /// The next batch of actions (or moves) of the same kind, in order. An
+    /// item with an action of another kind waiting before is not part of
+    /// it: each item keeps the order of its actions.
     fn begin_batch(&mut self) -> Option<Job> {
         let mut candidates = self.entries.iter().filter(|e| !e.sent && !e.is_save());
         let first = candidates.next()?;
@@ -491,26 +494,26 @@ impl Outbox {
     }
 }
 
-/// Une requête à envoyer, préparée sous le verrou de la connexion et
-/// envoyée sans lui (`Job::send`).
+/// A request to send, prepared under the connection's lock and sent
+/// without it (`Job::send`).
 pub(crate) enum Job {
     Save {
         seq: u64,
         id: String,
         created: bool,
         request: Box<CipherRequestModel>,
-        /// Création dans un coffre partagé : ses collections.
+        /// Creation in a shared vault: its collections.
         collections: Option<Vec<uuid::Uuid>>,
     },
     Batch {
         batch: Batch,
-        /// (numéro d'ordre, élément).
+        /// (sequence number, item).
         entries: Vec<(u64, String)>,
     },
 }
 
 impl Job {
-    /// L'envoi lui-même : seulement le réseau, aucun état partagé.
+    /// The send itself: only the network, no shared state.
     pub(crate) async fn send(&self, api: &Api, access: &str) -> Result<Value, Error> {
         match self {
             Self::Save {
@@ -555,19 +558,19 @@ impl Job {
     }
 }
 
-/// Bilan de l'envoi des modifications, depuis le dernier bilan lu.
+/// Report of the sending of changes, since the last report read.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SyncReport {
-    /// Modifications qui avaient attendu le serveur (hors ligne) et qu'il
-    /// vient d'accepter.
+    /// Changes that had waited for the server (offline) and that it just
+    /// accepted.
     pub sent: usize,
-    /// Éléments modifiés (ou supprimés) ailleurs entre-temps : titre de la
-    /// copie qui garde la version locale.
+    /// Items edited (or deleted) elsewhere in the meantime: title of the
+    /// copy that keeps the local version.
     pub conflicts: Vec<String>,
-    /// Modifications refusées par le serveur, retirées de la file (le
-    /// coffre affiché revient à la version du serveur) : (titre, raison).
+    /// Changes rejected by the server, removed from the queue (the
+    /// displayed vault goes back to the server's version): (title, reason).
     pub rejected: Vec<(String, String)>,
-    /// Éléments créés : (identifiant provisoire, identifiant du serveur).
+    /// Created items: (provisional id, server id).
     pub remapped: Vec<(String, String)>,
 }
 
@@ -577,22 +580,22 @@ impl SyncReport {
     }
 }
 
-/// Coordination des envois d'une connexion, partagée hors de son verrou.
+/// Coordination of a connection's sends, shared outside its lock.
 #[derive(Default)]
 pub(crate) struct Courier {
-    /// Un seul envoi (et synchronisation) à la fois.
+    /// Only one send (and sync) at a time.
     gate: tokio::sync::Mutex<()>,
-    /// Demandes de synchronisation reçues, et la dernière servie : une
-    /// demande arrivée pendant un envoi est servie par le suivant, qui sert
-    /// aussi toutes celles arrivées entre-temps.
+    /// Sync requests received, and the last one served: a request that
+    /// arrives during a send is served by the next one, which also serves
+    /// all those that arrived in the meantime.
     requested: AtomicU64,
     served: AtomicU64,
-    /// Échec du dernier envoi, rendu aux demandes qu'il a servies.
+    /// Failure of the last send, returned to the requests it served.
     failure: std::sync::Mutex<Option<Error>>,
-    /// Coffre verrouillé : l'envoi s'arrête après la requête en cours (la
-    /// file attend le prochain déverrouillage).
+    /// Vault locked: sending stops after the current request (the queue
+    /// waits for the next unlock).
     stopped: AtomicBool,
-    /// Compte déconnecté : plus rien n'est écrit sur le disque.
+    /// Account logged out: nothing more is written to disk.
     closed: AtomicBool,
 }
 
@@ -602,38 +605,37 @@ impl Courier {
     }
 }
 
-/// Arrête l'envoi en cours d'une connexion qu'on lâche, même s'il la garde
-/// en vie le temps d'une requête.
+/// Stops the current send of a connection being dropped, even if it keeps
+/// it alive for the duration of a request.
 #[derive(Clone)]
 pub struct Closer(Arc<Courier>);
 
 impl Closer {
-    /// Verrouillage : l'envoi s'arrête après la requête en cours.
+    /// Locking: sending stops after the current request.
     pub fn stop(&self) {
         self.0.stopped.store(true, Ordering::SeqCst);
     }
 
-    /// Déconnexion : l'envoi s'arrête, et plus rien n'est écrit sur le
-    /// disque (la file effacée ne revient pas).
+    /// Logout: sending stops, and nothing more is written to disk (the
+    /// erased queue doesn't come back).
     pub fn close(&self) {
         self.stop();
         self.0.closed.store(true, Ordering::SeqCst);
     }
 }
 
-/// Ce qu'a donné une synchronisation partagée.
+/// What a shared sync produced.
 pub enum Synced {
-    /// Le coffre a changé : le voici, déchiffré.
+    /// The vault changed: here it is, decrypted.
     Changed(Decrypted),
-    /// Rien de nouveau depuis le coffre affiché.
+    /// Nothing new since the displayed vault.
     Unchanged,
-    /// Servie par l'envoi d'une autre demande, qui a rendu le coffre.
+    /// Served by another request's send, which returned the vault.
     Joined,
 }
 
-/// La file enregistrée pour ce compte, déchiffrée par la clé de
-/// l'utilisateur. Celle d'un autre compte (ou illisible : clé changée) est
-/// supprimée.
+/// The queue saved for this account, decrypted by the user key. One from
+/// another account (or unreadable: key changed) is deleted.
 pub(crate) fn load(store: &crate::Store, user_id: &str, sdk: &bitwarden_core::Client) -> Outbox {
     let Ok(Some(file)) = store.load_outbox() else {
         return Outbox::default();
@@ -648,8 +650,8 @@ pub(crate) fn load(store: &crate::Store, user_id: &str, sdk: &bitwarden_core::Cl
         .ok()
         .and_then(|json| serde_json::from_str::<Outbox>(&json).ok());
     let Some(mut outbox) = outbox else {
-        // Chiffrée par une autre clé (mot de passe changé avec rotation de
-        // la clé) : illisible pour toujours, et son compteur tromperait.
+        // Encrypted by another key (password changed with key rotation):
+        // unreadable forever, and its counter would mislead.
         let _ = store.delete_outbox();
         return Outbox::default();
     };
@@ -657,14 +659,13 @@ pub(crate) fn load(store: &crate::Store, user_id: &str, sdk: &bitwarden_core::Cl
     outbox
 }
 
-/// Envoie la file puis synchronise, sans tenir la connexion pendant le
-/// réseau : les écritures locales (`create`, `update`…) passent pendant ce
-/// temps. Les demandes simultanées sont regroupées : un envoi en cours, et
-/// un seul après lui pour toutes celles arrivées entre-temps.
+/// Sends the queue then syncs, without holding the connection during the
+/// network: local writes (`create`, `update`…) go through meanwhile.
+/// Simultaneous requests are grouped: one send in progress, and a single
+/// one after it for all those that arrived in the meantime.
 ///
-/// `patient` : déclenché par une écriture ; si le serveur était injoignable
-/// il y a peu, ne pas retenter tout de suite (la synchronisation périodique
-/// s'en charge).
+/// `patient`: triggered by a write; if the server was unreachable a moment
+/// ago, don't retry right away (the periodic sync takes care of it).
 pub async fn sync_shared(
     connection: &Arc<tokio::sync::Mutex<Connection>>,
     patient: bool,
@@ -672,9 +673,9 @@ pub async fn sync_shared(
     let connection = Arc::clone(connection);
     let courier = Arc::clone(&connection.lock().await.courier);
     let ticket = courier.requested.fetch_add(1, Ordering::SeqCst) + 1;
-    // Dans une tâche à part : cesser d'attendre (tâche de l'app annulée)
-    // n'interrompt pas un envoi à mi-chemin, qui laisserait une entrée
-    // marquée « en cours » pour toujours.
+    // In a separate task: no longer waiting (app task cancelled) doesn't
+    // interrupt a send halfway, which would leave an entry marked
+    // "in flight" forever.
     let run = tokio::spawn(async move {
         let _gate = courier.gate.lock().await;
         if courier.served.load(Ordering::SeqCst) >= ticket {
@@ -695,10 +696,10 @@ pub async fn sync_shared(
         result
     });
     run.await
-        .map_err(|e| Error::Storage(format!("envoi interrompu ({e})")))?
+        .map_err(|e| Error::Storage(format!("send interrupted ({e})")))?
 }
 
-/// Un envoi, porte tenue (`Courier::gate`).
+/// One send, gate held (`Courier::gate`).
 async fn drain(
     connection: &tokio::sync::Mutex<Connection>,
     courier: &Courier,
@@ -710,15 +711,15 @@ async fn drain(
     let (api, refresh) = {
         let open = connection.lock().await;
         if patient && open.offline_at.is_some_and(|at| at.elapsed() < RETRY_AFTER) {
-            return Err(Error::Network("serveur injoignable il y a peu".to_owned()));
+            return Err(Error::Network("server unreachable a moment ago".to_owned()));
         }
         (open.api.clone(), open.refresh_token()?)
     };
     let mut refresh = refresh;
     let mut tokens = api.refresh(refresh.expose()).await;
     if matches!(&tokens, Err(error) if !matches!(error, Error::Network(_))) {
-        // Jeton refusé : l'extension de remplissage a pu en enregistrer un
-        // nouveau entre-temps (voir `Connection::access_token`).
+        // Token rejected: the autofill extension may have saved a new one in
+        // the meantime (see `Connection::access_token`).
         let saved = {
             let mut open = connection.lock().await;
             if open.adopt_saved_refresh_token() {
@@ -767,36 +768,36 @@ async fn drain(
             Err(error) => return Err(open.network_failure(error)),
         };
         let had_outbox = !open.outbox.is_empty();
-        // Une autre synchronisation, plus récente, a été enregistrée
-        // pendant le téléchargement : la garder.
+        // Another, more recent sync was saved during the download: keep
+        // it.
         let unchanged = open.generation == generation && open.store_sync(json)?;
         if unchanged && !wrote && !had_outbox {
             return Ok(Synced::Unchanged);
         }
         open.snapshot()
     };
-    // Le déchiffrement du coffre entier, hors du verrou.
+    // Decrypting the whole vault, outside the lock.
     snapshot.decrypt_cache().await.map(Synced::Changed)
 }
 
 impl Connection {
-    /// Modifications pas encore acceptées par le serveur.
+    /// Changes not yet accepted by the server.
     pub fn pending_changes(&self) -> usize {
         self.outbox.pending_changes()
     }
 
-    /// Le bilan des envois depuis le dernier appel.
+    /// The send report since the last call.
     pub fn take_report(&mut self) -> SyncReport {
         std::mem::take(&mut self.report)
     }
 
-    /// Pour arrêter les écritures sur le disque à la déconnexion.
+    /// To stop writes to disk at logout.
     pub fn closer(&self) -> Closer {
         Closer(Arc::clone(&self.courier))
     }
 
-    /// Identifiant actuel d'un élément : celui du serveur pour un élément
-    /// créé et envoyé depuis.
+    /// Current id of an item: the server's for an item created and sent
+    /// since.
     pub fn resolve(&self, id: &str) -> String {
         self.remapped
             .get(id)
@@ -804,7 +805,7 @@ impl Connection {
             .unwrap_or_else(|| id.to_owned())
     }
 
-    /// Enregistre la file (chiffrée), ou la supprime si elle est vide.
+    /// Saves the queue (encrypted), or deletes it if it is empty.
     pub(crate) fn persist_outbox(&mut self) -> Result<(), Error> {
         self.version += 1;
         if self.courier.closed.load(Ordering::SeqCst) {
@@ -832,8 +833,8 @@ impl Connection {
         self.outbox.mark_deferred();
     }
 
-    /// Une erreur d'envoi : le réseau manque (noté, la file attend), ou
-    /// autre chose.
+    /// A send error: the network is missing (noted, the queue waits), or
+    /// something else.
     fn network_failure(&mut self, error: Error) -> Error {
         if matches!(error, Error::Network(_)) {
             self.mark_offline();
@@ -842,10 +843,10 @@ impl Connection {
         error
     }
 
-    /// Un jeton d'accès si le serveur répond, après avoir envoyé la file
-    /// (et resynchronisé, pour repartir des dates de révision du serveur) ;
-    /// `None` hors ligne. Pour ce qui ne passe pas par la file (pièces
-    /// jointes, partage, import, compteur des passkeys).
+    /// An access token if the server answers, after sending the queue (and
+    /// resyncing, to start again from the server's revision dates); `None`
+    /// offline. For what doesn't go through the queue (attachments,
+    /// sharing, import, passkey counter).
     pub(crate) async fn online(&mut self) -> Result<Option<String>, Error> {
         if self.offline_at.is_some_and(|at| at.elapsed() < RETRY_AFTER) {
             return Ok(None);
@@ -859,11 +860,11 @@ impl Connection {
             Err(error) => return Err(error),
         };
         self.offline_at = None;
-        // L'extension (invitée) n'envoie jamais la file de l'app.
+        // The (guest) extension never sends the app's queue.
         if self.outbox.has_unsent() && !self.store.is_guest() {
             if !self.replay(&access).await? {
-                // Un envoi est en cours (`sync_shared`) : il s'occupe de la
-                // file, l'écriture directe passe à côté.
+                // A send is in progress (`sync_shared`): it takes care of
+                // the queue, the direct write goes alongside.
                 return Ok(Some(access));
             }
             if self.outbox.has_unsent() {
@@ -883,28 +884,28 @@ impl Connection {
         Ok(Some(access))
     }
 
-    /// Pour ce qui n'a de sens qu'avec le serveur (pièces jointes, partage,
-    /// import…) : la file envoyée, un jeton d'accès, ou un refus clair.
+    /// For what only makes sense with the server (attachments, sharing,
+    /// import…): the queue sent, an access token, or a clear refusal.
     pub(crate) async fn require_online(&mut self, what: &str) -> Result<String, Error> {
-        // Une action explicite : on réessaie le réseau sans attendre.
+        // An explicit action: retry the network without waiting.
         self.offline_at = None;
         self.online()
             .await?
             .ok_or_else(|| Error::Invalid(offline_refusal(what)))
     }
 
-    /// Chiffre `view` et le met dans la file (`id` : modification, sinon
-    /// création, sous un identifiant provisoire) : appliqué tout de suite
-    /// au coffre affiché, envoyé par `sync_shared`. Rend l'identifiant et le
-    /// coffre.
+    /// Encrypts `view` and puts it in the queue (`id`: edit, otherwise
+    /// creation, under a provisional id): applied right away to the
+    /// displayed vault, sent by `sync_shared`. Returns the id and the
+    /// vault.
     pub(crate) async fn queue_save(
         &mut self,
         id: Option<&str>,
         view: bitwarden_vault::CipherView,
     ) -> Result<(String, Decrypted), Error> {
         let title = view.name.clone();
-        // Sur le tas : chiffrer puis déchiffrer le coffre, c'est plus de
-        // 20 Ko de tâche.
+        // On the heap: encrypting then decrypting the vault is a task of
+        // more than 20 KB.
         let encrypted = Box::pin(self.encrypt_context(view)).await?;
         let (id, created) = match id {
             Some(id) => (id.to_owned(), false),
@@ -915,7 +916,7 @@ impl Connection {
         Ok((id, Box::pin(self.decrypt_cache()).await?))
     }
 
-    /// Corbeille, restauration ou archives, dans la file.
+    /// Trash, restore or archives, in the queue.
     pub(crate) async fn queue_action(
         &mut self,
         id: &str,
@@ -928,9 +929,9 @@ impl Connection {
         Box::pin(self.decrypt_cache()).await
     }
 
-    /// Chiffre `view` puis l'envoie tout de suite si `access` (et
-    /// resynchronise) ; sinon dans la file. Pour ce qui doit être sur le
-    /// serveur avant de répondre (compteur d'une passkey).
+    /// Encrypts `view` then sends it right away if `access` (and resyncs);
+    /// otherwise into the queue. For what must be on the server before
+    /// answering (a passkey's counter).
     pub(crate) async fn save_cipher(
         &mut self,
         id: Option<&str>,
@@ -939,8 +940,8 @@ impl Connection {
     ) -> Result<(String, Decrypted), Error> {
         let Some(access) = access else {
             if self.store.is_guest() {
-                // L'extension n'a pas de file : sans serveur, pas d'écriture.
-                return Err(Error::Network("serveur injoignable".to_owned()));
+                // The extension has no queue: without a server, no write.
+                return Err(Error::Network("server unreachable".to_owned()));
             }
             return self.queue_save(id, view).await;
         };
@@ -977,9 +978,9 @@ impl Connection {
         Ok((id, vault))
     }
 
-    /// Après une écriture directe acceptée : resynchronise. Si le réseau
-    /// tombe juste avant, l'écriture reste visible (envoyée, dans la file)
-    /// jusqu'à la synchronisation suivante.
+    /// After an accepted direct write: resyncs. If the network drops just
+    /// before, the write stays visible (sent, in the queue) until the next
+    /// sync.
     async fn pull_after_write(&mut self, access: &str, entry: Entry) -> Result<Decrypted, Error> {
         match self.sync_with(access).await {
             Err(Error::Network(_)) => {
@@ -992,7 +993,7 @@ impl Connection {
         }
     }
 
-    /// Titre d'un élément du coffre affiché (pour le bilan des envois).
+    /// Title of an item of the displayed vault (for the send report).
     pub(crate) async fn cached_title(&self, id: &str) -> Result<String, Error> {
         let cipher = self.cached_cipher(id)?;
         Ok(self.decrypt_view(cipher).await?.name)
@@ -1002,16 +1003,16 @@ impl Connection {
         &self,
         view: bitwarden_vault::CipherView,
     ) -> Result<EncryptionContext, Error> {
-        // Sur le tas : la tâche du SDK est volumineuse (plus de 20 Ko).
+        // On the heap: the SDK's task is large (more than 20 KB).
         Box::pin(self.sdk.vault().ciphers().encrypt(view))
             .await
             .map_err(Error::crypto)
     }
 
-    /// Envoie la file sous le verrou de la connexion (avant une écriture
-    /// directe). Rend `false` sans rien faire si un envoi partagé est en
-    /// cours. S'arrête sans erreur au premier problème de réseau (la suite
-    /// attend) ; une session expirée interrompt tout.
+    /// Sends the queue under the connection's lock (before a direct write).
+    /// Returns `false` without doing anything if a shared send is in
+    /// progress. Stops without error at the first network problem (the rest
+    /// waits); an expired session interrupts everything.
     pub(crate) async fn replay(&mut self, access: &str) -> Result<bool, Error> {
         let courier = Arc::clone(&self.courier);
         let Ok(_gate) = courier.gate.try_lock() else {
@@ -1028,7 +1029,7 @@ impl Connection {
         Ok(true)
     }
 
-    /// La prochaine requête de la file (voir `Outbox::begin`).
+    /// The queue's next request (see `Outbox::begin`).
     pub(crate) fn begin(&mut self) -> Option<Job> {
         if self.store.is_guest() {
             return None;
@@ -1036,8 +1037,8 @@ impl Connection {
         self.outbox.begin(&mut self.report.rejected)
     }
 
-    /// Note la réponse du serveur à `job`, et enregistre la file. `Err` :
-    /// l'envoi s'arrête (réseau perdu, session expirée), le reste attend.
+    /// Records the server's response to `job`, and saves the queue. `Err`:
+    /// sending stops (network lost, session expired), the rest waits.
     pub(crate) async fn finish(
         &mut self,
         job: Job,
@@ -1100,13 +1101,13 @@ impl Connection {
                 sent.seq = seq;
                 let revision = match &sent.change {
                     Change::Save { cipher, .. } => cipher.cipher.revision_date,
-                    _ => unreachable!("une modification"),
+                    _ => unreachable!("an edit"),
                 };
                 self.outbox.entries[index] = sent;
                 self.outbox.rebase(&id, revision);
             }
-            // Modifié, supprimé ou devenu inaccessible entre-temps : la
-            // version locale devient une copie.
+            // Edited, deleted or made inaccessible in the meantime: the
+            // local version becomes a copy.
             Err(error) if !created && !conflict => {
                 if let Ok((title, copy)) = self.conflict_copy(&cipher).await {
                     let entry = &mut self.outbox.entries[index];
@@ -1124,8 +1125,8 @@ impl Connection {
             }
             Err(error) => {
                 self.outbox.entries.remove(index);
-                // Une copie refusée à son tour : le titre de l'original.
-                let title = match entry.title.strip_suffix(CONFLICT_SUFFIX) {
+                // A copy rejected in turn: the original's title.
+                let title = match strip_conflict_suffix(&entry.title) {
                     Some(original) if conflict => original.to_owned(),
                     _ => entry.title,
                 };
@@ -1156,8 +1157,8 @@ impl Connection {
                     }
                 }
             }
-            // Vaultwarden s'arrête au premier élément refusé (ceux d'avant
-            // restent faits) : un par un, pour savoir lequel.
+            // Vaultwarden stops at the first rejected item (those before
+            // stay done): one by one, to find out which.
             Err(_) if entries.len() > 1 => {
                 self.outbox
                     .singles
@@ -1172,7 +1173,7 @@ impl Connection {
                     return;
                 };
                 let entry = self.outbox.entries.remove(index);
-                // L'élément n'existe plus : rien à mettre à la corbeille.
+                // The item no longer exists: nothing to trash.
                 let gone = matches!(&error, Error::NotFound)
                     || matches!(&error, Error::Server(m) if m.contains("doesn't exist"));
                 if !gone {
@@ -1182,10 +1183,10 @@ impl Connection {
         }
     }
 
-    /// La version locale d'un élément que le serveur refuse de remplacer,
-    /// en copie à créer : « titre (conflit hors ligne) », au même endroit
-    /// (coffre personnel, ou mêmes collections), sans ses pièces jointes,
-    /// qui restent sur l'original.
+    /// The local version of an item the server refuses to replace, as a
+    /// copy to create: "title (offline conflict)", in the same place
+    /// (personal vault, or same collections), without its attachments,
+    /// which stay on the original.
     async fn conflict_copy(
         &self,
         cipher: &EncryptionContext,
@@ -1200,8 +1201,8 @@ impl Connection {
     }
 }
 
-/// Dates de révision rendues par une action : l'élément (`PUT
-/// …/{id}/{action}`), ou la liste (`{ "data": […] }`) d'une action groupée.
+/// Revision dates returned by an action: the item (`PUT
+/// …/{id}/{action}`), or the list (`{ "data": […] }`) of a grouped action.
 fn revisions<'a>(body: &Value, entries: &'a [(u64, String)]) -> HashMap<&'a str, DateTime<Utc>> {
     let date = |item: &Value| {
         item.get("revisionDate")
@@ -1219,7 +1220,7 @@ fn revisions<'a>(body: &Value, entries: &'a [(u64, String)]) -> HashMap<&'a str,
         let id = item.get("id").and_then(Value::as_str);
         let entry = match id {
             Some(id) => entries.iter().find(|(_, e)| e == id),
-            // Un seul élément : la réponse est la sienne.
+            // A single item: the response is its own.
             None if entries.len() == 1 => entries.first(),
             None => None,
         };
@@ -1230,12 +1231,12 @@ fn revisions<'a>(body: &Value, entries: &'a [(u64, String)]) -> HashMap<&'a str,
     found
 }
 
-/// Le message d'une action impossible hors ligne.
+/// The message for an action that is impossible offline.
 pub(crate) fn offline_refusal(what: &str) -> String {
-    format!("{what} n'est pas possible hors ligne : réessayez quand le serveur sera joignable")
+    format!("{what} is not possible offline: try again when the server is reachable")
 }
 
-/// La requête d'API d'un élément chiffré par le SDK.
+/// The API request of an item encrypted by the SDK.
 pub(crate) fn request_of(encrypted: EncryptionContext) -> Result<CipherRequestModel, Error> {
     let mut request = CipherRequestModel::try_from(encrypted.cipher).map_err(Error::crypto)?;
     request.encrypted_for = Some(encrypted.encrypted_for.into());
@@ -1247,12 +1248,11 @@ fn body_id(body: &Value) -> Result<String, Error> {
     body.get("id")
         .and_then(Value::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))
+        .ok_or_else(|| Error::Server("item created without an id".to_owned()))
 }
 
-/// Une modification acceptée : l'élément porte désormais l'identifiant et
-/// la date de révision du serveur (une modification suivante, faite avant
-/// la synchronisation, ne passera pas pour périmée).
+/// An accepted edit: the item now carries the server's id and revision
+/// date (a later edit, made before the sync, won't look stale).
 pub(crate) fn sent_save(
     id: String,
     title: String,
@@ -1280,7 +1280,7 @@ pub(crate) fn sent_save(
     entry
 }
 
-/// Les identifiants provisoires remplacés depuis l'ouverture de la session.
+/// The provisional ids replaced since the session was opened.
 pub(crate) type Remapped = HashMap<String, String>;
 
 #[cfg(test)]
@@ -1349,7 +1349,7 @@ mod tests {
         outbox.push_action(id(2), "B".into(), Action::Archive, at());
         outbox.push_action(id(1), "A".into(), Action::Restore, at());
         assert_eq!(outbox.pending_items(), [id(2)]);
-        // Pas l'inverse : les deux restent, dans l'ordre.
+        // Not the inverse: both stay, in order.
         outbox.push_action(id(2), "B".into(), Action::Trash, at());
         assert_eq!(outbox.pending_changes(), 2);
     }
@@ -1369,7 +1369,7 @@ mod tests {
         assert_eq!(ciphers.len(), 3);
         assert!(
             ciphers[0].favorite,
-            "la version locale remplace celle du cache"
+            "the local version replaces the cached one"
         );
         assert_eq!(ciphers[0].archived_date, Some(at()));
         assert_eq!(ciphers[1].deleted_date, Some(at()));
@@ -1399,7 +1399,7 @@ mod tests {
         outbox.entries[0] = sent_save(id(1), "A".into(), context(Some(&id(1)), false), &body);
         assert_eq!(outbox.pending_changes(), 1);
         assert_eq!(outbox.pending_items(), [id(2)]);
-        // Envoyée, la modification garde la date de révision du serveur.
+        // Once sent, the edit keeps the server's revision date.
         let Change::Save { cipher, .. } = &outbox.entries[0].change else {
             panic!()
         };
@@ -1440,13 +1440,13 @@ mod tests {
         let mut outbox = Outbox::default();
         outbox.push_save(id(1), "A".into(), false, context(Some(&id(1)), false));
         let Some(Job::Save { seq, .. }) = outbox_begin(&mut outbox) else {
-            panic!("une modification à envoyer")
+            panic!("an edit to send")
         };
-        // Pendant l'envoi, une nouvelle modification du même élément.
+        // During the send, a new edit of the same item.
         outbox.push_save(id(1), "A bis".into(), false, context(Some(&id(1)), true));
-        assert_eq!(outbox.entries.len(), 2, "pas fusionnée avec celle en vol");
+        assert_eq!(outbox.entries.len(), 2, "not merged with the one in flight");
         assert_eq!(outbox.entries[0].title, "A");
-        // Le serveur accepte la première : la seconde repart de sa date.
+        // The server accepts the first: the second starts again from its date.
         outbox.in_flight.clear();
         let body = serde_json::json!({ "id": id(1), "revisionDate": "2026-10-14T13:00:00Z" });
         let mut sent = sent_save(id(1), "A".into(), context(Some(&id(1)), false), &body);
@@ -1470,11 +1470,7 @@ mod tests {
         outbox.push_action(id(1), "A".into(), Action::Archive, at());
         assert!(matches!(outbox_begin(&mut outbox), Some(Job::Batch { .. })));
         outbox.push_action(id(1), "A".into(), Action::Unarchive, at());
-        assert_eq!(
-            outbox.pending_changes(),
-            2,
-            "les deux partent, dans l'ordre"
-        );
+        assert_eq!(outbox.pending_changes(), 2, "both go out, in order");
     }
 
     #[test]
@@ -1483,7 +1479,7 @@ mod tests {
         outbox.push_action(id(1), "A".into(), Action::Archive, at());
         outbox.push_action(id(2), "B".into(), Action::Trash, at());
         outbox.push_action(id(3), "C".into(), Action::Archive, at());
-        // B est mis à la corbeille avant d'être archivé : son archive attend.
+        // B is trashed before being archived: its archive waits.
         outbox.push_action(id(2), "B".into(), Action::Archive, at());
         outbox.push_move(id(4), "D".into(), Some(id(90)));
         outbox.push_move(id(4), "D".into(), Some(id(91)));
@@ -1535,6 +1531,19 @@ mod tests {
             panic!()
         };
         assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn conflict_copies_of_earlier_versions_are_recognised() {
+        assert_eq!(
+            strip_conflict_suffix("Banque (offline conflict)"),
+            Some("Banque")
+        );
+        assert_eq!(
+            strip_conflict_suffix("Banque (conflit hors ligne)"),
+            Some("Banque")
+        );
+        assert_eq!(strip_conflict_suffix("Banque"), None);
     }
 
     #[test]
