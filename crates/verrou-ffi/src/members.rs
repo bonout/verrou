@@ -396,7 +396,7 @@ mod tests {
     #[test]
     fn the_mock_organization_is_managed_by_its_owner() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let org = &session.organizations()[0];
         assert_eq!(org.role, Some(OrganizationMemberRole::Owner));
         assert!(org.can_view_members && org.can_manage_members && org.is_owner);

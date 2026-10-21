@@ -1045,7 +1045,10 @@ scripts/build-apple.sh                     # universal library + Swift bindings
 ```
 
 Useful environment variables for the app: `VERROU_MOCK=1` (mock vault instead
-of Vaultwarden), `VERROU_MOCK_SIZE=10000` (large mock vault), `VERROU_DEMO=1`
+of Vaultwarden), `VERROU_MOCK_SIZE=10000` (large mock vault),
+`VERROU_MOCK_LANG=en|fr` (language of the mock vault's titles, folders and
+labels; by default the app's: French when the first preferred language is
+French, English otherwise), `VERROU_DEMO=1`
 (scripted demo, used by `scripts/demo-capture.sh`), `VERROU_BENCH=1` (UI
 benchmark on the mock vault: unlock, typing, clearing; Debug builds, or
 Release built with `SWIFT_ACTIVE_COMPILATION_CONDITIONS=BENCH`).

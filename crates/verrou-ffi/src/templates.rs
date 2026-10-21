@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn wifi_is_listed_and_gives_its_qr_code() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let counts = session.counts().unwrap();
         assert_eq!(counts.templates.len(), 1);
         assert_eq!(counts.templates[0].template, ItemTemplate::Wifi);
@@ -247,7 +247,7 @@ mod tests {
         assert!(password.secret && password.value.is_none());
         assert_eq!(
             session.wifi_qr_code(wifi.id.clone()).unwrap(),
-            "WIFI:T:WPA;S:Martin-5G;P:lilas-portail-27;;"
+            "WIFI:T:WPA;S:Parker-5G;P:maple-porch-27;;"
         );
         let other = summaries.iter().find(|s| s.template.is_none()).unwrap();
         assert!(session.wifi_qr_code(other.id.clone()).is_err());

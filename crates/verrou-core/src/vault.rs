@@ -233,34 +233,34 @@ impl Vault {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock::{self, MOCK_COLLECTION, MOCK_ORGANIZATION};
+    use crate::mock::{self, MOCK_COLLECTION_ID, MOCK_ORGANIZATION_ID, MockLanguage};
     use crate::{Field, FieldKind, Sharing};
 
     #[test]
     fn shared_items_have_their_own_filters_and_counts() {
-        let vault = Vault::new(mock::vault_items(0, 42));
+        let vault = Vault::new(mock::vault_items(0, 42, MockLanguage::En));
         let counts = vault.counts();
         assert_eq!(
             counts.organizations,
-            vec![(MOCK_ORGANIZATION.0.to_owned(), 1)]
+            vec![(MOCK_ORGANIZATION_ID.to_owned(), 1)]
         );
-        assert_eq!(counts.collections, vec![(MOCK_COLLECTION.0.to_owned(), 1)]);
+        assert_eq!(counts.collections, vec![(MOCK_COLLECTION_ID.to_owned(), 1)]);
         for filter in [
-            Filter::Organization(MOCK_ORGANIZATION.0.to_owned()),
-            Filter::Collection(MOCK_COLLECTION.0.to_owned()),
+            Filter::Organization(MOCK_ORGANIZATION_ID.to_owned()),
+            Filter::Collection(MOCK_COLLECTION_ID.to_owned()),
         ] {
             let hits = vault.search("", &filter, Sort::Title);
             assert_eq!(hits.len(), 1);
-            assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
+            assert_eq!(vault.items()[hits[0].index].title, "Google — family");
         }
         // The organization's name is searchable like a folder.
-        let hits = vault.search("famille martin", &Filter::All, Sort::Relevance);
-        assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
+        let hits = vault.search("parker family", &Filter::All, Sort::Relevance);
+        assert_eq!(vault.items()[hits[0].index].title, "Google — family");
     }
 
     #[test]
     fn hidden_passwords_follow_the_organization_rule() {
-        let mut item = mock::vault_items(0, 42).remove(0);
+        let mut item = mock::vault_items(0, 42, MockLanguage::En).remove(0);
         item.fields
             .push(Field::new("custom-0", "PIN", FieldKind::Concealed, "1234"));
         item.fields

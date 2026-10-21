@@ -4,7 +4,7 @@ use std::time::Instant;
 use verrou_core::{Filter, Sort, Vault, mock};
 
 fn main() {
-    let vault = Vault::new(mock::vault_items(10_000, 7));
+    let vault = Vault::new(mock::vault_items(10_000, 7, mock::MockLanguage::En));
     for q in [
         "g",
         "gi",

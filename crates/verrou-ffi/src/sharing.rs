@@ -550,7 +550,7 @@ mod tests {
     #[test]
     fn the_mock_vault_refuses_sharing_writes() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
             .unwrap();

@@ -352,7 +352,28 @@ fn shared_copies_are_not_duplicates_of_personal_ones() {
 
 #[test]
 fn imported_variants_of_the_same_accounts_are_grouped() {
-    let items = mock::duplicate_items();
+    imported_variants_are_grouped(
+        mock::MockLanguage::En,
+        "geico.com",
+        "GEICO",
+        "emily.parker@example.com",
+    );
+    imported_variants_are_grouped(
+        mock::MockLanguage::Fr,
+        "maif.fr",
+        "Maif",
+        "camille.martin@exemple.fr",
+    );
+}
+
+/// The duplicate fixtures, in either language: the same groups.
+fn imported_variants_are_grouped(
+    language: mock::MockLanguage,
+    site: &str,
+    title: &str,
+    username: &str,
+) {
+    let items = mock::duplicate_items(language);
     let groups = find_duplicates(&items);
     let (c, p, r) = (
         Some(Confidence::Certain),
@@ -378,15 +399,15 @@ fn imported_variants_of_the_same_accounts_are_grouped() {
     ];
     assert_eq!(summary(&groups), expected);
     let maif = group_with(&groups, "dup-0");
-    assert_eq!(maif.label, "maif.fr");
-    assert_eq!(maif.username, "camille.martin@exemple.fr");
+    assert_eq!(maif.label, site);
+    assert_eq!(maif.username, username);
     assert_eq!(
         maif.members[1].reason,
-        "same site (maif.fr), same username, same password"
+        format!("same site ({site}), same username, same password")
     );
     assert_eq!(
         maif.members[3].reason,
-        "title \"Maif\" ↔ maif.fr, one username missing, same password"
+        format!("title \"{title}\" ↔ {site}, one username missing, same password")
     );
     // Certain: copies checked; probable: suggested only.
     let preselected: Vec<bool> = maif.members.iter().map(|m| m.preselected).collect();

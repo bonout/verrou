@@ -239,7 +239,11 @@ impl Source {
     fn open(cli: &Cli) -> Result<Self, String> {
         if cli.mock {
             eprintln!("\x1b[2m(mock vault, --mock)\x1b[0m");
-            return Ok(Self::Mock(Vault::new(mock::vault_items(cli.mock_size, 42))));
+            return Ok(Self::Mock(Vault::new(mock::vault_items(
+                cli.mock_size,
+                42,
+                mock::MockLanguage::En,
+            ))));
         }
         let path = Config::default_path()?;
         let config = Config::load(&path)?.ok_or_else(|| Error::NotLinked.to_string())?;
@@ -759,7 +763,7 @@ fn print_item(
 
 fn bench(out: &mut impl std::io::Write, items: usize) {
     let start = Instant::now();
-    let vault = Vault::new(mock::vault_items(items, 7));
+    let vault = Vault::new(mock::vault_items(items, 7, mock::MockLanguage::En));
     let built = start.elapsed();
     let queries = [
         "g",

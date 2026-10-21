@@ -288,7 +288,7 @@ mod tests {
     #[test]
     fn a_mock_vault_has_no_activity() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         assert_eq!(session.check_activity_locked(), []);
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

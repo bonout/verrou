@@ -44,7 +44,7 @@ final class BenchDriver {
         // Icons requested from a server (the test Vaultwarden if it's there).
         model.showSiteIcons = true
         let generation = ContinuousClock.now
-        model.session.unlockMock(size: model.mockSize, seed: 42)
+        model.session.unlockMock(size: model.mockSize, seed: 42, language: .current)
         report("mock vault generated (Rust): \(Perf.ms(since: generation)) ms")
         model.session.lock()
         await timed("unlock → list") { model.openVault() }

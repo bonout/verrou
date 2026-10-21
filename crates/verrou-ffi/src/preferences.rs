@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn passkeys_are_listed_with_their_site_and_user() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         assert_eq!(session.counts().unwrap().passkeys, 3);
         let found = titles(&session, "", SidebarFilter::Passkeys, ResultOrder::Title);
         assert_eq!(found, ["Apple ID", "GitHub", "Google"]);
@@ -359,7 +359,7 @@ mod tests {
             .find(|s| s.title == "GitHub")
             .unwrap();
         assert_eq!(github.passkey_rp_id.as_deref(), Some("github.com"));
-        assert_eq!(github.passkey_user_name.as_deref(), Some("camille-dev"));
+        assert_eq!(github.passkey_user_name.as_deref(), Some("emily-dev"));
         assert_eq!(
             titles(
                 &session,
@@ -375,7 +375,7 @@ mod tests {
     fn last_use_is_recorded_on_disk_with_ids_only() {
         let dir = std::env::temp_dir().join(format!("verrou-usage-{}", std::process::id()));
         let session = VaultSession::with_storage(dir.to_string_lossy().into_owned());
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let summaries = session.summaries().unwrap();
         let id_of = |title: &str| {
             summaries
@@ -416,7 +416,7 @@ mod tests {
     fn device_rules_change_suggestions_and_persist() {
         let dir = std::env::temp_dir().join(format!("verrou-rules-{}", std::process::id()));
         let session = VaultSession::with_storage(dir.to_string_lossy().into_owned());
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let suggested = |page: &str| -> Vec<String> {
             session
                 .suggestions(page.to_owned())
