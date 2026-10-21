@@ -266,8 +266,8 @@ fn group_view(
 /// Mock duplicates (imports from Apple, 1Password and Proton Pass), for
 /// the visual review of the duplicates sheet. Outside any vault.
 #[uniffi::export]
-pub fn demo_duplicates() -> Vec<DuplicateGroupView> {
-    let items = verrou_core::mock::duplicate_items();
+pub fn demo_duplicates(language: crate::MockLanguage) -> Vec<DuplicateGroupView> {
+    let items = verrou_core::mock::duplicate_items(language.into());
     let by_id: HashMap<&str, &Item> = items.iter().map(|i| (i.id.as_str(), i)).collect();
     duplicates::find_duplicates(&items)
         .into_iter()
@@ -559,7 +559,7 @@ mod tests {
 
     fn session() -> Arc<VaultSession> {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         session
     }
 
@@ -618,19 +618,24 @@ mod tests {
 
     #[test]
     fn demo_duplicates_carry_no_secret() {
-        let groups = demo_duplicates();
-        assert_eq!(groups.len(), 8);
-        assert_eq!(groups[0].confidence, DuplicateConfidence::Certain);
-        assert_eq!(
-            groups.last().unwrap().confidence,
-            DuplicateConfidence::Review
-        );
-        let maif = groups.iter().find(|g| g.label == "maif.fr").unwrap();
-        assert_eq!(maif.members.len(), 4);
-        assert!(maif.members[1].preselected && !maif.members[3].preselected);
-        let debug = format!("{groups:?}");
-        for secret in ["maif-Lilas-42", "JBSWY3DPEHPK3PXP", "4242 4242"] {
-            assert!(!debug.contains(secret), "{secret}");
+        for (language, site, password) in [
+            (crate::MockLanguage::English, "geico.com", "geico-Lilac-42"),
+            (crate::MockLanguage::French, "maif.fr", "maif-Lilas-42"),
+        ] {
+            let groups = demo_duplicates(language);
+            assert_eq!(groups.len(), 8);
+            assert_eq!(groups[0].confidence, DuplicateConfidence::Certain);
+            assert_eq!(
+                groups.last().unwrap().confidence,
+                DuplicateConfidence::Review
+            );
+            let insurer = groups.iter().find(|g| g.label == site).unwrap();
+            assert_eq!(insurer.members.len(), 4);
+            assert!(insurer.members[1].preselected && !insurer.members[3].preselected);
+            let debug = format!("{groups:?}");
+            for secret in [password, "JBSWY3DPEHPK3PXP", "4242 4242"] {
+                assert!(!debug.contains(secret), "{secret}");
+            }
         }
     }
 

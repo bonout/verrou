@@ -100,7 +100,7 @@ final class PhoneBenchDriver {
         try? await Task.sleep(for: .seconds(1))
         var samples: [Double] = []
         for round in 0..<3 {
-            for word in ["github", "camille", "zzq"] {
+            for word in ["github", MockLanguage.current.pick("emily", "camille"), "zzq"] {
                 var typed = ""
                 for letter in word {
                     typed.append(letter)

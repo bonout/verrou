@@ -9,6 +9,9 @@ import XCTest
 /// `VERROU_SHOWCASE_DIR` (exchange folder with the script: `req/<name>`
 /// requests a screenshot, `ack/<name>` confirms it) and
 /// `VERROU_SHOWCASE_PAUSE` (seconds of pause between the video's steps).
+///
+/// The showcase runs in English, on the demo vault's English words
+/// (`VERROU_MOCK_LANG=en`): Emily Parker's vault.
 final class ShowcaseUITests: XCTestCase {
     private let environment = ProcessInfo.processInfo.environment
     private var app = XCUIApplication()
@@ -45,7 +48,8 @@ final class ShowcaseUITests: XCTestCase {
 
     private func launchMock(size: Int = 60, arguments: [String] = []) {
         app = XCUIApplication()
-        app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "\(size)", "VERROU_SHOWCASE": "1"]
+        app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "\(size)", "VERROU_SHOWCASE": "1",
+                                 "VERROU_MOCK_LANG": "en"]
         // iOS 17 fallbacks forced (TEST_RUNNER_VERROU_LEGACY_UI=1).
         if let legacy = environment["VERROU_LEGACY_UI"] { app.launchEnvironment["VERROU_LEGACY_UI"] = legacy }
         app.launchArguments = arguments
@@ -169,11 +173,11 @@ final class ShowcaseUITests: XCTestCase {
 
         // Item page: header, fields, one-time code; reveal, copy.
         row("GitHub").tap()
-        XCTAssertTrue(app.staticTexts["camille-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
         if app.keyboards.firstMatch.exists { app.swipeDown() }
         shot("08-item")
         app.buttons["Show"].firstMatch.tap()
-        app.staticTexts["Mot de passe"].firstMatch.tap()
+        app.staticTexts["Password"].firstMatch.tap()
         shot("09-item-copy")
 
         // Creating a login (the demo vault has no server to prepare the
@@ -198,10 +202,10 @@ final class ShowcaseUITests: XCTestCase {
         login.tap()
         let title = app.textFields["edit-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 10), "creation screen")
-        title.typeText("Mon fournisseur d'accès")
+        title.typeText("My internet provider")
         app.textFields["email or user name"].firstMatch.tap()
         // Return: the keyboard closes.
-        app.typeText("camille.martin@exemple.fr\n")
+        app.typeText("emily.parker@example.com\n")
         shot("10-edit")
         app.buttons["Cancel"].firstMatch.tap()
         // iOS offers to save the generated password: not this time.
@@ -228,7 +232,7 @@ final class ShowcaseUITests: XCTestCase {
         let github = row("GitHub")
         for _ in 0..<12 where !github.isHittable { app.swipeUp() }
         github.tap()
-        XCTAssertTrue(app.staticTexts["camille-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
         shot("15-item-large-text")
     }
 
@@ -243,7 +247,7 @@ final class ShowcaseUITests: XCTestCase {
         XCTAssertTrue(row(title).waitForExistence(timeout: 10), "result “\(title)”")
         row(title).tap()
         // No swipe to close the keyboard: it would close the item page (zoom).
-        XCTAssertTrue(app.staticTexts["camille-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
     }
 
     /// Unlock: the password field, then the screen fading out.
@@ -337,7 +341,7 @@ final class ShowcaseUITests: XCTestCase {
         pause()
         row("GitHub").tap()
         pause(1.2)
-        app.staticTexts["Mot de passe"].firstMatch.tap()
+        app.staticTexts["Password"].firstMatch.tap()
         pause(1.5)
         app.buttons["Show"].firstMatch.tap()
         pause(4)

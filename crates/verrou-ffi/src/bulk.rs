@@ -256,7 +256,7 @@ mod tests {
             Box::new(Ignore),
         ));
         assert!(matches!(locked, Err(VerrouError::Locked)));
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let id = session.summaries().unwrap()[0].id.clone();
         let demo = runtime.block_on(session.bulk_action(
             vec![id],

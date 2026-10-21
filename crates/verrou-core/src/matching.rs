@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(site_match(&urls, "https://evilgithub.com"), SiteMatch::None);
     }
     fn login(urls: &[(&str, Option<UriMatch>)], folder: Option<&str>) -> Item {
-        let mut item = crate::mock::vault_items(0, 1).remove(0);
+        let mut item = crate::mock::vault_items(0, 1, crate::mock::MockLanguage::En).remove(0);
         item.urls = urls.iter().map(|(u, _)| (*u).to_owned()).collect();
         item.url_matches = urls.iter().map(|(_, m)| *m).collect();
         item.folder = folder.map(str::to_owned);

@@ -31,6 +31,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
     private static let defaultsSuite = "app.verrou.review"
     private let model = AppModel()
+    /// Language of the mock vault's words (titles, folders).
+    private let language = MockLanguage.current
     private let defaults = UserDefaults(suiteName: ReviewDriver.defaultsSuite) ?? .standard
     private let output = FileManager.default.temporaryDirectory.appending(path: "verrou-review")
     /// Main window: 1280 × 800, like the demo's captures.
@@ -68,7 +70,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
         // Screens before the vault.
         await screen("01-locked", root: RootView(), expect: .init(identifiers: ["lock-title"]))
-        model.loginEmail = "camille.martin@exemple.fr"
+        model.loginEmail = language.pick("emily.parker@example.com", "camille.martin@exemple.fr")
         model.reviewLogin(true)
         await screen("02-login", root: RootView(), expect: .init(identifiers: ["login-title"]))
         model.reviewLogin(true, twoFactor: [.authenticator, .email])
@@ -89,11 +91,11 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         let vault = LayoutAudit.Expectation(identifiers: ["search", "detail-title", "sidebar-footer"], columns: 3)
         let items: [(String, SidebarFilter, String, String)] = [
             ("10-login", .all, "", "GitHub"),
-            ("11-card", .category(category: .card), "", "Visa Boursorama"),
-            ("12-identity", .category(category: .identity), "", "Camille Martin"),
-            ("13-wifi", .template(template: .wifi), "", "Wi-Fi maison"),
+            ("11-card", .category(category: .card), "", language.pick("Chase Visa", "Visa Boursorama")),
+            ("12-identity", .category(category: .identity), "", language.pick("Emily Parker", "Camille Martin")),
+            ("13-wifi", .template(template: .wifi), "", language.pick("Home Wi-Fi", "Wi-Fi maison")),
             ("14-ssh-key", .category(category: .sshKey), "", ""),
-            ("15-shared-vault", .all, "famille", "Google — famille"),
+            ("15-shared-vault", .all, language.pick("family", "famille"), language.pick("Google — family", "Google — famille")),
         ]
         for (name, filter, query, title) in items {
             model.filter = filter
@@ -108,7 +110,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await screen("17-passkeys", root: RootView(), expect: vault)
         // Sort by last use (this Mac's log).
         model.filter = .all
-        for title in ["Netflix", "GitHub", "Impôts"] {
+        for title in ["Netflix", "GitHub", language.pick("IRS", "Impôts")] {
             if let id = id(of: title) { model.session.recordItemUse(id: id) }
         }
         model.afterWrite(select: id(of: "Netflix"))
@@ -187,7 +189,8 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         // server would give for GitHub.
         if let github = id(of: "GitHub") {
             let draft = ItemDraft(name: "GitHub", folderId: nil, favorite: true, notes: "Codes de secours dans le coffre.",
-                                  login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
+                                  login: LoginFields(username: language.pick("emily-dev", "camille-dev"),
+                                                     password: "hunter2-hunter2-hunter2",
                                                      totp: "JBSWY3DPEHPK3PXP", urls: ["https://github.com"]),
                                   fields: [], template: nil)
             await screen("30-edit-login",
@@ -207,8 +210,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         }
         if let github = id(of: "GitHub") {
             // One rule per site: host for the site, never for the old address.
-            let draft = ItemDraft(name: "GitHub", folderId: "dossier-travail", favorite: true, notes: nil,
-                                  login: LoginFields(username: "camille-dev", password: "hunter2-hunter2-hunter2",
+            let draft = ItemDraft(name: "GitHub", folderId: workFolder, favorite: true, notes: nil,
+                                  login: LoginFields(username: language.pick("emily-dev", "camille-dev"),
+                                                     password: "hunter2-hunter2-hunter2",
                                                      totp: nil,
                                                      urls: ["https://github.com/login", "https://old.github.com",
                                                             "^https://([a-z]+\\.)?github\\.com/sso"],
@@ -221,7 +225,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await screen("32-generator", root: GeneratorView(use: { _, _ in }), size: nil, expect: .init(), chrome: false)
 
         // Per-folder rule (Work: host), for the filling tab.
-        model.setFolderMatchRule("dossier-travail", .host)
+        model.setFolderMatchRule(workFolder ?? "", .host)
         let tabs: [(String, SettingsTab)] = [
             ("33-settings-general", .general), ("34-settings-security", .security),
             ("35-settings-account", .account), ("36-settings-browsers", .integrations),
@@ -252,8 +256,10 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await sharingSheets(sheet)
 
         // Remove from sharing: the confirmation, with what is going to happen.
-        if let family = id(of: "Google — famille") {
-            let request = UnshareRequest(itemIDs: [family], title: "Google — famille", organizations: ["Famille Martin"])
+        let familyTitle = language.pick("Google — family", "Google — famille")
+        if let family = id(of: familyTitle) {
+            let request = UnshareRequest(itemIDs: [family], title: familyTitle,
+                                         organizations: [language.pick("Parker Family", "Famille Martin")])
             await screen("47-remove-from-sharing", root: UnshareView(request: request), size: nil,
                          expect: withTitle(sheet, "sheet-title"), chrome: false)
         } else {
@@ -263,7 +269,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         // Mock duplicates (imports from Apple, 1Password, Proton Pass): the
         // mock vault has none.
         let duplicates = DuplicatesFlow(defaults: defaults)
-        duplicates.load(demoDuplicates())
+        duplicates.load(demoDuplicates(language: .current))
         await screen("37-duplicates", root: DuplicatesView(flow: duplicates), size: nil,
                      expect: withTitle(sheet, "sheet-title"), chrome: false)
         // An ignored group, an item kept by hand.
@@ -361,6 +367,11 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         var expectation = base
         expectation.identifiers.insert(identifier, at: 0)
         return expectation
+    }
+
+    /// The mock vault's "Work" folder.
+    private var workFolder: String? {
+        model.folders.first { $0.name == language.pick("Work", "Travail") }?.id
     }
 
     private func id(of title: String) -> String? {

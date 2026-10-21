@@ -4,10 +4,15 @@
 
 use std::time::Instant;
 
-use verrou_core::{Filter, ItemKind, Sort, Vault, mock};
+use verrou_core::mock::{self, MockLanguage};
+use verrou_core::{Filter, ItemKind, Sort, Vault};
 
 fn vault() -> Vault {
-    Vault::new(mock::vault_items(0, 42))
+    Vault::new(mock::vault_items(0, 42, MockLanguage::En))
+}
+
+fn french_vault() -> Vault {
+    Vault::new(mock::vault_items(0, 42, MockLanguage::Fr))
 }
 
 fn titles(vault: &Vault, query: &str, filter: &Filter) -> Vec<String> {
@@ -23,12 +28,12 @@ fn exact_title_comes_first() {
     let v = vault();
     let results = titles(&v, "github", &Filter::All);
     assert_eq!(results[0], "GitHub");
-    assert!(results.contains(&"GitHub — compte pro".to_owned()));
+    assert!(results.contains(&"GitHub — work account".to_owned()));
 }
 
 #[test]
 fn accents_and_case_are_ignored() {
-    let v = vault();
+    let v = french_vault();
     assert_eq!(
         titles(&v, "societe generale", &Filter::All)[0],
         "Société Générale"
@@ -39,22 +44,31 @@ fn accents_and_case_are_ignored() {
 #[test]
 fn hosts_and_usernames_are_searchable() {
     let v = vault();
-    assert_eq!(titles(&v, "boursobank", &Filter::All)[0], "Boursorama");
-    assert!(titles(&v, "camille-pro", &Filter::All).contains(&"GitHub — compte pro".to_owned()));
+    assert_eq!(
+        titles(&v, "kaiserpermanente", &Filter::All)[0],
+        "Kaiser Permanente"
+    );
+    assert!(titles(&v, "emily-work", &Filter::All).contains(&"GitHub — work account".to_owned()));
+    let fr = french_vault();
+    assert_eq!(titles(&fr, "boursobank", &Filter::All)[0], "Boursorama");
 }
 
 #[test]
 fn fuzzy_abbreviations_match() {
     let v = vault();
-    assert_eq!(titles(&v, "sncf", &Filter::All)[0], "SNCF Connect");
+    assert_eq!(titles(&v, "amtrk", &Filter::All)[0], "Amtrak");
+    assert_eq!(
+        titles(&french_vault(), "sncf", &Filter::All)[0],
+        "SNCF Connect"
+    );
     assert!(titles(&v, "gthb", &Filter::All).contains(&"GitHub".to_owned()));
 }
 
 #[test]
 fn every_word_must_match_somewhere() {
     let v = vault();
-    let results = titles(&v, "github pro", &Filter::All);
-    assert_eq!(results[0], "GitHub — compte pro");
+    let results = titles(&v, "github account", &Filter::All);
+    assert_eq!(results[0], "GitHub — work account");
 }
 
 #[test]
@@ -65,7 +79,7 @@ fn secrets_are_not_indexed() {
     let hits = v.search(&password, &Filter::All, Sort::Relevance);
     assert!(hits.iter().all(|h| v.items()[h.index].title != "GitHub"));
     // Nor the body of notes.
-    assert!(titles(&v, "Martin-5G", &Filter::All).is_empty());
+    assert!(titles(&v, "Parker-5G", &Filter::All).is_empty());
 }
 
 #[test]
@@ -73,22 +87,26 @@ fn filters_and_inline_filters() {
     let v = vault();
     let cards = titles(&v, "", &Filter::Kind(ItemKind::Card));
     assert_eq!(cards.len(), 3);
-    let banks = titles(&v, "tag:banque", &Filter::All);
-    assert!(banks.contains(&"Boursorama".to_owned()));
+    let banks = titles(&v, "tag:bank", &Filter::All);
+    assert!(banks.contains(&"Chase".to_owned()));
     assert!(banks.iter().all(|t| !t.contains("GitHub")));
-    let homelab = titles(&v, "dossier:maison", &Filter::Favorites);
+    let homelab = titles(&v, "folder:home", &Filter::Favorites);
     assert!(homelab.contains(&"Vaultwarden".to_owned()));
-    assert_eq!(titles(&v, "folder:maison", &Filter::Favorites), homelab);
+    assert_eq!(titles(&v, "dossier:home", &Filter::Favorites), homelab);
     let typed = titles(&v, "type:carte visa", &Filter::All);
-    assert_eq!(typed, vec!["Visa Boursorama".to_owned()]);
+    assert_eq!(typed, vec!["Chase Visa".to_owned()]);
     assert_eq!(titles(&v, "type:card visa", &Filter::All), typed);
     assert_eq!(
         titles(&v, "type:login", &Filter::All),
         titles(&v, "type:identifiant", &Filter::All)
     );
-    let excluded = titles(&v, "github !pro", &Filter::All);
+    let excluded = titles(&v, "github !emily-work", &Filter::All);
     assert!(excluded.contains(&"GitHub".to_owned()));
-    assert!(!excluded.contains(&"GitHub — compte pro".to_owned()));
+    assert!(!excluded.contains(&"GitHub — work account".to_owned()));
+    // The French vault: French tags and folders.
+    let fr = french_vault();
+    assert!(titles(&fr, "tag:banque", &Filter::All).contains(&"Boursorama".to_owned()));
+    assert!(titles(&fr, "dossier:maison", &Filter::Favorites).contains(&"Vaultwarden".to_owned()));
 }
 
 #[test]
@@ -112,7 +130,7 @@ fn site_suggestions() {
         .map(|i| i.title.clone())
         .collect();
     assert_eq!(suggested[0], "GitHub");
-    assert!(suggested.contains(&"GitHub — compte pro".to_owned()));
+    assert!(suggested.contains(&"GitHub — work account".to_owned()));
     assert!(
         v.suggestions_for("https://github-login.evil.example")
             .is_empty()
@@ -144,7 +162,7 @@ fn app_suggestions_use_macapp_uris() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "measurement only meaningful in --release")]
 fn search_is_fast_on_10k_items() {
-    let v = Vault::new(mock::vault_items(10_000, 7));
+    let v = Vault::new(mock::vault_items(10_000, 7, MockLanguage::En));
     let queries = [
         "g",
         "gi",
@@ -153,7 +171,7 @@ fn search_is_fast_on_10k_items() {
         "githu",
         "github",
         "github pro",
-        "camille",
+        "emily",
         "zzzz",
     ];
     let start = Instant::now();
@@ -165,8 +183,8 @@ fn search_is_fast_on_10k_items() {
 }
 
 fn vault_with_passkeys() -> Vault {
-    let items = mock::vault_items(0, 42);
-    let passkeys = mock::passkeys(&items);
+    let items = mock::vault_items(0, 42, MockLanguage::En);
+    let passkeys = mock::passkeys(&items, MockLanguage::En);
     Vault::new(items).with_passkeys(passkeys)
 }
 

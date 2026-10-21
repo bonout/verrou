@@ -11,6 +11,8 @@ import SwiftUI
 @MainActor
 final class DemoDriver {
     private let model: AppModel
+    /// Language of the mock vault's words (titles).
+    private let language = MockLanguage.current
     private let quickAccess: QuickAccessController
     private let output = FileManager.default.temporaryDirectory.appending(path: "verrou-demo")
     private var recorder: WindowRecorder?
@@ -110,15 +112,16 @@ final class DemoDriver {
 
         model.query = ""
         await pause(0.3)
-        await type("societe gen", into: \.query)
+        // Without accents nor capitals (French), or a partial name (English).
+        await type(language.pick("bank of am", "societe gen"), into: \.query)
         await pause(0.5)
-        select(title: "Société Générale")
+        select(title: language.pick("Bank of America", "Société Générale"))
         await snap("05-search-accents")
 
         model.query = ""
         model.filter = .category(category: .card)
         await pause(0.5)
-        select(title: "Visa Boursorama")
+        select(title: language.pick("Chase Visa", "Visa Boursorama"))
         await pause(0.5)
         if let id = model.selection {
             model.toggleReveal("number", of: id)
@@ -129,23 +132,23 @@ final class DemoDriver {
 
         model.filter = .category(category: .identity)
         await pause(0.4)
-        select(title: "Camille Martin")
+        select(title: language.pick("Emily Parker", "Camille Martin"))
         await pause(0.5)
         await snap("07-identity")
 
         // Wi-Fi template: predefined fields.
         model.filter = .template(template: .wifi)
         await pause(0.4)
-        select(title: "Wi-Fi maison")
+        select(title: language.pick("Home Wi-Fi", "Wi-Fi maison"))
         await pause(0.6)
         await snap("08-wifi")
 
         // The family's shared vault (Vaultwarden organization).
         model.filter = .all
         await pause(0.3)
-        await type("famille", into: \.query)
+        await type(language.pick("family", "famille"), into: \.query)
         await pause(0.4)
-        select(title: "Google — famille")
+        select(title: language.pick("Google — family", "Google — famille"))
         await pause(0.6)
         await snap("09-shared-vault")
         model.query = ""

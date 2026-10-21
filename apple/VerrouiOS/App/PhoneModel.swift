@@ -532,7 +532,7 @@ final class PhoneModel {
 
     /// Demo vault (demonstration).
     func openMockVault() {
-        session.unlockMock(size: mockSize, seed: 42)
+        session.unlockMock(size: mockSize, seed: 42, language: .current)
         Perf.unlockSucceeded("opening the demo vault")
         didUnlock(failures: 0)
     }

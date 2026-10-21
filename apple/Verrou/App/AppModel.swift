@@ -564,7 +564,7 @@ final class AppModel {
 
     /// Mock vault (demo).
     func openVault() {
-        session.unlockMock(size: mockSize, seed: 42)
+        session.unlockMock(size: mockSize, seed: 42, language: .current)
         didUnlock(failures: 0)
     }
 

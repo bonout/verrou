@@ -342,8 +342,8 @@ mod tests {
     #[test]
     fn send_from_a_field_is_prefilled_and_respects_hidden_passwords() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
-        let shared = mock::vault_items(0, 42)
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
+        let shared = mock::vault_items(0, 42, mock::MockLanguage::En)
             .into_iter()
             .find(|i| i.shared.is_some() && i.field("password").is_some())
             .expect("shared item of the mock vault");
@@ -359,7 +359,7 @@ mod tests {
         assert_eq!(fields.max_access_count, Some(1));
 
         // The organization hides passwords: no Send either.
-        let mut items = mock::vault_items(0, 42);
+        let mut items = mock::vault_items(0, 42, mock::MockLanguage::En);
         for item in &mut items {
             if let Some(sharing) = item.shared.as_mut() {
                 sharing.hide_passwords = true;
@@ -377,7 +377,7 @@ mod tests {
     #[tokio::test]
     async fn attachment_sends_need_the_item_confirmation() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let protected = session
             .summaries()
             .unwrap()

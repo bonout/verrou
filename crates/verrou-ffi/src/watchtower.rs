@@ -458,7 +458,7 @@ mod tests {
     #[test]
     fn watchtower_reports_mock_cards() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         // The mock vault has cards (09/29, 03/28, 11/27): none expires
         // before autumn 2027.
         let report = session.watchtower().unwrap();
@@ -468,7 +468,7 @@ mod tests {
     #[test]
     fn breaches_leave_the_list_once_the_password_changed() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let (id, password, item) = session
             .with_vault(|v| {
                 let item = v
@@ -501,7 +501,7 @@ mod tests {
     #[tokio::test]
     async fn passkey_audit_of_the_mock_vault_needs_no_network() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         let report = session.passkey_audit().await.unwrap();
         assert!(!report.stale);
         let domains: Vec<&str> = report
@@ -540,7 +540,7 @@ mod tests {
     #[tokio::test]
     async fn change_password_page_needs_a_site() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         assert!(matches!(
             session.change_password_page("absent".to_owned()).await,
             Err(VerrouError::NotFound)
@@ -550,7 +550,7 @@ mod tests {
     #[tokio::test]
     async fn no_new_password_means_no_request() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         assert!(session.check_new_passwords().await.unwrap().is_empty());
         // Without an account, no folder to keep the list in.
         assert!(matches!(

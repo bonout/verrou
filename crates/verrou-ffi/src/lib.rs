@@ -242,6 +242,33 @@ impl From<&EnrolledKey> for UnlockKey {
     }
 }
 
+/// Language of the mock vault's words: the app's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum MockLanguage {
+    #[default]
+    English,
+    French,
+}
+
+impl From<MockLanguage> for mock::MockLanguage {
+    fn from(language: MockLanguage) -> Self {
+        match language {
+            MockLanguage::English => Self::En,
+            MockLanguage::French => Self::Fr,
+        }
+    }
+}
+
+/// The mock vault's language for a language code (`fr-FR`, `en`…): French
+/// for `fr…`, English otherwise.
+#[uniffi::export]
+pub fn mock_language(code: String) -> MockLanguage {
+    match mock::MockLanguage::from_code(&code) {
+        mock::MockLanguage::Fr => MockLanguage::French,
+        mock::MockLanguage::En => MockLanguage::English,
+    }
+}
+
 /// What the security key expects from the user.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum SecurityKeyPrompt {
@@ -1762,10 +1789,12 @@ impl VaultSession {
         })
     }
 
-    /// Opens the mock vault (`size` = 0: only the curated items).
-    pub fn unlock_mock(&self, size: u32, seed: u64) {
-        let items = mock::vault_items(size as usize, seed);
-        let passkeys = mock::passkeys(&items);
+    /// Opens the mock vault (`size` = 0: only the curated items), its
+    /// words in `language`.
+    pub fn unlock_mock(&self, size: u32, seed: u64, language: MockLanguage) {
+        let language = mock::MockLanguage::from(language);
+        let items = mock::vault_items(size as usize, seed, language);
+        let passkeys = mock::passkeys(&items, language);
         // Mock folders, by name (for the match rules).
         let mut folders: Vec<(String, String)> = items
             .iter()
@@ -1796,7 +1825,7 @@ impl VaultSession {
         *self
             .organizations
             .write()
-            .unwrap_or_else(PoisonError::into_inner) = vec![mock_organization()];
+            .unwrap_or_else(PoisonError::into_inner) = vec![mock_organization(language)];
         *self.vault.write().unwrap_or_else(PoisonError::into_inner) = Some(vault);
     }
 
@@ -2163,15 +2192,15 @@ fn hidden_by_organization() -> VerrouError {
 }
 
 /// The mock vault's organization (demo).
-fn mock_organization() -> Organization {
+fn mock_organization(language: mock::MockLanguage) -> Organization {
     Organization {
-        id: mock::MOCK_ORGANIZATION.0.to_owned(),
-        name: mock::MOCK_ORGANIZATION.1.to_owned(),
+        id: mock::MOCK_ORGANIZATION_ID.to_owned(),
+        name: mock::organization_name(language).to_owned(),
         admin: true,
         role: Some(verrou_vaultwarden::members::MemberRole::Owner),
         collections: vec![verrou_vaultwarden::Collection {
-            id: mock::MOCK_COLLECTION.0.to_owned(),
-            name: mock::MOCK_COLLECTION.1.to_owned(),
+            id: mock::MOCK_COLLECTION_ID.to_owned(),
+            name: mock::collection_name(language).to_owned(),
             read_only: false,
             hide_passwords: false,
             manage: true,
@@ -2716,7 +2745,7 @@ mod tests {
 
     fn session() -> Arc<VaultSession> {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         session
     }
 
@@ -2761,7 +2790,7 @@ mod tests {
         assert!(session.reveal(card.id.clone(), "number".to_owned()).is_ok());
         // Locking forgets the confirmations.
         session.lock();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         assert!(matches!(
             session.reveal(card.id, "number".to_owned()),
             Err(VerrouError::RepromptRequired)
@@ -2793,7 +2822,7 @@ mod tests {
         );
 
         // Protected item: nothing without confirmation.
-        let mut items = mock::vault_items(0, 42);
+        let mut items = mock::vault_items(0, 42, mock::MockLanguage::En);
         let protected = items.iter_mut().find(|i| i.id == id).unwrap();
         protected.reprompt = true;
         *session.vault.write().unwrap() = Some(Vault::new(items));
@@ -2867,13 +2896,9 @@ mod tests {
         let session = session();
         let summaries = session.summaries().unwrap();
         let hits = session
-            .search(
-                "boursorama".into(),
-                SidebarFilter::All,
-                ResultOrder::Relevance,
-            )
+            .search("chase".into(), SidebarFilter::All, ResultOrder::Relevance)
             .unwrap();
-        assert_eq!(summaries[hits[0].position as usize].title, "Boursorama");
+        assert_eq!(summaries[hits[0].position as usize].title, "Chase");
     }
 
     /// Delegate that approves any terminal approval request, right away.
@@ -2935,7 +2960,7 @@ mod tests {
         let organizations = session.organizations();
         assert_eq!(organizations.len(), 1);
         let famille = &organizations[0];
-        assert_eq!(famille.name, "Famille Martin");
+        assert_eq!(famille.name, "Parker Family");
         assert_eq!(famille.count, 1);
         assert_eq!(famille.collections[0].count, 1);
         assert!(famille.writable && famille.manage_url.is_none());
@@ -2951,7 +2976,7 @@ mod tests {
         assert_eq!(hits.len(), 1);
         let summary = &session.summaries().unwrap()[hits[0].position as usize];
         let sharing = summary.sharing.as_ref().unwrap();
-        assert_eq!(sharing.collections, ["Comptes communs"]);
+        assert_eq!(sharing.collections, ["Shared accounts"]);
         assert!(
             !session
                 .detail(summary.id.clone())
@@ -2967,7 +2992,7 @@ mod tests {
         );
 
         // Passwords hidden by the organization: no reveal, no draft.
-        let mut items = mock::vault_items(0, 42);
+        let mut items = mock::vault_items(0, 42, mock::MockLanguage::En);
         for item in &mut items {
             if let Some(shared) = item.shared.as_mut() {
                 shared.hide_passwords = true;
@@ -3058,7 +3083,10 @@ mod optimistic_tests {
     /// A vault of `items` mock items, at version `version`.
     fn decrypted(items: usize, version: u64) -> Decrypted {
         Decrypted {
-            items: mock::vault_items(0, 42).into_iter().take(items).collect(),
+            items: mock::vault_items(0, 42, mock::MockLanguage::En)
+                .into_iter()
+                .take(items)
+                .collect(),
             failures: 0,
             folders: Vec::new(),
             passkeys: Vec::new(),

@@ -123,7 +123,7 @@ mod tests {
     #[test]
     fn scan_proposes_logins_without_a_code() {
         let session = VaultSession::new();
-        session.unlock_mock(0, 42);
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
         // Netflix has no code in the mock vault, GitHub has one.
         let netflix = session
             .scan_otp(
