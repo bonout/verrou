@@ -1,0 +1,188 @@
+name: Release
+
+# A `v*` tag (`git tag -a v0.1.0 -m "Verrou 0.1.0" && git push origin v0.1.0`)
+# builds every artifact, attests where it was built, and publishes the
+# GitHub Release. Signing secrets live in the `release` environment (approval
+# required): without them the Mac app is ad hoc, Firefox gets an unsigned
+# .xpi, and TestFlight is skipped. See docs/RELEASING.md.
+on:
+  push:
+    tags: ["v*"]
+  # Dry run from the Actions tab: builds everything, publishes nothing.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The tag, Cargo.toml and apple/project.yml must agree.
+      - id: check
+        run: |
+          cargo=$(sed -nE 's/^version = "(.*)"/\1/p' Cargo.toml | head -1)
+          [[ "$GITHUB_REF" == refs/tags/v* ]] && version="${GITHUB_REF_NAME#v}" || version="$cargo"
+          marketing=$(sed -nE 's/^ *MARKETING_VERSION: "(.*)"/\1/p' apple/project.yml)
+          echo "tag $version, Cargo.toml $cargo, project.yml $marketing"
+          [[ "$version" == "$cargo" && "$version" == "$marketing" ]] || { echo "::error::versions differ"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  cli:
+    name: CLI (${{ matrix.target }})
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu }
+          - { os: macos-15, target: aarch64-apple-darwin }
+          - { os: macos-15, target: x86_64-apple-darwin }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }} && rustup default stable
+      - run: cargo build --release --locked -p verrou-cli --target ${{ matrix.target }}
+      - run: |
+          name="verrou-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          mkdir -p dist "$name"
+          cp "target/${{ matrix.target }}/release/verrou" LICENSE README.md "$name/"
+          tar -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cli-${{ matrix.target }}
+          path: dist/
+
+  extension:
+    name: Browser extension
+    needs: version
+    runs-on: ubuntu-latest
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    env:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Same content and version as the extension shipped inside Verrou.app.
+      - run: |
+          version="${{ needs.version.outputs.version }}"
+          mkdir -p dist target/ext
+          cp -R extension target/ext/extension
+          scripts/firefox-extension.sh target/ext/extension target/ext/extension-firefox
+          scripts/stamp-extension.sh target/ext/extension target/ext/extension-firefox
+          (cd target/ext/extension && zip -qr "$GITHUB_WORKSPACE/dist/verrou-$version-chromium.zip" . -x 'test/*' 'e2e/*')
+      - if: env.AMO_JWT_ISSUER != ''
+        run: scripts/sign-firefox.sh && cp target/firefox-xpi/*.xpi "dist/verrou-${{ needs.version.outputs.version }}-firefox.xpi"
+      - if: env.AMO_JWT_ISSUER == ''
+        run: scripts/sign-firefox.sh --unsigned && cp target/firefox-xpi/*-unsigned.xpi dist/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: extension
+          path: dist/
+
+  macos:
+    name: Mac app
+    needs: version
+    runs-on: macos-15
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    env:
+      VERROU_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      MAC_CERT_P12: ${{ secrets.MAC_DEVELOPER_ID_P12 }}
+      MAC_CERT_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install stable --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin && rustup default stable
+      - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
+      - run: brew install xcodegen
+      # Signing material only lives for this job: a throwaway keychain and key file.
+      - if: env.VERROU_TEAM != ''
+        run: |
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          password="$(openssl rand -hex 16)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
+      - run: scripts/release-macos.sh "${{ needs.version.outputs.version }}"
+      - if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/asc.p8"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos
+          path: |
+            target/release-macos/*.dmg
+            target/release-macos/*.zip
+
+  testflight:
+    name: iPhone app (TestFlight)
+    needs: version
+    runs-on: macos-15
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || '' }}
+    env:
+      VERROU_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+    steps:
+      - if: env.VERROU_TEAM == ''
+        run: echo '::notice::No Apple team secrets in the release environment, TestFlight skipped.'
+      - if: env.VERROU_TEAM != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: env.VERROU_TEAM != ''
+        run: rustup toolchain install stable --profile minimal --target aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin,x86_64-apple-darwin && rustup default stable
+      - if: env.VERROU_TEAM != ''
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && brew install xcodegen
+      # Distribution certificate and profiles are managed by Xcode through the
+      # API key (Admin role): -allowProvisioningUpdates in testflight-ios.sh.
+      - if: env.VERROU_TEAM != ''
+        run: |
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          ASC_KEY_PATH="$RUNNER_TEMP/asc.p8" scripts/testflight-ios.sh
+      - if: always()
+        run: rm -f "$RUNNER_TEMP/asc.p8"
+
+  publish:
+    name: Publish the release
+    needs: [version, cli, extension, macos, testflight]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+      - run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      # Anyone can check a file was built here: gh attestation verify <file> -R bonout/verrou
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* -R "$GITHUB_REPOSITORY" \
+            --title "Verrou ${{ needs.version.outputs.version }}" --generate-notes --verify-tag

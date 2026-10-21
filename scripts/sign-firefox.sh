@@ -53,7 +53,7 @@ cp -R "$ROOT/extension" "$WORK/extension"
 version="$(sed -nE 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"([0-9.]+)".*$/\1/p' "$WORK/extension-firefox/manifest.json")"
 
 if $unsigned; then
-  npx --yes web-ext@8 build --source-dir "$WORK/extension-firefox" --artifacts-dir "$WORK/build" --overwrite-dest
+  npx --yes web-ext@8.10.0 build --source-dir "$WORK/extension-firefox" --artifacts-dir "$WORK/build" --overwrite-dest
   zip="$(ls "$WORK"/build/*.zip | head -n 1)"
   cp "$zip" "$OUT/verrou-$version-unsigned.xpi"
   echo "unsigned: $OUT/verrou-$version-unsigned.xpi"
@@ -63,6 +63,6 @@ fi
 # The keys go through web-ext's environment, not its command line (visible
 # in the process list).
 WEB_EXT_API_KEY="$AMO_JWT_ISSUER" WEB_EXT_API_SECRET="$AMO_JWT_SECRET" \
-  npx --yes web-ext@8 sign --channel=unlisted \
+  npx --yes web-ext@8.10.0 sign --channel=unlisted \
     --source-dir "$WORK/extension-firefox" --artifacts-dir "$OUT"
 echo "signed: $(ls -t "$OUT"/*.xpi | head -n 1) (version $version)"

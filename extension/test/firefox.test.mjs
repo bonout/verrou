@@ -185,7 +185,7 @@ test("web-ext lint (VERROU_LINT_FIREFOX=1)", { skip: process.env.VERROU_LINT_FIR
   // Without NODE_TEST_CONTEXT: web-ext (Node too) would think it is a test.
   // (The setting isn't called WEB_EXT_…: web-ext would make it an option.)
   const { NODE_TEST_CONTEXT, ...env } = process.env;
-  const output = execFileSync("npx", ["--yes", "web-ext@8", "lint", "--source-dir", dir, "--output", "json"],
+  const output = execFileSync("npx", ["--yes", "web-ext@8.10.0", "lint", "--source-dir", dir, "--output", "json"],
     { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
   const report = JSON.parse(output.slice(output.indexOf("{")));
   assert.deepEqual(report.errors, [], JSON.stringify(report.errors, null, 2));
