@@ -108,7 +108,9 @@ jobs:
       - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - run: brew install xcodegen
       # Signing material only lives for this job: a throwaway keychain and key file.
-      - if: env.VERROU_TEAM != ''
+      # Without the Developer ID certificate the app is ad hoc, even when the
+      # team and API key are set (for TestFlight).
+      - if: env.VERROU_TEAM != '' && env.MAC_CERT_P12 != ''
         run: |
           keychain="$RUNNER_TEMP/release.keychain-db"
           password="$(openssl rand -hex 16)"
@@ -122,7 +124,7 @@ jobs:
           rm "$RUNNER_TEMP/cert.p12"
           printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
-      - run: scripts/release-macos.sh "${{ needs.version.outputs.version }}"
+      - run: VERROU_TEAM="${MAC_CERT_P12:+$VERROU_TEAM}" scripts/release-macos.sh "${{ needs.version.outputs.version }}"
       - if: always()
         run: |
           security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
