@@ -153,7 +153,9 @@ final class MacMigrationTests: XCTestCase {
         try Data("ancienne".utf8).write(to: taken.appending(path: "garde.txt"))
 
         let result = VerrouStorage.migrateMac(from: old, to: new, now: date)
-        XCTAssertEqual(result, .migrated(backup: URL(fileURLWithPath: taken.path + "-2")))
+        // Compare paths: URL(fileURLWithPath:) adds a trailing slash once the folder exists.
+        guard case .migrated(let backup) = result else { return XCTFail("\(result)") }
+        XCTAssertEqual(backup.standardizedFileURL.path, taken.path + "-2")
         XCTAssertEqual(try String(contentsOf: taken.appending(path: "garde.txt"), encoding: .utf8), "ancienne")
     }
 
