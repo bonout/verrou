@@ -46,10 +46,21 @@ final class ShowcaseUITests: XCTestCase {
         usleep(UInt32(seconds * factor * 1_000_000))
     }
 
+    /// The simulator's language (scripts/ios-showcase.sh, SHOWCASE_LANG): the
+    /// labels to look for and the demo vault follow it.
+    private let french = Locale.preferredLanguages.first?.hasPrefix("fr") == true
+
+    /// A label in the simulator's language.
+    private func L(_ english: String, _ french: String) -> String {
+        self.french ? french : english
+    }
+
+    private var devUsername: String { L("emily-dev", "camille-dev") }
+
     private func launchMock(size: Int = 60, arguments: [String] = []) {
         app = XCUIApplication()
         app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "\(size)", "VERROU_SHOWCASE": "1",
-                                 "VERROU_MOCK_LANG": "en"]
+                                 "VERROU_MOCK_LANG": french ? "fr" : "en"]
         // iOS 17 fallbacks forced (TEST_RUNNER_VERROU_LEGACY_UI=1).
         if let legacy = environment["VERROU_LEGACY_UI"] { app.launchEnvironment["VERROU_LEGACY_UI"] = legacy }
         app.launchArguments = arguments
@@ -58,7 +69,7 @@ final class ShowcaseUITests: XCTestCase {
 
     /// Unlocks the demo vault with the password (any password works).
     private func unlock(slowly: Bool = false) {
-        let field = app.secureTextFields["Master password"]
+        let field = app.secureTextFields[L("Master password", "Mot de passe principal")]
         // Face ID offered first: we choose the password.
         let usePassword = app.buttons["lock-use-password"]
         if !field.waitForExistence(timeout: 3), usePassword.waitForExistence(timeout: 20) {
@@ -81,14 +92,14 @@ final class ShowcaseUITests: XCTestCase {
         } else {
             field.typeText("verrou\n")
         }
-        XCTAssertTrue(app.navigationBars["Vault"].waitForExistence(timeout: 20), "vault open")
+        XCTAssertTrue(app.navigationBars[L("Vault", "Coffre")].waitForExistence(timeout: 20), "vault open")
     }
 
     private func openAllItems() {
-        let all = app.descendants(matching: .any)["All items"].firstMatch
+        let all = app.descendants(matching: .any)[L("All items", "Tous les éléments")].firstMatch
         XCTAssertTrue(all.waitForExistence(timeout: 10))
         all.tap()
-        XCTAssertTrue(app.navigationBars["All items"].waitForExistence(timeout: 10), "list of all items")
+        XCTAssertTrue(app.navigationBars[L("All items", "Tous les éléments")].waitForExistence(timeout: 10), "list of all items")
     }
 
     private func back() {
@@ -98,11 +109,11 @@ final class ShowcaseUITests: XCTestCase {
     /// The whole vault's search field: the Search tab if it exists,
     /// otherwise the home screen's.
     private func searchField() -> XCUIElement {
-        let tab = app.tabBars.buttons["Search"]
+        let tab = app.tabBars.buttons[L("Search", "Rechercher")]
         if tab.exists {
             tab.tap()
-        } else if app.buttons["Search"].exists, !app.searchFields.firstMatch.exists {
-            app.buttons["Search"].tap()
+        } else if app.buttons[L("Search", "Rechercher")].exists, !app.searchFields.firstMatch.exists {
+            app.buttons[L("Search", "Rechercher")].tap()
         }
         let field = app.searchFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "search field")
@@ -111,7 +122,7 @@ final class ShowcaseUITests: XCTestCase {
 
     /// Bilingual keyboard introduction (first use): dismissed.
     private func dismissKeyboardTip() {
-        let proceed = app.buttons["Continue"].firstMatch
+        let proceed = app.buttons[L("Continue", "Continuer")].firstMatch
         if proceed.waitForExistence(timeout: 2) { proceed.tap() }
     }
 
@@ -144,7 +155,7 @@ final class ShowcaseUITests: XCTestCase {
         // Lock screen, home.
         launchMock()
         XCTAssertTrue(app.buttons["lock-use-password"].waitForExistence(timeout: 20)
-                      || app.secureTextFields["Master password"].exists)
+                      || app.secureTextFields[L("Master password", "Mot de passe principal")].exists)
         shot("02-locked")
         unlock()
         shot("03-vault")
@@ -157,7 +168,7 @@ final class ShowcaseUITests: XCTestCase {
         shot("05-swipe")
         swiped.swipeRight()
         usleep(500_000)
-        app.buttons["Select"].firstMatch.tap()
+        app.buttons[L("Select", "Choisir")].firstMatch.tap()
         for index in [0, 1, 3] { app.cells.element(boundBy: index).tap() }
         shot("06-selection")
         app.buttons["OK"].firstMatch.tap()
@@ -173,27 +184,27 @@ final class ShowcaseUITests: XCTestCase {
 
         // Item page: header, fields, one-time code; reveal, copy.
         row("GitHub").tap()
-        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts[devUsername].waitForExistence(timeout: 10), "item page open")
         if app.keyboards.firstMatch.exists { app.swipeDown() }
         shot("08-item")
-        app.buttons["Show"].firstMatch.tap()
-        app.staticTexts["Password"].firstMatch.tap()
+        app.buttons[L("Show", "Afficher")].firstMatch.tap()
+        app.staticTexts[L("Password", "Mot de passe")].firstMatch.tap()
         shot("09-item-copy")
 
         // Creating a login (the demo vault has no server to prepare the
         // edit of an existing item).
-        tapTab("Vault")
+        tapTab(L("Vault", "Coffre"))
         usleep(600_000)
-        let newItem = app.buttons["New item"].firstMatch
+        let newItem = app.buttons[L("New item", "Nouvel élément")].firstMatch
         if !newItem.waitForExistence(timeout: 2) {
             // Search still active on the home screen: the toolbar is collapsed.
             print("SHOWCASE_TREE \(app.debugDescription)")
-            let cancel = app.buttons["Cancel"].firstMatch
-            if cancel.exists { cancel.tap() } else if app.buttons["Close"].exists { app.buttons["Close"].firstMatch.tap() }
+            let cancel = app.buttons[L("Cancel", "Annuler")].firstMatch
+            if cancel.exists { cancel.tap() } else if app.buttons[L("Close", "Fermer")].exists { app.buttons[L("Close", "Fermer")].firstMatch.tap() }
         }
         XCTAssertTrue(newItem.waitForExistence(timeout: 5), "New item button")
         newItem.tap()
-        let login = app.buttons["Login"].firstMatch
+        let login = app.buttons[L("Login", "Identifiant")].firstMatch
         if !login.waitForExistence(timeout: 4) {
             // The menu didn't open (the screen was still moving): try again.
             newItem.tap()
@@ -202,25 +213,25 @@ final class ShowcaseUITests: XCTestCase {
         login.tap()
         let title = app.textFields["edit-title"]
         XCTAssertTrue(title.waitForExistence(timeout: 10), "creation screen")
-        title.typeText("My internet provider")
-        app.textFields["email or user name"].firstMatch.tap()
+        title.typeText(L("My internet provider", "Mon fournisseur d’accès"))
+        app.textFields[L("email or user name", "e-mail ou nom d'utilisateur")].firstMatch.tap()
         // Return: the keyboard closes.
-        app.typeText("emily.parker@example.com\n")
+        app.typeText(L("emily.parker@example.com", "camille.martin@exemple.fr") + "\n")
         shot("10-edit")
-        app.buttons["Cancel"].firstMatch.tap()
+        app.buttons[L("Cancel", "Annuler")].firstMatch.tap()
         // iOS offers to save the generated password: not this time.
-        let later = app.buttons["Not Now"].firstMatch
+        let later = app.buttons[L("Not Now", "Plus tard")].firstMatch
         if later.waitForExistence(timeout: 3) { later.tap() }
 
         // Generator, settings, audit.
-        tapTab("Generator", title: "Generator")
+        tapTab(L("Generator", "Générateur"), title: L("Generator", "Générateur"))
         shot("11-generator")
-        tapTab("Settings", title: "Settings")
+        tapTab(L("Settings", "Réglages"), title: L("Settings", "Réglages"))
         shot("12-settings")
         let audit = app.buttons["settings-audit"].firstMatch
         for _ in 0..<6 where !(audit.exists && audit.isHittable) { app.swipeUp() }
         audit.tap()
-        XCTAssertTrue(app.navigationBars["Security audit"].waitForExistence(timeout: 10), "audit")
+        XCTAssertTrue(app.navigationBars[L("Security audit", "Audit de sécurité")].waitForExistence(timeout: 10), "audit")
         shot("13-audit")
         app.terminate()
 
@@ -232,7 +243,7 @@ final class ShowcaseUITests: XCTestCase {
         let github = row("GitHub")
         for _ in 0..<12 where !github.isHittable { app.swipeUp() }
         github.tap()
-        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts[devUsername].waitForExistence(timeout: 10), "item page open")
         shot("15-item-large-text")
     }
 
@@ -247,7 +258,7 @@ final class ShowcaseUITests: XCTestCase {
         XCTAssertTrue(row(title).waitForExistence(timeout: 10), "result “\(title)”")
         row(title).tap()
         // No swipe to close the keyboard: it would close the item page (zoom).
-        XCTAssertTrue(app.staticTexts["emily-dev"].waitForExistence(timeout: 10), "item page open")
+        XCTAssertTrue(app.staticTexts[devUsername].waitForExistence(timeout: 10), "item page open")
     }
 
     /// Unlock: the password field, then the screen fading out.
@@ -266,11 +277,11 @@ final class ShowcaseUITests: XCTestCase {
         openItem("git", title: "GitHub")
         pause(1)
         mark("start")
-        app.buttons["Show"].firstMatch.tap()
+        app.buttons[L("Show", "Afficher")].firstMatch.tap()
         pause(2)
         app.buttons["Hide"].firstMatch.tap()
         pause(1)
-        app.buttons["Show"].firstMatch.tap()
+        app.buttons[L("Show", "Afficher")].firstMatch.tap()
         pause(2)
     }
 
@@ -301,7 +312,7 @@ final class ShowcaseUITests: XCTestCase {
     func testMotionGenerator() throws {
         launchMock()
         unlock()
-        tapTab("Generator", title: "Generator")
+        tapTab(L("Generator", "Générateur"), title: L("Generator", "Générateur"))
         pause(1.5)
         mark("start")
         for _ in 0..<3 {
@@ -341,9 +352,9 @@ final class ShowcaseUITests: XCTestCase {
         pause()
         row("GitHub").tap()
         pause(1.2)
-        app.staticTexts["Password"].firstMatch.tap()
+        app.staticTexts[L("Password", "Mot de passe")].firstMatch.tap()
         pause(1.5)
-        app.buttons["Show"].firstMatch.tap()
+        app.buttons[L("Show", "Afficher")].firstMatch.tap()
         pause(4)
     }
 }
