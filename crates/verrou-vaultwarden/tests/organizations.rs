@@ -1,16 +1,16 @@
-//! Organisations (coffres partagés) contre un vrai Vaultwarden, jetable :
-//! même serveur que `tests/server.rs` (voir son en-tête).
+//! Organizations (shared vaults) against a real throwaway Vaultwarden:
+//! same server as `tests/server.rs` (see its header).
 //!
 //! ```sh
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test organizations
 //! ```
 //!
-//! Le scénario complet : une propriétaire crée une organisation (clé
-//! d'organisation chiffrée avec sa clé publique, comme le coffre web) et deux
-//! collections, invite un membre (Vaultwarden sans SMTP l'accepte d'office)
-//! puis le confirme (clé de l'organisation chiffrée avec la clé publique du
-//! membre). Verrou partage, crée, modifie et range ; le membre relit tout
-//! avec ses droits (lecture seule, mots de passe masqués).
+//! The full scenario: an owner creates an organization (organization key
+//! encrypted with her public key, like the web vault) and two collections,
+//! invites a member (Vaultwarden without SMTP accepts automatically) then
+//! confirms them (organization key encrypted with the member's public
+//! key). Verrou shares, creates, edits and files; the member reads it all
+//! back with their permissions (read-only, passwords hidden).
 
 use std::num::NonZeroU32;
 
@@ -33,7 +33,7 @@ const ITERATIONS: u32 = 600_000;
 fn server() -> Option<String> {
     let server = std::env::var("VERROU_TEST_SERVER").ok();
     if server.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     server
 }
@@ -52,14 +52,14 @@ fn temp_store() -> Store {
     Store::new(std::env::temp_dir().join(format!("verrou-org-{}", uuid::Uuid::new_v4())))
 }
 
-/// Un compte inscrit et connecté hors de Verrou, comme le coffre web.
+/// An account signed up and logged in outside Verrou, like the web vault.
 struct Member {
     http: reqwest::Client,
     server: String,
     email: String,
     access: String,
     user_id: String,
-    /// Clé publique du compte (base64 du DER).
+    /// The account's public key (base64 of the DER).
     public_key: String,
 }
 
@@ -99,7 +99,7 @@ impl Member {
             .send()
             .await
             .unwrap();
-        assert!(response.status().is_success(), "inscription refusée");
+        assert!(response.status().is_success(), "sign-up refused");
         let auth = MasterPasswordAuthenticationData::derive(PASSWORD, &kdf(), &email)
             .unwrap()
             .master_password_authentication_hash
@@ -161,11 +161,11 @@ impl Member {
             .unwrap();
         let status = response.status();
         let text = response.text().await.unwrap();
-        assert!(status.is_success(), "{path} : {status} {text}");
+        assert!(status.is_success(), "{path}: {status} {text}");
         serde_json::from_str(&text).unwrap_or(Value::Null)
     }
 
-    /// Ouvre le coffre avec Verrou.
+    /// Opens the vault with Verrou.
     async fn verrou(&self) -> Unlocked {
         match login(
             &temp_store(),
@@ -177,11 +177,11 @@ impl Member {
         .unwrap()
         {
             LoginStep::Unlocked(unlocked) => *unlocked,
-            LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+            LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
         }
     }
 
-    /// Un client SDK du compte, pour relire ce que le serveur garde.
+    /// An SDK client for the account, to read back what the server keeps.
     async fn sdk(&self) -> Client {
         let sdk = Client::new(Some(ClientSettings {
             identity_url: format!("{}/identity", self.server),
@@ -222,7 +222,7 @@ impl Member {
     }
 }
 
-/// La clé de l'organisation chiffrée pour un compte (RSA-OAEP, sa clé publique).
+/// The organization key encrypted for an account (RSA-OAEP, its public key).
 #[allow(deprecated)]
 fn wrap_for(org_key: &SymmetricCryptoKey, public_key: &str) -> String {
     let der = data_encoding::BASE64.decode(public_key.as_bytes()).unwrap();
@@ -232,7 +232,7 @@ fn wrap_for(org_key: &SymmetricCryptoKey, public_key: &str) -> String {
         .to_string()
 }
 
-/// Une organisation créée comme le fait le coffre web.
+/// An organization created the way the web vault does.
 struct Org {
     id: String,
     key: SymmetricCryptoKey,
@@ -282,9 +282,9 @@ impl Org {
         created["id"].as_str().unwrap().to_owned()
     }
 
-    /// Invite `member` comme simple utilisateur avec ces droits sur les
-    /// collections, puis le confirme (sans SMTP, Vaultwarden accepte
-    /// l'invitation d'un compte existant d'office).
+    /// Invites `member` as a plain user with these permissions on the
+    /// collections, then confirms them (without SMTP, Vaultwarden
+    /// automatically accepts the invitation of an existing account).
     async fn add_member(&self, owner: &Member, member: &Member, collections: Value) {
         owner
             .post(
@@ -307,8 +307,8 @@ impl Org {
             .unwrap()
             .iter()
             .find(|u| u["userId"].as_str() == Some(member.user_id.as_str()))
-            .expect("membre invité");
-        assert_eq!(membership["status"], 1, "invitation acceptée d'office");
+            .expect("invited member");
+        assert_eq!(membership["status"], 1, "invitation accepted automatically");
         let public = owner
             .get(&format!("/api/users/{}/public-key", member.user_id))
             .await;
@@ -330,7 +330,7 @@ fn find<'v>(vault: &'v Decrypted, title: &str) -> &'v verrou_core::Item {
         .items
         .iter()
         .find(|i| i.title == title)
-        .unwrap_or_else(|| panic!("« {title} » absent"))
+        .unwrap_or_else(|| panic!("\"{title}\" missing"))
 }
 
 fn login_draft(name: &str, password: &str) -> Draft {
@@ -349,25 +349,25 @@ fn login_draft(name: &str, password: &str) -> Draft {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a full walkthrough, readable in one go
 async fn organizations_share_create_edit_and_permissions() {
     let Some(server) = server() else { return };
     let owner = Member::register(&server).await;
     let org = Org::create(&owner, "Famille Martin", "Comptes communs").await;
     let archives = org.collection(&owner, "Archives (lecture seule)").await;
 
-    // Verrou voit l'organisation et ses deux collections, noms déchiffrés.
+    // Verrou sees the organization and its two collections, names decrypted.
     let mut connection = owner.verrou().await.connection;
     let (personal_id, _) = connection
         .create(login_draft("Netflix", "mot-de-passe-perso"))
         .await
         .unwrap();
-    // Envoyé en arrière-plan dans l'app : ici, tout de suite.
+    // Sent in the background in the app: here, right away.
     let vault = connection.sync().await.unwrap().unwrap();
     let personal_id = connection.resolve(&personal_id);
     assert_eq!(vault.failures, 0);
     let [famille] = vault.organizations.as_slice() else {
-        panic!("une organisation attendue : {:?}", vault.organizations);
+        panic!("one organization expected: {:?}", vault.organizations);
     };
     assert_eq!(famille.id, org.id);
     assert_eq!(famille.name, "Famille Martin");
@@ -381,9 +381,9 @@ async fn organizations_share_create_edit_and_permissions() {
     let communs = famille.collections[1].id.clone();
     assert!(find(&vault, "Netflix").shared.is_none());
 
-    // « Partager… » : l'élément personnel passe dans « Comptes communs ».
-    // Une pièce jointe, chiffrée sous la clé personnelle : partager la
-    // rechiffre (sa clé) sans retélécharger son contenu.
+    // "Share…": the personal item moves into "Comptes communs".
+    // An attachment, encrypted under the personal key: sharing re-encrypts
+    // it (its key) without downloading its content again.
     let contrat = b"contrat Netflix famille, 4 profils".to_vec();
     connection
         .add_attachment(&personal_id, "contrat.txt", &contrat)
@@ -399,7 +399,7 @@ async fn organizations_share_create_edit_and_permissions() {
         .await
         .unwrap();
     let shared = find(&vault, "Netflix");
-    assert_eq!(shared.id, personal_id, "partager garde l'identifiant");
+    assert_eq!(shared.id, personal_id, "sharing keeps the id");
     let sharing = shared.shared.as_ref().unwrap();
     assert_eq!(sharing.organization, "Famille Martin");
     assert_eq!(
@@ -412,7 +412,7 @@ async fn organizations_share_create_edit_and_permissions() {
         "mot-de-passe-perso"
     );
     let files = connection.attachments(&personal_id).await.unwrap();
-    assert_eq!(files.len(), 1, "la pièce jointe suit l'élément");
+    assert_eq!(files.len(), 1, "the attachment follows the item");
     let attachment_id = files[0].id.clone();
     let (name, bytes) = connection
         .download_attachment(&personal_id, &attachment_id)
@@ -420,13 +420,13 @@ async fn organizations_share_create_edit_and_permissions() {
         .unwrap();
     assert_eq!(name, "contrat.txt");
     assert_eq!(bytes.as_slice(), contrat.as_slice());
-    // Rechiffré sous la clé de l'organisation : plus question de le repartager.
+    // Re-encrypted under the organization key: no sharing it again.
     assert!(matches!(
         connection.share(&personal_id, &org.id, &destinations).await,
         Err(Error::Invalid(_))
     ));
 
-    // Modifier un élément partagé : rechiffré avec la clé de l'organisation.
+    // Editing a shared item: re-encrypted with the organization key.
     let mut draft = connection.draft(&personal_id).await.unwrap();
     draft.login.as_mut().unwrap().password = Some(SecretString::new("nouveau-partagé"));
     let vault = connection.update(&personal_id, draft).await.unwrap();
@@ -439,9 +439,9 @@ async fn organizations_share_create_edit_and_permissions() {
         edited.field("history-0").unwrap().value.expose(),
         "mot-de-passe-perso"
     );
-    assert!(edited.shared.is_some(), "toujours dans l'organisation");
+    assert!(edited.shared.is_some(), "still in the organization");
 
-    // Créer directement dans une collection, puis le ranger dans les deux.
+    // Create directly in a collection, then file it in both.
     let (wifi_id, _) = connection
         .create_shared(
             Draft {
@@ -477,8 +477,8 @@ async fn organizations_share_create_edit_and_permissions() {
         [(archives.clone(), "Archives (lecture seule)".to_owned())]
     );
 
-    // Un autre client (le coffre web) relit l'élément avec la clé de
-    // l'organisation : le serveur garde bien la version de Verrou.
+    // Another client (the web vault) reads the item back with the
+    // organization key: the server does keep Verrou's version.
     let owner_sdk = owner.sdk().await;
     let profile = owner.get("/api/sync?excludeDomains=true").await;
     let org_key = profile["profile"]["organizations"][0]["key"]
@@ -509,8 +509,8 @@ async fn organizations_share_create_edit_and_permissions() {
         Some("nouveau-partagé")
     );
 
-    // Un membre : écriture dans « Comptes communs », lecture seule et
-    // mots de passe masqués dans les archives.
+    // A member: write access in "Comptes communs", read-only and
+    // passwords hidden in the archives.
     let member = Member::register(&server).await;
     org.add_member(
         &owner,
@@ -537,9 +537,9 @@ async fn organizations_share_create_edit_and_permissions() {
     assert_eq!(
         netflix.field("password").unwrap().value.expose(),
         "nouveau-partagé",
-        "le membre déchiffre avec la clé de l'organisation"
+        "the member decrypts with the organization key"
     );
-    // La pièce jointe aussi : sa clé est chiffrée par celle de l'organisation.
+    // The attachment too: its key is encrypted by the organization's.
     let (_, bytes) = member_connection
         .download_attachment(&personal_id, &attachment_id)
         .await
@@ -551,7 +551,7 @@ async fn organizations_share_create_edit_and_permissions() {
     assert!(sharing.read_only && sharing.hide_passwords);
     assert_eq!(wifi.notes.as_ref().unwrap().expose(), "clé WPA : 1234-5678");
 
-    // Lecture seule : ni modification, ni création dans les archives.
+    // Read-only: no edit, no creation in the archives.
     let draft = member_connection.draft(&wifi_id).await;
     assert!(matches!(draft, Err(Error::ReadOnly)), "{:?}", draft.err());
     let created = member_connection
@@ -562,7 +562,7 @@ async fn organizations_share_create_edit_and_permissions() {
         )
         .await;
     assert!(matches!(created, Err(Error::ReadOnly)));
-    // Action groupée : l'élément en lecture seule est écarté, l'autre archivé.
+    // Bulk action: the read-only item is skipped, the other archived.
     let ids = [personal_id.clone(), wifi_id.clone()];
     let outcome = member_connection
         .bulk(&ids, &verrou_vaultwarden::BulkAction::Archive, &|_, _| {})
@@ -582,7 +582,7 @@ async fn organizations_share_create_edit_and_permissions() {
         .await
         .unwrap();
     assert_eq!(outcome.done, 1);
-    // Écriture permise dans « Comptes communs ».
+    // Write allowed in "Comptes communs".
     let mut draft = member_connection.draft(&personal_id).await.unwrap();
     draft.notes = Some(SecretString::new("modifié par le membre"));
     let vault = member_connection.update(&personal_id, draft).await.unwrap();
@@ -605,7 +605,7 @@ async fn organizations_share_create_edit_and_permissions() {
             .any(|i| i.id == disney && i.shared.is_some())
     );
 
-    // La propriétaire voit les écritures du membre après synchronisation.
+    // The owner sees the member's writes after sync.
     let vault = connection.sync().await.unwrap().unwrap();
     assert_eq!(
         find(&vault, "Netflix").notes.as_ref().unwrap().expose(),

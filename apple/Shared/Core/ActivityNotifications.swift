@@ -3,25 +3,24 @@ import os
 import SwiftUI
 import UserNotifications
 
-// Notifications locales du partage (jamais un service de notification à
-// distance) : invitation acceptée en attente, accès confirmé, membres à
-// confirmer, nouveaux éléments partagés, accès d'urgence. Le cœur Rust dit
-// ce qui est nouveau (`checkActivity`, une seule fois chaque chose) ; ici,
-// on compose le texte et on le poste.
+// Local sharing notifications (never a remote notification service):
+// accepted invitation pending, access confirmed, members to confirm, new
+// shared items, emergency access. The Rust core says what is new
+// (`checkActivity`, each thing only once); here we compose the text and
+// post it.
 //
-// Contenu : un nom d'organisation, une adresse (accès d'urgence), des
-// nombres. Jamais un secret, un identifiant de connexion ni un titre
-// d'élément.
+// Content: an organization name, an address (emergency access), numbers.
+// Never a secret, a login identifier or an item title.
 
-/// Où mène le toucher d'une notification.
+/// Where tapping a notification leads.
 enum ActivityRoute: Equatable {
-    /// Les éléments de l'organisation.
+    /// The organization's items.
     case organization(String)
-    /// Les membres de l'organisation (confirmer).
+    /// The organization's members (confirm).
     case members(String)
-    /// Le partage : invitations en attente de confirmation.
+    /// Sharing: invitations awaiting confirmation.
     case pendingMemberships
-    /// L'accès d'urgence.
+    /// Emergency access.
     case emergency
 
     init?(userInfo: [AnyHashable: Any]) {
@@ -46,36 +45,36 @@ enum ActivityRoute: Equatable {
 }
 
 extension ActivityNotice {
-    private var quoted: String { "« \(organization ?? "l'organisation") »" }
+    private var quoted: String { String(localized: "“\(organization ?? String(localized: "the organization"))”") }
 
     var title: String {
         switch kind {
-        case .membershipPending: "Coffre partagé en attente"
-        case .membershipConfirmed: "Coffre partagé ouvert"
-        case .membersToConfirm: count > 1 ? "Membres à confirmer" : "Membre à confirmer"
-        case .itemsShared: count > 1 ? "Nouveaux éléments partagés" : "Nouvel élément partagé"
-        case .emergencyRequested: "Demande d'accès d'urgence"
-        case .emergencyApproved: "Accès d'urgence accordé"
+        case .membershipPending: String(localized: "Shared vault pending")
+        case .membershipConfirmed: String(localized: "Shared vault open")
+        case .membersToConfirm: count > 1 ? String(localized: "Members to confirm") : String(localized: "Member to confirm")
+        case .itemsShared: count > 1 ? String(localized: "New shared items") : String(localized: "New shared item")
+        case .emergencyRequested: String(localized: "Emergency access request")
+        case .emergencyApproved: String(localized: "Emergency access granted")
         }
     }
 
     var body: String {
-        let person = email ?? "Un proche"
+        let person = email ?? String(localized: "A trusted contact")
         switch kind {
         case .membershipPending:
-            return "Vous avez rejoint \(quoted). Un administrateur doit encore confirmer votre compte : vous serez prévenu."
+            return String(localized: "You joined \(quoted). An administrator still has to confirm your account: you will be notified.")
         case .membershipConfirmed:
-            return "Vous avez maintenant accès à \(quoted)."
+            return String(localized: "You now have access to \(quoted).")
         case .membersToConfirm:
             return count > 1
-                ? "\(count) personnes attendent votre confirmation dans \(quoted)."
-                : "Une personne attend votre confirmation dans \(quoted)."
+                ? String(localized: "\(count) people are waiting for your confirmation in \(quoted).")
+                : String(localized: "One person is waiting for your confirmation in \(quoted).")
         case .itemsShared:
-            return count > 1 ? "\(count) nouveaux éléments dans \(quoted)." : "1 nouvel élément dans \(quoted)."
+            return count > 1 ? String(localized: "\(count) new items in \(quoted).") : String(localized: "1 new item in \(quoted).")
         case .emergencyRequested:
-            return "\(person) demande l'accès à votre coffre. Refusez dans Verrou si vous ne l'attendiez pas."
+            return String(localized: "\(person) is requesting access to your vault. Deny it in Verrou if you weren't expecting it.")
         case .emergencyApproved:
-            return "Le coffre de \(person) vous est ouvert."
+            return String(localized: "\(person)'s vault is open to you.")
         }
     }
 
@@ -89,40 +88,39 @@ extension ActivityNotice {
     }
 }
 
-/// Poste les notifications et ramène leur toucher à l'app.
+/// Posts the notifications and brings their tap back to the app.
 @MainActor
 final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
     static let shared = ActivityNotifier()
 
-    /// Réglage : notifications du partage (activées par défaut).
+    /// Setting: sharing notifications (on by default).
     static let enabledKey = "activityNotifications"
     static var enabled: Bool {
         UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true
     }
 
-    /// Revue visuelle, démonstration, parcours de bout en bout : aucune
-    /// demande d'autorisation ni notification réelle (le contenu est
-    /// seulement journalisé, en Debug).
+    /// Visual review, demo, end-to-end run: no authorization request and no
+    /// real notification (the content is only logged, in Debug).
     var silent = false
-    /// Le toucher d'une notification : l'app ouvre l'écran voulu.
+    /// Tapping a notification: the app opens the requested screen.
     var onOpen: ((ActivityRoute) -> Void)?
-    /// Touché avant que l'app ne soit prête (lancement par la notification).
+    /// Tapped before the app is ready (launched by the notification).
     private var pendingRoute: ActivityRoute?
 
     #if DEBUG
-    /// Ce qui a été posté (crochet de test : le contenu, pas les bannières).
+    /// What was posted (test hook: the content, not the banners).
     private(set) var posted: [(key: String, title: String, body: String)] = []
     #endif
 
     private let log = Logger(subsystem: "app.verrou", category: "notifications")
 
-    /// À appeler au lancement : le toucher d'une notification passe par ici.
+    /// Call at launch: tapping a notification goes through here.
     func install() {
         guard !silent else { return }
         UNUserNotificationCenter.current().delegate = self
     }
 
-    /// L'app est prête à ouvrir un écran.
+    /// The app is ready to open a screen.
     func setHandler(_ handler: @escaping (ActivityRoute) -> Void) {
         onOpen = handler
         if let route = pendingRoute {
@@ -131,9 +129,9 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Demande l'autorisation au bon moment (organisations présentes, ou
-    /// écran du partage ouvert), jamais au premier lancement. Une seule
-    /// fois : le système ne redemande pas une autorisation refusée.
+    /// Asks for authorization at the right moment (organizations present, or
+    /// sharing screen open), never on first launch. Only once: the system
+    /// does not ask again for a denied authorization.
     func requestAuthorizationIfNeeded() async {
         guard !silent, Self.enabled else { return }
         let center = UNUserNotificationCenter.current()
@@ -141,8 +139,8 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
         _ = try? await center.requestAuthorization(options: [.alert, .badge])
     }
 
-    /// Poste une notification par nouvelle (même sujet : elle remplace la
-    /// précédente).
+    /// Posts one notification per news item (same subject: it replaces the
+    /// previous one).
     func post(_ notices: [ActivityNotice]) {
         guard Self.enabled, !notices.isEmpty else { return }
         for notice in notices {
@@ -150,23 +148,23 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
             #if DEBUG
             posted.append((notice.key, title, body))
             print("NOTIFY \(notice.key) | \(title) | \(body)")
-            log.debug("notification \(notice.key, privacy: .public) : \(title, privacy: .public) — \(body, privacy: .public)")
+            log.debug("notification \(notice.key, privacy: .public): \(title, privacy: .public) — \(body, privacy: .public)")
             #endif
             guard !silent else { continue }
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
-            content.threadIdentifier = "verrou.partage"
+            content.threadIdentifier = "verrou.sharing"
             content.userInfo = notice.route.userInfo
-            let request = UNNotificationRequest(identifier: "verrou.activite.\(notice.key)", content: content, trigger: nil)
+            let request = UNNotificationRequest(identifier: "verrou.activity.\(notice.key)", content: content, trigger: nil)
             UNUserNotificationCenter.current().add(request) { [log] error in
-                if let error { log.error("notification refusée : \(error.localizedDescription, privacy: .public)") }
+                if let error { log.error("notification refused: \(error.localizedDescription, privacy: .public)") }
             }
         }
     }
 
-    /// Pastille de l'icône : ce qui attend une action (membres à confirmer,
-    /// adhésions en attente). Zéro l'efface.
+    /// Icon badge: what awaits an action (members to confirm, pending
+    /// memberships). Zero clears it.
     func setBadge(_ count: Int) {
         guard !silent else { return }
         let count = Self.enabled ? count : 0
@@ -178,7 +176,7 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
         }
     }
 
-    /// Réglage coupé : plus rien d'affiché.
+    /// Setting turned off: nothing shown any more.
     func clearAll() {
         guard !silent else { return }
         let center = UNUserNotificationCenter.current()
@@ -188,8 +186,8 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     // MARK: UNUserNotificationCenterDelegate
 
-    /// App au premier plan : la bannière s'affiche quand même (sur Mac,
-    /// l'app tourne souvent sans fenêtre au premier plan).
+    /// App in the foreground: the banner shows anyway (on Mac, the app often
+    /// runs without a window in the foreground).
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions {
@@ -205,7 +203,7 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
     }
 }
 
-/// Le réglage, dans les réglages des deux apps.
+/// The setting, in both apps' settings.
 struct ActivityNotificationsToggle<Label: View>: View {
     @AppStorage(ActivityNotifier.enabledKey) private var enabled = true
     @ViewBuilder var label: Label
@@ -226,17 +224,14 @@ struct ActivityNotificationsToggle<Label: View>: View {
 
 extension ActivityNotificationsToggle where Label == Text {
     init() {
-        self.init { Text("Notifications du partage") }
+        self.init { Text("Sharing notifications") }
     }
 }
 
 enum ActivityNotificationsText {
-    /// iPhone : ce que permet la vérification en arrière-plan.
-    static let background = "En arrière-plan, quand iOS le permet, Verrou ne regarde que ce que l'app a déjà téléchargé "
-        + "si le coffre est verrouillé (ni clé ni réseau) : les nouveautés du serveur arrivent à la prochaine ouverture."
+    /// iPhone: what the background check allows.
+    static let background = String(localized: "In the background, when iOS allows it, Verrou only looks at what the app has already downloaded if the vault is locked (no key, no network): news from the server arrives the next time you open it.")
 
-    /// Ce que disent les notifications, et ce qu'elles ne disent jamais.
-    static let explanation = "Invitation en attente, accès confirmé, membres à confirmer, nouveaux éléments partagés : "
-        + "le nom de l'organisation et des nombres, jamais un mot de passe ni un identifiant. "
-        + "Calculées par Verrou sur cet appareil après chaque synchronisation, sans service de notification extérieur."
+    /// What the notifications say, and what they never say.
+    static let explanation = String(localized: "Pending invitation, access confirmed, members to confirm, new shared items: the organization name and numbers, never a password or a login. Computed by Verrou on this device after each sync, without an outside notification service.")
 }

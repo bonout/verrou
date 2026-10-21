@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Section « Coffres partagés » de la barre latérale : chaque organisation,
-/// puis ses collections, avec leurs effectifs ; les invitations en attente
-/// et les membres à confirmer ; de quoi créer ou rejoindre une organisation.
+/// "Shared Vaults" section of the sidebar: each organization, then its
+/// collections, with their counts; pending invitations and members to
+/// confirm; what's needed to create or join an organization.
 struct SharedVaultsSection: View {
     @Environment(AppModel.self) private var model
 
@@ -35,31 +35,31 @@ struct SharedVaultsSection: View {
                     Button {
                         model.openNewOrganization()
                     } label: {
-                        Label("Nouvelle organisation…", systemImage: "plus")
+                        Label("New Organization…", systemImage: "plus")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Créez un coffre partagé, puis invitez-y d'autres comptes de votre serveur")
+                    .help("Create a shared vault, then invite other accounts of your server to it")
                     Button {
                         model.openJoin()
                     } label: {
-                        Label("Rejoindre avec un lien…", systemImage: "envelope.open")
+                        Label("Join with a Link…", systemImage: "envelope.open")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
-                    .help("Invité par e-mail ? Collez le lien de l'invitation")
+                    .help("Invited by email? Paste the invitation link")
                 }
             } header: {
                 HStack {
-                    Text("Coffres partagés")
+                    Text("Shared Vaults")
                     Spacer()
                     if model.canEdit || admin.preview {
                         Menu {
-                            Button("Nouvelle organisation…") { model.openNewOrganization() }
-                            Button("Rejoindre une organisation…") { model.openJoin() }
+                            Button("New Organization…") { model.openNewOrganization() }
+                            Button("Join an Organization…") { model.openJoin() }
                             if model.organizations.contains(where: { $0.manageUrl != nil }) {
                                 Divider()
-                                Button("Ouvrir le coffre web") { model.openWebVault(organizationID: currentOrganization) }
+                                Button("Open the Web Vault") { model.openWebVault(organizationID: currentOrganization) }
                             }
                         } label: {
                             Image(systemName: "plus")
@@ -67,7 +67,7 @@ struct SharedVaultsSection: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("Nouvelle organisation, ou rejoindre une organisation avec un lien d'invitation")
+                        .help("New organization, or join an organization with an invitation link")
                     }
                 }
             }
@@ -78,39 +78,39 @@ struct SharedVaultsSection: View {
     private func organizationMenu(_ org: OrganizationView) -> some View {
         if model.canEdit {
             if org.canCreateCollections {
-                Button("Nouvelle collection…") { model.openCollectionEditor(org, collection: nil) }
+                Button("New Collection…") { model.openCollectionEditor(org, collection: nil) }
             }
             if org.canManageGroups {
-                Button("Groupes…") { Task { await model.openGroups(org) } }
+                Button("Groups…") { Task { await model.openGroups(org) } }
             }
             if org.canViewMembers {
-                Button("Membres") { model.openMembers(org.id) }
+                Button("Members") { model.openMembers(org.id) }
             }
             if org.canRename {
-                Button("Renommer…") { model.openRename(org) }
+                Button("Rename…") { model.openRename(org) }
             }
             Divider()
-            Button("Quitter l'organisation…", role: .destructive) { model.organizationAdmin.confirmLeave = org }
+            Button("Leave Organization…", role: .destructive) { model.organizationAdmin.confirmLeave = org }
         }
         if org.manageUrl != nil {
             Divider()
-            Button("Gérer dans le coffre web") { model.openWebVault(organizationID: org.id) }
+            Button("Manage in the Web Vault") { model.openWebVault(organizationID: org.id) }
         }
     }
 
     @ViewBuilder
     private func collectionMenu(_ org: OrganizationView, _ collection: CollectionView) -> some View {
         if model.canEdit && collection.canManage {
-            Button("Modifier la collection…") { model.openCollectionEditor(org, collection: collection) }
-            Button("Supprimer la collection…", role: .destructive) {
+            Button("Edit Collection…") { model.openCollectionEditor(org, collection: collection) }
+            Button("Delete Collection…", role: .destructive) {
                 model.organizationAdmin.confirmDelete = CollectionTarget(organization: org, collection: collection)
             }
         } else {
-            Text(collection.readOnly ? "Lecture seule" : "Vous ne gérez pas cette collection")
+            Text(collection.readOnly ? "Read-only" : "You don't manage this collection")
         }
     }
 
-    /// L'organisation affichée (elle-même ou une de ses collections).
+    /// The displayed organization (itself or one of its collections).
     private var currentOrganization: String? {
         switch model.filter {
         case .organization(let id): return id
@@ -121,9 +121,10 @@ struct SharedVaultsSection: View {
 
     private func help(for collection: CollectionView) -> String {
         var rights: [String] = []
-        if collection.readOnly { rights.append("lecture seule") }
-        if collection.hidePasswords { rights.append("mots de passe masqués") }
-        return rights.isEmpty ? collection.name : "\(collection.name) : \(rights.joined(separator: ", "))"
+        if collection.readOnly { rights.append(String(localized: "read-only")) }
+        if collection.hidePasswords { rights.append(String(localized: "passwords hidden")) }
+        return rights.isEmpty ? collection.name
+                              : String(localized: "\(collection.name): \(rights.joined(separator: ", "))")
     }
 
     private func row(_ filter: SidebarFilter, _ title: String, _ symbol: String, count: UInt32, tint: Color) -> some View {
@@ -140,8 +141,8 @@ struct SharedVaultsSection: View {
     }
 }
 
-/// « Partager… » : déplace un élément personnel dans les collections d'une
-/// organisation. Pour un élément déjà partagé : « Collections… ».
+/// "Share…": moves a personal item into an organization's collections. For
+/// an already shared item: "Collections…".
 struct SharingView: View {
     @Environment(AppModel.self) private var model
     @Bindable var flow: SharingFlow
@@ -161,10 +162,10 @@ struct SharingView: View {
                         .font(.title3.weight(.semibold))
                         .layoutMark("sheet-title")
                     Text(flow.current != nil
-                         ? "Les membres de chaque collection cochée voient l'élément."
+                         ? "The members of each checked collection see the item."
                          : flow.isBulk
-                         ? "Ces éléments quittent votre coffre personnel : chacun est rechiffré avec la clé de l'organisation (pièces jointes comprises), et ses membres les voient selon leurs droits."
-                         : "L'élément quitte votre coffre personnel : il est rechiffré avec la clé de l'organisation, et ses membres le voient selon leurs droits.")
+                         ? "These items leave your personal vault: each one is re-encrypted with the organization's key (attachments included), and its members see them according to their rights."
+                         : "The item leaves your personal vault: it is re-encrypted with the organization's key, and its members see it according to their rights.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -176,7 +177,7 @@ struct SharingView: View {
 
             Form {
                 if flow.current == nil {
-                    Picker("Organisation", selection: $flow.organizationID) {
+                    Picker("Organization", selection: $flow.organizationID) {
                         ForEach(model.writableOrganizations, id: \.id) { org in
                             Text(org.name).tag(org.id)
                         }
@@ -186,7 +187,7 @@ struct SharingView: View {
                         flow.collectionIDs = Set(first.map { [$0.id] } ?? [])
                     }
                 } else {
-                    LabeledContent("Organisation", value: flow.current?.organization ?? "")
+                    LabeledContent("Organization", value: flow.current?.organization ?? "")
                 }
                 Section("Collections") {
                     ForEach(organization?.collections ?? [], id: \.id) { collection in
@@ -194,7 +195,7 @@ struct SharingView: View {
                             HStack {
                                 Text(collection.name)
                                 if collection.readOnly {
-                                    Text("lecture seule").font(.caption).foregroundStyle(.secondary)
+                                    Text("read-only").font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -212,20 +213,22 @@ struct SharingView: View {
             Divider()
             HStack(spacing: 10) {
                 if organization?.manageUrl != nil {
-                    Button("Gérer dans le coffre web") { model.openWebVault(organizationID: flow.organizationID) }
+                    Button("Manage in the Web Vault") { model.openWebVault(organizationID: flow.organizationID) }
                         .buttonStyle(.link)
                 }
                 Spacer()
                 if let progress = flow.progress {
                     ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))
                         .frame(width: 120)
-                    Text("\(progress.done) sur \(progress.total)").font(.caption).monospacedDigit()
+                    Text("\(progress.done) of \(progress.total)").font(.caption).monospacedDigit()
                 } else if flow.busy {
                     ProgressView().controlSize(.small)
                 }
-                Button("Annuler") { model.sharingFlow = nil }
+                Button("Cancel") { model.sharingFlow = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(flow.current == nil ? (flow.isBulk ? "Partager \(flow.itemIDs.count) éléments" : "Partager") : "Enregistrer") {
+                Button(flow.current == nil
+                       ? (flow.isBulk ? String(localized: "Share \(flow.itemIDs.count) Items") : String(localized: "Share"))
+                       : String(localized: "Save")) {
                     Task { await model.applySharing(flow) }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -241,8 +244,8 @@ struct SharingView: View {
     }
 
     private var heading: String {
-        if flow.current != nil { return "Collections de « \(flow.title) »" }
-        return flow.isBulk ? "Partager \(flow.itemIDs.count) éléments" : "Partager « \(flow.title) »"
+        if flow.current != nil { return String(localized: "Collections of “\(flow.title)”") }
+        return flow.isBulk ? String(localized: "Share \(flow.itemIDs.count) items") : String(localized: "Share “\(flow.title)”")
     }
 
     private func binding(_ id: String) -> Binding<Bool> {
@@ -254,7 +257,7 @@ struct SharingView: View {
     }
 }
 
-/// Un champ que l'organisation masque à ce compte : ni affichage ni copie.
+/// A field the organization hides from this account: no display, no copy.
 struct HiddenFieldRow: View {
     let field: FieldView
 
@@ -264,12 +267,12 @@ struct HiddenFieldRow: View {
                 Text(field.label).font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 6) {
                     MaskedText(count: 8)
-                    Text("masqué par l'organisation").font(.caption).foregroundStyle(.tertiary)
+                    Text("hidden by the organization").font(.caption).foregroundStyle(.tertiary)
                 }
             }
             Spacer()
             Image(systemName: "eye.slash").foregroundStyle(.tertiary)
-                .help("L'organisation masque ce champ pour votre compte. Le remplissage dans le navigateur reste possible.")
+                .help("The organization hides this field for your account. Filling in the browser is still possible.")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

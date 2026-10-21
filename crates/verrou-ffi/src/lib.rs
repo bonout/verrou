@@ -1,32 +1,30 @@
-//! Interface exposée aux applications Apple par `UniFFI`.
+//! Interface exposed to the Apple apps through `UniFFI`.
 //!
-//! Principe : Swift ne reçoit jamais un secret sans l'avoir demandé
-//! explicitement. Les résumés (titre, identifiant affiché, site) arrivent une
-//! fois au déverrouillage ; chaque frappe de recherche ne renvoie que des
-//! positions et des surlignages ; un mot de passe ne traverse la frontière que
-//! par `reveal`, au moment où l'utilisateur l'affiche ou le copie.
+//! Principle: Swift never receives a secret without asking for it
+//! explicitly. Summaries (title, displayed username, site) arrive once at
+//! unlock; each search keystroke returns only positions and highlights; a
+//! password crosses the boundary only through `reveal`, when the user shows
+//! or copies it.
 //!
-//! Exceptions documentées : `user_key`, qui rend la clé de l'utilisateur pour
-//! que l'app la confie au Secure Enclave (déverrouillage par Touch ID),
-//! `edit_draft`, qui rend les secrets d'un élément quand l'utilisateur ouvre
-//! l'écran de modification, `autofill_keystrokes`, qui rend l'identifiant
-//! et le mot de passe à taper quand l'utilisateur choisit de remplir une app
-//! (⌘\), et `wifi_qr_code`, qui rend le contenu du QR code d'un réseau
-//! Wi-Fi (mot de passe compris) quand l'utilisateur l'affiche. De même pour
-//! les envois (`send`) : `send_link` (le lien porte la clé de l'envoi),
-//! `send_fields` et `send_fields_for_field`, à l'ouverture de l'écran d'un
-//! envoi.
+//! Documented exceptions: `user_key`, which returns the user's key so the
+//! app can hand it to the Secure Enclave (Touch ID unlock), `edit_draft`,
+//! which returns an item's secrets when the user opens the edit screen,
+//! `autofill_keystrokes`, which returns the username and password to type
+//! when the user chooses to fill an app (⌘\), and `wifi_qr_code`, which
+//! returns the QR code content of a Wi-Fi network (password included) when
+//! the user shows it. Likewise for Sends (`send`): `send_link` (the link
+//! carries the Send's key), `send_fields` and `send_fields_for_field`, when
+//! a Send's screen opens.
 //!
-//! Le coffre d'un concédant (accès d'urgence, `emergency`) suit les mêmes
-//! règles, dans un objet à part (`EmergencyVault`) qui se vide au
-//! verrouillage.
+//! A grantor's vault (emergency access, `emergency`) follows the same
+//! rules, in a separate object (`EmergencyVault`) that is cleared on
+//! lock.
 //!
-//! Le déverrouillage par clé de sécurité, lui, reste entièrement dans Rust :
-//! seuls le code PIN (saisi par l'utilisateur) et les étapes de l'échange
-//! traversent la frontière.
+//! Security key unlock stays entirely in Rust: only the PIN (typed by the
+//! user) and the steps of the exchange cross the boundary.
 
-// UniFFI exige des arguments possédés (`String`, énumérations) : la règle
-// pédantique qui voudrait des références ne s'applique pas à une frontière FFI.
+// UniFFI requires owned arguments (`String`, enums): the pedantic lint that
+// wants references does not apply to an FFI boundary.
 #![allow(clippy::needless_pass_by_value)]
 
 use std::collections::{HashMap, HashSet};
@@ -113,43 +111,43 @@ pub use watchtower::{
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum VerrouError {
-    #[error("le coffre est verrouillé")]
+    #[error("the vault is locked")]
     Locked,
-    #[error("élément introuvable")]
+    #[error("item not found")]
     NotFound,
-    #[error("code à usage unique invalide : {message}")]
+    #[error("invalid one-time code: {message}")]
     InvalidTotp { message: String },
-    #[error("mot de passe principal incorrect")]
+    #[error("wrong master password")]
     WrongPassword,
-    #[error("second facteur refusé : {message}")]
+    #[error("second factor rejected: {message}")]
     TwoFactorRejected { message: String },
-    #[error("aucun compte n'est configuré")]
+    #[error("no account is set up")]
     NoAccount,
-    #[error("la session a expiré : reconnectez-vous")]
+    #[error("the session has expired: sign in again")]
     SessionExpired,
     #[error("{message}")]
     InvalidServer { message: String },
-    #[error("serveur injoignable : {message}")]
+    #[error("server unreachable: {message}")]
     Network { message: String },
-    #[error("réponse du serveur : {message}")]
+    #[error("server response: {message}")]
     Server { message: String },
-    #[error("déchiffrement impossible : {message}")]
+    #[error("decryption failed: {message}")]
     Crypto { message: String },
-    #[error("stockage local : {message}")]
+    #[error("local storage: {message}")]
     Storage { message: String },
-    #[error("aucune connexion en cours")]
+    #[error("no login in progress")]
     NoPendingLogin,
-    #[error("clé de sécurité : {message}")]
+    #[error("security key: {message}")]
     SecurityKey { message: String },
-    #[error("cet élément ne peut pas être modifié depuis ce compte")]
+    #[error("this item cannot be edited from this account")]
     ReadOnly,
     #[error("{message}")]
     Invalid { message: String },
-    #[error("l'élément a changé sur le serveur")]
+    #[error("the item changed on the server")]
     Conflict,
-    /// L'élément demande une nouvelle confirmation (Touch ID ou mot de passe
-    /// principal) avant de livrer ses secrets : `authorize_item` après coup.
-    #[error("confirmation requise pour cet élément")]
+    /// The item asks for a new confirmation (Touch ID or master password)
+    /// before handing over its secrets: `authorize_item` afterwards.
+    #[error("confirmation required for this item")]
     RepromptRequired,
 }
 
@@ -175,20 +173,20 @@ impl From<verrou_vaultwarden::Error> for VerrouError {
     }
 }
 
-/// Le compte Vaultwarden enregistré sur ce Mac.
+/// The Vaultwarden account registered on this Mac.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct AccountInfo {
     pub server: String,
     pub email: String,
-    /// Horodatage Unix de la dernière synchronisation réussie.
+    /// Unix timestamp of the last successful sync.
     pub synced_at: Option<i64>,
 }
 
-/// Méthode de second facteur proposée par le serveur.
+/// Second-factor method offered by the server.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum TwoFactorOption {
-    /// Clé de sécurité (`YubiKey` en FIDO2). `challenge` est à transmettre à
-    /// la page de connexion `WebAuthn` du serveur.
+    /// Security key (`YubiKey` as FIDO2). `challenge` is to be passed to the
+    /// server's `WebAuthn` login page.
     SecurityKey {
         challenge: String,
     },
@@ -224,13 +222,13 @@ impl TwoFactorOption {
     }
 }
 
-/// Une clé de sécurité enrôlée pour déverrouiller. Aucun secret.
+/// A security key enrolled for unlocking. No secret.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct UnlockKey {
-    /// Identifiant de l'accréditation (base64url), pour la retirer.
+    /// Credential id (base64url), to remove it.
     pub id: String,
     pub label: String,
-    /// Horodatage Unix de l'enrôlement.
+    /// Unix timestamp of the enrollment.
     pub created: i64,
 }
 
@@ -244,14 +242,14 @@ impl From<&EnrolledKey> for UnlockKey {
     }
 }
 
-/// Ce que la clé de sécurité attend de l'utilisateur.
+/// What the security key expects from the user.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum SecurityKeyPrompt {
-    /// La toucher.
+    /// Touch it.
     Touch,
-    /// Saisir son code PIN, à passer à `submit_security_key_pin`. `retry` : le
-    /// précédent était faux ; `attempts_left` : essais restants, si la clé le
-    /// dit.
+    /// Enter its PIN, to pass to `submit_security_key_pin`. `retry`: the
+    /// previous one was wrong; `attempts_left`: remaining attempts, if the key
+    /// says.
     Pin {
         retry: bool,
         attempts_left: Option<u8>,
@@ -270,8 +268,8 @@ impl From<SecurityKeyStatus> for SecurityKeyPrompt {
     }
 }
 
-/// L'app affiche les étapes de l'échange avec la clé de sécurité. Appelé
-/// depuis le fil de l'échange : répondre vite.
+/// The app shows the steps of the exchange with the security key. Called
+/// from the exchange's thread: answer quickly.
 #[uniffi::export(callback_interface)]
 pub trait SecurityKeyObserver: Send + Sync {
     fn prompt(&self, prompt: SecurityKeyPrompt);
@@ -279,7 +277,7 @@ pub trait SecurityKeyObserver: Send + Sync {
 
 #[derive(Clone, Debug, uniffi::Enum)]
 pub enum LoginResult {
-    /// Coffre ouvert. `failures` : éléments que le SDK n'a pas su déchiffrer.
+    /// Vault open. `failures`: items the SDK could not decrypt.
     Unlocked {
         failures: u32,
     },
@@ -329,7 +327,7 @@ pub enum SidebarFilter {
     Category {
         category: ItemCategory,
     },
-    /// Éléments d'un modèle (Wi-Fi, passeport…).
+    /// Items of a template (Wi-Fi, passport…).
     Template {
         template: ItemTemplate,
     },
@@ -341,14 +339,14 @@ pub enum SidebarFilter {
     },
     Archived,
     Trash,
-    /// Coffre partagé : une organisation, ou une de ses collections.
+    /// Shared vault: an organization, or one of its collections.
     Organization {
         id: String,
     },
     Collection {
         id: String,
     },
-    /// Identifiants qui portent une passkey.
+    /// Logins that carry a passkey.
     Passkeys,
 }
 
@@ -376,9 +374,9 @@ pub enum ResultOrder {
     Relevance,
     Title,
     RecentlyModified,
-    /// Création, du plus récent au plus ancien.
+    /// Creation, newest first.
     Created,
-    /// Dernière utilisation sur cet appareil.
+    /// Last use on this device.
     LastUsed,
 }
 
@@ -433,8 +431,8 @@ impl From<FieldKind> for FieldType {
     }
 }
 
-/// Ce que la liste affiche d'un élément. Aucun secret.
-// Un enregistrement UniFFI : des champs plats, lus tels quels par Swift.
+/// What the list shows of an item. No secret.
+// A UniFFI record: flat fields, read as is by Swift.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ItemSummary {
@@ -448,27 +446,26 @@ pub struct ItemSummary {
     pub favorite: bool,
     pub has_totp: bool,
     pub modified: i64,
-    /// « Redemander le mot de passe principal » : confirmer avant tout secret.
+    /// "Master password re-prompt": confirm before any secret.
     pub reprompt: bool,
     pub state: ItemStatus,
-    /// Coffre partagé (organisation) ; `None` : coffre personnel.
+    /// Shared vault (organization); `None`: personal vault.
     pub sharing: Option<ItemSharing>,
-    /// Modèle de Verrou (Wi-Fi, passeport…), d'après le champ `verrou:type`.
+    /// Verrou template (Wi-Fi, passport…), from the `verrou:type` field.
     pub template: Option<ItemTemplate>,
-    /// Modifié hors ligne : la modification attend le serveur.
+    /// Modified offline: the change is waiting for the server.
     pub pending_sync: bool,
-    /// Création (horodatage Unix).
+    /// Creation (Unix timestamp).
     pub created: i64,
-    /// Dernière utilisation sur cet appareil (remplissage, copie, secret
-    /// affiché), si connue.
+    /// Last use on this device (fill, copy, secret shown), if known.
     pub last_used: Option<i64>,
-    /// Première passkey de l'identifiant : son site (`rpId`)…
+    /// The login's first passkey: its site (`rpId`)…
     pub passkey_rp_id: Option<String>,
-    /// … et le nom d'utilisateur qu'elle porte.
+    /// … and the username it carries.
     pub passkey_user_name: Option<String>,
 }
 
-/// Où se trouve l'élément (voir `verrou_core::ItemState`).
+/// Where the item is (see `verrou_core::ItemState`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ItemStatus {
     Active,
@@ -486,10 +483,9 @@ impl From<ItemState> for ItemStatus {
     }
 }
 
-/// Un résultat de recherche : position dans `summaries()`, identifiant de
-/// l'élément (pour vérifier que la position désigne toujours le même : une
-/// synchronisation ou une écriture remplace le coffre) et caractères du titre
-/// à surligner.
+/// A search result: position in `summaries()`, item id (to check that the
+/// position still points at the same one: a sync or a write replaces the
+/// vault) and title characters to highlight.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SearchHit {
     pub position: u32,
@@ -497,8 +493,8 @@ pub struct SearchHit {
     pub highlights: Vec<u32>,
 }
 
-/// Un champ tel que l'écran de détail le présente. `value` est absent pour
-/// un champ secret : il faut passer par `reveal`.
+/// A field as the detail screen shows it. `value` is absent for a secret
+/// field: go through `reveal`.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct FieldView {
     pub id: String,
@@ -506,8 +502,8 @@ pub struct FieldView {
     pub field_type: FieldType,
     pub secret: bool,
     pub value: Option<String>,
-    /// L'organisation de l'élément masque ce champ à ce compte : ni
-    /// affichage ni copie (le remplissage par l'extension reste permis).
+    /// The item's organization hides this field from this account: no
+    /// display and no copy (filling by the extension stays allowed).
     pub hidden: bool,
 }
 
@@ -515,7 +511,7 @@ pub struct FieldView {
 pub struct ItemDetail {
     pub summary: ItemSummary,
     pub urls: Vec<String>,
-    /// Règle de correspondance de chaque site (`None` : règle par défaut).
+    /// Match rule of each site (`None`: default rule).
     pub url_matches: Vec<Option<UriMatchRule>>,
     pub fields: Vec<FieldView>,
     pub has_notes: bool,
@@ -543,32 +539,32 @@ pub struct ItemCategoryCount {
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SidebarCounts {
-    /// Éléments actifs, comme les effectifs qui suivent (hors archives et corbeille).
+    /// Active items, like the counts that follow (excluding archive and trash).
     pub all: u32,
     pub archived: u32,
     pub trashed: u32,
     pub favorites: u32,
     pub with_totp: u32,
-    /// Identifiants qui portent une passkey.
+    /// Logins that carry a passkey.
     pub passkeys: u32,
     pub categories: Vec<ItemCategoryCount>,
-    /// Modèles présents dans le coffre, dans l'ordre de `ItemTemplate`.
+    /// Templates present in the vault, in `ItemTemplate` order.
     pub templates: Vec<ItemTemplateCount>,
     pub folders: Vec<NamedCount>,
     pub tags: Vec<NamedCount>,
 }
 
-/// Un dossier où ranger un élément.
+/// A folder to file an item in.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct FolderOption {
     pub id: String,
     pub name: String,
 }
 
-/// L'écran de modification. Avec `login` : un identifiant ; avec `card` :
-/// une carte ; avec `identity` : une identité ; sans aucun : une note
-/// sécurisée. Pour les autres types (clé SSH), seuls le titre, le dossier,
-/// le favori, les notes et les champs personnalisés se modifient.
+/// The edit screen. With `login`: a login; with `card`: a card; with
+/// `identity`: an identity; with none: a secure note. For other types (SSH
+/// key), only the title, folder, favorite, notes and custom fields can be
+/// edited.
 #[derive(Clone, Debug, Default, uniffi::Record)]
 pub struct ItemDraft {
     pub name: String,
@@ -576,20 +572,20 @@ pub struct ItemDraft {
     pub favorite: bool,
     pub notes: Option<String>,
     pub login: Option<LoginFields>,
-    /// Champs personnalisés, dans l'ordre (sans les champs réservés).
+    /// Custom fields, in order (without the reserved fields).
     pub fields: Vec<CustomField>,
-    /// Modèle : choisi à la création, conservé ensuite.
+    /// Template: chosen at creation, kept afterwards.
     pub template: Option<ItemTemplate>,
-    /// Carte bancaire (valeur par défaut côté Swift : les appels existants
-    /// n'ont pas à la nommer).
+    /// Payment card (default value on the Swift side: existing calls don't
+    /// have to name it).
     #[uniffi(default = None)]
     pub card: Option<CardFields>,
-    /// Identité.
+    /// Identity.
     #[uniffi(default = None)]
     pub identity: Option<IdentityFields>,
 }
 
-/// Les champs modifiables d'une carte bancaire.
+/// The editable fields of a payment card.
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct CardFields {
     pub cardholder_name: Option<String>,
@@ -600,7 +596,7 @@ pub struct CardFields {
     pub code: Option<String>,
 }
 
-/// Les champs modifiables d'une identité.
+/// The editable fields of an identity.
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct IdentityFields {
     pub title: Option<String>,
@@ -711,11 +707,11 @@ impl From<IdentityDraft> for IdentityFields {
 pub struct LoginFields {
     pub username: Option<String>,
     pub password: Option<String>,
-    /// Graine TOTP (`otpauth://…` ou base32).
+    /// TOTP seed (`otpauth://…` or base32).
     pub totp: Option<String>,
     pub urls: Vec<String>,
-    /// Règle de chaque site, dans l'ordre de `urls` (`None` dans la liste :
-    /// règle par défaut). `None` : chaque site gardé garde la sienne.
+    /// Rule of each site, in `urls` order (`None` in the list: default
+    /// rule). `None`: each kept site keeps its own.
     #[uniffi(default = None)]
     pub url_matches: Option<Vec<Option<UriMatchRule>>>,
 }
@@ -804,13 +800,13 @@ fn summary(item: &Item) -> ItemSummary {
     }
 }
 
-/// L'écran de détail d'un élément : les champs secrets sans leur valeur.
+/// An item's detail screen: secret fields without their value.
 fn detail(item: &Item) -> ItemDetail {
     let fields = item
         .fields
         .iter()
-        // Morceaux d'adresse (pour remplir les formulaires) et champs
-        // réservés à Verrou (`verrou:type`) : pas à afficher.
+        // Address parts (for filling forms) and fields reserved for Verrou
+        // (`verrou:type`): not to be shown.
         .filter(|f| !templates::is_reserved_field(&f.id))
         .map(|f| {
             let secret = f.kind.is_secret();
@@ -836,9 +832,8 @@ fn detail(item: &Item) -> ItemDetail {
     }
 }
 
-/// Une frappe du remplissage dans une app (voir `verrou_core::apps`). Le
-/// texte se tape en caractères Unicode, quelle que soit la disposition du
-/// clavier.
+/// A keystroke of app filling (see `verrou_core::apps`). The text is typed
+/// as Unicode characters, whatever the keyboard layout.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum AutofillKeystroke {
     Text { value: String },
@@ -858,97 +853,97 @@ impl From<apps::Keystroke> for AutofillKeystroke {
     }
 }
 
-/// Audit du coffre (calculé localement) : voir `verrou_core::audit`.
+/// Vault audit (computed locally): see `verrou_core::audit`.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct AuditReport {
-    /// Groupes d'éléments partageant un même mot de passe.
+    /// Groups of items sharing the same password.
     pub reused: Vec<Vec<ItemSummary>>,
     pub weak: Vec<WeakPassword>,
-    /// Identifiants dont un site est en HTTP.
+    /// Logins with a site over HTTP.
     pub insecure: Vec<ItemSummary>,
-    /// Identifiants examinés (ceux qui ont un mot de passe).
+    /// Logins examined (those that have a password).
     pub checked: u32,
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct WeakPassword {
     pub item: ItemSummary,
-    /// Entropie estimée, en bits.
+    /// Estimated entropy, in bits.
     pub bits: f64,
 }
 
-/// Un identifiant dont le mot de passe figure dans des fuites connues.
+/// A login whose password appears in known breaches.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct BreachedPassword {
     pub item: ItemSummary,
-    /// Nombre d'apparitions dans les fuites recensées par Have I Been Pwned.
+    /// Number of appearances in the breaches listed by Have I Been Pwned.
     pub count: u64,
 }
 
-/// Durée pendant laquelle une confirmation vaut pour un élément protégé.
+/// How long a confirmation holds for a protected item.
 const REPROMPT_WINDOW: Duration = Duration::from_secs(5 * 60);
 
-/// Session du coffre. Verrouiller libère le coffre, ce qui efface ses
-/// secrets de la mémoire (`SecretString` est mis à zéro à la libération), et
-/// la connexion, qui porte la clé de l'utilisateur.
+/// Vault session. Locking drops the vault, which wipes its secrets from
+/// memory (`SecretString` is zeroed on drop), and the connection, which
+/// carries the user's key.
 #[derive(uniffi::Object)]
 pub struct VaultSession {
     vault: RwLock<Option<Vault>>,
     folders: RwLock<Vec<FolderOption>>,
-    /// Organisations (coffres partagés) et collections du coffre ouvert.
+    /// Organizations (shared vaults) and collections of the open vault.
     organizations: RwLock<Vec<Organization>>,
     store: Option<Store>,
-    /// Coffre Vaultwarden ouvert. Le verrou extérieur n'est tenu qu'un
-    /// instant : `lock()` ne doit jamais attendre une synchronisation en cours.
+    /// Open Vaultwarden vault. The outer lock is held only for an instant:
+    /// `lock()` must never wait for a sync in progress.
     connection: Mutex<Option<Arc<tokio::sync::Mutex<Connection>>>>,
     pending: Mutex<Option<PendingLogin>>,
-    /// Échange en cours avec une clé de sécurité (second facteur,
-    /// enrôlement ou déverrouillage), pour l'annuler ou lui passer le code PIN.
+    /// Exchange in progress with a security key (second factor, enrollment
+    /// or unlock), to cancel it or pass it the PIN.
     security_key: Mutex<Option<SigningSession>>,
-    /// Pont vers l'extension de navigateur et le terminal, s'il est activé.
+    /// Bridge to the browser extension and the terminal, if enabled.
     bridge: Mutex<Option<Bridge>>,
-    /// Éléments protégés confirmés récemment (Touch ID ou mot de passe
-    /// principal), effacés au verrouillage.
+    /// Protected items confirmed recently (Touch ID or master password),
+    /// cleared on lock.
     authorized: Mutex<HashMap<String, Instant>>,
-    /// Demandes d'accord du terminal en attente de l'utilisateur.
+    /// Terminal approval requests waiting for the user.
     confirmations: Arc<Confirmations>,
-    /// Export lu, en attente de confirmation (secrets compris).
+    /// Export read, waiting for confirmation (secrets included).
     pending_import: Mutex<Option<import::PendingImport>>,
-    /// Identifiants dont le mot de passe vient d'être enregistré depuis
-    /// Verrou, en attente de `check_new_passwords`.
+    /// Logins whose password was just saved from Verrou, waiting for
+    /// `check_new_passwords`.
     new_passwords: Mutex<Vec<String>>,
-    /// Empreinte (SHA-256) du mot de passe de chaque identifiant trouvé dans
-    /// des fuites, au moment de la vérification : un mot de passe changé
-    /// depuis sort de la liste (`still_breached`). Effacé au verrouillage.
+    /// Fingerprint (SHA-256) of the password of each login found in
+    /// breaches, at check time: a password changed since then leaves the
+    /// list (`still_breached`). Cleared on lock.
     breached: Mutex<HashMap<String, [u8; 32]>>,
-    /// Éléments dont une modification faite hors ligne attend le serveur.
+    /// Items with an offline change waiting for the server.
     pending_items: RwLock<HashSet<String>>,
-    /// Éléments créés hors ligne : identifiant provisoire → serveur.
+    /// Items created offline: temporary id → server.
     remapped: RwLock<HashMap<String, String>>,
-    /// Invitation d'une organisation à accepter une fois connecté, après la
-    /// création du compte (`members`).
+    /// An organization invitation to accept once signed in, after the
+    /// account creation (`members`).
     pending_invite: Mutex<Option<verrou_vaultwarden::register::InviteLink>>,
-    /// Version du coffre affiché (`Decrypted::version`) : un coffre plus
-    /// ancien (synchronisation finie après une écriture locale) ne le
-    /// remplace pas. Tenu pendant toute l'installation.
+    /// Version of the displayed vault (`Decrypted::version`): an older vault
+    /// (sync finished after a local write) does not replace it. Held during
+    /// the whole installation.
     installed: Mutex<u64>,
-    /// Arrête l'envoi en cours de la dernière connexion (verrouillage), et
-    /// ses écritures sur le disque (déconnexion), même s'il la garde en vie.
+    /// Stops the last connection's push in progress (lock), and its disk
+    /// writes (log out), even if it keeps the connection alive.
     closer: Mutex<Option<Closer>>,
-    /// Canal des mises à jour en direct (`wait_for_server_change`).
+    /// Live updates channel (`wait_for_server_change`).
     hub: tokio::sync::Mutex<Option<verrou_vaultwarden::hub::Hub>>,
-    /// Incrémenté au verrouillage : l'attente en cours du canal s'arrête.
+    /// Incremented on lock: the channel's pending wait stops.
     hub_epoch: tokio::sync::watch::Sender<u64>,
-    /// Dernière utilisation des éléments sur l'appareil (`preferences`).
+    /// Last use of the items on the device (`preferences`).
     usage: Mutex<verrou_core::usage::UsageLog>,
-    /// Règles de correspondance de l'appareil (`preferences`).
+    /// Device match rules (`preferences`).
     match_settings: RwLock<verrou_core::matching::DeviceMatchSettings>,
-    /// Domaines équivalents du compte, de la dernière synchronisation.
+    /// Account's equivalent domains, from the last sync.
     equivalent_domains: RwLock<Vec<Vec<String>>>,
 }
 
-/// Demandes d'accord en cours : l'app répond par
-/// `answer_bridge_confirmation`, depuis le fil principal.
+/// Pending approval requests: the app answers with
+/// `answer_bridge_confirmation`, from the main thread.
 #[derive(Default)]
 struct Confirmations {
     next: AtomicU64,
@@ -968,7 +963,7 @@ impl Confirmations {
     }
 }
 
-/// Retire la demande quand on cesse de l'attendre (réponse, délai écoulé).
+/// Removes the request when we stop waiting for it (answer, timeout).
 struct PendingConfirmation<'a> {
     confirmations: &'a Confirmations,
     id: String,
@@ -985,8 +980,8 @@ impl Drop for PendingConfirmation<'_> {
 }
 
 impl VaultSession {
-    /// Session reliée au dossier du compte (`with_storage`), ou ouverte en
-    /// invitée par l'extension de remplissage (`for_autofill`).
+    /// Session tied to the account folder (`with_storage`), or opened as a
+    /// guest by the autofill extension (`for_autofill`).
     fn with_store(store: Store) -> Arc<Self> {
         Arc::new(Self {
             vault: RwLock::new(None),
@@ -1048,8 +1043,8 @@ impl VaultSession {
             return failures;
         }
         *installed = decrypted.version;
-        // Réglages de l'appareil relus à chaque fois : l'app et l'extension
-        // de remplissage de l'iPhone partagent le dossier.
+        // Device settings reread every time: the app and the iPhone's
+        // autofill extension share the folder.
         let settings = self.load_match_settings();
         let rules = Self::match_rules(
             &settings,
@@ -1094,7 +1089,7 @@ impl VaultSession {
         failures
     }
 
-    /// Verrouillé pendant l'échange avec le serveur : ne pas rouvrir le coffre.
+    /// Locked during the exchange with the server: don't reopen the vault.
     fn install_if_current(
         &self,
         connection: &Arc<tokio::sync::Mutex<Connection>>,
@@ -1113,7 +1108,7 @@ impl VaultSession {
     fn install(&self, unlocked: Unlocked) -> u32 {
         *self.closer.lock().unwrap_or_else(PoisonError::into_inner) =
             Some(unlocked.connection.closer());
-        // Nouvelle connexion : ses versions repartent de zéro.
+        // New connection: its versions restart from zero.
         *self
             .installed
             .lock()
@@ -1143,10 +1138,11 @@ impl VaultSession {
         }
     }
 
-    /// Écriture venue de l'extension, déjà vérifiée par
-    /// `verrou_bridge::access` : dans le coffre affiché et la file, sans
-    /// attendre le réseau (l'app envoie ensuite, `push_changes`). Seules
-    /// les passkeys vont au serveur avant de répondre (le site en dépend).
+    /// Write coming from the extension, already checked by
+    /// `verrou_bridge::access`: into the displayed vault and the queue,
+    /// without waiting for the network (the app pushes afterwards,
+    /// `push_changes`). Only passkeys go to the server before answering
+    /// (the site depends on it).
     async fn perform_write(
         &self,
         connection: &Arc<tokio::sync::Mutex<Connection>>,
@@ -1205,8 +1201,8 @@ impl VaultSession {
                 .await
             {
                 Ok(decrypted) => (item, decrypted),
-                // Partagé en lecture seule : la passkey sert, mais son
-                // compteur ne peut pas avancer sur le serveur.
+                // Shared read-only: the passkey works, but its counter
+                // cannot move forward on the server.
                 Err(verrou_vaultwarden::Error::ReadOnly) => return Ok(item),
                 Err(error) => return Err(error.into()),
             },
@@ -1234,7 +1230,7 @@ impl VaultSession {
         })
     }
 
-    /// Le résumé, marqué s'il attend le serveur.
+    /// The summary, marked if it is waiting for the server.
     fn summary_of(&self, item: &Item) -> ItemSummary {
         ItemSummary {
             pending_sync: self
@@ -1247,7 +1243,7 @@ impl VaultSession {
         }
     }
 
-    /// Comme `summary_of`, avec la première passkey de l'identifiant.
+    /// Like `summary_of`, with the login's first passkey.
     fn summary_in(&self, vault: &Vault, item: &Item) -> ItemSummary {
         let passkey = vault.passkeys_of(&item.id).into_iter().next();
         ItemSummary {
@@ -1268,7 +1264,7 @@ impl VaultSession {
                 .is_some_and(|at| at.elapsed() < REPROMPT_WINDOW)
     }
 
-    /// Les secrets d'un élément protégé ne sortent qu'après confirmation.
+    /// A protected item's secrets come out only after confirmation.
     fn require_authorized(&self, item: &Item) -> Result<(), VerrouError> {
         if self.is_authorized(item) {
             Ok(())
@@ -1285,8 +1281,8 @@ impl VaultSession {
             .ok_or(VerrouError::NoPendingLogin)
     }
 
-    /// Un échange avec la clé de sécurité, sur un fil à part (il bloque
-    /// jusqu'au contact), annulable par `cancel_security_key`.
+    /// An exchange with the security key, on a separate thread (it blocks
+    /// until the touch), cancellable by `cancel_security_key`.
     async fn with_security_key<T: Send + 'static>(
         &self,
         exchange: impl FnOnce(&SigningSession) -> Result<T, verrou_vaultwarden::Error> + Send + 'static,
@@ -1309,18 +1305,18 @@ impl VaultSession {
     }
 }
 
-/// Connexion à Vaultwarden. Ces méthodes sont asynchrones côté Swift : le
-/// réseau et la dérivation du mot de passe (des centaines de millisecondes)
-/// ne bloquent jamais l'interface.
+/// Vaultwarden connection. These methods are async on the Swift side: the
+/// network and password derivation (hundreds of milliseconds) never block
+/// the interface.
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Session reliée à un compte, dont les fichiers vivent dans `data_dir`.
+    /// Session tied to an account, whose files live in `data_dir`.
     #[uniffi::constructor]
     pub fn with_storage(data_dir: String) -> Arc<Self> {
         Self::with_store(Store::new(data_dir))
     }
 
-    /// Le compte enregistré, s'il y en a un.
+    /// The registered account, if there is one.
     pub fn account(&self) -> Option<AccountInfo> {
         let account = self.store.as_ref()?.load_account().ok()??;
         Some(AccountInfo {
@@ -1342,9 +1338,9 @@ impl VaultSession {
         Ok(self.login_result(step))
     }
 
-    /// Signe le défi avec une clé de sécurité branchée en USB, sans
-    /// navigateur. Rend le jeton à passer à `answer_two_factor`. Bloque
-    /// jusqu'au contact sur la clé, au délai, ou à `cancel_security_key`.
+    /// Signs the challenge with a security key plugged in over USB, without
+    /// a browser. Returns the token to pass to `answer_two_factor`. Blocks
+    /// until the touch on the key, the timeout, or `cancel_security_key`.
     pub async fn sign_with_security_key(&self, challenge: String) -> Result<String, VerrouError> {
         let pending = self.pending()?;
         let request =
@@ -1356,7 +1352,7 @@ impl VaultSession {
         Ok(verrou_vaultwarden::security_key::token(&request, &response))
     }
 
-    /// Interrompt l'attente de la clé de sécurité.
+    /// Stops waiting for the security key.
     pub fn cancel_security_key(&self) {
         if let Some(session) = self
             .security_key
@@ -1368,8 +1364,8 @@ impl VaultSession {
         }
     }
 
-    /// Le code PIN que la clé de sécurité attend (`SecurityKeyPrompt::Pin`).
-    /// Il ne fait que passer : la bibliothèque USB le transmet à la clé.
+    /// The PIN the security key expects (`SecurityKeyPrompt::Pin`). It only
+    /// passes through: the USB library hands it to the key.
     pub fn submit_security_key_pin(&self, pin: String) {
         if let Some(session) = self
             .security_key
@@ -1381,10 +1377,10 @@ impl VaultSession {
         }
     }
 
-    /// Enrôle la clé de sécurité branchée pour déverrouiller ce coffre
-    /// (coffre ouvert) : une accréditation `hmac-secret` est créée sur la
-    /// clé, puis son secret scelle la clé de l'utilisateur, qui ne quitte
-    /// pas Rust. Deux contacts ; le code PIN de la clé est exigé.
+    /// Enrolls the plugged-in security key to unlock this vault (vault
+    /// open): an `hmac-secret` credential is created on the key, then its
+    /// secret seals the user's key, which never leaves Rust. Two touches;
+    /// the key's PIN is required.
     pub async fn enroll_security_key(
         &self,
         label: String,
@@ -1403,7 +1399,7 @@ impl VaultSession {
             })
             .await?;
         let label = match label.trim() {
-            "" => format!("Clé de sécurité {}", existing.len() + 1),
+            "" => format!("Security key {}", existing.len() + 1),
             label => label.to_owned(),
         };
         let key = connection
@@ -1414,9 +1410,9 @@ impl VaultSession {
         Ok(UnlockKey::from(&key))
     }
 
-    /// Déverrouille avec l'une des clés de sécurité enrôlées : attend la
-    /// clé, son code PIN et un contact. Une clé périmée (la clé du coffre a
-    /// changé) retire toutes les clés enrôlées.
+    /// Unlocks with one of the enrolled security keys: waits for the key,
+    /// its PIN and a touch. A stale key (the vault key changed) removes all
+    /// enrolled keys.
     pub async fn unlock_with_security_key(
         &self,
         observer: Box<dyn SecurityKeyObserver>,
@@ -1425,7 +1421,7 @@ impl VaultSession {
         let keys = store.load_security_keys()?;
         if keys.is_empty() {
             return Err(VerrouError::SecurityKey {
-                message: "aucune clé de sécurité n'est enregistrée".to_owned(),
+                message: "no security key is registered".to_owned(),
             });
         }
         let credentials = unlock_keys::credentials(&keys)?;
@@ -1440,19 +1436,19 @@ impl VaultSession {
         Ok(self.install(unlocked))
     }
 
-    /// Nouveau défi de second facteur (après un refus de la clé de sécurité).
+    /// New second-factor challenge (after the security key was rejected).
     pub async fn restart_two_factor(&self) -> Result<LoginResult, VerrouError> {
         let step = self.pending()?.restart().await?;
         Ok(self.login_result(step))
     }
 
-    /// Envoie le code de second facteur par e-mail.
+    /// Sends the second-factor code by email.
     pub async fn send_email_code(&self) -> Result<(), VerrouError> {
         Ok(self.pending()?.send_email_code().await?)
     }
 
-    /// Réponse au second facteur : code saisi, ou JSON rendu par la page
-    /// `WebAuthn` pour une clé de sécurité.
+    /// Second-factor answer: typed code, or JSON returned by the `WebAuthn`
+    /// page for a security key.
     pub async fn answer_two_factor(
         &self,
         option: TwoFactorOption,
@@ -1469,7 +1465,7 @@ impl VaultSession {
         })
     }
 
-    /// Déverrouillage hors ligne, sur le cache, par le mot de passe principal.
+    /// Offline unlock, from the cache, with the master password.
     pub async fn unlock_with_password(&self, password: String) -> Result<u32, VerrouError> {
         let store = self.store()?.clone();
         let unlocked =
@@ -1477,7 +1473,7 @@ impl VaultSession {
         Ok(self.install(unlocked))
     }
 
-    /// Déverrouillage par la clé de l'utilisateur que Touch ID a libérée.
+    /// Unlock with the user key that Touch ID released.
     pub async fn unlock_with_user_key(&self, user_key: String) -> Result<u32, VerrouError> {
         let store = self.store()?.clone();
         let unlocked =
@@ -1485,24 +1481,24 @@ impl VaultSession {
         Ok(self.install(unlocked))
     }
 
-    /// Envoie les écritures en attente, télécharge le coffre et, s'il a
-    /// changé, remplace le contenu affiché : les positions de `summaries()`
-    /// changent, l'app recharge tout après coup. Le réseau et le
-    /// déchiffrement se font sans bloquer les écritures locales ; les
-    /// demandes simultanées sont regroupées (une en cours, une après).
+    /// Pushes pending writes, downloads the vault and, if it changed,
+    /// replaces the displayed content: the positions of `summaries()`
+    /// change, the app reloads everything afterwards. Network and
+    /// decryption run without blocking local writes; simultaneous requests
+    /// are coalesced (one in progress, one after).
     pub async fn sync(&self) -> Result<SyncOutcome, VerrouError> {
         self.sync_shared(false).await
     }
 
-    /// Comme `sync`, après une écriture locale : si le serveur était
-    /// injoignable il y a peu, ne retente pas tout de suite (erreur réseau ;
-    /// la synchronisation périodique s'en charge).
+    /// Like `sync`, after a local write: if the server was unreachable a
+    /// short while ago, don't retry right away (network error; the
+    /// periodic sync takes care of it).
     pub async fn push_changes(&self) -> Result<SyncOutcome, VerrouError> {
         self.sync_shared(true).await
     }
 
-    /// ⚠️ Brouillon prérempli pour modifier un élément, secrets compris :
-    /// seulement quand l'utilisateur ouvre l'écran de modification.
+    /// ⚠️ Prefilled draft to edit an item, secrets included: only when the
+    /// user opens the edit screen.
     pub async fn edit_draft(&self, id: String) -> Result<ItemDraft, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
@@ -1519,9 +1515,9 @@ impl VaultSession {
         Ok(draft.into())
     }
 
-    /// Crée l'élément dans le coffre personnel, sans attendre le serveur
-    /// (`push_changes` l'envoie) ; rend son identifiant, provisoire jusqu'à
-    /// l'envoi (`resolve_item_id`). Les positions de `summaries()` changent.
+    /// Creates the item in the personal vault, without waiting for the
+    /// server (`push_changes` sends it); returns its id, temporary until the
+    /// push (`resolve_item_id`). The positions of `summaries()` change.
     pub async fn create_item(&self, draft: ItemDraft) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (id, decrypted) = connection.lock().await.create(draft.into()).await?;
@@ -1535,21 +1531,21 @@ impl VaultSession {
         self.install_written(&connection, decrypted)
     }
 
-    /// Met l'élément à la corbeille du serveur (restaurable depuis le coffre web).
+    /// Moves the item to the server's trash (restorable from the web vault).
     pub async fn trash_item(&self, id: String) -> Result<(), VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.trash(&id).await?;
         self.install_if_current(&connection, decrypted)
     }
 
-    /// Sort l'élément de la corbeille.
+    /// Takes the item out of the trash.
     pub async fn restore_item(&self, id: String) -> Result<(), VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.restore(&id).await?;
         self.install_if_current(&connection, decrypted)
     }
 
-    /// Archive l'élément (ou le sort des archives).
+    /// Archives the item (or takes it out of the archive).
     pub async fn set_archived(&self, id: String, archived: bool) -> Result<(), VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.set_archived(&id, archived).await?;
@@ -1562,17 +1558,17 @@ impl VaultSession {
         self.install_if_current(&connection, decrypted)
     }
 
-    /// Relie l'identifiant à une app du Mac : ajoute `macapp://<bundle_id>` à
-    /// ses sites, synchronisé comme le reste. Rend `false` s'il l'était déjà.
+    /// Links the login to a Mac app: adds `macapp://<bundle_id>` to its
+    /// sites, synced like the rest. Returns `false` if it already was.
     pub async fn link_to_app(&self, id: String, bundle_id: String) -> Result<bool, VerrouError> {
         let uri = apps::mac_app_uri(&bundle_id).ok_or_else(|| VerrouError::Invalid {
-            message: "identifiant d'app invalide".to_owned(),
+            message: "invalid app identifier".to_owned(),
         })?;
         let already = self.with_vault(|v| {
             let item = Self::item(v, &id)?;
             if item.kind != ItemKind::Login {
                 return Err(VerrouError::Invalid {
-                    message: "seul un identifiant se relie à une app".to_owned(),
+                    message: "only a login can be linked to an app".to_owned(),
                 });
             }
             Ok(apps::matches_app(&item.urls, &bundle_id))
@@ -1590,9 +1586,9 @@ impl VaultSession {
         Ok(true)
     }
 
-    /// Mots de passe fuités, par Have I Been Pwned (k-anonymat : seuls les 5
-    /// premiers caractères du SHA-1 de chaque mot de passe partent). Seulement
-    /// sur demande explicite de l'utilisateur.
+    /// Breached passwords, through Have I Been Pwned (k-anonymity: only the
+    /// first 5 characters of each password's SHA-1 are sent). Only on the
+    /// user's explicit request.
     pub async fn check_breaches(&self) -> Result<Vec<BreachedPassword>, VerrouError> {
         let candidates: Vec<(String, SecretString)> = self.with_vault(|v| {
             Ok(v.items()
@@ -1623,8 +1619,8 @@ impl VaultSession {
         Ok(breached)
     }
 
-    /// Vérifie le mot de passe principal (confirmation d'un élément protégé
-    /// sans Touch ID). Hors ligne, sur le cache.
+    /// Checks the master password (confirmation of a protected item without
+    /// Touch ID). Offline, from the cache.
     pub async fn verify_master_password(&self, password: String) -> Result<bool, VerrouError> {
         let store = self.store()?.clone();
         match verrou_vaultwarden::unlock_with_password(&store, &SecretString::new(password)).await {
@@ -1634,16 +1630,16 @@ impl VaultSession {
         }
     }
 
-    /// ⚠️ Clé de l'utilisateur (base64), à confier immédiatement au Secure
-    /// Enclave pour Touch ID. Ne jamais l'écrire ni la journaliser.
+    /// ⚠️ The user's key (base64), to hand to the Secure Enclave right away
+    /// for Touch ID. Never write or log it.
     pub async fn user_key(&self) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let key = connection.lock().await.user_key().await?;
         Ok(key.expose().to_owned())
     }
 
-    /// Clés de sécurité enrôlées pour déverrouiller ce coffre (un fichier
-    /// illisible compte pour aucune : le mot de passe reste possible).
+    /// Security keys enrolled to unlock this vault (an unreadable file
+    /// counts as none: the password stays possible).
     pub fn security_keys(&self) -> Vec<UnlockKey> {
         self.store
             .as_ref()
@@ -1654,26 +1650,26 @@ impl VaultSession {
             .collect()
     }
 
-    /// Retire une clé de sécurité enrôlée (son accréditation reste sur la
-    /// clé, inutile sans ce fichier).
+    /// Removes an enrolled security key (its credential stays on the key,
+    /// useless without this file).
     pub fn remove_security_key(&self, id: String) -> Result<(), VerrouError> {
         Ok(unlock_keys::remove(self.store()?, &id)?)
     }
 
-    /// Retire toutes les clés de sécurité enrôlées : une reconnexion change
-    /// la clé du coffre, comme pour Touch ID.
+    /// Removes all enrolled security keys: signing in again changes the
+    /// vault key, as for Touch ID.
     pub fn remove_security_keys(&self) -> Result<(), VerrouError> {
         Ok(self.store()?.delete_security_keys()?)
     }
 
-    /// Modifications faites hors ligne qui attendent le serveur. Lisible
-    /// coffre verrouillé (pour prévenir avant une déconnexion, qui les perd).
+    /// Offline changes waiting for the server. Readable while the vault is
+    /// locked (to warn before a log out, which loses them).
     pub fn pending_changes(&self) -> u32 {
         self.store.as_ref().map_or(0, Store::pending_changes)
     }
 
-    /// Identifiant actuel d'un élément : celui que le serveur a donné à un
-    /// élément créé hors ligne, une fois envoyé (pour garder la sélection).
+    /// An item's current id: the one the server gave to an item created
+    /// offline, once pushed (to keep the selection).
     pub fn resolve_item_id(&self, id: String) -> String {
         self.remapped
             .read()
@@ -1683,8 +1679,8 @@ impl VaultSession {
             .unwrap_or(id)
     }
 
-    /// Bilan de l'envoi des modifications hors ligne depuis le dernier appel
-    /// (après une synchronisation ou une écriture).
+    /// Report of the push of offline changes since the last call (after a
+    /// sync or a write).
     pub async fn take_sync_report(&self) -> SyncReport {
         let Some(connection) = self.current_connection() else {
             return SyncReport::default();
@@ -1696,7 +1692,7 @@ impl VaultSession {
             rejected: report
                 .rejected
                 .into_iter()
-                .map(|(title, reason)| format!("« {title} » : {reason}"))
+                .map(|(title, reason)| format!("\"{title}\": {reason}"))
                 .collect(),
             remapped: report
                 .remapped
@@ -1706,10 +1702,10 @@ impl VaultSession {
         }
     }
 
-    /// Oublie le compte de ce Mac (jetons, cache, modifications hors ligne
-    /// pas encore envoyées) et verrouille.
+    /// Forgets this Mac's account (tokens, cache, offline changes not yet
+    /// pushed) and locks.
     pub fn logout(&self) -> Result<(), VerrouError> {
-        // Un envoi en cours ne doit pas réécrire la file effacée.
+        // A push in progress must not rewrite the erased queue.
         if let Some(closer) = self
             .closer
             .lock()
@@ -1721,7 +1717,7 @@ impl VaultSession {
         self.lock();
         let store = self.store()?;
         verrou_vaultwarden::logout(store)?;
-        // Réglages et registre de l'appareil : propres à ce compte.
+        // Device settings and log: specific to this account.
         for name in [preferences::USAGE_FILE, preferences::MATCH_RULES_FILE] {
             let _ = std::fs::remove_file(store.dir().join(name));
         }
@@ -1736,7 +1732,7 @@ impl VaultSession {
 
 #[uniffi::export]
 impl VaultSession {
-    /// Session sans compte : seulement le coffre fictif (démonstration).
+    /// Session without an account: only the mock vault (demo).
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -1766,11 +1762,11 @@ impl VaultSession {
         })
     }
 
-    /// Ouvre le coffre fictif (`size` = 0 : seulement les éléments soignés).
+    /// Opens the mock vault (`size` = 0: only the curated items).
     pub fn unlock_mock(&self, size: u32, seed: u64) {
         let items = mock::vault_items(size as usize, seed);
         let passkeys = mock::passkeys(&items);
-        // Dossiers fictifs, par nom (pour les règles de correspondance).
+        // Mock folders, by name (for the match rules).
         let mut folders: Vec<(String, String)> = items
             .iter()
             .filter_map(|i| i.folder.clone())
@@ -1805,9 +1801,9 @@ impl VaultSession {
     }
 
     pub fn lock(&self) {
-        // Le canal des mises à jour (et son jeton) ne survit pas au verrouillage.
+        // The updates channel (and its token) does not survive locking.
         self.stop_server_changes();
-        // Les accords donnés au terminal ne survivent pas au verrouillage.
+        // Approvals given to the terminal do not survive locking.
         if let Some(bridge) = self
             .bridge
             .lock()
@@ -1840,8 +1836,8 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take();
-        // Un envoi en cours s'arrête après sa requête : la connexion (et la
-        // clé de l'utilisateur) n'ont pas à lui survivre plus longtemps.
+        // A push in progress stops after its request: the connection (and
+        // the user's key) need not outlive it any longer.
         if let Some(closer) = self
             .closer
             .lock()
@@ -1864,20 +1860,20 @@ impl VaultSession {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
-        // Relu du disque à la prochaine ouverture (autre compte possible).
+        // Reread from disk at the next opening (possibly another account).
         *self.usage.lock().unwrap_or_else(PoisonError::into_inner) =
             verrou_core::usage::UsageLog::default();
     }
 
-    /// L'élément est protégé et n'a pas été confirmé récemment : ses secrets
-    /// attendent une confirmation (`authorize_item`).
+    /// The item is protected and was not confirmed recently: its secrets
+    /// wait for a confirmation (`authorize_item`).
     pub fn needs_confirmation(&self, id: String) -> bool {
         self.with_vault(|v| Ok(!self.is_authorized(Self::item(v, &id)?)))
             .unwrap_or(false)
     }
 
-    /// L'utilisateur vient de confirmer (Touch ID ou mot de passe principal)
-    /// pour cet élément protégé : ses secrets sont accessibles 5 minutes.
+    /// The user just confirmed (Touch ID or master password) for this
+    /// protected item: its secrets are accessible for 5 minutes.
     pub fn authorize_item(&self, id: String) {
         self.authorized
             .lock()
@@ -1892,8 +1888,8 @@ impl VaultSession {
             .is_some()
     }
 
-    /// Tous les résumés, dans l'ordre du coffre. Appelé une fois après le
-    /// déverrouillage ; la recherche renvoie ensuite des positions.
+    /// All summaries, in vault order. Called once after unlocking; search
+    /// then returns positions.
     pub fn summaries(&self) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| Ok(v.items().iter().map(|i| self.summary_in(v, i)).collect()))
     }
@@ -1933,7 +1929,7 @@ impl VaultSession {
         })
     }
 
-    /// Valeur d'un champ secret (ou `notes`), à la demande de l'utilisateur.
+    /// Value of a secret field (or `notes`), at the user's request.
     pub fn reveal(&self, id: String, field_id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
@@ -2013,7 +2009,7 @@ impl VaultSession {
         })
     }
 
-    /// Dossiers du coffre, triés par nom.
+    /// Vault folders, sorted by name.
     pub fn folders(&self) -> Vec<FolderOption> {
         self.folders
             .read()
@@ -2021,8 +2017,8 @@ impl VaultSession {
             .clone()
     }
 
-    /// Audit du coffre : réutilisés, faibles, sites en HTTP. Aucun secret ne
-    /// sort, seulement des résumés.
+    /// Vault audit: reused, weak, HTTP sites. No secret comes out, only
+    /// summaries.
     pub fn audit(&self) -> Result<AuditReport, VerrouError> {
         self.with_vault(|v| {
             let report = verrou_core::audit::audit(v);
@@ -2047,7 +2043,7 @@ impl VaultSession {
         })
     }
 
-    /// Identifiants correspondant à une page, du plus précis au moins précis.
+    /// Logins matching a page, from most to least specific.
     pub fn suggestions(&self, page_url: String) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| {
             Ok(v.suggestions_for(&page_url)
@@ -2057,9 +2053,9 @@ impl VaultSession {
         })
     }
 
-    // MARK: Remplissage dans les apps (⌘\)
+    // MARK: Filling in apps (⌘\)
 
-    /// Identifiants reliés à une app du Mac (`macapp://<identifiant de paquet>`).
+    /// Logins linked to a Mac app (`macapp://<bundle identifier>`).
     pub fn app_suggestions(&self, bundle_id: String) -> Result<Vec<ItemSummary>, VerrouError> {
         self.with_vault(|v| {
             Ok(v.app_suggestions(&bundle_id)
@@ -2069,16 +2065,15 @@ impl VaultSession {
         })
     }
 
-    /// L'élément est déjà relié à cette app.
+    /// The item is already linked to this app.
     pub fn is_linked_to_app(&self, id: String, bundle_id: String) -> bool {
         self.with_vault(|v| Ok(apps::matches_app(&Self::item(v, &id)?.urls, &bundle_id)))
             .unwrap_or(false)
     }
 
-    /// ⚠️ Frappes qui remplissent l'identifiant `id` dans l'app au premier
-    /// plan : son identifiant et son mot de passe, en clair. Seulement quand
-    /// l'utilisateur vient de le choisir ; un élément protégé doit avoir été
-    /// confirmé (`authorize_item`).
+    /// ⚠️ Keystrokes that fill login `id` into the frontmost app: its
+    /// username and password, in clear. Only when the user just chose it; a
+    /// protected item must have been confirmed (`authorize_item`).
     pub fn autofill_keystrokes(
         &self,
         id: String,
@@ -2088,7 +2083,7 @@ impl VaultSession {
             let item = Self::item(v, &id)?;
             self.require_authorized(item)?;
             let keys = apps::item_keystrokes(item, submit).ok_or_else(|| VerrouError::Invalid {
-                message: "seul un identifiant se remplit dans une app".to_owned(),
+                message: "only a login can be filled into an app".to_owned(),
             })?;
             self.record_use(&item.id);
             Ok(keys.into_iter().map(Into::into).collect())
@@ -2096,60 +2091,60 @@ impl VaultSession {
     }
 }
 
-// MARK: Coffres partagés (organisations)
+// MARK: Shared vaults (organizations)
 
-/// Où se trouve un élément partagé, et ce que le compte peut en faire.
+/// Where a shared item is, and what the account can do with it.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ItemSharing {
     pub organization_id: String,
     pub organization: String,
-    /// Collections visibles par ce compte, dans l'ordre de leurs noms.
+    /// Collections visible to this account, ordered by name.
     pub collection_ids: Vec<String>,
     pub collections: Vec<String>,
-    /// Lecture seule : ni modification, ni corbeille.
+    /// Read-only: no edit, no trash.
     pub read_only: bool,
-    /// Mots de passe masqués par l'organisation (remplissage permis).
+    /// Passwords hidden by the organization (filling allowed).
     pub hide_passwords: bool,
 }
 
-/// Une organisation de la barre latérale, avec ses collections.
+/// A sidebar organization, with its collections.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
-#[allow(clippy::struct_excessive_bools)] // des droits, lus tels quels par Swift
+#[allow(clippy::struct_excessive_bools)] // permissions, read as is by Swift
 pub struct OrganizationView {
     pub id: String,
     pub name: String,
-    /// Éléments actifs de l'organisation.
+    /// Active items of the organization.
     pub count: u32,
-    /// Propriétaire ou administrateur.
+    /// Owner or admin.
     pub admin: bool,
-    /// Le compte peut y ranger un élément (une collection au moins).
+    /// The account can file an item there (at least one collection).
     pub writable: bool,
-    /// Page de l'organisation dans le coffre web (membres, collections).
+    /// The organization's page in the web vault (members, collections).
     pub manage_url: Option<String>,
     pub collections: Vec<CollectionView>,
-    /// Rôle du compte (`None` : inconnu).
+    /// The account's role (`None`: unknown).
     pub role: Option<OrganizationMemberRole>,
-    /// Voir les membres (propriétaire, administrateur, gestionnaire avec
-    /// accès à toutes les collections).
+    /// View the members (owner, admin, manager with access to all
+    /// collections).
     pub can_view_members: bool,
-    /// Inviter, confirmer, modifier, retirer (propriétaire, administrateur).
+    /// Invite, confirm, edit, remove (owner, admin).
     pub can_manage_members: bool,
-    /// Propriétaire : rôles au-dessus d'« utilisateur » aussi.
+    /// Owner: roles above "user" too.
     pub is_owner: bool,
-    /// Créer des collections.
+    /// Create collections.
     pub can_create_collections: bool,
-    /// Une collection au moins à gérer, ou le droit d'en créer.
+    /// At least one collection to manage, or the right to create some.
     pub manages_collections: bool,
-    /// Renommer l'organisation (propriétaire).
+    /// Rename the organization (owner).
     pub can_rename: bool,
-    /// Groupes activés sur le serveur.
+    /// Groups enabled on the server.
     pub use_groups: bool,
-    /// Créer et modifier les groupes (propriétaire, administrateur).
+    /// Create and edit groups (owner, admin).
     pub can_manage_groups: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
-#[allow(clippy::struct_excessive_bools)] // des droits, lus tels quels par Swift
+#[allow(clippy::struct_excessive_bools)] // permissions, read as is by Swift
 pub struct CollectionView {
     pub id: String,
     pub name: String,
@@ -2157,17 +2152,17 @@ pub struct CollectionView {
     pub read_only: bool,
     pub hide_passwords: bool,
     pub manage: bool,
-    /// Le compte peut renommer, supprimer et ouvrir cette collection.
+    /// The account can rename, delete and open this collection.
     pub can_manage: bool,
 }
 
 fn hidden_by_organization() -> VerrouError {
     VerrouError::Invalid {
-        message: "l'organisation masque ce mot de passe pour votre compte".to_owned(),
+        message: "the organization hides this password from your account".to_owned(),
     }
 }
 
-/// L'organisation du coffre fictif (démonstration).
+/// The mock vault's organization (demo).
 fn mock_organization() -> Organization {
     Organization {
         id: mock::MOCK_ORGANIZATION.0.to_owned(),
@@ -2188,8 +2183,8 @@ fn mock_organization() -> Organization {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Organisations dont le compte est membre confirmé, avec leurs
-    /// collections et le nombre d'éléments actifs de chacune.
+    /// Organizations the account is a confirmed member of, with their
+    /// collections and the number of active items in each.
     pub fn organizations(&self) -> Vec<OrganizationView> {
         let organizations = self
             .organizations
@@ -2240,8 +2235,8 @@ impl VaultSession {
             .collect()
     }
 
-    /// Crée l'élément directement dans des collections d'une organisation ;
-    /// rend son identifiant.
+    /// Creates the item directly in collections of an organization; returns
+    /// its id.
     pub async fn create_shared_item(
         &self,
         draft: ItemDraft,
@@ -2255,7 +2250,7 @@ impl VaultSession {
             .create_shared(draft.into(), &organization_id, &collection_ids)
             .await?;
         self.install_if_current(&connection, decrypted)?;
-        // Créé ici : pas une nouvelle à annoncer à ce compte.
+        // Created here: not news to announce to this account.
         if let Some(store) = &self.store {
             let user_id = connection.lock().await.account().user_id.clone();
             let _ = verrou_vaultwarden::activity::acknowledge_items(
@@ -2267,8 +2262,8 @@ impl VaultSession {
         Ok(id)
     }
 
-    /// « Partager… » : déplace un élément personnel dans des collections
-    /// d'une organisation (rechiffré sous la clé de l'organisation).
+    /// "Share…": moves a personal item into collections of an organization
+    /// (re-encrypted under the organization's key).
     pub async fn share_item(
         &self,
         id: String,
@@ -2285,7 +2280,7 @@ impl VaultSession {
         self.install_if_current(&connection, decrypted)
     }
 
-    /// Change les collections d'un élément partagé (même organisation).
+    /// Changes the collections of a shared item (same organization).
     pub async fn set_item_collections(
         &self,
         id: String,
@@ -2301,14 +2296,14 @@ impl VaultSession {
     }
 }
 
-// MARK: Pont vers l'extension de navigateur et le terminal
+// MARK: Bridge to the browser extension and the terminal
 
-/// Nature d'un client du pont.
+/// Kind of bridge client.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum BridgeClientKind {
-    /// L'extension de navigateur (Brave, Firefox).
+    /// The browser extension (Brave, Firefox).
     Browser,
-    /// Le terminal (`verrou`, et son agent SSH).
+    /// The terminal (`verrou`, and its SSH agent).
     Cli,
 }
 
@@ -2321,26 +2316,26 @@ impl From<ClientKind> for BridgeClientKind {
     }
 }
 
-/// Ce que le terminal demande à faire.
+/// What the terminal asks to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum AccessPurpose {
-    /// Lire un secret de l'élément (mot de passe, notes, code…).
+    /// Read a secret of the item (password, notes, code…).
     Reveal,
-    /// Signer avec la clé SSH de l'élément.
+    /// Sign with the item's SSH key.
     Ssh,
-    /// Le navigateur : utiliser ou créer une passkey (le site demande la
-    /// vérification de l'utilisateur). `item` est l'élément, ou
-    /// `passkey:<site>` pour un nouvel identifiant.
+    /// The browser: use or create a passkey (the site asks for user
+    /// verification). `item` is the item, or `passkey:<site>` for a new
+    /// login.
     Passkey,
-    /// Signer un commit git avec la clé SSH de l'élément.
+    /// Sign a git commit with the item's SSH key.
     GitSign,
-    /// Le navigateur : associer un site à un identifiant. `title` dit lequel
-    /// à lequel (« le site exemple.fr à « GitHub » »).
+    /// The browser: link a site to a login. `title` says which to which
+    /// ("the site exemple.fr to "GitHub"").
     LinkSite,
-    /// Le navigateur : remplir un formulaire avec une carte bancaire.
+    /// The browser: fill a form with a payment card.
     Card,
-    /// Le navigateur : un élément de plus, après beaucoup d'éléments
-    /// demandés en peu de temps.
+    /// The browser: one more item, after many items requested in a short
+    /// time.
     Bulk,
 }
 
@@ -2358,19 +2353,20 @@ impl From<Purpose> for AccessPurpose {
     }
 }
 
-/// Ce que l'app fait pour le pont : demander l'accord d'appairage, amener le
-/// coffre au déverrouillage, faire confirmer un accès du terminal. Appelé
-/// depuis le fil du pont : répondre vite.
+/// What the app does for the bridge: ask for pairing approval, bring the
+/// vault to unlock, have a terminal access confirmed. Called from the
+/// bridge's thread: answer quickly.
 #[uniffi::export(callback_interface)]
 pub trait BridgeDelegate: Send + Sync {
-    /// Afficher `code` et demander l'accord ; répondre par
-    /// `answer_bridge_pairing(id, …)`. `kind` : ce qui sera relié.
+    /// Show `code` and ask for approval; answer with
+    /// `answer_bridge_pairing(id, …)`. `kind`: what will be linked.
     fn pairing_requested(&self, id: String, name: String, code: String, kind: BridgeClientKind);
-    /// Le terminal `client_name` veut lire un secret de l'élément `item`
-    /// (titre `title`), ou signer avec sa clé SSH : demander Touch ID (ou le
-    /// mot de passe de la session ; pour un élément protégé, la confirmation
-    /// de `needs_confirmation`), puis répondre par
-    /// `answer_bridge_confirmation(id, …)`.
+    /// Terminal `client_name` wants to read a secret of item `item` (title
+    /// `title`), or sign with its SSH key: ask for Touch ID (or the session
+    /// password; for a protected item, the `needs_confirmation`
+    /// confirmation), then answer with `answer_bridge_confirmation(id, …)`.
+    /// `site`: for `LinkSite`, the host of the site to link to the item
+    /// (empty otherwise).
     fn confirm_requested(
         &self,
         id: String,
@@ -2378,27 +2374,28 @@ pub trait BridgeDelegate: Send + Sync {
         purpose: AccessPurpose,
         item: String,
         title: String,
+        site: String,
     );
     fn unlock_requested(&self);
-    /// L'extension a enregistré un identifiant (ou un code) : le coffre a
-    /// été resynchronisé, l'app recharge sa liste. `title` : pour le signaler.
+    /// The extension saved a login (or a code): the vault was synced again,
+    /// the app reloads its list. `title`: to announce it.
     fn vault_changed(&self, item: String, title: String);
-    /// L'extension veut remplir un élément protégé : demander la
-    /// confirmation (Touch ID ou mot de passe principal), puis `authorize_item`.
+    /// The extension wants to fill a protected item: ask for confirmation
+    /// (Touch ID or master password), then `authorize_item`.
     fn reprompt_requested(&self, item: String, title: String);
 }
 
-/// Bilan de l'envoi des modifications faites hors ligne.
+/// Report of the push of changes made offline.
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct SyncReport {
-    /// Modifications acceptées par le serveur.
+    /// Changes accepted by the server.
     pub sent: u32,
-    /// Éléments modifiés ailleurs entre-temps : titre de la copie qui garde
-    /// la version locale (« … (conflit hors ligne) »).
+    /// Items changed elsewhere in the meantime: title of the copy that
+    /// keeps the local version ("… (offline conflict)").
     pub conflicts: Vec<String>,
-    /// Modifications refusées par le serveur, retirées : « titre » : raison.
+    /// Changes rejected by the server, removed: "title": reason.
     pub rejected: Vec<String>,
-    /// Éléments créés hors ligne, et leur identifiant sur le serveur.
+    /// Items created offline, and their id on the server.
     pub remapped: Vec<IdMapping>,
 }
 
@@ -2408,27 +2405,27 @@ pub struct IdMapping {
     pub server: String,
 }
 
-/// Résultat d'une synchronisation.
+/// Result of a sync.
 #[derive(Clone, Copy, Debug, uniffi::Record)]
 pub struct SyncOutcome {
-    /// `false` : le serveur n'a rien de nouveau, le coffre affiché est à jour.
+    /// `false`: the server has nothing new, the displayed vault is up to date.
     pub changed: bool,
-    /// Éléments que le SDK n'a pas su déchiffrer.
+    /// Items the SDK could not decrypt.
     pub failures: u32,
 }
 
-/// Un client appairé (extension ou terminal).
+/// A paired client (extension or terminal).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct BridgeClient {
     pub id: String,
     pub name: String,
-    /// Horodatage Unix de l'appairage.
+    /// Unix timestamp of the pairing.
     pub created: i64,
     pub kind: BridgeClientKind,
 }
 
-/// Le coffre de la session, vu par le pont : seulement ce que
-/// `verrou_bridge::access` autorise.
+/// The session's vault, as the bridge sees it: only what
+/// `verrou_bridge::access` allows.
 struct SessionBackend {
     session: Weak<VaultSession>,
     delegate: Box<dyn BridgeDelegate>,
@@ -2458,9 +2455,9 @@ impl Backend for SessionBackend {
                 Ok(
                     verrou_bridge::access::credentials(v, item, page_url, now).and_then(
                         |credentials| {
-                            // Élément protégé : la vérification du site passe
-                            // d'abord, puis Verrou demande la confirmation ;
-                            // l'extension réessaie.
+                            // Protected item: the site check comes first,
+                            // then Verrou asks for confirmation; the
+                            // extension retries.
                             if let Some(protected) =
                                 v.get(item).filter(|i| !session.is_authorized(i))
                             {
@@ -2506,15 +2503,15 @@ impl Backend for SessionBackend {
                 Err(reason) => return Some(Err(reason)),
             };
             let Some(connection) = session.current_connection() else {
-                // Coffre fictif : rien à écrire.
-                return Some(Err("coffre en lecture seule".to_owned()));
+                // Mock vault: nothing to write.
+                return Some(Err("read-only vault".to_owned()));
             };
-            // Le compteur d'une passkey avance à chaque connexion : rien à
-            // annoncer à l'utilisateur.
+            // A passkey's counter moves forward on every sign-in: nothing to
+            // announce to the user.
             let quiet = matches!(write, Write::PasskeyCounter { .. });
             match session.perform_write(&connection, write).await {
                 Ok(id) if quiet => {
-                    // Une passkey vient de servir.
+                    // A passkey was just used.
                     session.record_use(&id);
                     Some(Ok(id))
                 }
@@ -2562,7 +2559,7 @@ impl Backend for SessionBackend {
             return false;
         };
         if session.is_authorized(item) {
-            // Ses secrets partent vers le navigateur (formulaire, passkey).
+            // Its secrets go to the browser (form, passkey).
             session.record_use(&item.id);
             return true;
         }
@@ -2590,6 +2587,7 @@ impl Backend for SessionBackend {
             request.purpose.into(),
             request.item,
             request.title,
+            request.site,
         );
         let pending = PendingConfirmation {
             confirmations: &self.confirmations,
@@ -2598,8 +2596,8 @@ impl Backend for SessionBackend {
         Box::pin(async move {
             let approved = answer.await.unwrap_or(false);
             drop(pending);
-            // Élément protégé (« redemander le mot de passe principal ») :
-            // l'accord ne vaut que si l'app l'a confirmé comme tel.
+            // Protected item ("master password re-prompt"): the approval
+            // only counts if the app confirmed it as such.
             approved
                 && self.session.upgrade().is_some_and(|session| {
                     session
@@ -2612,8 +2610,8 @@ impl Backend for SessionBackend {
 
 #[uniffi::export]
 impl VaultSession {
-    /// Démarre le pont (port `VERROU_BRIDGE_PORT`, sinon le port de Verrou).
-    /// Les clients appairés sont gardés dans le dossier du compte.
+    /// Starts the bridge (port `VERROU_BRIDGE_PORT`, else Verrou's port).
+    /// Paired clients are kept in the account folder.
     pub fn start_bridge(
         self: Arc<Self>,
         delegate: Box<dyn BridgeDelegate>,
@@ -2630,10 +2628,10 @@ impl VaultSession {
         };
         let bridge = Bridge::start(verrou_bridge::port_from_env(), file, Arc::new(backend))
             .map_err(|e| VerrouError::Storage {
-                message: format!("pont vers le navigateur et le terminal : {e}"),
+                message: format!("bridge to the browser and the terminal: {e}"),
             })?;
-        // Version de l'extension livrée avec l'app : l'extension se recharge
-        // d'elle-même quand l'app a été mise à jour.
+        // Version of the extension shipped with the app: the extension
+        // reloads itself when the app was updated.
         bridge.set_extension_manifest(verrou_bridge::bundled_extension_manifest());
         let port = bridge.port();
         *slot = Some(bridge);
@@ -2660,7 +2658,7 @@ impl VaultSession {
         }
     }
 
-    /// Réponse de l'utilisateur à une demande d'accord du terminal.
+    /// The user's answer to a terminal approval request.
     pub fn answer_bridge_confirmation(&self, id: String, approved: bool) {
         self.confirmations.answer(&id, approved);
     }
@@ -2706,7 +2704,7 @@ pub fn generate_password(length: u32, digits: bool, symbols: bool) -> String {
     })
 }
 
-/// Entropie estimée, en bits.
+/// Estimated entropy, in bits.
 #[uniffi::export]
 pub fn password_strength(password: String) -> f64 {
     generator::entropy_bits(&password)
@@ -2754,14 +2752,14 @@ mod tests {
             .unwrap()
             .into_iter()
             .find(|s| s.reprompt)
-            .expect("une carte protégée dans le coffre fictif");
+            .expect("a protected card in the mock vault");
         assert!(matches!(
             session.reveal(card.id.clone(), "number".to_owned()),
             Err(VerrouError::RepromptRequired)
         ));
         session.authorize_item(card.id.clone());
         assert!(session.reveal(card.id.clone(), "number".to_owned()).is_ok());
-        // Verrouiller oublie les confirmations.
+        // Locking forgets the confirmations.
         session.lock();
         session.unlock_mock(0, 42);
         assert!(matches!(
@@ -2794,7 +2792,7 @@ mod tests {
             ]
         );
 
-        // Élément protégé : rien sans confirmation.
+        // Protected item: nothing without confirmation.
         let mut items = mock::vault_items(0, 42);
         let protected = items.iter_mut().find(|i| i.id == id).unwrap();
         protected.reprompt = true;
@@ -2806,7 +2804,7 @@ mod tests {
         session.authorize_item(id.clone());
         assert_eq!(session.autofill_keystrokes(id, false).unwrap().len(), 3);
 
-        // Une note ne se tape pas.
+        // A note is not typed.
         let note = session
             .summaries()
             .unwrap()
@@ -2832,10 +2830,10 @@ mod tests {
             .build()
             .unwrap();
         assert!(matches!(
-            runtime.block_on(session.link_to_app(github.id.clone(), "pas valide".to_owned())),
+            runtime.block_on(session.link_to_app(github.id.clone(), "not valid".to_owned())),
             Err(VerrouError::Invalid { .. })
         ));
-        // Coffre fictif : pas de serveur où écrire.
+        // Mock vault: no server to write to.
         assert!(matches!(
             runtime.block_on(session.link_to_app(github.id, "com.github.GitHubClient".to_owned())),
             Err(VerrouError::Locked)
@@ -2849,7 +2847,7 @@ mod tests {
         let issues = report.reused.iter().map(Vec::len).sum::<usize>()
             + report.weak.len()
             + report.insecure.len();
-        assert!(issues > 0, "le coffre fictif a des faiblesses à montrer");
+        assert!(issues > 0, "the mock vault has weaknesses to show");
     }
 
     #[test]
@@ -2878,12 +2876,20 @@ mod tests {
         assert_eq!(summaries[hits[0].position as usize].title, "Boursorama");
     }
 
-    /// Délégué qui accepte toute demande d'accord du terminal, aussitôt.
+    /// Delegate that approves any terminal approval request, right away.
     struct Approver(Arc<Confirmations>);
 
     impl BridgeDelegate for Approver {
         fn pairing_requested(&self, _: String, _: String, _: String, _: BridgeClientKind) {}
-        fn confirm_requested(&self, id: String, _: String, _: AccessPurpose, _: String, _: String) {
+        fn confirm_requested(
+            &self,
+            id: String,
+            _: String,
+            _: AccessPurpose,
+            _: String,
+            _: String,
+            _: String,
+        ) {
             self.0.answer(&id, true);
         }
         fn unlock_requested(&self) {}
@@ -2912,10 +2918,11 @@ mod tests {
                 purpose: Purpose::Reveal,
                 item: item.to_owned(),
                 title: String::new(),
+                site: String::new(),
             }))
         };
         assert!(confirm(&plain));
-        // Accordé par une simple confirmation : pas assez pour un élément protégé.
+        // Granted by a simple confirmation: not enough for a protected item.
         assert!(!confirm(&protected));
         session.authorize_item(protected.clone());
         assert!(confirm(&protected));
@@ -2959,7 +2966,7 @@ mod tests {
                 .is_ok()
         );
 
-        // Mots de passe masqués par l'organisation : ni reveal ni brouillon.
+        // Passwords hidden by the organization: no reveal, no draft.
         let mut items = mock::vault_items(0, 42);
         for item in &mut items {
             if let Some(shared) = item.shared.as_mut() {
@@ -2985,21 +2992,21 @@ mod tests {
 
 // MARK: Passkeys
 
-/// Une passkey d'un élément, telle que l'app la montre : jamais sa clé.
+/// A passkey of an item, as the app shows it: never its key.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PasskeyInfo {
-    /// Identifiant au format de Bitwarden, pour la supprimer.
+    /// Id in Bitwarden's format, to delete it.
     pub credential_id: String,
     pub rp_id: String,
     pub rp_name: Option<String>,
     pub user_name: Option<String>,
-    /// Horodatage Unix de création.
+    /// Unix timestamp of creation.
     pub created: i64,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Les passkeys de l'élément (site, utilisateur, date), sans clé privée.
+    /// The item's passkeys (site, user, date), without private key.
     pub fn passkeys(&self, id: String) -> Vec<PasskeyInfo> {
         self.with_vault(|v| {
             Ok(v.passkeys_of(&id)
@@ -3016,7 +3023,7 @@ impl VaultSession {
         .unwrap_or_default()
     }
 
-    /// Retire une passkey de l'élément (sur le serveur), puis resynchronise.
+    /// Removes a passkey from the item (on the server), then syncs again.
     pub async fn delete_passkey(
         &self,
         id: String,
@@ -3032,8 +3039,8 @@ impl VaultSession {
     }
 }
 
-/// Les outils des tests d'intégration (`tests/common`), pour les tests du
-/// pont ci-dessous, qui ont besoin des internes de la session.
+/// The integration test tools (`tests/common`), for the bridge tests
+/// below, which need the session's internals.
 #[cfg(test)]
 extern crate self as verrou_ffi;
 
@@ -3048,7 +3055,7 @@ mod optimistic_tests {
     use super::*;
     use crate::test_server::{register, server, signed_in, slow};
 
-    /// Un coffre de `items` éléments fictifs, à la version `version`.
+    /// A vault of `items` mock items, at version `version`.
     fn decrypted(items: usize, version: u64) -> Decrypted {
         Decrypted {
             items: mock::vault_items(0, 42).into_iter().take(items).collect(),
@@ -3064,8 +3071,8 @@ mod optimistic_tests {
         }
     }
 
-    /// Une synchronisation qui finit après une écriture locale (son coffre
-    /// date d'avant l'écriture) ne remplace pas le coffre affiché.
+    /// A sync that finishes after a local write (its vault predates the
+    /// write) does not replace the displayed vault.
     #[test]
     fn an_older_vault_does_not_replace_the_displayed_one() {
         let session = VaultSession::new();
@@ -3081,7 +3088,16 @@ mod optimistic_tests {
 
     impl BridgeDelegate for Arc<Recorder> {
         fn pairing_requested(&self, _: String, _: String, _: String, _: BridgeClientKind) {}
-        fn confirm_requested(&self, _: String, _: String, _: AccessPurpose, _: String, _: String) {}
+        fn confirm_requested(
+            &self,
+            _: String,
+            _: String,
+            _: AccessPurpose,
+            _: String,
+            _: String,
+            _: String,
+        ) {
+        }
         fn unlock_requested(&self) {}
         fn vault_changed(&self, item: String, _: String) {
             self.0.lock().unwrap().push(item);
@@ -3089,9 +3105,9 @@ mod optimistic_tests {
         fn reprompt_requested(&self, _: String, _: String) {}
     }
 
-    /// Un identifiant enregistré depuis Brave ou Firefox : la réponse part
-    /// dès l'écriture locale, bien avant celle du serveur ; l'app l'envoie
-    /// ensuite (`push_changes`, sur `vault_changed`).
+    /// A login saved from Brave or Firefox: the reply goes out as soon as
+    /// the local write is done, well before the server's; the app pushes it
+    /// afterwards (`push_changes`, on `vault_changed`).
     #[tokio::test(flavor = "multi_thread")]
     async fn an_extension_save_answers_before_the_server_does() {
         let Some(server) = server() else { return };
@@ -3118,8 +3134,8 @@ mod optimistic_tests {
             }))
             .await;
         let elapsed = start.elapsed();
-        let temporary = reply.expect("coffre ouvert").expect("enregistré");
-        assert!(elapsed < latency / 2, "réponse après {elapsed:?}");
+        let temporary = reply.expect("vault open").expect("saved");
+        assert!(elapsed < latency / 2, "reply after {elapsed:?}");
         assert_eq!(
             *recorder.0.lock().unwrap(),
             std::slice::from_ref(&temporary)
@@ -3134,7 +3150,7 @@ mod optimistic_tests {
         };
         assert_eq!(pending(&temporary), Some(true));
 
-        // L'envoi : au moins trois allers-retours (jeton, création, coffre).
+        // The push: at least three round trips (token, creation, vault).
         let start = Instant::now();
         assert!(session.push_changes().await.unwrap().changed);
         assert!(start.elapsed() >= latency * 3);

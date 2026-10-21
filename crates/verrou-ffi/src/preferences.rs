@@ -1,14 +1,14 @@
-//! Réglages propres à l'appareil : règles de correspondance des sites
-//! (défaut et dossiers) et registre de dernière utilisation des éléments.
+//! Device-specific settings: site match rules (default and folders) and
+//! the log of items' last use.
 //!
-//! Ni l'un ni l'autre ne part au serveur : Bitwarden n'a ni règle par
-//! dossier, ni règle par défaut partagée, ni date de dernière utilisation.
-//! Les fichiers vivent dans le dossier du compte, partagé avec l'extension de
-//! remplissage automatique de l'iPhone :
+//! Neither goes to the server: Bitwarden has no per-folder rule, no
+//! shared default rule, and no last-used date.
+//! The files live in the account folder, shared with the iPhone's
+//! `AutoFill` extension:
 //!
-//! - `match-rules.json` : la règle par défaut et celles des dossiers (par
-//!   identifiant de dossier) ;
-//! - `usage.json` : identifiants d'éléments et horodatages, rien d'autre.
+//! - `match-rules.json`: the default rule and the folders' rules (by
+//!   folder identifier);
+//! - `usage.json`: item identifiers and timestamps, nothing else.
 
 use std::collections::HashMap;
 use std::sync::PoisonError;
@@ -24,7 +24,7 @@ use crate::{VaultSession, VerrouError};
 pub(crate) const MATCH_RULES_FILE: &str = "match-rules.json";
 pub(crate) const USAGE_FILE: &str = "usage.json";
 
-/// Règle de correspondance d'un site (`UriMatchType` de Bitwarden).
+/// Match rule of a site (Bitwarden's `UriMatchType`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum UriMatchRule {
     Domain,
@@ -61,35 +61,35 @@ impl From<UriMatchRule> for UriMatch {
     }
 }
 
-/// Nom affiché d'une règle (« Domaine de base », « Hôte »…).
+/// Display name of a rule ("Base domain", "Host"...).
 #[uniffi::export]
 pub fn uri_match_label(rule: UriMatchRule) -> String {
     UriMatch::from(rule).label().to_owned()
 }
 
-/// Toutes les règles, dans l'ordre de Bitwarden.
+/// All the rules, in Bitwarden's order.
 #[uniffi::export]
 pub fn uri_match_rules() -> Vec<UriMatchRule> {
     UriMatch::ALL.into_iter().map(Into::into).collect()
 }
 
-/// La règle d'un dossier, réglée sur cet appareil.
+/// A folder's rule, set on this device.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct FolderMatchRule {
     pub folder_id: String,
-    /// Nom du dossier (vide s'il n'existe plus).
+    /// Folder name (empty if it no longer exists).
     pub folder_name: String,
     pub rule: UriMatchRule,
 }
 
-/// Les réglages de correspondance de l'appareil.
+/// The device's match settings.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct MatchSettingsView {
     pub default_rule: UriMatchRule,
-    /// Dossiers qui ont leur propre règle, par nom.
+    /// Folders that have their own rule, by name.
     pub folder_rules: Vec<FolderMatchRule>,
-    /// Groupes de domaines équivalents du compte (réglages Bitwarden, lus
-    /// sur le serveur).
+    /// The account's equivalent domain groups (Bitwarden settings, read
+    /// from the server).
     pub equivalent_domains: Vec<Vec<String>>,
 }
 
@@ -100,7 +100,7 @@ pub(crate) fn now() -> i64 {
 }
 
 impl VaultSession {
-    /// Réglages de correspondance enregistrés (défaut : domaine de base).
+    /// Saved match settings (default: base domain).
     pub(crate) fn load_match_settings(&self) -> DeviceMatchSettings {
         self.store
             .as_ref()
@@ -109,8 +109,8 @@ impl VaultSession {
             .unwrap_or_default()
     }
 
-    /// Les règles du coffre : celles de l'appareil (dossiers par nom) et les
-    /// domaines équivalents du compte.
+    /// The vault's rules: the device's (folders by name) and the account's
+    /// equivalent domains.
     pub(crate) fn match_rules(
         settings: &DeviceMatchSettings,
         folders: &[(String, String)],
@@ -131,7 +131,7 @@ impl VaultSession {
         }
     }
 
-    /// Réapplique les réglages au coffre ouvert.
+    /// Reapplies the settings to the unlocked vault.
     fn apply_match_settings(&self, settings: &DeviceMatchSettings) {
         let folders: Vec<(String, String)> = self
             .folders
@@ -171,10 +171,10 @@ impl VaultSession {
         Ok(())
     }
 
-    // MARK: Dernière utilisation
+    // MARK: Last use
 
-    /// Relit le registre du disque (l'extension de remplissage y écrit
-    /// aussi) et le fusionne avec celui en mémoire.
+    /// Rereads the log from disk (the `AutoFill` extension writes to it
+    /// too) and merges it with the one in memory.
     pub(crate) fn reload_usage(&self) {
         let Some(on_disk) = self
             .store
@@ -190,9 +190,9 @@ impl VaultSession {
             .merge(&on_disk);
     }
 
-    /// Note une utilisation de l'élément (remplissage, copie, secret
-    /// affiché) et l'écrit aussitôt. Une erreur d'écriture est ignorée : le
-    /// registre n'est qu'une commodité.
+    /// Records a use of the item (fill, copy, secret shown) and writes it
+    /// right away. A write error is ignored: the log is only a
+    /// convenience.
     pub(crate) fn record_use(&self, id: &str) {
         let on_disk = self
             .store
@@ -212,7 +212,7 @@ impl VaultSession {
         }
     }
 
-    /// Reporte la date d'un élément sur son nouvel identifiant.
+    /// Carries an item's date over to its new identifier.
     pub(crate) fn rename_use(&self, from: &str, to: &str) {
         let data = {
             let mut usage = self.usage.lock().unwrap_or_else(PoisonError::into_inner);
@@ -245,8 +245,8 @@ impl VaultSession {
 
 #[uniffi::export]
 impl VaultSession {
-    /// Règles de correspondance de l'appareil, et domaines équivalents du
-    /// compte.
+    /// The device's match rules, and the account's equivalent
+    /// domains.
     pub fn match_settings(&self) -> MatchSettingsView {
         let settings = self
             .match_settings
@@ -279,7 +279,7 @@ impl VaultSession {
         }
     }
 
-    /// Règle des sites qui n'en ont pas, sur cet appareil.
+    /// Rule for sites that have none, on this device.
     pub fn set_default_match_rule(&self, rule: UriMatchRule) -> Result<(), VerrouError> {
         let mut settings = self
             .match_settings
@@ -290,7 +290,7 @@ impl VaultSession {
         self.save_match_settings(&settings)
     }
 
-    /// Règle d'un dossier sur cet appareil ; `None` : celle par défaut.
+    /// A folder's rule on this device; `None`: the default one.
     pub fn set_folder_match_rule(
         &self,
         folder_id: String,
@@ -312,8 +312,8 @@ impl VaultSession {
         self.save_match_settings(&settings)
     }
 
-    /// Note une utilisation que Rust ne voit pas passer (copie d'un champ
-    /// non secret, d'un code à usage unique, ouverture du site).
+    /// Records a use that Rust doesn't see (copy of a non-secret field, of
+    /// a one-time code, opening the site).
     pub fn record_item_use(&self, id: String) {
         if self
             .with_vault(|v| Ok(v.get(&id).is_some()))
@@ -392,7 +392,7 @@ mod tests {
             .unwrap();
         session.record_item_use("inconnu".to_owned());
         let order = titles(&session, "", SidebarFilter::All, ResultOrder::LastUsed);
-        // Même seconde possible : les deux en tête, dans un ordre ou l'autre.
+        // Same second possible: both first, in either order.
         let mut head = order[..2].to_vec();
         head.sort();
         assert_eq!(head, ["GitHub", "Netflix"]);
@@ -406,7 +406,7 @@ mod tests {
         let file: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.join(USAGE_FILE)).unwrap()).unwrap();
         let items = file["items"].as_object().unwrap();
-        assert_eq!(items.len(), 2, "élément inconnu ignoré");
+        assert_eq!(items.len(), 2, "unknown item ignored");
         assert!(items.contains_key(&netflix) && items.contains_key(&github));
         assert!(items.values().all(serde_json::Value::is_i64));
         let _ = std::fs::remove_dir_all(&dir);
@@ -443,7 +443,7 @@ mod tests {
             .unwrap();
         assert_eq!(session.match_settings().folder_rules.len(), 0);
         assert_eq!(uri_match_rules().len(), 6);
-        assert_eq!(uri_match_label(UriMatchRule::StartsWith), "Commence par");
+        assert_eq!(uri_match_label(UriMatchRule::StartsWith), "Starts with");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

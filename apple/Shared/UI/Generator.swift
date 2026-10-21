@@ -1,33 +1,33 @@
 import SwiftUI
 
-// Réglages et robustesse du générateur de mots de passe, communs au Mac et à
-// l'iPhone (les clés `@AppStorage` sont les mêmes partout).
+// Settings and strength of the password generator, shared by the Mac and
+// the iPhone (the `@AppStorage` keys are the same everywhere).
 
-/// Ce que le générateur produit ; le dernier choix est retenu.
+/// What the generator produces; the last choice is remembered.
 enum GeneratorMode: String, CaseIterable {
     case password
     case passphrase
 
     var label: String {
         switch self {
-        case .password: "Mot de passe"
-        case .passphrase: "Phrase de passe"
+        case .password: String(localized: "Password")
+        case .passphrase: String(localized: "Passphrase")
         }
     }
 }
 
-/// Séparateur des mots d'une phrase de passe (gardé dans les réglages).
+/// Separator of a passphrase's words (kept in the settings).
 enum PassphraseSeparatorChoice: String, CaseIterable {
     case hyphen, space, period, underscore, comma, digit
 
     var label: String {
         switch self {
-        case .hyphen: "Tiret ( - )"
-        case .space: "Espace"
-        case .period: "Point ( . )"
-        case .underscore: "Tiret bas ( _ )"
-        case .comma: "Virgule ( , )"
-        case .digit: "Chiffre au hasard"
+        case .hyphen: String(localized: "Hyphen ( - )")
+        case .space: String(localized: "Space")
+        case .period: String(localized: "Period ( . )")
+        case .underscore: String(localized: "Underscore ( _ )")
+        case .comma: String(localized: "Comma ( , )")
+        case .digit: String(localized: "Random digit")
         }
     }
 
@@ -43,7 +43,7 @@ enum PassphraseSeparatorChoice: String, CaseIterable {
     }
 }
 
-/// Langue des mots d'une phrase de passe.
+/// Language of a passphrase's words.
 enum PassphraseLanguageChoice: String, CaseIterable {
     case french, english
 
@@ -62,11 +62,11 @@ enum PassphraseLanguageChoice: String, CaseIterable {
     }
 }
 
-/// Robustesse estimée (entropie) : barre et mot.
+/// Estimated strength (entropy): bar and word.
 struct StrengthMeter: View {
     let password: String
-    /// Entropie connue (phrase de passe générée) ; sinon estimée d'après les
-    /// caractères.
+    /// Known entropy (generated passphrase); otherwise estimated from the
+    /// characters.
     var bits: Double?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -87,18 +87,18 @@ struct StrengthMeter: View {
                 .monospacedDigit()
                 .fixedSize()
         }
-        // La barre se remplit avec un ressort (sans rebond si « Réduire les animations »).
+        // The bar fills with a spring (no bounce with "Reduce Motion").
         .animation(reduceMotion ? .easeInOut(duration: 0.2) : .spring(response: 0.5, dampingFraction: 0.62),
                    value: fraction)
     }
 
     static func grade(_ bits: Double) -> (String, Color, Double) {
         switch bits {
-        case ..<40: ("Faible", .red, 0.2)
-        case ..<60: ("Moyen", .orange, 0.45)
-        case ..<80: ("Bon", .yellow, 0.7)
-        case ..<100: ("Fort", .green, 0.88)
-        default: ("Excellent", .green, 1)
+        case ..<40: (String(localized: "Weak"), .red, 0.2)
+        case ..<60: (String(localized: "Fair"), .orange, 0.45)
+        case ..<80: (String(localized: "Good"), .yellow, 0.7)
+        case ..<100: (String(localized: "Strong"), .green, 0.88)
+        default: (String(localized: "Excellent"), .green, 1)
         }
     }
 }

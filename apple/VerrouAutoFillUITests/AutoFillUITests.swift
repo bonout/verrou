@@ -1,22 +1,22 @@
 import CryptoKit
 import XCTest
 
-/// Remplissage automatique de bout en bout, dans Safari du simulateur
-/// (lancé par `scripts/ios-autofill-e2e.sh`, rien à l'écran du Mac) :
+/// End-to-end AutoFill, in the simulator's Safari (launched by
+/// `scripts/ios-autofill-e2e.sh`, nothing on the Mac's screen):
 ///
-/// 1. l'app se connecte au Vaultwarden de test et publie ses identités ;
-/// 2. un identifiant se remplit depuis la suggestion du clavier (Face ID
-///    simulé, accepté en continu par le script), puis la page obtient une
-///    passkey en arrière-plan (création conditionnelle) ;
-/// 3. un code à usage unique se remplit (iOS 18+) ;
-/// 4. une passkey est créée sur la page de test, qui vérifie l'attestation ;
-/// 5. puis utilisée pour se connecter : la page vérifie la signature ES256.
+/// 1. the app signs in to the test Vaultwarden and publishes its identities;
+/// 2. a login fills from the keyboard suggestion (simulated Face ID,
+///    accepted continuously by the script), then the page gets a passkey in
+///    the background (conditional creation);
+/// 3. a one-time code fills (iOS 18+);
+/// 4. a passkey is created on the test page, which verifies the attestation;
+/// 5. then used to sign in: the page verifies the ES256 signature.
 ///
-/// Les tests s'enchaînent dans l'ordre de leur nom et partagent l'état du
-/// simulateur. Variables (préfixe `TEST_RUNNER_` côté xcodebuild) :
-/// `VERROU_AUTOFILL_E2E_*` (voir `AutoFillSetupDriver`), `_PAGE` (adresse de
-/// la page de test), `_SHOTS` (dossier des captures, sur le Mac) et `_PAUSE`
-/// (secondes d'arrêt aux étapes clés, pour une vidéo qu'on puisse suivre).
+/// The tests run in the order of their names and share the simulator's
+/// state. Variables (`TEST_RUNNER_` prefix on the xcodebuild side):
+/// `VERROU_AUTOFILL_E2E_*` (see `AutoFillSetupDriver`), `_PAGE` (address of
+/// the test page), `_SHOTS` (screenshots folder, on the Mac) and `_PAUSE`
+/// (seconds of pause at key steps, for a video one can follow).
 final class AutoFillUITests: XCTestCase {
     private let environment = ProcessInfo.processInfo.environment
     private lazy var safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
@@ -28,14 +28,14 @@ final class AutoFillUITests: XCTestCase {
 
     private func value(_ name: String) throws -> String {
         guard let value = environment["VERROU_AUTOFILL_E2E_\(name)"] else {
-            throw XCTSkip("VERROU_AUTOFILL_E2E_\(name) absent : lancer scripts/ios-autofill-e2e.sh")
+            throw XCTSkip("VERROU_AUTOFILL_E2E_\(name) not set: run scripts/ios-autofill-e2e.sh")
         }
         return value
     }
 
-    /// Capture : prise par le script (`simctl io screenshot`) quand il
-    /// répond aux demandes (`_SNAP_DIR` : `req/<nom>` puis `ack/<nom>`),
-    /// sinon par XCUIScreen.
+    /// Screenshot: taken by the script (`simctl io screenshot`) when it
+    /// answers the requests (`_SNAP_DIR`: `req/<name>` then `ack/<name>`),
+    /// otherwise by XCUIScreen.
     private func shot(_ name: String) {
         if let exchange = environment["VERROU_AUTOFILL_E2E_SNAP_DIR"] {
             let base = URL(fileURLWithPath: exchange)
@@ -51,26 +51,26 @@ final class AutoFillUITests: XCTestCase {
         try? data.write(to: URL(fileURLWithPath: dir).appending(path: "\(name).png"))
     }
 
-    /// Arrêt aux étapes clés quand le script enregistre une vidéo
-    /// (`VERROU_RECORD`) ; aucun sinon.
+    /// Pause at key steps when the script records a video
+    /// (`VERROU_RECORD`); none otherwise.
     private func pause() {
         guard let seconds = environment["VERROU_AUTOFILL_E2E_PAUSE"].flatMap(Double.init), seconds > 0 else { return }
         usleep(UInt32(seconds * 1_000_000))
     }
 
-    /// Repère horodaté dans le journal, pour découper la vidéo.
+    /// Timestamped marker in the log, to cut the video.
     private func mark(_ name: String) {
         print("AUTOFILL_E2E_MARK \(name) \(Date().timeIntervalSince1970)")
     }
 
-    /// Les arbres d'accessibilité, pour comprendre un échec.
+    /// The accessibility trees, to understand a failure.
     private func dump(_ label: String) {
         print("AUTOFILL_TREE \(label) — Safari:\n\(safari.debugDescription)")
         print("AUTOFILL_TREE \(label) — SpringBoard:\n\(springboard.debugDescription)")
     }
 
-    /// Premier élément trouvé dans Safari ou SpringBoard (feuilles du
-    /// système, interface de l'extension).
+    /// First element found in Safari or SpringBoard (system sheets, the
+    /// extension's interface).
     private func find(_ timeout: TimeInterval, _ query: (XCUIApplication) -> XCUIElement) -> XCUIElement? {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
@@ -94,19 +94,19 @@ final class AutoFillUITests: XCTestCase {
 
     private func openPage() throws {
         let page = URL(string: try value("PAGE"))!
-        let title = safari.webViews.staticTexts["Banc d'essai Verrou"]
-        // Rechargée à chaque test (état de la page remis à zéro) ; une
-        // seconde fois si le premier lancement de Safari l'a retardée.
+        let title = safari.webViews.staticTexts["Verrou test bench"]
+        // Reloaded at each test (page state reset); a second time if
+        // Safari's first launch delayed it.
         for _ in 0..<2 {
             safari.open(page)
             XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 20))
             if title.waitForExistence(timeout: 15) { break }
         }
-        XCTAssertTrue(title.exists, "page de test")
+        XCTAssertTrue(title.exists, "test page")
     }
 
-    /// Touche le champ jusqu'à ce que le clavier s'ouvre (la page peut
-    /// encore se poser).
+    /// Taps the field until the keyboard opens (the page may still be
+    /// settling).
     private func focus(_ field: XCUIElement) {
         for _ in 0..<4 {
             field.tap()
@@ -119,7 +119,7 @@ final class AutoFillUITests: XCTestCase {
         return texts.first { $0.hasPrefix(prefix) }
     }
 
-    // MARK: 1. L'app
+    // MARK: 1. The app
 
     func test1_AppSignsInAndPublishes() throws {
         let ack = URL(fileURLWithPath: try value("ACK"))
@@ -133,21 +133,21 @@ final class AutoFillUITests: XCTestCase {
                 || FileManager.default.fileExists(atPath: ack.appending(path: "app-failed").path)
         }
         let failure = try? String(contentsOf: ack.appending(path: "app-failed"), encoding: .utf8)
-        XCTAssertTrue(ready && failure == nil, "préparation de l'app : \(failure ?? "délai dépassé")")
+        XCTAssertTrue(ready && failure == nil, "app setup: \(failure ?? "timed out")")
         let status = app.descendants(matching: .any)["autofill-status"]
         if !status.isHittable { app.swipeUp() }
         sleep(1)
-        shot("01-app-reglages-remplissage")
-        XCTAssertTrue(app.staticTexts["Activé"].waitForExistence(timeout: 10), "Verrou activé comme fournisseur")
+        shot("01-app-filling-settings")
+        XCTAssertTrue(app.staticTexts["On"].waitForExistence(timeout: 10), "Verrou enabled as provider")
     }
 
-    // MARK: 2. Mot de passe
+    // MARK: 2. Password
 
     func test2_PasswordFillsFromTheKeyboardSuggestion() throws {
         try openPage()
         mark("password")
         pause()
-        let field = safari.webViews.textFields["Identifiant"]
+        let field = safari.webViews.textFields["Username"]
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         focus(field)
         let suggestion = find(20) { app in
@@ -155,36 +155,36 @@ final class AutoFillUITests: XCTestCase {
             if fill.exists { return fill }
             return app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "camille@verrou.test")).firstMatch
         }
-        shot("02-suggestion-clavier")
+        shot("02-keyboard-suggestion")
         guard let suggestion else {
             dump("suggestion")
-            return XCTFail("aucune suggestion de Verrou au-dessus du clavier")
+            return XCTFail("no Verrou suggestion above the keyboard")
         }
         pause()
         suggestion.tap()
-        // Face ID du système puis de Verrou (le script les accepte).
+        // The system's Face ID then Verrou's (the script accepts them).
         sleep(3)
-        shot("03-extension-deverrouillage")
+        shot("03-extension-unlock")
         let filled = waitFor(60) {
-            let field = self.safari.webViews.textFields["Identifiant"]
+            let field = self.safari.webViews.textFields["Username"]
             return field.exists && (field.value as? String) == "camille@verrou.test"
         }
-        if !filled { dump("remplissage") }
-        XCTAssertTrue(filled, "identifiant rempli")
-        shot("04-identifiant-rempli")
+        if !filled { dump("filling") }
+        XCTAssertTrue(filled, "login filled")
+        shot("04-login-filled")
         pause()
-        safari.webViews.buttons["Se connecter"].tap()
+        safari.webViews.buttons["Sign in"].tap()
         XCTAssertTrue(waitFor(10) { self.pageText("user=") != nil })
         pause()
         XCTAssertEqual(pageText("user="), "user=camille@verrou.test pass=Verrou-AutoFill-42")
-        // Création conditionnelle (iOS 18) : la page demande une passkey en
-        // arrière-plan ; l'extension la crée avec la clé préparée au
-        // remplissage, sans interface.
+        // Conditional creation (iOS 18): the page requests a passkey in the
+        // background; the extension creates it with the key prepared at fill
+        // time, without an interface.
         let upgraded = waitFor(30) { self.pageText("UPGRADE") != nil }
-        shot("04b-passkey-conditionnelle")
-        print("AUTOFILL_UPGRADE \(pageText("UPGRADE") ?? "aucun résultat")")
-        XCTAssertTrue(upgraded, "pas de réponse à la création conditionnelle")
-        XCTAssertNotNil(pageText("UPGRADE ok"), pageText("UPGRADE_ERROR") ?? "délai dépassé")
+        shot("04b-conditional-passkey")
+        print("AUTOFILL_UPGRADE \(pageText("UPGRADE") ?? "no result")")
+        XCTAssertTrue(upgraded, "no response to the conditional creation")
+        XCTAssertNotNil(pageText("UPGRADE ok"), pageText("UPGRADE_ERROR") ?? "timed out")
     }
 
     // MARK: 4–5. Passkey
@@ -193,16 +193,16 @@ final class AutoFillUITests: XCTestCase {
         try openPage()
         mark("passkey-create")
         pause()
-        safari.webViews.buttons["Créer une passkey"].tap()
-        // Feuille du système : choisir « Enregistrer dans Verrou » (Mots de
-        // passe d'Apple est coché par défaut), puis continuer.
+        safari.webViews.buttons["Create a passkey"].tap()
+        // System sheet: choose "Save to Verrou" (Apple Passwords is checked
+        // by default), then continue.
         let proceed = find(20) { $0.descendants(matching: .any)["ASAuthorizationControllerContinueButton"] }
         guard let proceed else {
-            dump("feuille de création")
-            return XCTFail("pas de feuille de création de passkey")
+            dump("creation sheet")
+            return XCTFail("no passkey creation sheet")
         }
-        // La feuille monte encore : attendre qu'elle ne bouge plus, sinon le
-        // toucher tombe à côté et Mots de passe reste choisi.
+        // The sheet is still rising: wait until it stops moving, otherwise
+        // the tap lands next to it and Passwords stays chosen.
         var frame = CGRect.null
         _ = waitFor(5) {
             defer { frame = proceed.frame }
@@ -210,11 +210,11 @@ final class AutoFillUITests: XCTestCase {
         }
         let verrou = find(5) { app in
             app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND label CONTAINS[c] %@",
-                                             "Enregistrer", "Verrou")).firstMatch
+                                             "Save", "Verrou")).firstMatch
         }
         guard let verrou else {
-            dump("choix du fournisseur")
-            return XCTFail("Verrou n'est pas proposé pour enregistrer la passkey")
+            dump("provider choice")
+            return XCTFail("Verrou is not offered to save the passkey")
         }
         for _ in 0..<3 {
             verrou.tap()
@@ -222,60 +222,60 @@ final class AutoFillUITests: XCTestCase {
         }
         print("AUTOFILL_ROW \(verrou.debugDescription)")
         sleep(1)
-        shot("05-passkey-feuille-systeme")
+        shot("05-passkey-system-sheet")
         pause()
         proceed.tap()
-        // L'extension : Face ID, puis « Nouvel identifiant ».
+        // The extension: Face ID, then "New login".
         let newLogin = find(60) { $0.buttons["autofill-passkey-new"] }
         shot("06-passkey-extension")
         guard let newLogin else {
-            dump("extension, création")
-            return XCTFail("l'extension n'a pas proposé d'enregistrer la passkey")
+            dump("extension, creation")
+            return XCTFail("the extension didn't offer to save the passkey")
         }
         pause()
         newLogin.tap()
         let created = waitFor(60) { self.pageText("CREATED ok") != nil || self.pageText("CREATE_ERROR") != nil }
-        shot("07-passkey-creee")
+        shot("07-passkey-created")
         pause()
-        if !created { dump("création") }
-        XCTAssertNotNil(pageText("CREATED ok"), pageText("CREATE_ERROR") ?? "délai dépassé")
+        if !created { dump("creation") }
+        XCTAssertNotNil(pageText("CREATED ok"), pageText("CREATE_ERROR") ?? "timed out")
     }
 
     func test5_PasskeySignsInAndThePageVerifiesIt() throws {
         try openPage()
         mark("passkey-get")
         pause()
-        safari.webViews.buttons["Se connecter avec la passkey"].tap()
+        safari.webViews.buttons["Sign in with the passkey"].tap()
         let proceed = find(20) { $0.descendants(matching: .any)["ASAuthorizationControllerContinueButton"] }
         if let proceed {
-            // La feuille monte encore : la capturer une fois posée.
+            // The sheet is still rising: capture it once settled.
             var frame = CGRect.null
             _ = waitFor(5) {
                 defer { frame = proceed.frame }
                 return proceed.frame == frame
             }
         }
-        shot("08-passkey-connexion-feuille")
+        shot("08-passkey-sign-in-sheet")
         pause()
-        if let proceed { proceed.tap() } else { dump("feuille de connexion") }
+        if let proceed { proceed.tap() } else { dump("sign-in sheet") }
         let signed = waitFor(60) { self.pageText("SIGNED ok") != nil || self.pageText("GET_ERROR") != nil }
-        // Le résultat s'affiche une fois la feuille refermée.
+        // The result shows once the sheet has closed.
         _ = waitFor(5) { !self.safari.keyboards.firstMatch.exists && self.find(0) { $0.descendants(matching: .any)["ASAuthorizationControllerContinueButton"] } == nil }
         sleep(1)
-        shot("09-passkey-signature-verifiee")
+        shot("09-passkey-signature-verified")
         pause()
         pause()
         mark("end")
-        if !signed { dump("connexion") }
+        if !signed { dump("sign-in") }
         let result = pageText("SIGNED ok")
-        XCTAssertNotNil(result, pageText("GET_ERROR") ?? "délai dépassé")
+        XCTAssertNotNil(result, pageText("GET_ERROR") ?? "timed out")
         XCTAssertTrue(result?.contains("verified=true") == true && result?.contains("counter=1") == true, result ?? "")
     }
 
-    // MARK: 3. Code à usage unique
+    // MARK: 3. One-time code
 
     func test3_OneTimeCodeFills() throws {
-        guard #available(iOS 18.0, *) else { throw XCTSkip("codes à usage unique : iOS 18 et plus") }
+        guard #available(iOS 18.0, *) else { throw XCTSkip("one-time codes: iOS 18 and later") }
         try openPage()
         mark("otp")
         pause()
@@ -283,38 +283,38 @@ final class AutoFillUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 10))
         focus(field)
         let suggestion = find(15) { app in
-            // Pas « Verrou » seul : le bouton de retour à l'app de la barre
-            // d'état porte aussi ce nom.
-            // Un élément « Other » de la barre QuickType, pas un bouton.
+            // Not "Verrou" alone: the status bar's back-to-app button also
+            // carries that name.
+            // An "Other" element of the QuickType bar, not a button.
             app.descendants(matching: .any)
                 .matching(NSPredicate(format: "label CONTAINS[c] %@", "camille@verrou.test")).firstMatch
         }
         shot("10-code-suggestion")
         guard let suggestion else {
             dump("code")
-            throw XCTSkip("aucune suggestion de code à usage unique dans ce simulateur")
+            throw XCTSkip("no one-time code suggestion in this simulator")
         }
         pause()
         suggestion.tap()
         sleep(3)
         shot("10b-code-extension")
-        // Pendant la feuille de l'extension, la page n'est pas lisible.
+        // During the extension's sheet, the page isn't readable.
         let currentCode = { () -> String in
             let field = self.safari.webViews.textFields["Code"]
             return field.exists ? (field.value as? String ?? "") : ""
         }
         let filled = waitFor(60) { currentCode().count == 6 && currentCode().allSatisfy(\.isNumber) }
-        shot("11-code-rempli")
+        shot("11-code-filled")
         pause()
-        if !filled { dump("code rempli") }
-        XCTAssertTrue(filled, "code rempli : \(currentCode())")
+        if !filled { dump("code filled") }
+        XCTAssertTrue(filled, "code filled: \(currentCode())")
         let code = currentCode()
         let now = Date().timeIntervalSince1970
         let expected = [-30.0, 0, 30].map { Self.totp("JBSWY3DPEHPK3PXP", at: now + $0) }
         XCTAssertTrue(expected.contains(code), "code \(code) ≠ \(expected)")
     }
 
-    /// TOTP (RFC 6238, SHA-1, 6 chiffres, 30 s).
+    /// TOTP (RFC 6238, SHA-1, 6 digits, 30 s).
     static func totp(_ secret: String, at time: TimeInterval) -> String {
         let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ234567")
         var bits = 0, value = 0

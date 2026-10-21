@@ -41,7 +41,7 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
 - **Fill in any app** (⌘\\): Verrou types the username and password into the
   app in front of you, like 1Password's Universal Autofill.
 - **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses,
-  from a 1Password-style pill at the top left of the page (*Se connecter*,
+  from a 1Password-style pill at the top left of the page (*Sign in*,
   other logins in a tab under it; logins are submitted once filled, unless
   something is left to type or a captcha shows, which can be turned off in
   the popup), with only a small Verrou icon in the field:
@@ -54,13 +54,13 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   In Brave, the extension reloads itself when Verrou is updated.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
-  two-factor authentication you haven't turned on. *Changer le mot de passe*
+  two-factor authentication you haven't turned on. *Change Password*
   opens the site's change-password page in one click, and the extension then
   suggests a strong password and saves it.
 - **Share**: shared vaults with family or a team (Vaultwarden organizations):
   create an organization, its collections and groups, share one item or a
   whole selection into it, and choose who sees what (view, hide passwords,
-  edit, manage). *Retirer du partage* moves items back to your personal
+  edit, manage). *Remove from Sharing* moves items back to your personal
   vault, re-encrypted under your key with their history, passkeys, codes,
   fields and attachments. Also encrypted links that expire for a text or a file
   (Send), and emergency access for trusted contacts.
@@ -114,9 +114,9 @@ Verrou talks to your own server, with two exceptions:
 - **The audit** downloads the public [2fa.directory](https://2fa.directory)
   list and its [passkeys directory](https://passkeys.2fa.directory), at most
   once a week each, as whole files: it never asks about your sites one by one.
-- **Changer le mot de passe** asks only the site you are about to open
+- **Change Password** asks only the site you are about to open
   whether it has a [change-password page](https://w3c.github.io/webappsec-change-password-url/),
-  and only when you click. **Créer une passkey** does the same for the site's
+  and only when you click. **Create a Passkey** does the same for the site's
   [passkey page](https://w3c.github.io/webappsec-passkey-endpoints/)
   (`/.well-known/passkey-endpoints`).
 
@@ -139,9 +139,9 @@ with no Apple developer account.
 
 Optional:
 
-- **Brave extension**: Settings → *Navigateurs et terminal*, then follow the
+- **Brave extension**: Settings → *Browsers and Terminal*, then follow the
   steps shown there ([guide](docs/GUIDE.md#brave-extension)).
-- **Firefox extension** (Firefox 128+): same settings, *Extension Firefox*.
+- **Firefox extension** (Firefox 128+): same settings, *Firefox extension*.
   Unsigned, it loads as a temporary add-on (gone when Firefox quits); for a
   permanent install, use Developer Edition/Nightly or have it signed by
   Mozilla ([guide](docs/GUIDE.md#firefox-extension)).

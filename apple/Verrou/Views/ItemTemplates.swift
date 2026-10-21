@@ -1,26 +1,28 @@
 import SwiftUI
 
-// MARK: Champs personnalisés (écran de modification)
+// MARK: Custom fields (edit screen)
 
-/// Champs personnalisés d'un élément : ajouter, supprimer, réordonner,
-/// renommer. Texte, masqué, case à cocher ; un champ lié s'affiche et se
-/// déplace, sans se modifier. Les champs réservés à Verrou n'arrivent jamais
-/// ici (le cœur Rust les garde de côté).
+/// Custom fields of an item: add, delete, reorder, rename. Text, hidden,
+/// checkbox; a linked field is shown and moved, without being edited. The
+/// fields reserved for Verrou never arrive here (the Rust core keeps them
+/// aside).
 struct CustomFieldsSection: View {
     @Binding var fields: [CustomField]
+    /// The item's template: its fields' names are shown translated.
+    var template: ItemTemplate?
     @State private var shown: Set<Int> = []
 
     var body: some View {
-        Section("Champs personnalisés") {
+        Section("Custom fields") {
             ForEach(Array(fields.indices), id: \.self) { index in
                 row(index)
             }
             Menu {
-                Button("Texte") { add(.text) }
-                Button("Masqué") { add(.hidden) }
-                Button("Case à cocher") { add(.boolean) }
+                Button("Text") { add(.text) }
+                Button("Hidden") { add(.hidden) }
+                Button("Checkbox") { add(.boolean) }
             } label: {
-                Label("Ajouter un champ", systemImage: "plus.circle.fill")
+                Label("Add a Field", systemImage: "plus.circle.fill")
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
@@ -29,7 +31,7 @@ struct CustomFieldsSection: View {
 
     @ViewBuilder private func row(_ index: Int) -> some View {
         HStack(alignment: .center, spacing: 8) {
-            TextField("Nom", text: nameBinding(index), prompt: Text("Nom du champ"))
+            TextField("Name", text: nameBinding(index), prompt: Text("Field name"))
                 .labelsHidden()
                 .frame(width: 150)
             value(index)
@@ -41,7 +43,7 @@ struct CustomFieldsSection: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == 0)
-            .help("Monter")
+            .help("Move up")
             Button {
                 move(index, by: 1)
             } label: {
@@ -49,7 +51,7 @@ struct CustomFieldsSection: View {
             }
             .buttonStyle(.borderless)
             .disabled(index == fields.count - 1)
-            .help("Descendre")
+            .help("Move down")
             Button {
                 fields.remove(at: index)
                 shown.removeAll()
@@ -57,22 +59,22 @@ struct CustomFieldsSection: View {
                 Image(systemName: "minus.circle.fill").foregroundStyle(.red)
             }
             .buttonStyle(.plain)
-            .help("Supprimer ce champ")
+            .help("Delete this field")
         }
     }
 
     @ViewBuilder private func value(_ index: Int) -> some View {
         switch fields[index].fieldType {
         case .text:
-            TextField("Valeur", text: valueBinding(index)).labelsHidden()
+            TextField("Value", text: valueBinding(index)).labelsHidden()
         case .hidden:
             HStack(spacing: 6) {
                 if shown.contains(index) {
-                    TextField("Valeur", text: valueBinding(index))
+                    TextField("Value", text: valueBinding(index))
                         .labelsHidden()
                         .font(.system(.body, design: .monospaced))
                 } else {
-                    SecureField("Valeur", text: valueBinding(index)).labelsHidden()
+                    SecureField("Value", text: valueBinding(index)).labelsHidden()
                 }
                 Button {
                     if shown.contains(index) { shown.remove(index) } else { shown.insert(index) }
@@ -80,17 +82,17 @@ struct CustomFieldsSection: View {
                     Image(systemName: shown.contains(index) ? "eye.slash" : "eye")
                 }
                 .buttonStyle(.borderless)
-                .help(shown.contains(index) ? "Masquer" : "Afficher")
+                .help(shown.contains(index) ? "Hide" : "Show")
             }
         case .boolean:
-            Toggle("Coché", isOn: Binding(
+            Toggle("Checked", isOn: Binding(
                 get: { fields.indices.contains(index) && fields[index].value == "true" },
                 set: { if fields.indices.contains(index) { fields[index].value = $0 ? "true" : "false" } }))
                 .labelsHidden()
         case .linked:
-            Text("Champ lié (modifiable dans le coffre web)")
+            Text("Linked field (editable in the web vault)")
                 .foregroundStyle(.secondary)
-                .help("Il renvoie à un autre champ de l'élément")
+                .help("It refers to another field of the item")
         }
     }
 
@@ -103,7 +105,7 @@ struct CustomFieldsSection: View {
         let target = index + offset
         guard fields.indices.contains(index), fields.indices.contains(target) else { return }
         fields.swapAt(index, target)
-        // Le champ affiché suit sa ligne.
+        // The shown field follows its row.
         let wasShown = shown.contains(index), otherShown = shown.contains(target)
         shown.remove(index); shown.remove(target)
         if wasShown { shown.insert(target) }
@@ -112,8 +114,18 @@ struct CustomFieldsSection: View {
 
     private func nameBinding(_ index: Int) -> Binding<String> {
         Binding(
-            get: { fields.indices.contains(index) ? fields[index].name : "" },
-            set: { if fields.indices.contains(index) { fields[index].name = $0 } })
+            get: {
+                guard fields.indices.contains(index) else { return "" }
+                let name = fields[index].name
+                return CoreText.isTemplateField(name, template: template) ? CoreText.localized(name) : name
+            },
+            set: {
+                guard fields.indices.contains(index) else { return }
+                // A template field keeps the core's label as long as its translation is not edited.
+                let name = fields[index].name
+                if CoreText.isTemplateField(name, template: template), $0 == CoreText.localized(name) { return }
+                fields[index].name = $0
+            })
     }
 
     private func valueBinding(_ index: Int) -> Binding<String> {
@@ -123,12 +135,12 @@ struct CustomFieldsSection: View {
     }
 }
 
-// MARK: QR code du Wi-Fi
+// MARK: Wi-Fi QR code
 
-/// « Afficher le QR code » d'un réseau Wi-Fi : un téléphone le scanne pour
-/// rejoindre le réseau. Le mot de passe passe par la même confirmation que
-/// les autres secrets (élément protégé) et n'est jamais gardé : seule
-/// l'image reste à l'écran, le temps du popover.
+/// "Show QR Code" of a Wi-Fi network: a phone scans it to join the network.
+/// The password goes through the same confirmation as the other secrets
+/// (protected item) and is never kept: only the image stays on screen, for
+/// the duration of the popover.
 struct WifiQRButton: View {
     @Environment(AppModel.self) private var model
     let itemID: String
@@ -139,7 +151,7 @@ struct WifiQRButton: View {
         Button {
             show()
         } label: {
-            Label("Afficher le QR code", systemImage: "qrcode")
+            Label("Show QR Code", systemImage: "qrcode")
         }
         .popover(isPresented: Binding(get: { image != nil }, set: { if !$0 { image = nil } }),
                  arrowEdge: .bottom) {
@@ -151,8 +163,8 @@ struct WifiQRButton: View {
                         .frame(width: 220, height: 220)
                         .padding(10)
                         .background(.white, in: RoundedRectangle(cornerRadius: 8))
-                        .accessibilityLabel("QR code du réseau « \(title) »")
-                    Text("Scannez avec l'appareil photo pour rejoindre « \(title) ».")
+                        .accessibilityLabel("QR code of the “\(title)” network")
+                    Text("Scan with the camera to join “\(title)”.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -166,13 +178,13 @@ struct WifiQRButton: View {
     private func show() {
         if model.awaitsConfirmation(itemID, retry: { show() }) { return }
         guard let payload = try? model.session.wifiQrCode(id: itemID) else {
-            model.toast = Toast(message: "QR code impossible", detail: nil, failure: true)
+            model.toast = Toast(message: String(localized: "Couldn't make the QR code"), detail: nil, failure: true)
             return
         }
         image = Self.qrImage(payload)
     }
 
-    /// QR code net (sans lissage), correction d'erreur moyenne.
+    /// Sharp QR code (without smoothing), medium error correction.
     static func qrImage(_ payload: String) -> NSImage? {
         guard let cgImage = QRCode.cgImage(payload) else { return nil }
         return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))

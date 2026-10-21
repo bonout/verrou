@@ -1,10 +1,10 @@
-//! Listes publiques téléchargées en entier et gardées sur le disque :
-//! 2fa.directory (`two_factor_directory`) et l'annuaire des passkeys
+//! Public lists downloaded in full and kept on disk: 2fa.directory
+//! (`two_factor_directory`) and the passkey directory
 //! (`passkey_directory`).
 //!
-//! Une copie plus jeune que `max_age` sert telle quelle, sans réseau ; sinon
-//! la liste est retéléchargée **en entier** (rien du coffre ne part), puis
-//! mise en cache. Hors ligne, la dernière copie sert, même périmée.
+//! A copy younger than `max_age` is used as is, without network; otherwise
+//! the list is downloaded again **in full** (nothing from the vault is
+//! sent), then cached. Offline, the last copy is used, even if stale.
 
 use std::fs;
 use std::future::Future;
@@ -14,15 +14,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::Error;
 
-/// Garde-fou : ces listes font quelques centaines de Ko.
+/// Safeguard: these lists are a few hundred KB.
 const MAX_BYTES: usize = 16 * 1024 * 1024;
 
-/// Une liste chargée, et d'où elle vient.
+/// A loaded list, and where it comes from.
 pub(crate) struct Loaded<T> {
     pub value: T,
-    /// Horodatage Unix du téléchargement de cette copie.
+    /// Unix timestamp of this copy's download.
     pub fetched_at: i64,
-    /// `true` : copie de plus de `max_age`, faute de réseau.
+    /// `true`: copy older than `max_age`, for lack of network.
     pub stale: bool,
 }
 
@@ -31,7 +31,7 @@ fn unix(time: SystemTime) -> i64 {
         .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
 }
 
-/// La copie en cache, si elle est lisible, avec sa date.
+/// The cached copy, if it is readable, with its date.
 pub(crate) fn cached<T>(
     dir: &Path,
     file: &str,
@@ -52,7 +52,7 @@ pub(crate) fn save(dir: &Path, file: &str, data: &[u8]) -> Result<(), Error> {
     fs::rename(&temp, dir.join(file)).map_err(Error::storage)
 }
 
-/// Télécharge `url` en entier (HTTPS, délai de 30 s, taille bornée).
+/// Downloads `url` in full (HTTPS, 30 s timeout, bounded size).
 pub(crate) async fn download(url: &str, name: &str) -> Result<Vec<u8>, Error> {
     let client = reqwest::Client::builder()
         .user_agent(concat!("Verrou/", env!("CARGO_PKG_VERSION")))
@@ -70,15 +70,15 @@ pub(crate) async fn download(url: &str, name: &str) -> Result<Vec<u8>, Error> {
         .await
         .map_err(|e| Error::Network(e.to_string()))?;
     if bytes.len() > MAX_BYTES {
-        return Err(Error::Server(format!("liste {name} trop volumineuse")));
+        return Err(Error::Server(format!("{name} list is too large")));
     }
     Ok(bytes.to_vec())
 }
 
-/// La liste, depuis le cache `dir/file` s'il a moins de `max_age`, sinon
-/// par `fetch` (puis mise en cache). `parse` rend `None` pour une liste
-/// illisible ou vide : elle n'est ni gardée ni utilisée. Réseau
-/// indisponible : la copie périmée, ou l'erreur s'il n'y en a pas.
+/// The list, from the cache `dir/file` if it is younger than `max_age`,
+/// otherwise through `fetch` (then cached). `parse` returns `None` for an
+/// unreadable or empty list: it is neither kept nor used. Network
+/// unavailable: the stale copy, or the error if there is none.
 pub(crate) async fn load<T, F, Fut>(
     dir: &Path,
     file: &str,
@@ -95,7 +95,7 @@ where
         .as_ref()
         .is_some_and(|(_, modified)| modified.elapsed().is_ok_and(|age| age < max_age));
     if fresh {
-        let (value, modified) = cache.expect("vérifié");
+        let (value, modified) = cache.expect("checked");
         return Ok(Loaded {
             value,
             fetched_at: unix(modified),
@@ -103,13 +103,13 @@ where
         });
     }
     let downloaded = fetch().await.and_then(|data| {
-        let value =
-            parse(&data).ok_or_else(|| Error::Server(format!("liste {file} illisible ou vide")))?;
+        let value = parse(&data)
+            .ok_or_else(|| Error::Server(format!("{file} list is unreadable or empty")))?;
         Ok((data, value))
     });
     match (downloaded, cache) {
         (Ok((data, value)), _) => {
-            // Un cache impossible à écrire n'empêche pas l'audit.
+            // A cache that can't be written doesn't prevent the audit.
             let _ = save(dir, file, &data);
             Ok(Loaded {
                 value,
@@ -139,13 +139,13 @@ mod tests {
         std::env::temp_dir().join(format!("verrou-cache-{}", uuid::Uuid::new_v4()))
     }
 
-    /// Liste « valide » : du texte non vide.
+    /// "Valid" list: non-empty text.
     fn parse(data: &[u8]) -> Option<String> {
         let text = String::from_utf8(data.to_vec()).ok()?;
         (!text.is_empty() && text != "illisible").then_some(text)
     }
 
-    /// Fait vieillir la copie en cache de `age`.
+    /// Ages the cached copy by `age`.
     fn age_cache(dir: &Path, age: Duration) {
         let file = fs::File::options()
             .write(true)
@@ -154,7 +154,7 @@ mod tests {
         file.set_modified(SystemTime::now() - age).unwrap();
     }
 
-    /// Téléchargement factice qui compte ses appels.
+    /// Fake download that counts its calls.
     async fn load_with(
         dir: &Path,
         calls: &AtomicUsize,
@@ -164,7 +164,7 @@ mod tests {
             calls.fetch_add(1, Ordering::SeqCst);
             answer
                 .map(|text| text.as_bytes().to_vec())
-                .map_err(|()| Error::Network("hors ligne".to_owned()))
+                .map_err(|()| Error::Network("offline".to_owned()))
         })
         .await
     }
@@ -173,22 +173,22 @@ mod tests {
     async fn downloads_at_most_once_a_week() {
         let dir = temp_dir();
         let calls = AtomicUsize::new(0);
-        // Pas de cache : téléchargée, puis gardée.
+        // No cache: downloaded, then kept.
         let first = load_with(&dir, &calls, Ok("v1")).await.unwrap();
         assert_eq!((first.value.as_str(), first.stale), ("v1", false));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        // Copie fraîche (6 jours) : aucun téléchargement.
+        // Fresh copy (6 days): no download.
         age_cache(&dir, 6 * DAY);
         let cached = load_with(&dir, &calls, Ok("v2")).await.unwrap();
         assert_eq!((cached.value.as_str(), cached.stale), ("v1", false));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
-        // Plus de 7 jours : retéléchargée et remplacée.
+        // Over 7 days: downloaded again and replaced.
         age_cache(&dir, 7 * DAY + Duration::from_secs(60));
         let renewed = load_with(&dir, &calls, Ok("v2")).await.unwrap();
         assert_eq!((renewed.value.as_str(), renewed.stale), ("v2", false));
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         assert_eq!(fs::read_to_string(dir.join(FILE)).unwrap(), "v2");
-        // Juste remplacée : de nouveau fraîche.
+        // Just replaced: fresh again.
         load_with(&dir, &calls, Ok("v3")).await.unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         fs::remove_dir_all(dir).unwrap();
@@ -220,13 +220,13 @@ mod tests {
             Err(Error::Server(_))
         ));
         assert!(!dir.join(FILE).exists());
-        // Avec une copie périmée : elle sert, et reste en place.
+        // With a stale copy: it is used, and stays in place.
         save(&dir, FILE, b"bonne").unwrap();
         age_cache(&dir, 8 * DAY);
         let loaded = load_with(&dir, &calls, Ok("illisible")).await.unwrap();
         assert_eq!((loaded.value.as_str(), loaded.stale), ("bonne", true));
         assert_eq!(fs::read_to_string(dir.join(FILE)).unwrap(), "bonne");
-        // Un cache illisible est ignoré : la liste est retéléchargée.
+        // An unreadable cache is ignored: the list is downloaded again.
         save(&dir, FILE, b"illisible").unwrap();
         let loaded = load_with(&dir, &calls, Ok("neuve")).await.unwrap();
         assert_eq!(loaded.value, "neuve");

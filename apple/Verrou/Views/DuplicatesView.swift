@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// Entrée de la barre latérale, sous l'audit : ouvre le nettoyage des doublons.
+/// Sidebar entry, under the audit: opens the duplicate cleanup.
 struct DuplicatesSidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        // Une feuille plutôt qu'un volet : jamais en surbrillance.
-        SidebarPaneButton(title: "Doublons", symbol: "square.on.square.dashed",
-                          help: "Nettoyer les doublons du coffre") {
+        // A sheet rather than a pane: never highlighted.
+        SidebarPaneButton(title: String(localized: "Duplicates"), symbol: "square.on.square.dashed",
+                          help: String(localized: "Clean up the vault's duplicates")) {
             model.openDuplicates()
         }
     }
@@ -16,9 +16,9 @@ struct DuplicatesSidebarButton: View {
 extension DuplicateConfidence {
     var label: String {
         switch self {
-        case .certain: "Certain"
-        case .probable: "Probable"
-        case .review: "À vérifier"
+        case .certain: String(localized: "Certain")
+        case .probable: String(localized: "Probable")
+        case .review: String(localized: "To check")
         }
     }
 
@@ -30,20 +30,19 @@ extension DuplicateConfidence {
         }
     }
 
-    var help: String {
+    var help: LocalizedStringKey {
         switch self {
-        case .certain: "Même site, même identifiant, même mot de passe : les copies sont cochées."
-        case .probable: "Très ressemblants, mais une différence (mot de passe, identifiant manquant) : à confirmer."
-        case .review: "Une ressemblance seulement : vérifiez avant de supprimer."
+        case .certain: "Same site, same username, same password: the copies are checked."
+        case .probable: "Very similar, but one difference (password, missing username): to confirm."
+        case .review: "Only a resemblance: check before deleting."
         }
     }
 }
 
-/// Doublons du coffre, classés par le cœur Rust : certains, probables, à
-/// vérifier. Dans chaque groupe, l'élément gardé (passkeys, pièces jointes,
-/// code à usage unique, le plus récent, le plus complet) reçoit les autres
-/// par « Fusionner » ; les copies certaines sont cochées pour la corbeille,
-/// restaurable depuis le coffre web.
+/// Vault duplicates, ranked by the Rust core: certain, probable, to check.
+/// In each group, the kept item (passkeys, attachments, one-time code, the
+/// most recent, the most complete) receives the others through "Merge"; the
+/// certain copies are checked for the trash, restorable from the web vault.
 struct DuplicatesView: View {
     @Environment(AppModel.self) private var model
     @Bindable var flow: DuplicatesFlow
@@ -56,14 +55,14 @@ struct DuplicatesView: View {
             Divider()
 
             if !flow.loaded {
-                ProgressView("Recherche des doublons…")
+                ProgressView("Looking for duplicates…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if flow.visible.isEmpty {
                 ContentUnavailableView(
-                    "Aucun doublon", systemImage: "checkmark.seal",
+                    "No duplicates", systemImage: "checkmark.seal",
                     description: Text(flow.ignoredCount > 0
-                        ? "Les groupes restants sont ignorés."
-                        : "Aucun élément ne ressemble à un autre : ni site, ni titre, ni identifiant en commun."))
+                        ? "The remaining groups are ignored."
+                        : "No item looks like another: no site, title or username in common."))
                     .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
@@ -82,23 +81,23 @@ struct DuplicatesView: View {
             footer
         }
         .frame(width: 680, height: 640)
-        .confirmationDialog(trashLabel + " ?", isPresented: $confirmTrash) {
-            Button("Mettre à la corbeille", role: .destructive) {
+        .confirmationDialog(trashQuestion, isPresented: $confirmTrash) {
+            Button("Move to Trash", role: .destructive) {
                 Task { await model.trashDuplicates(flow) }
             }
         } message: {
-            Text("Les éléments restent restaurables depuis le coffre web pendant 30 jours.")
+            Text("The items stay restorable from the web vault for 30 days.")
         }
         .confirmationDialog(mergeTitle, isPresented: Binding(
             get: { merging != nil }, set: { if !$0 { merging = nil } })
         ) {
-            Button("Fusionner") {
+            Button("Merge") {
                 if let group = merging {
                     Task { await model.mergeDuplicates(flow, group: group) }
                 }
             }
         } message: {
-            Text("Sites, code à usage unique, notes, champs et anciens mots de passe rejoignent l'élément gardé ; le mot de passe le plus récent reste le mot de passe actuel. Les autres partent ensuite à la corbeille, restaurables 30 jours.")
+            Text("Sites, one-time code, notes, fields and old passwords join the kept item; the most recent password stays the current password. The others then go to the trash, restorable for 30 days.")
         }
     }
 
@@ -108,9 +107,9 @@ struct DuplicatesView: View {
                 .font(.system(size: 26))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Doublons").font(.title3.weight(.semibold))
+                Text("Duplicates").font(.title3.weight(.semibold))
                     .layoutMark("sheet-title")
-                Text("Le même compte, importé plusieurs fois : adresses, titres et identifiants comparés. Les copies certaines sont cochées.")
+                Text("The same account, imported several times: addresses, titles and usernames compared. The certain copies are checked.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -135,41 +134,47 @@ struct DuplicatesView: View {
                 .foregroundStyle(flow.error == nil ? Color.secondary : Color.orange)
                 .fixedSize(horizontal: false, vertical: true)
             if flow.ignoredCount > 0 {
-                Button("Réafficher \(flow.ignoredCount) ignoré\(flow.ignoredCount > 1 ? "s" : "")") {
+                Button(flow.ignoredCount > 1 ? "Show \(flow.ignoredCount) Ignored Groups Again" : "Show \(flow.ignoredCount) Ignored Group Again") {
                     flow.clearIgnored()
                 }
                 .buttonStyle(.link)
                 .font(.caption)
-                .help("Les groupes ignorés sont retenus sur ce Mac")
+                .help("Ignored groups are remembered on this Mac")
             }
             Spacer()
             if flow.busy { ProgressView().controlSize(.small) }
-            Button("Fermer") { model.duplicatesFlow = nil }
+            Button("Close") { model.duplicatesFlow = nil }
                 .keyboardShortcut(.cancelAction)
             Button(trashLabel) { confirmTrash = true }
                 .buttonStyle(.borderedProminent)
                 .layoutMark("sheet-primary")
                 .disabled(flow.selected.isEmpty || flow.busy || !model.canEdit)
-                .help(model.canEdit ? "Tous les éléments cochés, dans tous les groupes" : "Coffre fictif : lecture seule")
+                .help(model.canEdit ? "All the checked items, in all groups" : "Mock vault: read-only")
         }
         .padding(16)
     }
 
     private var trashLabel: String {
         let n = flow.selected.count
-        return "Mettre \(n) élément\(n > 1 ? "s" : "") à la corbeille"
+        return n > 1 ? String(localized: "Move \(n) Items to Trash") : String(localized: "Move \(n) Item to Trash")
+    }
+
+    private var trashQuestion: String {
+        let n = flow.selected.count
+        return n > 1 ? String(localized: "Move \(n) items to the trash?") : String(localized: "Move \(n) item to the trash?")
     }
 
     private var mergeTitle: String {
-        guard let group = merging else { return "Fusionner ?" }
+        guard let group = merging else { return String(localized: "Merge?") }
         let n = flow.mergeTargets(in: group).count
-        return "Fusionner \(n) élément\(n > 1 ? "s" : "") dans « \(flow.title(of: flow.keptID(group))) » ?"
+        let kept = flow.title(of: flow.keptID(group))
+        return n > 1 ? String(localized: "Merge \(n) items into “\(kept)”?") : String(localized: "Merge \(n) item into “\(kept)”?")
     }
 
     private var status: String {
         if let error = flow.error { return error }
         let n = flow.visible.count
-        return n == 0 ? "" : "\(n) groupe\(n > 1 ? "s" : "") de doublons"
+        return n == 0 ? "" : n > 1 ? String(localized: "\(n) duplicate groups") : String(localized: "\(n) duplicate group")
     }
 }
 
@@ -178,9 +183,17 @@ private struct ConfidenceCount: View {
     let count: Int
 
     var body: some View {
-        CountCapsule(text: "\(count) \(level.label.lowercased())\(count > 1 && level != .review ? "s" : "")",
-                     tint: level.tint)
+        CountCapsule(text: text, tint: level.tint)
             .help(level.help)
+    }
+
+    private var text: String {
+        let many = count > 1
+        switch level {
+        case .certain: return many ? String(localized: "\(count) certain groups") : String(localized: "\(count) certain group")
+        case .probable: return many ? String(localized: "\(count) probable groups") : String(localized: "\(count) probable group")
+        case .review: return String(localized: "\(count) to check")
+        }
     }
 }
 
@@ -211,7 +224,7 @@ private struct GroupView: View {
                 }
                 Spacer()
             }
-            Text(group.reason)
+            Text(CoreText.duplicateReason(group.reason))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -220,15 +233,15 @@ private struct GroupView: View {
             }
             HStack(spacing: 8) {
                 if group.mergeable {
-                    Button("Fusionner et mettre les autres à la corbeille", action: merge)
+                    Button("Merge and Move the Others to Trash", action: merge)
                         .disabled(flow.mergeTargets(in: group).isEmpty || flow.busy || !model.canEdit)
                         .help(mergeHelp)
                 }
-                Button("Mettre la sélection à la corbeille", action: trash)
+                Button("Move the Selection to Trash", action: trash)
                     .disabled(flow.checked(in: group).isEmpty || flow.busy || !model.canEdit)
                 Spacer()
-                Button("Ignorer ce groupe") { flow.ignore(group) }
-                    .help("Ne plus proposer ces éléments ensemble (retenu sur ce Mac)")
+                Button("Ignore This Group") { flow.ignore(group) }
+                    .help("Stop suggesting these items together (remembered on this Mac)")
             }
             .controlSize(.small)
             .padding(.top, 2)
@@ -238,16 +251,16 @@ private struct GroupView: View {
     }
 
     private var mergeHelp: String {
-        guard model.canEdit else { return "Coffre fictif : lecture seule" }
+        guard model.canEdit else { return String(localized: "Mock vault: read-only") }
         let targets = flow.mergeTargets(in: group)
-        if targets.isEmpty { return "Cochez les éléments à fusionner" }
-        return "Fusionne " + targets.map { "« \(flow.title(of: $0)) »" }.joined(separator: ", ")
-            + " dans l'élément gardé"
+        if targets.isEmpty { return String(localized: "Check the items to merge") }
+        let names = targets.map { String(localized: "“\(flow.title(of: $0))”") }.joined(separator: ", ")
+        return String(localized: "Merges \(names) into the kept item")
     }
 }
 
-/// Un élément : case à cocher (cocher l'élément gardé en garde un autre), titre,
-/// identifiant, site, date, et pourquoi il ressemble à l'élément gardé.
+/// An item: checkbox (checking the kept item keeps another one), title,
+/// username, site, date, and why it looks like the kept item.
 private struct MemberRow: View {
     @Bindable var flow: DuplicatesFlow
     let group: DuplicateGroupView
@@ -270,20 +283,20 @@ private struct MemberRow: View {
                 HStack(spacing: 6) {
                     Text(member.item.title).lineLimit(1)
                     if kept {
-                        Text("À garder")
+                        Text("To keep")
                             .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 5)
                             .padding(.vertical, 1)
                             .background(Theme.accent.opacity(0.18), in: Capsule())
                     } else if let level = member.confidence, level != group.confidence || level == .probable {
-                        Text(level == .probable ? "Suggéré" : level.label)
+                        Text(level == .probable ? String(localized: "Suggested") : level.label)
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(level.tint)
                     }
                 }
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 if !kept, !member.reason.isEmpty {
-                    Text(member.reason)
+                    Text(CoreText.duplicateReason(member.reason))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
@@ -292,14 +305,14 @@ private struct MemberRow: View {
             Spacer(minLength: 4)
             if member.item.hasTotp {
                 Image(systemName: "clock.badge.checkmark").font(.caption).foregroundStyle(.teal)
-                    .help("Code à usage unique")
+                    .help("One-time code")
                     .padding(.top, 4)
             }
             if !kept {
-                Button("Garder") { flow.keep(member.item.id, in: group) }
+                Button("Keep") { flow.keep(member.item.id, in: group) }
                     .buttonStyle(.borderless)
                     .font(.caption)
-                    .help("Garder cet élément plutôt que celui suggéré")
+                    .help("Keep this item rather than the suggested one")
                     .padding(.top, 3)
             }
         }
@@ -310,16 +323,16 @@ private struct MemberRow: View {
     }
 
     private var checkboxHelp: String {
-        guard kept else { return "Cocher pour mettre à la corbeille" }
-        guard let next = replacement else { return "Il faut garder au moins un élément du groupe" }
-        return "Cocher pour mettre à la corbeille et garder « \(flow.title(of: next)) » à la place"
+        guard kept else { return String(localized: "Check to move to the trash") }
+        guard let next = replacement else { return String(localized: "At least one item of the group must be kept") }
+        return String(localized: "Check to move to the trash and keep “\(flow.title(of: next))” instead")
     }
 
     private var detail: String {
         let modified = Date(timeIntervalSince1970: TimeInterval(member.item.modified))
             .formatted(date: .abbreviated, time: .omitted)
-        return [member.item.subtitle, member.item.host ?? "", member.item.folder.map { "dossier \($0)" } ?? "",
-                "modifié le \(modified)"]
+        return [member.item.subtitle, member.item.host ?? "", member.item.folder.map { String(localized: "folder \($0)") } ?? "",
+                String(localized: "modified on \(modified)")]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }

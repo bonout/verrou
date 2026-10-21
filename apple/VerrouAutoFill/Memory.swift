@@ -1,14 +1,14 @@
 import Darwin
 import os
 
-/// Mémoire de l'extension : iOS met fin à une extension de remplissage qui
-/// dépasse environ 120 Mo. Le pic (`phys_footprint` maximal, ce que mesure
-/// le système) est noté à chaque étape dans le journal (`AUTOFILL_MEMORY`),
-/// que relit le test de bout en bout.
+/// The extension's memory: iOS terminates an AutoFill extension that goes
+/// over about 120 MB. The peak (maximum `phys_footprint`, what the system
+/// measures) is logged at each step (`AUTOFILL_MEMORY`), which the
+/// end-to-end test reads back.
 enum Memory {
     private static let log = Logger(subsystem: "app.verrou.autofill", category: "memory")
 
-    /// Empreinte actuelle et pic, en octets.
+    /// Current footprint and peak, in bytes.
     static func footprint() -> (current: UInt64, peak: UInt64)? {
         var info = task_vm_info_data_t()
         var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)

@@ -1,24 +1,23 @@
-// Une extension qui se fait oublier, dans un vrai Brave, en arrière-plan, sur
-// un profil jetable :
+// An extension that goes unnoticed, in a real Brave, in the background, on a
+// throwaway profile:
 //
-// - remplissage automatique : la page attend une passkey (`mediation:
-//   "conditional"`), la pastille de Verrou en haut de la page la propose en
-//   premier, une vraie touche (flèche vers le bas depuis le champ, puis
-//   Entrée) signe, et la page vérifie la signature ;
-// - mise à jour (SEAMLESS_UPDATE=1, voir plus bas) : la version du
-//   manifest.json change sur le disque (comme quand Verrou.app est
-//   remplacée), l'extension se recharge d'elle-même, une seule fois, et reste
-//   reliée ; une extension qui n'est pas celle que livre Verrou est signalée
-//   dans sa fenêtre.
+// - autofill: the page waits for a passkey (`mediation: "conditional"`),
+//   Verrou's pill at the top of the page offers it first, a real key (down
+//   arrow from the field, then Enter) signs, and the page checks the
+//   signature;
+// - update (SEAMLESS_UPDATE=1, see below): the version of manifest.json
+//   changes on disk (as when Verrou.app is replaced), the extension reloads
+//   by itself, only once, and stays linked; an extension that is not the one
+//   Verrou ships is flagged in its popup.
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node extension/e2e/seamless.mjs
 //
-// Ouvre une fenêtre de Brave (en arrière-plan) : à lancer quand on le veut bien.
+// Opens a Brave window (in the background): run it when that's fine.
 //
-// L'extension est chargée depuis une copie temporaire (on y change la
-// version). Verrou est remplacé par le serveur de test du pont ; l'hôte
-// Native Messaging est déclaré dans le profil jetable seulement.
+// The extension is loaded from a temporary copy (its version is changed
+// there). Verrou is replaced by the bridge's test server; the Native
+// Messaging host is declared in the throwaway profile only.
 
 import { spawn } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -48,12 +47,12 @@ async function eventually(probe, what, timeout = 10_000) {
       value = null;
     }
     if (value) return value;
-    if (Date.now() > end) throw new Error(`délai dépassé : ${what}`);
+    if (Date.now() > end) throw new Error(`timed out: ${what}`);
     await sleep(150);
   }
 }
 
-// MARK: Extension copiée, faux Verrou, page de test
+// MARK: Copied extension, fake Verrou, test page
 
 const scratch = mkdtempSync(join(tmpdir(), "verrou-seamless-"));
 const extension = join(scratch, "extension");
@@ -65,7 +64,7 @@ const setDiskVersion = (version) => {
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 };
 const initial = JSON.parse(readFileSync(manifestPath, "utf8")).version;
-// Le manifest.json « du paquet de l'app », dont le pont annonce la version.
+// The manifest.json "of the app bundle", whose version the bridge announces.
 const bundled = join(scratch, "bundled-manifest.json");
 const setBundledVersion = (version) => writeFileSync(bundled, JSON.stringify({ name: "Verrou", version }));
 setBundledVersion(initial);
@@ -97,7 +96,7 @@ const pageUrl = `http://localhost:${page.address().port}/connexion`;
 
 // MARK: Brave
 
-const profile = join(scratch, "profil");
+const profile = join(scratch, "profile");
 mkdirSync(join(profile, "NativeMessagingHosts"), { recursive: true });
 writeFileSync(join(profile, "NativeMessagingHosts", "app.verrou.bridge.json"), JSON.stringify({
   name: "app.verrou.bridge",
@@ -120,7 +119,7 @@ const brave = spawn("/usr/bin/open", [
 await new Promise((resolve) => brave.once("exit", resolve));
 const endpoint = await eventually(async () =>
   (await (await fetch(`http://127.0.0.1:${DEVTOOLS_PORT}/json/version`)).json()).webSocketDebuggerUrl,
-"DevTools de Brave", 20_000);
+"Brave's DevTools", 20_000);
 
 const socket = new WebSocket(endpoint);
 await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
@@ -155,8 +154,8 @@ async function evaluate(sessionId, expression) {
   return result.value;
 }
 
-// Le texte de la pastille de Verrou (shadow DOM fermé : DevTools le
-// traverse, pas la page).
+// The text of Verrou's pill (closed shadow DOM: DevTools goes through it,
+// the page doesn't).
 async function pillText(sessionId) {
   const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
   const texts = [];
@@ -180,38 +179,42 @@ async function press(sessionId, key) {
   }
 }
 
-// Le service worker de l'extension (son identifiant change à chaque rechargement).
+// The extension's service worker (its ID changes on each reload).
 async function worker() {
   const { targetInfos } = await cdp("Target.getTargets");
   return targetInfos.find((t) => t.type === "service_worker" && t.url.startsWith(EXTENSION_URL));
 }
 
-// Ouvre la fenêtre de l'extension dans un onglet ; rend sa session.
+// Opens the extension's popup in a tab; returns its session.
 async function openPopup() {
   const session = await openTab(`${EXTENSION_URL}popup.html`);
-  await eventually(() => evaluate(session, `document.getElementById("state")?.textContent !== ""`), "fenêtre de l'extension");
+  await eventually(() => evaluate(session, `document.getElementById("state")?.textContent !== ""`), "extension popup");
   return session;
 }
 
 let failed = false;
 try {
-  await eventually(worker, "service worker de l'extension");
+  await eventually(worker, "extension service worker");
   const popup = await openPopup();
-  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === "Relier à Verrou"`), "popup");
+  // The extension's texts in the browser's language (extension/_locales).
+  const T = await evaluate(popup, `Object.fromEntries(${JSON.stringify(
+    ["popupPair", "popupUnlocked", "save", "pillSignInPasskey", "popupVersionTitle"])}
+    .map((name) => [name, chrome.i18n.getMessage(name)]))`);
+  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === ${JSON.stringify(T.popupPair)}`), "popup");
   await evaluate(popup, `document.querySelector("button").click()`);
-  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === "Déverrouillé"`),
-    "extension reliée", 20_000);
-  assert.equal(await evaluate(popup, `document.querySelector(".warning") === null`), true, "aucun avertissement");
-  step("extension reliée, versions concordantes");
+  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === ${JSON.stringify(T.popupUnlocked)}`),
+    "extension linked", 20_000);
+  assert.equal(await evaluate(popup, `document.querySelector(".warning") === null`), true, "no warning");
+  step("extension linked, versions match");
 
-  // MARK: Passkey dans la pastille
+  // MARK: Passkey in the pill
 
   const tab = await openTab(pageUrl);
-  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page chargée");
+  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page loaded");
   await cdp("Page.bringToFront", {}, tab);
   await cdp("DOM.enable", {}, tab);
 
-  // Une passkey à utiliser, créée par Verrou (fenêtre « Enregistrer »).
+  // A passkey to use, created by Verrou ("Save" window).
   await evaluate(tab, `window.created = navigator.credentials.create({ publicKey: {
     rp: { name: "Site local" },
     user: { id: new TextEncoder().encode("id-dominique"), name: "dominique", displayName: "Dominique" },
@@ -225,47 +228,45 @@ try {
     let found = null;
     const walk = (node, inside) => {
       const here = inside || node.nodeName === "VERROU-PASSKEY";
-      if (here && node.nodeName === "BUTTON" && node.children?.[0]?.nodeValue === "Enregistrer") found ??= node.nodeId;
+      if (here && node.nodeName === "BUTTON" && node.children?.[0]?.nodeValue === T.save) found ??= node.nodeId;
       for (const child of [...(node.children ?? []), ...(node.shadowRoots ?? [])]) walk(child, here);
     };
     walk(tree, false);
     if (!found) return null;
     const { model } = await cdp("DOM.getBoxModel", { nodeId: found }, tab);
     return [(model.content[0] + model.content[4]) / 2, (model.content[1] + model.content[5]) / 2];
-  }, "fenêtre « Enregistrer une passkey »");
+  }, "\"Save a passkey\" window");
   for (const type of ["mousePressed", "mouseReleased"]) {
     await cdp("Input.dispatchMouseEvent", { type, x: save[0], y: save[1], button: "left", clickCount: 1 }, tab);
   }
   assert.equal(await evaluate(tab, "window.created"), true);
   assert.equal(saved.length, 1);
-  step(`passkey créée dans Verrou (${saved[0]})`);
+  step(`passkey created in Verrou (${saved[0]})`);
 
-  // La page demande une passkey en remplissage automatique, comme
-  // github.com ou google.com : la pastille la propose en premier, sans
-  // prendre le focus.
+  // The page asks for a passkey in autofill, like github.com or google.com:
+  // the pill offers it first, without taking the focus.
   await evaluate(tab, `window.challenge = crypto.getRandomValues(new Uint8Array(32));
     window.conditional = navigator.credentials.get({ mediation: "conditional",
       publicKey: { challenge: window.challenge, rpId: "localhost", userVerification: "discouraged" } })
       .then((c) => ({ ok: true, c }), (e) => ({ ok: false, error: e.name + ": " + e.message })); true`);
   const text = await eventually(async () => {
     const value = await pillText(tab);
-    return value.includes("Se connecter avec une passkey") ? value : null;
-  }, "passkey dans la pastille");
+    return value.includes(T.pillSignInPasskey) ? value : null;
+  }, "passkey in the pill");
   assert.match(text, /dominique/);
-  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "la pastille ne prend pas le focus");
-  step(`pastille : ${text}`);
+  assert.equal(await evaluate(tab, `document.activeElement === document.body`), true, "the pill doesn't take the focus");
+  step(`pill: ${text}`);
   await evaluate(tab, `document.getElementById("username").focus()`);
 
-  // Une touche Entrée inventée par la page ne choisit rien.
+  // An Enter key made up by the page chooses nothing.
   await evaluate(tab, `document.getElementById("username").dispatchEvent(new KeyboardEvent("keydown",
     { key: "Enter", bubbles: true, cancelable: true })); true`);
   await sleep(500);
-  assert.equal(await evaluate(tab, `Promise.race([window.conditional.then(() => "réglée"), new Promise((r) => setTimeout(() => r("attente"), 100))])`),
-    "attente", "la page ne choisit pas à la place de l'utilisateur");
+  assert.equal(await evaluate(tab, `Promise.race([window.conditional.then(() => "settled"), new Promise((r) => setTimeout(() => r("pending"), 100))])`),
+    "pending", "the page doesn't choose on behalf of the user");
 
-  // Vraies touches : flèche vers le bas (dans la pastille), Entrée sur
-  // « Se connecter avec une passkey » ; Verrou signe, la page reçoit la
-  // passkey.
+  // Real keys: down arrow (into the pill), Enter on "Sign in with a
+  // passkey"; Verrou signs, the page receives the passkey.
   await press(tab, "ArrowDown");
   await press(tab, "Enter");
   const assertion = await evaluate(tab, `window.conditional.then(async (r) => {
@@ -287,35 +288,35 @@ try {
       user: new TextDecoder().decode(c.response.userHandle) };
   })`);
   assert.deepEqual(assertion, { ok: true, pkc: true, valid: true, counter: 1, type: "webauthn.get", user: "id-dominique" });
-  await eventually(async () => !(await pillText(tab)).includes("avec une passkey"), "pastille refermée");
-  step("passkey choisie dans la pastille, signature vérifiée par la page");
+  await eventually(async () => !(await pillText(tab)).includes(T.pillSignInPasskey), "pill closed");
+  step("passkey chosen in the pill, signature checked by the page");
 
-  // La page abandonne sa demande : la passkey quitte la pastille.
+  // The page gives up its request: the passkey leaves the pill.
   await evaluate(tab, `document.getElementById("password").focus();
     window.controller = new AbortController();
     window.aborted = navigator.credentials.get({ mediation: "conditional", signal: window.controller.signal,
       publicKey: { challenge: new Uint8Array(32), rpId: "localhost" } }).catch((e) => e.name); true`);
   await evaluate(tab, `document.getElementById("username").focus()`);
-  await eventually(async () => (await pillText(tab)).includes("Se connecter avec une passkey"), "passkey proposée de nouveau");
+  await eventually(async () => (await pillText(tab)).includes(T.pillSignInPasskey), "passkey offered again");
   await evaluate(tab, `window.controller.abort()`);
   assert.equal(await evaluate(tab, "window.aborted"), "AbortError");
-  await eventually(async () => !(await pillText(tab)).includes("avec une passkey"), "passkey retirée de la pastille");
-  step("annulation par la page : passkey retirée de la pastille");
+  await eventually(async () => !(await pillText(tab)).includes(T.pillSignInPasskey), "passkey removed from the pill");
+  step("cancellation by the page: passkey removed from the pill");
 
-  // MARK: Mise à jour de l'app
+  // MARK: App update
   //
-  // Seulement avec SEAMLESS_UPDATE=1 : dans Brave, une extension chargée par
-  // --load-extension (comme ici) a disparu après `chrome.runtime.reload()`
-  // lors des essais, alors qu'une extension chargée depuis brave://extensions
-  // (« Charger l'extension non empaquetée », le cas réel) se recharge depuis
-  // le disque. À vérifier à la main dans ce cas réel.
+  // Only with SEAMLESS_UPDATE=1: in Brave, an extension loaded with
+  // --load-extension (as here) disappeared after `chrome.runtime.reload()`
+  // during the trials, whereas an extension loaded from brave://extensions
+  // ("Load unpacked", the real case) reloads from disk. To be checked by hand
+  // in that real case.
   if (process.env.SEAMLESS_UPDATE) {
-    // Verrou.app remplacée : nouvelle version sur le disque et dans le pont.
+    // Verrou.app replaced: new version on disk and in the bridge.
     const updated = `${initial}.4242`;
     setDiskVersion(updated);
     setBundledVersion(updated);
-    // La fenêtre de l'extension interroge Verrou : l'extension voit la
-    // nouvelle version et se recharge d'elle-même (ses pages se ferment).
+    // The extension's popup asks Verrou: the extension sees the new version
+    // and reloads by itself (its pages close).
     await openTab(`${EXTENSION_URL}popup.html`);
     const reloaded = await eventually(async () => {
       const session = await openTab(`${EXTENSION_URL}popup.html`);
@@ -324,30 +325,30 @@ try {
       const { targetInfo } = await cdp("Target.getTargetInfo", {}, session);
       await cdp("Target.closeTarget", { targetId: targetInfo.targetId }).catch(() => {});
       return null;
-    }, "rechargement de l'extension", 20_000);
+    }, "extension reload", 20_000);
     const attempt = await evaluate(reloaded, `chrome.storage.local.get("reloadAttempt").then((r) => r.reloadAttempt)`);
     assert.deepEqual([attempt.version, attempt.from], [updated, initial]);
-    await eventually(() => evaluate(reloaded, `document.getElementById("state").textContent === "Déverrouillé"`),
-      "toujours reliée après le rechargement");
-    step(`extension rechargée d'elle-même (${initial} → ${updated}), toujours reliée`);
+    await eventually(() => evaluate(reloaded, `document.getElementById("state").textContent === ${JSON.stringify(T.popupUnlocked)}`),
+      "still linked after the reload");
+    step(`extension reloaded by itself (${initial} → ${updated}), still linked`);
 
-    // Pas de boucle : elle reste en place.
-    const after = await eventually(worker, "service worker rechargé");
+    // No loop: it stays in place.
+    const after = await eventually(worker, "service worker reloaded");
     await sleep(3000);
-    assert.equal((await worker())?.targetId, after.targetId, "un seul rechargement");
-    step("un seul rechargement");
+    assert.equal((await worker())?.targetId, after.targetId, "a single reload");
+    step("a single reload");
 
-    // Une extension qui n'est pas celle que livre Verrou (chargée depuis un
-    // autre dossier) : la fenêtre le signale. (Un essai de rechargement au
-    // plus a lieu d'abord, sans effet : la version sur le disque ne change pas.)
+    // An extension that is not the one Verrou ships (loaded from another
+    // folder): the popup flags it. (At most one reload attempt happens
+    // first, without effect: the version on disk doesn't change.)
     setBundledVersion(`${initial}.9999`);
     const warning = await eventually(async () => {
       const session = await openPopup();
       return evaluate(session, `document.querySelector(".warning")?.textContent`);
-    }, "avertissement de version", 20_000);
-    assert.match(warning, /n'est pas celle de Verrou/);
+    }, "version warning", 20_000);
+    assert.ok(warning.includes(T.popupVersionTitle), warning);
     assert.match(warning, new RegExp(`${updated}.*${initial}\\.9999`));
-    step(`fenêtre : « ${warning.slice(0, 60)}… »`);
+    step(`popup: "${warning.slice(0, 60)}…"`);
   }
 } catch (error) {
   failed = true;

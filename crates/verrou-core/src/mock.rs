@@ -1,9 +1,9 @@
-//! Coffre fictif, déterministe, pour le développement, les tests, les captures
-//! d'écran et les mesures de performance.
+//! Mock vault, deterministic, for development, tests, screenshots
+//! and performance measurements.
 //!
-//! Aucune donnée réelle : les adresses sont en `@exemple.fr` / `example.com`,
-//! les cartes sont les numéros de test publics des réseaux de paiement, les
-//! mots de passe et graines TOTP sont tirés d'un générateur à graine fixe.
+//! No real data: addresses are `@exemple.fr` / `example.com`,
+//! cards are the payment networks' public test numbers,
+//! passwords and TOTP seeds are drawn from a fixed-seed generator.
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
@@ -12,11 +12,11 @@ use crate::generator::{self, PasswordOptions};
 use crate::model::{Field, FieldKind, Item, ItemKind};
 use crate::secret::SecretString;
 
-/// 2026-10-01 00:00 UTC : les dates fictives remontent à partir de là.
+/// 2026-10-01 00:00 UTC: mock dates go back from there.
 const NOW: i64 = 1_790_812_800;
 const DAY: i64 = 86_400;
 
-/// (titre, domaine, dossier, étiquettes, favori, 2FA)
+/// (title, domain, folder, tags, favorite, 2FA)
 type Service = (
     &'static str,
     &'static str,
@@ -312,16 +312,16 @@ const FOLDERS: &[&str] = &[
 ];
 const TAGS: &[&str] = &["dev", "pro", "famille", "ancien", "à-vérifier", "partagé"];
 
-/// Coffre fictif d'au moins `count` éléments (les éléments soignés d'abord,
-/// puis du remplissage pour les mesures de performance).
-/// Apps du Mac reliées à un identifiant du coffre fictif.
+/// Mock vault of at least `count` items (the hand-crafted items first,
+/// then filler for performance measurements).
+/// Mac apps linked to a login of the mock vault.
 const MAC_APPS: [(&str, &str); 3] = [
     ("Slack", "com.tinyspeck.slackmacgap"),
     ("Discord", "com.hnc.Discord"),
     ("Notion", "notion.id"),
 ];
 
-/// Organisation et collection du coffre fictif (identifiant, nom).
+/// Organization and collection of the mock vault (id, name).
 pub const MOCK_ORGANIZATION: (&str, &str) =
     ("0f1e2d3c-4b5a-4968-8776-655443322110", "Famille Martin");
 pub const MOCK_COLLECTION: (&str, &str) =
@@ -344,13 +344,13 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
             "camille.martin@exemple.fr".to_owned()
         };
         let mut item = builder.login(title, domain, &username, folder, tags, *favorite, *totp);
-        // Quelques identifiants reliés à leur app du Mac (remplissage par ⌘\).
+        // A few logins linked to their Mac app (filling with ⌘\).
         if let Some((_, bundle_id)) = MAC_APPS.iter().find(|(t, _)| t == title) {
             item.urls.push(format!("macapp://{bundle_id}"));
         }
         items.push(item);
     }
-    // Deux comptes sur le même site, pour la correspondance et la recherche.
+    // Two accounts on the same site, for matching and search.
     items.push(builder.login(
         "GitHub — compte pro",
         "github.com",
@@ -360,7 +360,7 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
         false,
         true,
     ));
-    // Un compte commun, rangé dans le coffre partagé de la famille.
+    // A shared account, stored in the family's shared vault.
     let mut family = builder.login(
         "Google — famille",
         "accounts.google.com",
@@ -390,8 +390,8 @@ pub fn vault_items(count: usize, seed: u64) -> Vec<Item> {
     items
 }
 
-/// (titre, adresses, identifiant, mot de passe, jours depuis la
-/// modification, graine TOTP)
+/// (title, addresses, username, password, days since the
+/// last change, TOTP seed)
 type Duplicate = (
     &'static str,
     &'static [&'static str],
@@ -401,9 +401,9 @@ type Duplicate = (
     Option<&'static str>,
 );
 
-/// Le même compte, arrivé plusieurs fois par les imports d'Apple, de
-/// 1Password et de Proton Pass : adresses, titres et identifiants qui
-/// varient. Ces mots de passe fictifs ne servent qu'à la comparaison.
+/// The same account, arrived several times through the Apple,
+/// 1Password and Proton Pass imports: addresses, titles and usernames that
+/// vary. These mock passwords are only used for comparison.
 const DUPLICATES: &[Duplicate] = &[
     (
         "Maif",
@@ -538,8 +538,8 @@ const DUPLICATES: &[Duplicate] = &[
     ),
 ];
 
-/// Doublons fictifs (identifiants et cartes), pour les tests et la revue
-/// visuelle de la feuille des doublons. Identifiants `dup-N`.
+/// Mock duplicates (logins and cards), for tests and the visual
+/// review of the duplicates sheet. Ids `dup-N`.
 pub fn duplicate_items() -> Vec<Item> {
     let mut items: Vec<Item> = DUPLICATES
         .iter()
@@ -624,7 +624,7 @@ struct Builder<'a> {
 impl Builder<'_> {
     fn id(&mut self) -> String {
         self.next_id += 1;
-        // Forme d'UUID, comme les identifiants Vaultwarden.
+        // UUID shape, like Vaultwarden ids.
         let a: u64 = self.rng.r#gen();
         format!(
             "{:08x}-{:04x}-4{:03x}-a{:03x}-{:012x}",
@@ -655,9 +655,9 @@ impl Builder<'_> {
                 ..PasswordOptions::default()
             },
         );
-        // Un identifiant sur treize garde une vieille habitude (faible,
-        // réutilisé) : de quoi montrer l'audit. Sans tirage de plus, pour que
-        // le reste du coffre fictif ne change pas.
+        // One login in thirteen keeps an old habit (weak,
+        // reused): enough to show the audit. Without an extra draw, so that
+        // the rest of the mock vault doesn't change.
         if self.next_id % 13 == 5 {
             return HABITS[(self.next_id / 13) as usize % HABITS.len()].to_owned();
         }
@@ -720,7 +720,7 @@ impl Builder<'_> {
     }
 
     fn cards(&mut self) -> Vec<Item> {
-        // Numéros de test publics (Stripe, réseaux de paiement) : jamais valides.
+        // Public test numbers (Stripe, payment networks): never valid.
         let cards = [
             (
                 "Visa Boursorama",
@@ -783,7 +783,7 @@ impl Builder<'_> {
                         ),
                     ],
                     notes: None,
-                    // Comme souvent dans Bitwarden : les cartes redemandent confirmation.
+                    // As often in Bitwarden: cards ask for confirmation again.
                     reprompt: true,
                     state: crate::ItemState::Active,
                     shared: None,
@@ -901,8 +901,8 @@ impl Builder<'_> {
                     id: self.id(),
                     kind: ItemKind::SecureNote,
                     title: (*title).to_owned(),
-                    // Jamais un extrait du contenu : la note est secrète, et le
-                    // sous-titre est affiché et indexé en clair.
+                    // Never an excerpt of the content: the note is secret, and the
+                    // subtitle is displayed and indexed in clear.
                     subtitle: "Note sécurisée".to_owned(),
                     urls: Vec::new(),
                     url_matches: Vec::new(),
@@ -919,7 +919,7 @@ impl Builder<'_> {
                 }
             })
             .collect::<Vec<_>>();
-        // Le Wi-Fi suit le modèle de Verrou : champs prédéfinis et QR code.
+        // The Wi-Fi follows Verrou's template: predefined fields and QR code.
         if let Some(wifi) = notes.first_mut() {
             use crate::template::{MARKER, Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
             Template::Wifi.singular().clone_into(&mut wifi.subtitle);
@@ -994,9 +994,9 @@ fn capitalise(word: &str) -> String {
         .map_or_else(String::new, |c| c.to_uppercase().chain(chars).collect())
 }
 
-/// Passkeys fictives (filtre « Passkeys », captures) : sur quelques
-/// identifiants du coffre fictif, par titre. Leur clé n'est pas une vraie
-/// clé : elles ne servent pas à signer.
+/// Mock passkeys ("Passkeys" filter, screenshots): on a few
+/// logins of the mock vault, by title. Their key is not a real
+/// key: they are not used for signing.
 pub fn passkeys(items: &[Item]) -> Vec<crate::Passkey> {
     const SITES: [(&str, &str, &str); 3] = [
         ("GitHub", "github.com", "camille-dev"),
@@ -1025,9 +1025,9 @@ pub fn passkeys(items: &[Item]) -> Vec<crate::Passkey> {
         .collect()
 }
 
-/// Extrait de l'annuaire des passkeys (passkeys.2fa.directory, format
-/// `v1/supported.json`) pour les sites du coffre fictif : l'audit « Passkey
-/// possible » de la démonstration et des captures, sans réseau.
+/// Excerpt of the passkeys directory (passkeys.2fa.directory, format
+/// `v1/supported.json`) for the mock vault's sites: the "Passkey
+/// possible" audit of the demo and screenshots, without network.
 pub const PASSKEY_DIRECTORY: &str = r#"{
   "github.com": {"mfa": "allowed", "passwordless": "allowed",
     "documentation": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/about-passkeys"},
@@ -1067,7 +1067,7 @@ mod tests {
     fn every_kind_is_represented() {
         let items = vault_items(0, 1);
         for kind in ItemKind::ALL {
-            assert!(items.iter().any(|i| i.kind == kind), "{kind:?} manquant");
+            assert!(items.iter().any(|i| i.kind == kind), "{kind:?} missing");
         }
     }
 

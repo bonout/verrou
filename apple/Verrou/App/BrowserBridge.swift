@@ -1,28 +1,28 @@
 import AppKit
 import Observation
 
-/// Brave, Firefox et le terminal : l'extension parle à Verrou par l'hôte Native
-/// Messaging embarqué dans l'app (`Contents/MacOS/verrou-native-host`), qui
-/// relaie vers le pont du cœur Rust (`127.0.0.1`, canal chiffré) ; la CLI
-/// `verrou` (et son agent SSH) parle directement au pont. Voir SECURITY.md.
+/// Brave, Firefox and the terminal: the extension talks to Verrou through the
+/// Native Messaging host embedded in the app (`Contents/MacOS/verrou-native-host`),
+/// which relays to the Rust core's bridge (`127.0.0.1`, encrypted channel);
+/// the `verrou` CLI (and its SSH agent) talks directly to the bridge. See SECURITY.md.
 @MainActor
 @Observable
 final class BrowserBridge {
-    /// Identifiant de l'extension, fixé par la clé de extension/manifest.json
-    /// (un test vérifie qu'ils concordent).
+    /// Extension ID, set by the key of extension/manifest.json (a test checks
+    /// that they match).
     static let extensionID = "pmdlgnpbjfdnmpeadbecmgfoojmocibg"
-    /// Identifiant de l'extension dans Firefox (`browser_specific_settings.gecko.id`,
-    /// écrit par scripts/firefox-extension.sh ; un test vérifie qu'ils concordent).
+    /// Extension ID in Firefox (`browser_specific_settings.gecko.id`, written by
+    /// scripts/firefox-extension.sh; a test checks that they match).
     static let firefoxExtensionID = "verrou@verrou.app"
     static let hostName = "app.verrou.bridge"
 
     private let model: AppModel
     private(set) var running = false
     private(set) var error: String?
-    /// Ni Brave ni Firefox : le terminal peut se relier quand même.
+    /// Neither Brave nor Firefox: the terminal can link anyway.
     private(set) var browserNote: String?
     private(set) var clients: [BridgeClient] = []
-    /// Confirmations en cours : l'extension réessaie chaque seconde.
+    /// Confirmations in progress: the extension retries every second.
     @ObservationIgnored private var confirming: Set<String> = []
 
     var enabled: Bool = UserDefaults.standard.bool(forKey: "braveBridge") {
@@ -32,12 +32,12 @@ final class BrowserBridge {
         }
     }
 
-    /// Dossier de l'extension, livré avec l'app : à charger dans Brave.
+    /// Extension folder, shipped with the app: to load in Brave.
     var extensionFolder: URL? {
         Bundle.main.url(forResource: "extension", withExtension: nil)
     }
 
-    /// La même pour Firefox (scripts/firefox-extension.sh, à la compilation).
+    /// The same for Firefox (scripts/firefox-extension.sh, at build time).
     var firefoxExtensionFolder: URL? {
         Bundle.main.url(forResource: "extension-firefox", withExtension: nil)
     }
@@ -59,7 +59,7 @@ final class BrowserBridge {
             do {
                 try installHostManifest()
             } catch {
-                // Sans navigateur, le terminal reste utilisable.
+                // Without a browser, the terminal stays usable.
                 browserNote = error.localizedDescription
             }
             _ = try model.session.startBridge(delegate: Callbacks(bridge: self))
@@ -81,7 +81,7 @@ final class BrowserBridge {
         refreshClients()
     }
 
-    // MARK: Demandes des clients
+    // MARK: Client requests
 
     fileprivate func pairingRequested(id: String, name: String, code: String, kind: BridgeClientKind) {
         NSApp.activate()
@@ -89,31 +89,31 @@ final class BrowserBridge {
         alert.alertStyle = .warning
         switch kind {
         case .browser:
-            alert.messageText = "Relier « \(name) » à Verrou ?"
-            alert.informativeText = """
-                Code affiché par l'extension : \(code)
+            alert.messageText = String(localized: "Link “\(name)” to Verrou?")
+            alert.informativeText = String(localized: """
+                Code shown by the extension: \(code)
 
-                N'acceptez que si vous venez de demander l'appairage dans l'extension \
-                et qu'elle affiche exactement ce code. L'extension pourra ensuite \
-                remplir vos identifiants sur les sites qui leur correspondent.
-                """
+                Only accept if you just requested pairing in the extension \
+                and it shows exactly this code. The extension will then be able \
+                to fill your logins on the sites they match.
+                """)
         case .cli:
-            alert.messageText = "Relier le terminal (verrou) à Verrou ?"
-            alert.informativeText = """
-                Code affiché par « verrou link » : \(code)
+            alert.messageText = String(localized: "Link the terminal (verrou) to Verrou?")
+            alert.informativeText = String(localized: """
+                Code shown by “verrou link”: \(code)
 
-                N'acceptez que si vous venez de lancer « verrou link » et qu'il affiche \
-                exactement ce code. Le terminal pourra ensuite chercher dans le coffre \
-                (titres, identifiants, sites), et demander un mot de passe, un code ou \
-                une signature SSH : chaque fois, Verrou vous demandera Touch ID.
-                """
+                Only accept if you just ran “verrou link” and it shows \
+                exactly this code. The terminal will then be able to search the vault \
+                (titles, usernames, sites), and request a password, a code or \
+                an SSH signature: each time, Verrou will ask you for Touch ID.
+                """)
         }
-        // « Refuser » d'abord : la touche Entrée ne relie rien par mégarde.
-        alert.addButton(withTitle: "Refuser")
-        alert.addButton(withTitle: "Relier")
+        // "Decline" first: the Return key doesn't link anything by mistake.
+        alert.addButton(withTitle: String(localized: "Decline"))
+        alert.addButton(withTitle: String(localized: "Link"))
         let approved = alert.runModal() == .alertSecondButtonReturn
         model.session.answerBridgePairing(id: id, approved: approved)
-        // L'enregistrement suit la réponse, sur le fil du pont.
+        // The record follows the answer, on the bridge's thread.
         Task {
             try? await Task.sleep(for: .milliseconds(300))
             refreshClients()
@@ -134,8 +134,8 @@ final class BrowserBridge {
         model.didSaveFromBrowser(title: title)
     }
 
-    /// Le navigateur veut remplir un élément protégé : la confirmation se fait ici ;
-    /// l'extension réessaie d'elle-même.
+    /// The browser wants to fill a protected item: the confirmation happens here;
+    /// the extension retries by itself.
     fileprivate func repromptRequested(item: String, title: String) {
         guard !confirming.contains(item) else { return }
         confirming.insert(item)
@@ -145,26 +145,27 @@ final class BrowserBridge {
         }
     }
 
-    /// Le terminal veut un secret ou une signature SSH, ou le navigateur une passkey
-    /// pour un site qui demande la vérification de l'utilisateur : Touch ID,
-    /// ou le mot de passe de la session si Touch ID n'est pas disponible. L'accord est
-    /// gardé quelques minutes par le pont, pour ce terminal et cet élément.
-    /// Élément protégé (« redemander le mot de passe principal ») : la même
-    /// confirmation que dans l'app (Touch ID ou mot de passe principal).
-    fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String) {
-        // Le nom annoncé à l'appairage (« Brave », « Firefox »).
-        let browser = clientName.isEmpty ? "le navigateur" : clientName
+    /// The terminal wants a secret or an SSH signature, or the browser a passkey
+    /// for a site that requests user verification: Touch ID, or the session
+    /// password if Touch ID is not available. The approval is kept a few
+    /// minutes by the bridge, for this terminal and this item.
+    /// Protected item ("master password re-prompt"): the same confirmation
+    /// as in the app (Touch ID or master password).
+    fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String,
+                                      site: String) {
+        // The name announced at pairing ("Brave", "Firefox").
+        let browser = clientName.isEmpty ? String(localized: "the browser") : clientName
         let reason = switch purpose {
-        case .reveal: "autoriser le terminal à lire « \(title) »"
-        case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
-        case .passkey: "autoriser \(browser) à utiliser une passkey pour « \(title) »"
-        // `ssh-keygen -Y sign -n git` : git signe un commit (ou une étiquette).
-        case .gitSign: "signer un commit git avec la clé « \(title) »"
-        // `title` : « le site exemple.fr à « GitHub » ».
-        case .linkSite: "autoriser \(browser) à associer \(title)"
-        case .card: "autoriser \(browser) à remplir la carte « \(title) »"
-        // Beaucoup d'éléments demandés en peu de temps : peut-être pas vous.
-        case .bulk: "\(browser) demande beaucoup d'éléments en peu de temps : autoriser « \(title) »"
+        case .reveal: String(localized: "allow the terminal to read “\(title)”")
+        case .ssh: String(localized: "allow ssh to use the key “\(title)”")
+        case .passkey: String(localized: "allow \(browser) to use a passkey for “\(title)”")
+        // `ssh-keygen -Y sign -n git`: git signs a commit (or a tag).
+        case .gitSign: String(localized: "sign a git commit with the key “\(title)”")
+        // `site`: the host to link to the item.
+        case .linkSite: String(localized: "allow \(browser) to link the site \(site) to “\(title)”")
+        case .card: String(localized: "allow \(browser) to fill the card “\(title)”")
+        // Many items requested in a short time: maybe not you.
+        case .bulk: String(localized: "\(browser) is requesting many items in a short time: allow “\(title)”")
         }
         Task {
             let approved = if model.session.needsConfirmation(id: item) {
@@ -176,17 +177,17 @@ final class BrowserBridge {
         }
     }
 
-    // MARK: Déclaration au navigateur
+    // MARK: Registration with the browser
 
-    /// `NativeMessagingHosts/app.verrou.bridge.json` : le navigateur n'accepte
-    /// de lancer l'hôte que pour l'extension de Verrou. Brave lit le dossier
-    /// de Google Chrome (constaté sur un profil séparé) et le sien : on écrit
-    /// les deux, ce qui sert aussi à Chrome. Firefox lit
-    /// `Mozilla/NativeMessagingHosts`, avec `allowed_extensions` (son
-    /// identifiant d'extension) au lieu de `allowed_origins`.
+    /// `NativeMessagingHosts/app.verrou.bridge.json`: the browser only agrees
+    /// to launch the host for Verrou's extension. Brave reads Google Chrome's
+    /// folder (observed on a separate profile) and its own: we write both,
+    /// which also serves Chrome. Firefox reads `Mozilla/NativeMessagingHosts`,
+    /// with `allowed_extensions` (its extension ID) instead of
+    /// `allowed_origins`.
     private func installHostManifest() throws {
         guard let host = Bundle.main.url(forAuxiliaryExecutable: "verrou-native-host") else {
-            throw Failure("l'hôte Native Messaging manque dans l'app : réinstallez Verrou")
+            throw Failure(String(localized: "the Native Messaging host is missing from the app: reinstall Verrou"))
         }
         let support = Self.realHome.appending(path: "Library/Application Support")
         let exists = { (path: String) in
@@ -197,14 +198,14 @@ final class BrowserBridge {
         for browser in ["BraveSoftware/Brave-Browser", "Google/Chrome"] where exists(browser) {
             targets.append((support.appending(path: "\(browser)/NativeMessagingHosts", directoryHint: .isDirectory), chromium))
         }
-        // Firefox (et ses éditions Developer, Nightly) range ses profils dans
-        // `Firefox` ; `Mozilla` existe déjà si une autre app s'y est déclarée.
+        // Firefox (and its Developer, Nightly editions) keeps its profiles in
+        // `Firefox`; `Mozilla` already exists if another app registered there.
         if exists("Firefox") || exists("Mozilla") {
             targets.append((support.appending(path: "Mozilla/NativeMessagingHosts", directoryHint: .isDirectory),
                             ["allowed_extensions": [Self.firefoxExtensionID]]))
         }
         guard !targets.isEmpty else {
-            throw Failure("ni Brave ni Firefox ne sont installés (ou jamais lancés) sur ce Mac")
+            throw Failure(String(localized: "neither Brave nor Firefox is installed (or ever launched) on this Mac"))
         }
         var failures: [String] = []
         for target in targets {
@@ -220,23 +221,23 @@ final class BrowserBridge {
                 try FileManager.default.createDirectory(at: target.directory, withIntermediateDirectories: true)
                 try data.write(to: target.directory.appending(path: "\(Self.hostName).json"), options: .atomic)
             } catch where target.allowed["allowed_extensions"] != nil && !exists("Mozilla") {
-                // Le sandbox n'ouvre que les dossiers NativeMessagingHosts :
-                // `Mozilla` lui-même ne peut pas être créé d'ici.
-                failures.append("pour Firefox, créez le dossier (Terminal : mkdir -p ~/Library/Application\\ Support/Mozilla/NativeMessagingHosts) puis réactivez ce réglage")
+                // The sandbox only opens the NativeMessagingHosts folders:
+                // `Mozilla` itself can't be created from here.
+                failures.append(String(localized: "for Firefox, create the folder (Terminal: mkdir -p ~/Library/Application\\ Support/Mozilla/NativeMessagingHosts) then turn this setting on again"))
             } catch {
-                failures.append("\(target.directory.path) : \(error.localizedDescription)")
+                failures.append("\(target.directory.path): \(error.localizedDescription)")
             }
         }
         if failures.count == targets.count {
-            throw Failure("déclaration au navigateur impossible (\(failures.joined(separator: " ; ")))")
+            throw Failure(String(localized: "couldn't register with the browser (\(failures.joined(separator: "; ")))"))
         }
         if !failures.isEmpty {
-            throw Failure("déclaration partielle au navigateur (\(failures.joined(separator: " ; ")))")
+            throw Failure(String(localized: "partial registration with the browser (\(failures.joined(separator: "; ")))"))
         }
     }
 
-    /// Le vrai dossier de l'utilisateur : dans le sandbox, `NSHomeDirectory()`
-    /// désigne le conteneur de l'app.
+    /// The user's real folder: in the sandbox, `NSHomeDirectory()` points to
+    /// the app's container.
     private static var realHome: URL {
         if let entry = getpwuid(getuid()), let directory = entry.pointee.pw_dir {
             return URL(fileURLWithPath: String(cString: directory), isDirectory: true)
@@ -251,7 +252,7 @@ final class BrowserBridge {
     }
 }
 
-/// Rappels du pont, sur son fil : on passe aussitôt la main au fil principal.
+/// Bridge callbacks, on its thread: hand over to the main thread right away.
 private final class Callbacks: BridgeDelegate, @unchecked Sendable {
     private weak var bridge: BrowserBridge?
 
@@ -265,11 +266,12 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         }
     }
 
-    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String) {
+    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String, site: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
-                // Pont arrêté entre-temps : la demande expire d'elle-même.
-                bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title)
+                // Bridge stopped in the meantime: the request expires by itself.
+                bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title,
+                                         site: site)
             }
         }
     }

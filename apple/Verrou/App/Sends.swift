@@ -2,12 +2,11 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Envois (Bitwarden Send) : la liste du volet « Envois » de la fenêtre
-/// principale, l'envoi sélectionné et l'écran de création ou de modification.
-/// Le texte et le lien (qui porte la clé) ne viennent de Rust qu'à la
-/// demande : copie du lien, ouverture de l'écran. Un fichier n'est lu qu'à
-/// la création, puis chiffré dans Rust ; une pièce jointe ne passe même pas
-/// par Swift.
+/// Sends (Bitwarden Send): the list of the "Sends" pane of the main window,
+/// the selected send and the creation or edit screen. The text and the link
+/// (which carries the key) only come from Rust on request: copying the link,
+/// opening the screen. A file is only read at creation, then encrypted in
+/// Rust; an attachment doesn't even go through Swift.
 @MainActor
 @Observable
 final class SendsModel {
@@ -15,27 +14,27 @@ final class SendsModel {
     private(set) var loaded = false
     var busy = false
     var error: String?
-    /// Écran de création ou de modification ouvert.
+    /// Creation or edit screen open.
     var composer: Composer?
-    /// Dernier envoi créé ou lien copié, pour le signaler dans le volet.
+    /// Last send created or link copied, to report it in the pane.
     var notice: String?
-    /// Envoi affiché dans la colonne de droite.
+    /// Send displayed in the right column.
     var selection: String?
-    /// Suppression à confirmer.
+    /// Deletion to confirm.
     var confirmDelete: SendSummary?
-    /// Envoi d'un fichier en cours : ce qu'on montre à l'utilisateur.
+    /// File upload in progress: what is shown to the user.
     var activity: String?
 
     struct Composer: Identifiable {
         let id = UUID()
-        /// `nil` : création.
+        /// `nil`: creation.
         let sendID: String?
         let fields: SendFields
         let hasPassword: Bool
-        /// Prérempli depuis un élément du coffre (titre de l'élément).
+        /// Prefilled from a vault item (the item's title).
         let source: String?
-        /// Envoi de fichier : le fichier à envoyer (création) ou celui de
-        /// l'envoi (modification, il ne change pas).
+        /// File send: the file to send (creation) or the send's file (edit,
+        /// it doesn't change).
         var file: SendFile?
 
         init(sendID: String?, fields: SendFields, hasPassword: Bool, source: String?, file: SendFile? = nil) {
@@ -47,19 +46,19 @@ final class SendsModel {
         }
     }
 
-    /// Le fichier d'un envoi de fichier.
+    /// The file of a file send.
     struct SendFile {
         enum Origin {
-            /// Choisi dans le Finder ou déposé : lu à la création.
+            /// Chosen in the Finder or dropped: read at creation.
             case local(URL)
-            /// Pièce jointe d'un élément : déchiffrée puis chiffrée de nouveau dans Rust.
+            /// Attachment of an item: decrypted then encrypted again in Rust.
             case attachment(itemID: String, attachmentID: String)
-            /// Fichier d'un envoi existant.
+            /// File of an existing send.
             case existing
         }
 
         let name: String
-        /// En octets (taille chiffrée pour une pièce jointe ou un envoi existant).
+        /// In bytes (encrypted size for an attachment or an existing send).
         let size: Int64?
         let origin: Origin
     }
@@ -76,7 +75,7 @@ final class SendsModel {
         }
     }
 
-    /// Au verrouillage : rien ne doit survivre, brouillon compris.
+    /// On lock: nothing must survive, draft included.
     func clear() {
         items = []
         loaded = false
@@ -103,7 +102,7 @@ extension AppModel {
         }
     }
 
-    /// Barre latérale ou menu Coffre : le volet des envois dans la fenêtre principale.
+    /// Sidebar or Vault menu: the sends pane in the main window.
     func openSends() {
         guard sendsAvailable else { return }
         showMainWindow()
@@ -117,22 +116,22 @@ extension AppModel {
         sends.composer = .init(sendID: nil, fields: session.newSendFields(), hasPassword: false, source: nil)
     }
 
-    /// « Nouvel envoi » → « Fichier… » : choix dans le Finder.
+    /// "New Send" → "File…": choice in the Finder.
     func newFileSend() {
         guard sendsAvailable else { return }
         pane = .sends
         let panel = NSOpenPanel()
-        panel.title = "Nouvel envoi de fichier"
-        panel.message = "Le fichier est chiffré avant d'être envoyé ; seul le lien permet de l'ouvrir (100 Mo au plus)."
-        panel.prompt = "Choisir"
+        panel.title = String(localized: "New File Send")
+        panel.message = String(localized: "The file is encrypted before being sent; only the link can open it (100 MB at most).")
+        panel.prompt = String(localized: "Choose")
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
         composeFileSend(url)
     }
 
-    /// Un fichier choisi ou déposé sur la liste des envois : l'écran de
-    /// création, prérempli à son nom. Le fichier n'est lu qu'à la création.
+    /// A file chosen or dropped on the sends list: the creation screen,
+    /// prefilled with its name. The file is only read at creation.
     func composeFileSend(_ url: URL) {
         guard sendsAvailable else { return }
         let scoped = url.startAccessingSecurityScopedResource()
@@ -159,8 +158,8 @@ extension AppModel {
         openSends()
     }
 
-    /// « Envoyer de façon sécurisée… » sur une pièce jointe : un envoi de
-    /// fichier prérempli, à confirmer dans le volet des envois.
+    /// "Send Securely…" on an attachment: a prefilled file send, to confirm
+    /// in the sends pane.
     func composeSend(fromAttachment entry: AttachmentEntry, of itemID: String) {
         guard sendsAvailable else { return }
         if awaitsConfirmation(itemID, retry: { [weak self] in
@@ -177,7 +176,7 @@ extension AppModel {
                                                    origin: .attachment(itemID: itemID, attachmentID: entry.id)))
                 openSends()
             } catch {
-                toast = Toast(message: "Envoi impossible", detail: Self.describe(error), failure: true)
+                toast = Toast(message: String(localized: "Couldn't create the send"), detail: Self.describe(error), failure: true)
             }
         }
     }
@@ -195,8 +194,8 @@ extension AppModel {
         }
     }
 
-    /// « Envoyer de façon sécurisée… » depuis un élément : un envoi prérempli
-    /// avec son mot de passe (ou ses notes), à confirmer dans le volet des envois.
+    /// "Send Securely…" from an item: a send prefilled with its password (or
+    /// its notes), to confirm in the sends pane.
     func composeSend(from summary: ItemSummary) {
         if awaitsConfirmation(summary.id, retry: { [weak self] in
             self?.composeSend(from: summary)
@@ -208,12 +207,12 @@ extension AppModel {
             sends.composer = .init(sendID: nil, fields: fields, hasPassword: false, source: summary.title)
             openSends()
         } catch {
-            toast = Toast(message: "Envoi impossible", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Couldn't create the send"), detail: Self.describe(error), failure: true)
         }
     }
 
-    /// Crée ou modifie l'envoi ; à la création, le lien est copié. Un
-    /// fichier est lu ici, puis chiffré et envoyé par Rust.
+    /// Creates or edits the send; at creation, the link is copied. A file is
+    /// read here, then encrypted and sent by Rust.
     func saveSend(_ fields: SendFields, id: String?, file: SendsModel.SendFile? = nil) async {
         guard !sends.busy else { return }
         sends.busy = true
@@ -224,26 +223,26 @@ extension AppModel {
         do {
             if let id {
                 try await session.updateSend(id: id, fields: fields)
-                sends.notice = "Envoi « \(fields.name) » enregistré."
+                sends.notice = String(localized: "Send “\(fields.name)” saved.")
             } else {
                 let created: CreatedSend
                 switch file?.origin {
                 case .local(let url):
-                    sends.activity = "Chiffrement et envoi de « \(url.lastPathComponent) »…"
+                    sends.activity = String(localized: "Encrypting and uploading “\(url.lastPathComponent)”…")
                     let data = try Self.readFile(url, limit: Int64(session.maxSendFileSize()))
                     created = try await session.createFileSend(fields: fields, fileName: url.lastPathComponent,
                                                                data: data)
                 case .attachment(let itemID, let attachmentID):
-                    sends.activity = "Chiffrement et envoi de « \(file?.name ?? "") »…"
+                    sends.activity = String(localized: "Encrypting and uploading “\(file?.name ?? "")”…")
                     created = try await session.createSendFromAttachment(fields: fields, itemId: itemID,
                                                                          attachmentId: attachmentID)
                 case .existing, nil:
                     created = try await session.createSend(fields: fields)
                 }
                 guard lockState == .unlocked else { return }
-                copy(created.link, label: "Lien de l'envoi", secret: true)
+                copy(created.link, label: String(localized: "Send link"), secret: true)
                 sends.selection = created.id
-                sends.notice = "Envoi « \(fields.name) » créé : lien copié (effacé du presse-papiers dans 90 s)."
+                sends.notice = String(localized: "Send “\(fields.name)” created: link copied (cleared from the clipboard in 90 s).")
             }
             sends.composer = nil
             sends.error = nil
@@ -257,19 +256,19 @@ extension AppModel {
     func copySendLink(_ send: SendSummary) async {
         do {
             let link = try await session.sendLink(id: send.id)
-            copy(link, label: "Lien de l'envoi", secret: true)
-            sends.notice = "Lien de « \(send.name) » copié (effacé du presse-papiers dans 90 s)."
+            copy(link, label: String(localized: "Send link"), secret: true)
+            sends.notice = String(localized: "Link of “\(send.name)” copied (cleared from the clipboard in 90 s).")
         } catch {
             sends.error = Self.describe(error)
         }
     }
 
     func deleteSend(_ send: SendSummary) async {
-        await sendAction("Envoi « \(send.name) » supprimé.") { try await self.session.deleteSend(id: send.id) }
+        await sendAction(String(localized: "Send “\(send.name)” deleted.")) { try await self.session.deleteSend(id: send.id) }
     }
 
     func removeSendPassword(_ send: SendSummary) async {
-        await sendAction("Mot de passe retiré de « \(send.name) ».") {
+        await sendAction(String(localized: "Password removed from “\(send.name)”.")) {
             try await self.session.removeSendPassword(id: send.id)
         }
     }

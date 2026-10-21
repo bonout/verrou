@@ -1,9 +1,9 @@
-// Générateur de mots de passe de l'extension, mêmes règles que celui de
-// Verrou (crates/verrou-core/src/generator.rs) : 20 caractères, au moins un
-// de chaque classe, sans caractères ambigus (l, I, O, 0, 1).
+// The extension's password generator, same rules as Verrou's
+// (crates/verrou-core/src/generator.rs): 20 characters, at least one of each
+// class, without ambiguous characters (l, I, O, 0, 1).
 //
-// Script classique (pas un module) : il est chargé avant content.js dans les
-// pages, et par les tests dans un contexte isolé.
+// Classic script (not a module): it is loaded before content.js in the
+// pages, and by the tests in an isolated context.
 
 (() => {
   const CLASSES = [
@@ -13,8 +13,8 @@
     "!@#$%^&*-_=+?",
   ];
 
-  // Entier uniforme dans [0, n), sans biais (tirages rejetés au-delà du
-  // dernier multiple de n).
+  // Uniform integer in [0, n), without bias (draws rejected beyond the last
+  // multiple of n).
   function randomBelow(n) {
     const limit = Math.floor(0x1_0000_0000 / n) * n;
     const word = new Uint32Array(1);

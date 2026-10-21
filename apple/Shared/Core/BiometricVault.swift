@@ -2,64 +2,64 @@ import CryptoKit
 import Foundation
 import LocalAuthentication
 
-/// Déverrouillage par Touch ID (Mac) ou Face ID (iPhone) : la clé de
-/// l'utilisateur, scellée par une clé du Secure Enclave.
+/// Unlocking with Touch ID (Mac) or Face ID (iPhone): the user's key,
+/// sealed by a Secure Enclave key.
 ///
-/// - Une clé d'accord P-256 est créée **dans** le Secure Enclave, utilisable
-///   seulement après Touch ID (`.biometryCurrentSet` : ajouter ou retirer une
-///   empreinte l'invalide). Elle ne quitte jamais la puce ; le fichier n'en
-///   garde qu'une référence chiffrée, inutilisable sur un autre Mac.
-/// - À l'enrôlement, une clé éphémère fait un échange ECDH avec sa clé
-///   publique ; le secret partagé (HKDF-SHA256) scelle la clé de
-///   l'utilisateur en AES-GCM. Il n'y a besoin d'aucune authentification pour
-///   sceller : seule l'ouverture passe par Touch ID.
-/// - Pour ouvrir, le Secure Enclave refait l'échange avec la clé publique
-///   éphémère, ce qui exige Touch ID.
+/// - A P-256 key agreement key is created **in** the Secure Enclave, usable
+///   only after Touch ID (`.biometryCurrentSet`: adding or removing a
+///   fingerprint invalidates it). It never leaves the chip; the file only
+///   keeps an encrypted reference to it, unusable on another Mac.
+/// - On enrollment, an ephemeral key does an ECDH exchange with its public
+///   key; the shared secret (HKDF-SHA256) seals the user's key with
+///   AES-GCM. No authentication is needed to seal: only opening goes
+///   through Touch ID.
+/// - To open, the Secure Enclave redoes the exchange with the ephemeral
+///   public key, which requires Touch ID.
 ///
-/// Aucun trousseau, donc aucun droit (« entitlement ») ni équipe de
-/// développeur : l'app peut être signée localement.
+/// No keychain, hence no entitlement and no developer team: the app can be
+/// signed locally.
 ///
-/// Le fichier vit dans le dossier du compte (`VerrouStorage`) : sur
-/// l'iPhone, dans le conteneur du groupe d'apps quand il existe, pour que
-/// l'extension de remplissage automatique puisse l'ouvrir aussi.
+/// The file lives in the account folder (`VerrouStorage`): on the iPhone,
+/// in the app group container when it exists, so that the AutoFill
+/// extension can open it too.
 ///
-/// Extension de remplissage : elle ouvre d'abord le scellement de l'app
-/// (`touchid.json`). Si la clé du Secure Enclave de l'app ne s'ouvre pas
-/// depuis l'extension (non vérifiable sans appareil signé), l'extension
-/// scelle la clé avec sa propre clé du Secure Enclave, dans un fichier à
-/// elle (`touchid-autofill.json`), après un déverrouillage par le mot de
-/// passe principal ; l'app efface les deux.
+/// AutoFill extension: it first opens the app's seal (`touchid.json`). If
+/// the app's Secure Enclave key doesn't open from the extension (not
+/// verifiable without a signed device), the extension seals the key with
+/// its own Secure Enclave key, in a file of its own
+/// (`touchid-autofill.json`), after an unlock with the master password;
+/// the app erases both.
 ///
-/// Simulateur iOS : son Secure Enclave refuse les clés gardées par la
-/// biométrie. Une clé logicielle, gardée
-/// dans le fichier lui-même, la remplace, et seul LocalAuthentication
-/// (Face ID simulé) garde l'ouverture. Aucune protection réelle : ce chemin
-/// ne sert qu'aux tests et n'existe pas dans un build pour appareil.
+/// iOS Simulator: its Secure Enclave refuses keys guarded by biometrics. A
+/// software key, kept in the file itself, replaces it, and only
+/// LocalAuthentication (simulated Face ID) guards opening. No real
+/// protection: this path is only for tests and doesn't exist in a device
+/// build.
 enum BiometricVault {
     struct Sealed: Codable {
         var enclaveKey: Data
         var ephemeralPublicKey: Data
         var box: Data
-        /// Simulateur seulement : `enclaveKey` est une clé logicielle.
+        /// Simulator only: `enclaveKey` is a software key.
         var simulated: Bool?
     }
 
     enum Failure: Error {
         case unavailable
         case cancelled
-        /// Demande interrompue par le système (app pas encore active,
-        /// appel entrant) : à reposer dès que l'app est au premier plan.
+        /// Request interrupted by the system (app not active yet, incoming
+        /// call): ask again as soon as the app is in the foreground.
         case interrupted
-        /// Empreintes modifiées, ou clé du Secure Enclave perdue : il faut
-        /// repasser par le mot de passe principal.
+        /// Fingerprints changed, or Secure Enclave key lost: the master
+        /// password is needed again.
         case invalidated
     }
 
     private static let info = Data("verrou.touchid.v1".utf8)
 
-    /// Scellement de l'app.
+    /// The app's seal.
     static let appFile = "touchid.json"
-    /// Scellement propre à l'extension de remplissage (voir plus haut).
+    /// Seal specific to the AutoFill extension (see above).
     static let autofillFile = "touchid-autofill.json"
 
     private static func file(in directory: URL, name: String) -> URL {
@@ -76,8 +76,8 @@ enum BiometricVault {
 
     static func enroll(userKey: String, in directory: URL, file name: String = appFile) throws {
         #if targetEnvironment(simulator)
-        // Le simulateur annonce un Secure Enclave, mais refuse d'y créer une
-        // clé gardée par la biométrie (LAError -1020).
+        // The simulator advertises a Secure Enclave, but refuses to create a
+        // key guarded by biometrics in it (LAError -1020).
         try enrollSimulated(userKey: userKey, to: file(in: directory, name: name))
         return
         #else
@@ -101,9 +101,9 @@ enum BiometricVault {
         #endif
     }
 
-    /// Demande Touch ID et rend la clé de l'utilisateur. `accepted` est appelé
-    /// dès que le visage ou le doigt est reconnu, avant le Secure Enclave et
-    /// le déchiffrement : l'écran verrouillé peut commencer à s'ouvrir.
+    /// Asks for Touch ID and returns the user's key. `accepted` is called as
+    /// soon as the face or finger is recognized, before the Secure Enclave
+    /// and decryption: the lock screen can start opening.
     static func open(in directory: URL, reason: String, file name: String = appFile,
                      accepted: (@MainActor () -> Void)? = nil) async throws -> String {
         guard let data = try? Data(contentsOf: file(in: directory, name: name)),
@@ -111,12 +111,12 @@ enum BiometricVault {
         let context = LAContext()
         context.localizedFallbackTitle = ""
         let prompted = ContinuousClock.now
-        Perf.mark("\(Biometrics.name) demandé à +\(Perf.msSinceLaunch) ms du lancement")
+        Perf.mark("\(Biometrics.name) requested at +\(Perf.msSinceLaunch) ms from launch")
         do {
             try await context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason)
             Perf.unlockSucceeded()
-            Perf.mark("\(Biometrics.name) réussi à +\(Perf.msSinceLaunch) ms du lancement "
-                      + "(attente du visage ou du doigt : \(Perf.ms(since: prompted)) ms)")
+            Perf.mark("\(Biometrics.name) succeeded at +\(Perf.msSinceLaunch) ms from launch "
+                      + "(waiting for the face or finger: \(Perf.ms(since: prompted)) ms)")
             if let accepted { await MainActor.run { accepted() } }
         } catch let error as LAError where [.userCancel, .userFallback].contains(error.code) {
             throw Failure.cancelled
@@ -130,13 +130,13 @@ enum BiometricVault {
         #endif
         let enclave = ContinuousClock.now
         defer {
-            // Contexte refermé dès la clé obtenue : iOS peut rendre la main à
-            // l'app au lieu de la laisser inactive après la feuille de Face ID.
+            // Context closed as soon as the key is obtained: iOS can hand
+            // control back to the app instead of leaving it inactive after the Face ID sheet.
             context.invalidate()
-            Perf.mark("Secure Enclave (clé du coffre) : \(Perf.ms(since: enclave)) ms")
+            Perf.mark("Secure Enclave (vault key): \(Perf.ms(since: enclave)) ms")
         }
         do {
-            // Le contexte déjà authentifié évite une seconde demande.
+            // The already authenticated context avoids a second prompt.
             let enclaveKey = try SecureEnclave.P256.KeyAgreement.PrivateKey(
                 dataRepresentation: sealed.enclaveKey, authenticationContext: context)
             let ephemeral = try P256.KeyAgreement.PublicKey(rawRepresentation: sealed.ephemeralPublicKey)
@@ -156,8 +156,8 @@ enum BiometricVault {
     }
 
     #if targetEnvironment(simulator)
-    /// Simulateur : même scellement, avec une clé logicielle à la place de
-    /// celle du Secure Enclave (voir plus haut).
+    /// Simulator: same seal, with a software key instead of the Secure
+    /// Enclave's (see above).
     private static func enrollSimulated(userKey: String, to url: URL) throws {
         guard Biometrics.isAvailable else { throw Failure.unavailable }
         let deviceKey = P256.KeyAgreement.PrivateKey()

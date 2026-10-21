@@ -1,20 +1,20 @@
-//! Phrases de passe (« diceware ») : des mots tirés au hasard dans une grande
-//! liste, comme le « mot de passe mémorisable » de 1Password ou la phrase de
-//! passe de Bitwarden.
+//! Passphrases ("diceware"): words drawn at random from a large
+//! list, like 1Password's "memorable password" or Bitwarden's
+//! passphrase.
 //!
-//! Le hasard vient du générateur du système (`OsRng`) ; chaque mot est tiré
-//! uniformément par rejet (pas de biais de modulo). Les listes sont
-//! embarquées à la compilation, telles que publiées par leurs auteurs (voir
-//! `wordlists/NOTICE`) : Verrou n'en garde que le mot de chaque ligne, en
-//! minuscules, sans doublon.
+//! Randomness comes from the system generator (`OsRng`); each word is drawn
+//! uniformly by rejection (no modulo bias). The lists are
+//! embedded at compile time, as published by their authors (see
+//! `wordlists/NOTICE`): Verrou keeps only the word of each line,
+//! lowercase, without duplicates.
 
 use std::sync::LazyLock;
 
 use rand::{CryptoRng, RngCore};
 
-/// Liste de l'EFF (« large wordlist », 7 776 mots, CC BY 3.0 US).
+/// EFF list ("large wordlist", 7,776 words, CC BY 3.0 US).
 const EFF_LARGE: &str = include_str!("../wordlists/eff_large_wordlist.txt");
-/// Liste française de Tango pour Tails et Tor (7 776 lignes, CC0 1.0).
+/// French list by Tango for Tails and Tor (7,776 lines, CC0 1.0).
 const FRENCH: &str = include_str!("../wordlists/wordlist_fr.txt");
 
 pub const MIN_WORDS: usize = 3;
@@ -24,7 +24,7 @@ pub const DEFAULT_WORDS: usize = 5;
 static ENGLISH_WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| parse(EFF_LARGE));
 static FRENCH_WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| parse(FRENCH));
 
-/// Langue de la liste de mots.
+/// Language of the word list.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Language {
     #[default]
@@ -33,7 +33,7 @@ pub enum Language {
 }
 
 impl Language {
-    /// Mots de la liste, en minuscules, sans doublon, dans l'ordre du fichier.
+    /// Words of the list, lowercase, without duplicates, in file order.
     pub fn words(self) -> &'static [&'static str] {
         match self {
             Self::French => &FRENCH_WORDS,
@@ -42,7 +42,7 @@ impl Language {
     }
 }
 
-/// Ce qui sépare les mots.
+/// What separates the words.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Separator {
     #[default]
@@ -51,17 +51,18 @@ pub enum Separator {
     Period,
     Underscore,
     Comma,
-    /// Un chiffre tiré au hasard entre chaque paire de mots.
+    /// A random digit between each pair of words.
     Digit,
 }
 
 impl Separator {
-    /// `-`, ` `, `.`, `_`, `,` ou `digit` (aussi `space`, `chiffre`).
+    /// `-`, ` `, `.`, `_`, `,` or `digit`, also by name (`space`, `dot`…)
+    /// and by their French names (`espace`, `point`, `virgule`, `chiffre`).
     pub fn parse(value: &str) -> Option<Self> {
         Some(match value {
-            "-" | "hyphen" => Self::Hyphen,
+            "-" | "hyphen" | "dash" => Self::Hyphen,
             " " | "space" | "espace" => Self::Space,
-            "." | "period" | "point" => Self::Period,
+            "." | "period" | "dot" | "point" => Self::Period,
             "_" | "underscore" => Self::Underscore,
             "," | "comma" | "virgule" => Self::Comma,
             "digit" | "chiffre" | "0-9" => Self::Digit,
@@ -83,12 +84,12 @@ impl Separator {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PassphraseOptions {
-    /// Nombre de mots, ramené entre 3 et 20.
+    /// Number of words, clamped between 3 and 20.
     pub words: usize,
     pub separator: Separator,
-    /// Initiale de chaque mot en majuscule.
+    /// Capitalize the first letter of each word.
     pub capitalize: bool,
-    /// Un chiffre ajouté à la fin d'un mot tiré au hasard.
+    /// A digit appended to the end of a randomly chosen word.
     pub include_number: bool,
     pub language: Language,
 }
@@ -111,7 +112,7 @@ impl PassphraseOptions {
     }
 }
 
-/// Phrase de passe tirée avec le générateur du système.
+/// Passphrase drawn with the system generator.
 pub fn passphrase(options: &PassphraseOptions) -> String {
     passphrase_with(&mut rand::rngs::OsRng, options)
 }
@@ -120,9 +121,9 @@ pub fn passphrase_with<R: RngCore + CryptoRng>(rng: &mut R, options: &Passphrase
     generate(rng, options.language.words(), options)
 }
 
-/// Entropie exacte, en bits, d'une phrase tirée avec ces réglages :
-/// log2(taille de la liste) par mot, plus le chiffre et sa position, plus
-/// les chiffres séparateurs. La majuscule n'ajoute rien (elle est fixe).
+/// Exact entropy, in bits, of a phrase drawn with these settings:
+/// log2(list size) per word, plus the digit and its position, plus
+/// the separator digits. Capitalization adds nothing (it is fixed).
 pub fn entropy_bits(options: &PassphraseOptions) -> f64 {
     entropy_for(options.language.words().len(), options)
 }
@@ -177,13 +178,10 @@ fn digit<R: RngCore>(rng: &mut R) -> char {
     char::from(b'0' + uniform_index(rng, 10) as u8)
 }
 
-/// Entier uniforme dans `0..n`, par rejet : on écarte les tirages au-delà du
-/// plus grand multiple de `n` qui tient sur 32 bits, puis on prend le reste.
+/// Uniform integer in `0..n`, by rejection: draws beyond the largest
+/// multiple of `n` that fits in 32 bits are discarded, then the remainder is taken.
 fn uniform_index<R: RngCore>(rng: &mut R, n: usize) -> usize {
-    assert!(
-        n > 0 && u32::try_from(n).is_ok(),
-        "taille de tirage invalide"
-    );
+    assert!(n > 0 && u32::try_from(n).is_ok(), "invalid draw size");
     let n = n as u64;
     let limit = (1u64 << 32) / n * n;
     loop {
@@ -194,8 +192,8 @@ fn uniform_index<R: RngCore>(rng: &mut R, n: usize) -> usize {
     }
 }
 
-/// Une ligne = « numéro de dés, mot » (ou le mot seul) : on garde le dernier
-/// champ, en minuscules, sans doublon.
+/// A line = "dice number, word" (or the word alone): the last field is kept,
+/// lowercase, without duplicates.
 fn parse(source: &'static str) -> Vec<&'static str> {
     let mut seen = std::collections::HashSet::new();
     let mut words = Vec::with_capacity(7776);
@@ -203,8 +201,8 @@ fn parse(source: &'static str) -> Vec<&'static str> {
         let Some(word) = line.split_whitespace().last() else {
             continue;
         };
-        // Les mots sont en ASCII ; une majuscule éventuelle (« Internet »)
-        // donne un doublon qu'on écarte.
+        // The words are ASCII; a possible capital ("Internet")
+        // gives a duplicate, which is dropped.
         let word: &'static str = if word.bytes().any(|b| b.is_ascii_uppercase()) {
             Box::leak(word.to_ascii_lowercase().into_boxed_str())
         } else {
@@ -230,22 +228,22 @@ mod tests {
     fn wordlists_are_intact() {
         let english = Language::English.words();
         assert_eq!(english.len(), 7776);
-        // La liste française contient « Internet » et « internet » : un
-        // doublon une fois en minuscules.
+        // The French list contains "Internet" and "internet": a
+        // duplicate once lowercased.
         let french = Language::French.words();
         assert_eq!(french.len(), 7775);
         for list in [english, french] {
             let unique: std::collections::HashSet<_> = list.iter().collect();
-            assert_eq!(unique.len(), list.len(), "doublon");
+            assert_eq!(unique.len(), list.len(), "duplicate");
             for word in list {
                 assert_ne!(*word, "");
                 assert!(
                     word.bytes().all(|b| b.is_ascii_lowercase() || b == b'-'),
-                    "mot inattendu : {word:?}"
+                    "unexpected word: {word:?}"
                 );
             }
         }
-        // L'EFF garde quatre mots composés (« t-shirt »…), le français aucun.
+        // The EFF list keeps four compound words ("t-shirt"…), the French one none.
         assert_eq!(english.iter().filter(|w| w.contains('-')).count(), 4);
         assert!(french.iter().all(|w| !w.contains('-')));
         assert!(english.contains(&"abacus") && english.contains(&"zoom"));
@@ -260,7 +258,7 @@ mod tests {
             for end in 1..word.len() {
                 assert!(
                     !set.contains(&word[..end]),
-                    "{} préfixe de {word}",
+                    "{} prefix of {word}",
                     &word[..end]
                 );
             }
@@ -318,6 +316,9 @@ mod tests {
         assert_eq!(parts.len(), 6, "{p}");
         assert_eq!(p.chars().filter(char::is_ascii_digit).count(), 5);
         assert_eq!(Separator::parse("digit"), Some(Separator::Digit));
+        assert_eq!(Separator::parse("chiffre"), Some(Separator::Digit));
+        assert_eq!(Separator::parse("dot"), Some(Separator::Period));
+        assert_eq!(Separator::parse("virgule"), Some(Separator::Comma));
         assert_eq!(Separator::parse(" "), Some(Separator::Space));
         assert_eq!(Separator::parse("x"), None);
     }
@@ -353,7 +354,7 @@ mod tests {
                 );
             }
         }
-        // Le chiffre peut tomber sur chaque mot.
+        // The digit can land on any word.
         assert_eq!(positions.len(), 5);
     }
 
@@ -384,14 +385,14 @@ mod tests {
         assert!((entropy_bits(&capital) - entropy_bits(&base)).abs() < 1e-9);
         let french = PassphraseOptions::default();
         assert!((entropy_bits(&french) - 5.0 * 7775f64.log2()).abs() < 1e-9);
-        // Le nombre de mots est ramené dans les bornes, l'entropie aussi.
+        // The word count is clamped to the bounds, and so is the entropy.
         let many = PassphraseOptions { words: 50, ..base };
         assert!((entropy_bits(&many) - 20.0 * per_word).abs() < 1e-9);
     }
 
     #[test]
     fn every_word_of_a_small_list_is_reachable_and_roughly_uniform() {
-        // Liste de 7 mots : 7 ne divise pas 2^32, le rejet doit corriger le biais.
+        // List of 7 words: 7 does not divide 2^32, rejection must correct the bias.
         let list = ["a", "b", "c", "d", "e", "f", "g"];
         let options = PassphraseOptions {
             words: 3,
@@ -410,15 +411,15 @@ mod tests {
             .iter()
             .map(|&c| (f64::from(c) - expected).powi(2) / expected)
             .sum();
-        // 6 degrés de liberté : 22,46 au seuil de 0,1 %.
+        // 6 degrees of freedom: 22.46 at the 0.1% threshold.
         assert!(chi2 < 22.46, "chi2 = {chi2}, {counts:?}");
         assert!(counts.iter().all(|&c| c > 0));
     }
 
     #[test]
     fn uniform_index_rejects_the_biased_tail() {
-        // Générateur truqué : d'abord u32::MAX (dans la zone rejetée pour
-        // n = 3, car 2^32 n'est pas multiple de 3), puis 4.
+        // Rigged generator: first u32::MAX (in the rejected zone for
+        // n = 3, since 2^32 is not a multiple of 3), then 4.
         struct Scripted(Vec<u32>);
         impl RngCore for Scripted {
             fn next_u32(&mut self) -> u32 {
@@ -437,7 +438,7 @@ mod tests {
         let mut r = Scripted(vec![u32::MAX, 4]);
         assert_eq!(uniform_index(&mut r, 3), 1);
         assert_eq!(r.0.len(), 0);
-        // Puissance de deux : rien n'est rejeté.
+        // Power of two: nothing is rejected.
         let mut r = Scripted(vec![u32::MAX]);
         assert_eq!(uniform_index(&mut r, 8), 7);
     }

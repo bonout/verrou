@@ -1,38 +1,38 @@
 use std::fmt;
 
-/// Ce qui peut mal tourner entre Verrou et le serveur.
+/// What can go wrong between Verrou and the server.
 ///
-/// Les messages sont destinés à l'utilisateur : ils disent quoi faire, pas
-/// comment le code a échoué. Aucun ne contient de secret.
+/// The messages are meant for the user: they say what to do, not how the
+/// code failed. None contains a secret.
 #[derive(Clone, Debug, thiserror::Error)]
 pub enum Error {
-    #[error("mot de passe principal incorrect")]
+    #[error("incorrect master password")]
     WrongPassword,
-    #[error("second facteur refusé : {0}")]
+    #[error("second factor rejected: {0}")]
     TwoFactorRejected(String),
-    #[error("clé de sécurité : {0}")]
+    #[error("security key: {0}")]
     SecurityKey(String),
-    #[error("aucun compte n'est configuré")]
+    #[error("no account is set up")]
     NoAccount,
-    #[error("élément introuvable")]
+    #[error("item not found")]
     NotFound,
-    #[error("cet élément ne peut pas être modifié depuis ce compte")]
+    #[error("this item cannot be edited from this account")]
     ReadOnly,
     #[error("{0}")]
     Invalid(String),
-    #[error("l'élément a changé sur le serveur : synchronisez, puis recommencez")]
+    #[error("the item changed on the server: sync, then try again")]
     Conflict,
-    #[error("la session a expiré : reconnectez-vous")]
+    #[error("the session has expired: sign in again")]
     SessionExpired,
-    #[error("adresse du serveur invalide : {0}")]
+    #[error("invalid server address: {0}")]
     InvalidServer(String),
-    #[error("serveur injoignable : {0}")]
+    #[error("server unreachable: {0}")]
     Network(String),
-    #[error("réponse du serveur : {0}")]
+    #[error("server response: {0}")]
     Server(String),
-    #[error("déchiffrement impossible : {0}")]
+    #[error("decryption failed: {0}")]
     Crypto(String),
-    #[error("stockage local : {0}")]
+    #[error("local storage: {0}")]
     Storage(String),
 }
 
@@ -49,16 +49,16 @@ impl Error {
 impl From<reqwest::Error> for Error {
     fn from(error: reqwest::Error) -> Self {
         if error.is_decode() {
-            Self::Server(format!("réponse illisible ({error})"))
+            Self::Server(format!("unreadable response ({error})"))
         } else if let Some(status) = error.status() {
             Self::Server(status.to_string())
         } else {
-            // Sans la chaîne des causes, reqwest ne dit pas pourquoi la
-            // connexion a échoué (DNS, TLS, refus).
+            // Without the chain of causes, reqwest doesn't say why the
+            // connection failed (DNS, TLS, refused).
             let mut message = error.to_string();
             let mut source = std::error::Error::source(&error);
             while let Some(cause) = source {
-                message = format!("{message} : {cause}");
+                message = format!("{message}: {cause}");
                 source = cause.source();
             }
             Self::Network(message)

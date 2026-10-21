@@ -1,18 +1,18 @@
-//! Sélection de plusieurs éléments et actions groupées.
+//! Selecting several items and bulk actions.
 //!
-//! La logique de la sélection (clic, ⌘-clic, ⇧-clic, ⇧↑/⇧↓, ⌘A, Échap) est
-//! une fonction pure du cœur (`verrou_core::selection`), testée là-bas ;
-//! l'app l'appelle à chaque geste. Les actions groupées passent par le même
-//! chemin d'écriture que les actions seules (`verrou_vaultwarden::bulk`) :
-//! file hors ligne et conflits compris, une synchronisation à la fin.
+//! The selection logic (click, ⌘-click, ⇧-click, ⇧↑/⇧↓, ⌘A, Esc) is a pure
+//! function of the core (`verrou_core::selection`), tested there; the app
+//! calls it on each gesture. Bulk actions go through the same write path as
+//! single actions (`verrou_vaultwarden::bulk`): offline queue and conflicts
+//! included, one sync at the end.
 
 use verrou_core::selection::{self, Gesture, ListSelection};
 use verrou_vaultwarden::{BulkAction, Skipped};
 
 use crate::{VaultSession, VerrouError};
 
-/// La sélection de la liste : les éléments, dans l'ordre affiché ; l'ancre
-/// des plages (⇧) ; l'élément actif, montré dans la colonne de détail.
+/// The list's selection: the items, in display order; the anchor of ranges
+/// (⇧); the active item, shown in the detail column.
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct ItemSelection {
     pub selected: Vec<String>,
@@ -25,22 +25,22 @@ pub enum SelectionGesture {
     Click {
         id: String,
     },
-    /// ⌘-clic.
+    /// ⌘-click.
     Toggle {
         id: String,
     },
-    /// ⇧-clic.
+    /// ⇧-click.
     Extend {
         id: String,
     },
-    /// Flèches (⇧ : `extend`).
+    /// Arrows (⇧: `extend`).
     Step {
         offset: i32,
         extend: bool,
     },
     /// ⌘A.
     SelectAll,
-    /// Échap.
+    /// Esc.
     Collapse,
 }
 
@@ -77,8 +77,8 @@ impl From<SelectionGesture> for Gesture {
     }
 }
 
-/// La sélection après un geste, sur les éléments affichés (`order`, dans
-/// l'ordre de la liste). Linéaire en nombre de lignes.
+/// The selection after a gesture, over the displayed items (`order`, in list
+/// order). Linear in the number of rows.
 #[uniffi::export]
 pub fn select_items(
     current: ItemSelection,
@@ -88,7 +88,7 @@ pub fn select_items(
     selection::apply(&current.into(), &order, &gesture.into()).into()
 }
 
-/// Action sur plusieurs éléments.
+/// Action on several items.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum BulkItemAction {
     Trash,
@@ -98,7 +98,7 @@ pub enum BulkItemAction {
     Favorite {
         favorite: bool,
     },
-    /// `None` : hors de tout dossier.
+    /// `None`: outside any folder.
     MoveToFolder {
         folder_id: Option<String>,
     },
@@ -117,35 +117,35 @@ impl From<BulkItemAction> for BulkAction {
     }
 }
 
-/// Avancement d'une action groupée, appelé depuis l'envoi : répondre vite.
+/// Progress of a bulk action, called from the upload: answer quickly.
 #[uniffi::export(callback_interface)]
 pub trait BulkProgress: Send + Sync {
     fn progress(&self, done: u32, total: u32);
 }
 
-/// Bilan d'une action groupée, pour le message affiché.
+/// Outcome of a bulk action, for the message shown.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct BulkResult {
-    /// Éléments traités (envoyés, en attente hors ligne, ou déjà dans
-    /// l'état voulu).
+    /// Items processed (sent, pending offline, or already in the wanted
+    /// state).
     pub done: u32,
-    /// Dont en attente du serveur (hors ligne).
+    /// Of which waiting for the server (offline).
     pub queued: u32,
-    /// Écartés : partagés en lecture seule.
+    /// Skipped: shared read-only.
     pub read_only: u32,
-    /// Écartés : dans la corbeille.
+    /// Skipped: in the trash.
     pub in_trash: u32,
-    /// Écartés : plus dans le coffre.
+    /// Skipped: no longer in the vault.
     pub not_found: u32,
-    /// Refusés par le serveur : titres et raisons.
+    /// Refused by the server: titles and reasons.
     pub failures: Vec<String>,
 }
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Applique l'action aux éléments, puis resynchronise une fois. Les
-    /// éléments auxquels elle ne s'applique pas sont écartés et comptés.
-    /// Les positions de `summaries()` changent.
+    /// Applies the action to the items, then resyncs once. Items it doesn't
+    /// apply to are skipped and counted. The positions of `summaries()`
+    /// change.
     pub async fn bulk_action(
         &self,
         ids: Vec<String>,
@@ -155,7 +155,7 @@ impl VaultSession {
         let Some(connection) = self.current_connection() else {
             return Err(if self.is_unlocked() {
                 VerrouError::Invalid {
-                    message: "coffre fictif : lecture seule".to_owned(),
+                    message: "mock vault: read-only".to_owned(),
                 }
             } else {
                 VerrouError::Locked
@@ -180,14 +180,14 @@ impl VaultSession {
             failures: outcome
                 .failed
                 .iter()
-                .map(|(title, reason)| format!("{title} : {reason}"))
+                .map(|(title, reason)| format!("{title}: {reason}"))
                 .collect(),
         };
         self.install_if_current(&connection, outcome.vault)?;
         Ok(result)
     }
 
-    /// Crée un dossier (réseau nécessaire) ; rend son identifiant.
+    /// Creates a folder (network needed); returns its id.
     pub async fn create_folder(&self, name: String) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (id, vault) = connection.lock().await.create_folder(&name).await?;
@@ -234,11 +234,7 @@ mod tests {
                 extend: true,
             },
         );
-        assert_eq!(
-            s.selected,
-            ids(&["a", "b"]),
-            "plage depuis la nouvelle ancre"
-        );
+        assert_eq!(s.selected, ids(&["a", "b"]), "range from the new anchor");
         let s = select_items(s, order.clone(), SelectionGesture::SelectAll);
         assert_eq!(s.selected, order);
         let s = select_items(s, order, SelectionGesture::Collapse);

@@ -1,8 +1,8 @@
 import Foundation
 import XCTest
 
-/// Migration du compte du Mac (conteneur de l'app → groupe d'apps), sur des
-/// copies jetables avec des données fictives : jamais le vrai conteneur
+/// Migration of the Mac account (app container → app group), on throwaway
+/// copies with mock data: never the real container
 /// (~/Library/Containers/app.verrou.mac).
 final class MacMigrationTests: XCTestCase {
     private var root: URL!
@@ -12,7 +12,7 @@ final class MacMigrationTests: XCTestCase {
     override func setUpWithError() throws {
         root = fm.temporaryDirectory.appending(path: "verrou-migration-\(UUID().uuidString)", directoryHint: .isDirectory)
         try fm.createDirectory(at: root, withIntermediateDirectories: true)
-        // Garde-fou : les tests n'écrivent que dans le dossier temporaire.
+        // Safeguard: the tests only write in the temporary folder.
         XCTAssertFalse(root.path.contains("/Library/Containers/app.verrou.mac/"))
     }
 
@@ -20,7 +20,7 @@ final class MacMigrationTests: XCTestCase {
         try? fm.removeItem(at: root)
     }
 
-    /// Dossier privé de l'app (fictif) : compte, cache, file, scellement.
+    /// The app's private folder (mock): account, cache, queue, sealing.
     private func makeOld() throws -> URL {
         let old = root.appending(path: "app/Library/Application Support/Verrou", directoryHint: .isDirectory)
         try fm.createDirectory(at: old.appending(path: "keys"), withIntermediateDirectories: true)
@@ -38,7 +38,7 @@ final class MacMigrationTests: XCTestCase {
     }
 
     private func backupURL(of old: URL) -> URL {
-        old.deletingLastPathComponent().appending(path: "Verrou-avant-groupe-2026-10-16")
+        old.deletingLastPathComponent().appending(path: "Verrou-before-group-2026-10-16")
     }
 
     func testCopiesVerifiesAndKeepsTheOldFolder() throws {
@@ -50,8 +50,8 @@ final class MacMigrationTests: XCTestCase {
 
         let backup = backupURL(of: old)
         XCTAssertEqual(result, .migrated(backup: backup))
-        XCTAssertFalse(fm.fileExists(atPath: old.path), "l'ancien dossier n'est plus relu")
-        XCTAssertTrue(try VerrouStorage.sameFiles(backup, original), "l'ancien dossier est gardé intact")
+        XCTAssertFalse(fm.fileExists(atPath: old.path), "the old folder is no longer read")
+        XCTAssertTrue(try VerrouStorage.sameFiles(backup, original), "the old folder is kept intact")
     }
 
     func testGroupHasTheSameFilesPlusTheNote() throws {
@@ -65,7 +65,7 @@ final class MacMigrationTests: XCTestCase {
         XCTAssertEqual(json?["from"], old.standardizedFileURL.path)
         try fm.removeItem(at: note)
         XCTAssertTrue(try VerrouStorage.sameFiles(new, original))
-        // Aucun dossier temporaire laissé à côté.
+        // No temporary folder left next to it.
         let siblings = try fm.contentsOfDirectory(atPath: new.deletingLastPathComponent().path)
         XCTAssertEqual(siblings, ["Verrou"])
     }
@@ -79,13 +79,13 @@ final class MacMigrationTests: XCTestCase {
     }
 
     func testNothingToMigrate() throws {
-        let old = root.appending(path: "vide/Verrou")
+        let old = root.appending(path: "empty/Verrou")
         XCTAssertEqual(VerrouStorage.migrateMac(from: old, to: new, now: date), .nothingToDo)
         XCTAssertFalse(fm.fileExists(atPath: new.path))
     }
 
-    /// Le groupe a déjà un compte (l'extension, ou un autre build) : rien
-    /// n'est copié ni renommé.
+    /// The group already has an account (the extension, or another build):
+    /// nothing is copied or renamed.
     func testExistingGroupAccountWins() throws {
         let old = try makeOld()
         try fm.createDirectory(at: new, withIntermediateDirectories: true)
@@ -96,7 +96,7 @@ final class MacMigrationTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: new.appending(path: "account.json"), encoding: .utf8), "autre compte")
     }
 
-    /// L'extension a pu créer le dossier vide du groupe avant l'app.
+    /// The extension may have created the group's empty folder before the app.
     func testEmptyGroupFolderIsReplaced() throws {
         let old = try makeOld()
         try fm.createDirectory(at: new, withIntermediateDirectories: true)
@@ -104,48 +104,48 @@ final class MacMigrationTests: XCTestCase {
         XCTAssertTrue(fm.fileExists(atPath: new.appending(path: "account.json").path))
     }
 
-    /// Des fichiers inconnus dans le groupe, sans compte : on ne touche à rien.
+    /// Unknown files in the group, without an account: nothing is touched.
     func testUnknownGroupContentIsRefused() throws {
         let old = try makeOld()
         try fm.createDirectory(at: new, withIntermediateDirectories: true)
-        try Data("?".utf8).write(to: new.appending(path: "inconnu.json"))
+        try Data("?".utf8).write(to: new.appending(path: "unknown.json"))
 
         guard case .refused = VerrouStorage.migrateMac(from: old, to: new, now: date) else {
-            return XCTFail("migration attendue refusée")
+            return XCTFail("migration expected to be refused")
         }
         XCTAssertTrue(fm.fileExists(atPath: old.appending(path: "account.json").path))
-        XCTAssertTrue(fm.fileExists(atPath: new.appending(path: "inconnu.json").path))
+        XCTAssertTrue(fm.fileExists(atPath: new.appending(path: "unknown.json").path))
         XCTAssertFalse(fm.fileExists(atPath: new.appending(path: "account.json").path))
     }
 
-    /// Arrêt brutal après la copie, avant le renommage de l'ancien dossier :
-    /// le lancement suivant le finit.
+    /// Hard stop after the copy, before the old folder is renamed: the next
+    /// launch finishes it.
     func testInterruptedMigrationIsFinished() throws {
         let old = try makeOld()
         _ = VerrouStorage.migrateMac(from: old, to: new, now: date)
-        // État d'une migration interrompue : l'ancien dossier remis en place.
+        // State of an interrupted migration: the old folder put back in place.
         try fm.moveItem(at: backupURL(of: old), to: old)
 
         let later = date.addingTimeInterval(86_400)
-        let backup = old.deletingLastPathComponent().appending(path: "Verrou-avant-groupe-2026-10-17")
+        let backup = old.deletingLastPathComponent().appending(path: "Verrou-before-group-2026-10-17")
         XCTAssertEqual(VerrouStorage.migrateMac(from: old, to: new, now: later), .finished(backup: backup))
         XCTAssertFalse(fm.fileExists(atPath: old.path))
         XCTAssertTrue(fm.fileExists(atPath: backup.appending(path: "account.json").path))
     }
 
-    /// Un compte dans le groupe sans note venue de ce dossier : l'ancien
-    /// dossier n'est pas renommé (ce n'est pas une migration interrompue).
+    /// An account in the group without a note coming from this folder: the
+    /// old folder is not renamed (it is not an interrupted migration).
     func testForeignGroupAccountDoesNotRetireTheOldFolder() throws {
         let old = try makeOld()
         try fm.createDirectory(at: new, withIntermediateDirectories: true)
         try Data("autre".utf8).write(to: new.appending(path: "account.json"))
-        try JSONSerialization.data(withJSONObject: ["from": "/ailleurs", "date": "x"])
+        try JSONSerialization.data(withJSONObject: ["from": "/elsewhere", "date": "x"])
             .write(to: new.appending(path: VerrouStorage.migrationNote))
         XCTAssertEqual(VerrouStorage.migrateMac(from: old, to: new, now: date), .nothingToDo)
         XCTAssertTrue(fm.fileExists(atPath: old.path))
     }
 
-    /// Une sauvegarde du même jour existe déjà : un suffixe, rien d'écrasé.
+    /// A backup of the same day already exists: a suffix, nothing overwritten.
     func testBackupNameNeverOverwrites() throws {
         let old = try makeOld()
         let taken = backupURL(of: old)
@@ -168,7 +168,7 @@ final class MacMigrationTests: XCTestCase {
         XCTAssertFalse(try VerrouStorage.sameFiles(a, b))
     }
 
-    /// `resolve` sans groupe (build ad hoc) : le dossier privé, aucune copie.
+    /// `resolve` without a group (ad hoc build): the private folder, no copy.
     func testResolveWithoutGroupKeepsThePrivateFolder() {
         let location = VerrouStorage.resolve(groupContainer: nil)
         XCTAssertEqual(location, .init(directory: VerrouStorage.privateDirectory(), shared: false))

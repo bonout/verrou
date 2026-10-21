@@ -1,15 +1,15 @@
-//! Notifications locales et mises à jour en direct, contre un vrai
-//! Vaultwarden 1.37.4 jetable, avec ou sans courriel :
+//! Local notifications and live updates, against a real throwaway
+//! Vaultwarden 1.37.4, with or without email:
 //!
-//! - ce que l'invité voit d'une invitation (rien, tant qu'elle n'est pas
-//!   acceptée, sur un serveur qui envoie des courriels) ;
-//! - accepter sans le jeton du courriel (refusé ; sans courriel, le serveur
-//!   accepte d'office l'invitation d'un compte existant) ;
-//! - aucune route ne rend le lien ni le jeton à l'administrateur
-//!   (« renvoyer » renvoie seulement le courriel) ;
-//! - le canal `/notifications/hub` (`SignalR`) pousse la confirmation et les
-//!   éléments partagés en quelques secondes ;
-//! - ce que `activity` en tire : les nouvelles, une seule fois.
+//! - what the invitee sees of an invitation (nothing, until it is
+//!   accepted, on a server that sends emails);
+//! - accepting without the email token (refused; without email, the server
+//!   automatically accepts the invitation of an existing account);
+//! - no route returns the link or the token to the administrator
+//!   ("resend" only resends the email);
+//! - the `/notifications/hub` channel (`SignalR`) pushes the confirmation and
+//!   the shared items within a few seconds;
+//! - what `activity` makes of it: the news, only once.
 //!
 //! ```sh
 //! docker network create verrou-vw-notify-net
@@ -26,9 +26,9 @@
 //!   cargo test -p verrou-vaultwarden --test notifications
 //! ```
 //!
-//! Sans courriel : le même conteneur sans les variables `SMTP_*` (port
-//! 8141), et `VERROU_TEST_NOTIFY_SERVER=http://localhost:8141` seul.
-//! `DISABLE_ADMIN_TOKEN=true` n'amorce que les comptes de ce serveur jetable.
+//! Without email: the same container without the `SMTP_*` variables (port
+//! 8141), and `VERROU_TEST_NOTIFY_SERVER=http://localhost:8141` alone.
+//! `DISABLE_ADMIN_TOKEN=true` only bootstraps the accounts of this throwaway server.
 
 use std::collections::HashSet;
 use std::num::NonZeroU32;
@@ -58,7 +58,7 @@ struct Server {
 impl Server {
     fn from_env() -> Option<Self> {
         let Ok(url) = std::env::var("VERROU_TEST_NOTIFY_SERVER") else {
-            eprintln!("VERROU_TEST_NOTIFY_SERVER absent : test ignoré");
+            eprintln!("VERROU_TEST_NOTIFY_SERVER not set: test skipped");
             return None;
         };
         Some(Self {
@@ -85,7 +85,7 @@ impl Server {
         found["messages"].as_array().cloned().unwrap_or_default()
     }
 
-    /// Le lien du plus récent courriel reçu après `after` autres.
+    /// The link of the most recent email received after `after` others.
     async fn link(&self, email: &str, after: usize, marker: &str) -> Option<String> {
         let mailpit = self.mailpit.as_ref()?;
         for _ in 0..50 {
@@ -110,10 +110,10 @@ impl Server {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        panic!("aucun courriel pour {email}");
+        panic!("no email for {email}");
     }
 
-    /// Un compte existant : invité au serveur (amorçage), puis créé.
+    /// An existing account: invited to the server (bootstrap), then created.
     async fn account(&self, prefix: &str) -> String {
         let email = format!(
             "{prefix}-{}@verrou.test",
@@ -126,7 +126,7 @@ impl Server {
             .send()
             .await
             .unwrap();
-        assert!(invited.status().is_success(), "DISABLE_ADMIN_TOKEN=true ?");
+        assert!(invited.status().is_success(), "DISABLE_ADMIN_TOKEN=true?");
         let link = self.link(&email, 0, "#/").await;
         register::register(&NewAccount {
             server: self.url.clone(),
@@ -151,7 +151,7 @@ impl Server {
             .unwrap()
         {
             LoginStep::Unlocked(unlocked) => (unlocked.connection, store),
-            LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+            LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
         }
     }
 
@@ -185,7 +185,7 @@ impl Server {
         token["access_token"].as_str().unwrap().to_owned()
     }
 
-    /// Requête brute ; rend le statut et le corps.
+    /// Raw request; returns the status and the body.
     async fn raw(
         &self,
         method: reqwest::Method,
@@ -206,7 +206,7 @@ impl Server {
 
     async fn api(&self, method: reqwest::Method, path: &str, access: &str, body: &Value) -> Value {
         let (status, text) = self.raw(method, path, access, body).await;
-        assert!((200..300).contains(&status), "{path} : {status} {text}");
+        assert!((200..300).contains(&status), "{path}: {status} {text}");
         serde_json::from_str(&text).unwrap_or(Value::Null)
     }
 }
@@ -220,7 +220,7 @@ fn wrap_for(org_key: &SymmetricCryptoKey, public_key: &str) -> String {
         .to_string()
 }
 
-/// L'organisation et sa collection, créées comme le fait le coffre web.
+/// The organization and its collection, created the way the web vault does.
 async fn create_organization(server: &Server, owner: &str) -> (String, String) {
     let access = server.token(owner).await;
     let profile = server
@@ -273,7 +273,7 @@ async fn create_organization(server: &Server, owner: &str) -> (String, String) {
     (org, collection)
 }
 
-/// La réponse brute de `/api/sync` du compte.
+/// The account's raw `/api/sync` response.
 async fn raw_sync(server: &Server, access: &str) -> Value {
     server
         .api(
@@ -294,8 +294,8 @@ fn lists_org(sync: &Value, field: &str, org: &str) -> Option<i64> {
         .and_then(|o| o["status"].as_i64())
 }
 
-/// Ce que la connexion sait du compte, comme l'app le fait après chaque
-/// synchronisation.
+/// What the connection knows about the account, as the app does after
+/// each sync.
 async fn observe(
     connection: &mut Connection,
     store: &Store,
@@ -314,13 +314,13 @@ async fn observe(
         .collect()
 }
 
-/// Attend un changement du genre voulu (au plus 10 s).
+/// Waits for a change of the wanted kind (10 s at most).
 async fn expect_update(hub: &mut Hub, kind: UpdateKind) {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     loop {
         let update = tokio::time::timeout_at(deadline, hub.next())
             .await
-            .unwrap_or_else(|_| panic!("aucune mise à jour {kind:?} en 10 s"))
+            .unwrap_or_else(|_| panic!("no {kind:?} update within 10 s"))
             .unwrap();
         if update.kind == kind {
             assert!(!update.from_this_device);
@@ -330,7 +330,7 @@ async fn expect_update(hub: &mut Hub, kind: UpdateKind) {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a full walkthrough, readable in one go
 async fn invitations_hub_and_activity() {
     let Some(server) = Server::from_env() else {
         return;
@@ -340,14 +340,14 @@ async fn invitations_hub_and_activity() {
     let owner = server.account("proprietaire").await;
     let (org, collection) = create_organization(&server, &owner).await;
     let (mut admin, admin_store) = server.verrou(&owner).await;
-    // Un compte existant, qui ouvre Verrou avant d'être invité.
+    // An existing account, which opens Verrou before being invited.
     let guest = server.account("lea").await;
     let (mut lea, lea_store) = server.verrou(&guest).await;
     let lea_access = server.token(&guest).await;
     assert_eq!(
         observe(&mut lea, &lea_store, None).await,
         [] as [NoticeKind; 0],
-        "point de départ silencieux"
+        "silent starting point"
     );
     assert_eq!(
         observe(&mut admin, &admin_store, Some(vec![])).await,
@@ -355,13 +355,13 @@ async fn invitations_hub_and_activity() {
     );
     let mut hub = lea.open_hub().await.unwrap();
 
-    // (d) Le canal refuse qui n'a pas de jeton.
+    // (d) The channel refuses anyone without a token.
     let anonymous = tokio_tungstenite::connect_async(format!(
         "{}/notifications/hub",
         server.url.replace("http://", "ws://")
     ))
     .await;
-    assert!(anonymous.is_err(), "canal ouvert sans jeton");
+    assert!(anonymous.is_err(), "channel open without a token");
 
     let before = server.mails(&guest).await.len();
     admin
@@ -388,21 +388,21 @@ async fn invitations_hub_and_activity() {
 
     let sync = raw_sync(&server, &lea_access).await;
     if with_mail {
-        // (a) Invitée, compte existant, serveur avec courriel : l'invitation
-        // n'apparaît nulle part dans sa synchronisation.
+        // (a) Invited, existing account, server with email: the invitation
+        // appears nowhere in her sync.
         assert_eq!(member.status, MemberStatus::Invited);
         assert_eq!(lists_org(&sync, "organizations", &org), None);
         assert_eq!(lists_org(&sync, "organizationsNew", &org), None);
         assert!(
             !sync.to_string().contains(&org),
-            "aucune trace de l'organisation"
+            "no trace of the organization"
         );
         assert_eq!(
             observe(&mut lea, &lea_store, None).await,
             [] as [NoticeKind; 0]
         );
 
-        // (b) Accepter sans le jeton du courriel : refusé.
+        // (b) Accepting without the email token: refused.
         let accept = format!("/api/organizations/{org}/users/{}/accept", member.id);
         for token in ["", "eyJ0eXAiOiJKV1QifQ.e30.c2ln"] {
             let (status, text) = server
@@ -413,11 +413,14 @@ async fn invitations_hub_and_activity() {
                     &json!({ "token": token }),
                 )
                 .await;
-            assert!(status >= 400, "accepté sans jeton valide : {status} {text}");
+            assert!(
+                status >= 400,
+                "accepted without a valid token: {status} {text}"
+            );
         }
 
-        // (c) Rien ne rend le lien à l'administratrice : la fiche du membre
-        // n'a pas de jeton, « renvoyer » ne rend rien et envoie un courriel.
+        // (c) Nothing returns the link to the admin: the member's details have
+        // no token, "resend" returns nothing and sends an email.
         let owner_access = server.token(&owner).await;
         let details = server
             .api(
@@ -436,30 +439,27 @@ async fn invitations_hub_and_activity() {
                 &Value::Null,
             )
             .await;
-        assert_eq!((status, body.as_str()), (200, ""), "renvoyer ne rend rien");
+        assert_eq!((status, body.as_str()), (200, ""), "resend returns nothing");
         let link = server
             .link(&guest, before + 1, "#/accept-organization/")
             .await
             .unwrap();
-        assert!(
-            server.mails(&guest).await.len() >= before + 2,
-            "deux courriels"
-        );
+        assert!(server.mails(&guest).await.len() >= before + 2, "two emails");
 
-        // Avec le lien, Léa accepte (dans Verrou : « Rejoindre »).
+        // With the link, Léa accepts (in Verrou: "Join").
         let SignupLink::Invite(invite) = register::parse_link(&link).unwrap() else {
-            panic!("lien d'invitation attendu");
+            panic!("invitation link expected");
         };
         lea.accept_invitation(&invite).await.unwrap();
     } else {
-        // (b) Sans courriel, un compte existant est accepté d'office.
+        // (b) Without email, an existing account is accepted automatically.
         assert_eq!(member.status, MemberStatus::Accepted);
     }
 
-    // Acceptée : l'invitée la voit (organizationsNew, état 1)…
+    // Accepted: the invitee sees it (organizationsNew, status 1)…
     let sync = raw_sync(&server, &lea_access).await;
     assert_eq!(lists_org(&sync, "organizationsNew", &org), Some(1));
-    assert_eq!(lists_org(&sync, "organizations", &org), None, "pas de clé");
+    assert_eq!(lists_org(&sync, "organizations", &org), None, "no key");
     assert_eq!(
         observe(&mut lea, &lea_store, None).await,
         [NoticeKind::MembershipPending]
@@ -467,9 +467,9 @@ async fn invitations_hub_and_activity() {
     assert_eq!(
         observe(&mut lea, &lea_store, None).await,
         [] as [NoticeKind; 0],
-        "une seule fois"
+        "only once"
     );
-    // … et l'administratrice a un membre à confirmer (pas poussé par le canal).
+    // … and the admin has a member to confirm (not pushed by the channel).
     let waiting = vec![(org.clone(), "Famille Martin".to_owned(), member.id.clone())];
     assert_eq!(
         observe(&mut admin, &admin_store, Some(waiting.clone())).await,
@@ -480,7 +480,7 @@ async fn invitations_hub_and_activity() {
         [] as [NoticeKind; 0]
     );
 
-    // (d) Confirmée : le canal le dit à Léa en quelques secondes.
+    // (d) Confirmed: the channel tells Léa within a few seconds.
     let fingerprint = admin.member_fingerprint(&org, &member.id).await.unwrap();
     admin
         .confirm_member(&org, &member.id, &fingerprint)
@@ -492,7 +492,7 @@ async fn invitations_hub_and_activity() {
         [NoticeKind::MembershipConfirmed]
     );
 
-    // Un élément partagé par l'administratrice : poussé aussi.
+    // An item shared by the admin: pushed too.
     let (shared, _) = admin
         .create_shared(
             Draft {
@@ -528,18 +528,18 @@ async fn invitations_hub_and_activity() {
     assert_eq!(notices[0].kind, NoticeKind::ItemsShared);
     assert_eq!(notices[0].count, 1);
     assert_eq!(notices[0].organization.as_deref(), Some("Famille Martin"));
-    // Rien de secret dans ce qui part vers la notification.
+    // Nothing secret in what goes to the notification.
     assert!(!format!("{notices:?}").contains("secret-partagé"));
     assert!(!format!("{notices:?}").contains("famille@exemple.fr"));
 
-    // Pour l'administratrice, son propre élément n'est pas une nouvelle.
+    // For the admin, her own item is not news.
     activity::acknowledge_items(&admin_store, &admin_user_id(&admin), &[shared]).unwrap();
     assert_eq!(
         observe(&mut admin, &admin_store, Some(vec![])).await,
         [] as [NoticeKind; 0]
     );
 
-    // Coffre verrouillé : seul le cache parle, sans clé ni réseau.
+    // Vault locked: only the cache speaks, without key or network.
     let (mut other, other_store) = server.verrou(&guest).await;
     assert_eq!(
         observe(&mut other, &other_store, None).await,

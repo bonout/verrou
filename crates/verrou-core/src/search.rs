@@ -1,19 +1,19 @@
-//! Recherche locale, entièrement en mémoire.
+//! Local search, entirely in memory.
 //!
-//! Rien ne quitte la machine : l'index est construit à l'ouverture du coffre à
-//! partir des champs **non secrets** (titre, identifiant affiché, sites,
-//! dossier, étiquettes), et effacé avec lui au verrouillage. Les mots de passe,
-//! notes et numéros de carte ne sont jamais indexés.
+//! Nothing leaves the machine: the index is built when the vault opens from
+//! the **non-secret** fields (title, displayed username, sites,
+//! folder, tags), and wiped with it on lock. Passwords,
+//! notes and card numbers are never indexed.
 //!
-//! Le classement repose sur `nucleo-matcher`, l'algorithme de `fzf` réécrit en
-//! Rust : correspondance floue par sous-séquence, bonus aux débuts de mots,
-//! accents ignorés (« societe » trouve « Société Générale »). Chaque mot de la
-//! requête doit trouver sa place dans au moins un champ, avec un poids qui
-//! favorise le titre puis le site.
+//! Ranking relies on `nucleo-matcher`, the `fzf` algorithm rewritten in
+//! Rust: fuzzy subsequence matching, bonus at word starts,
+//! accents ignored ("societe" finds "Société Générale"). Each word of the
+//! query must fit in at least one field, with a weight that
+//! favours the title, then the site.
 
 use std::collections::HashMap;
 
-use nucleo_matcher::pattern::{Atom, CaseMatching, Normalization};
+use nucleo_matcher::pattern::{Atom, AtomKind, CaseMatching, Normalization};
 use nucleo_matcher::{Config, Matcher, Utf32String};
 use unicode_normalization::UnicodeNormalization;
 
@@ -21,47 +21,46 @@ use crate::model::{Item, ItemKind, ItemState};
 use crate::passkey::Passkey;
 use crate::template::Template;
 
-/// Ce que montre la barre latérale.
+/// What the sidebar shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Filter {
     #[default]
     All,
     Favorites,
     Kind(ItemKind),
-    /// Éléments d'un modèle (Wi-Fi, passeport…).
+    /// Items of a template (Wi-Fi, passport…).
     Template(Template),
     Folder(String),
     Tag(String),
     WithTotp,
-    /// Éléments archivés.
+    /// Archived items.
     Archived,
-    /// Éléments à la corbeille.
+    /// Items in the trash.
     Trash,
-    /// Éléments d'une organisation (coffre partagé), par identifiant.
+    /// Items of an organization (shared vault), by id.
     Organization(String),
-    /// Éléments d'une collection d'organisation, par identifiant.
+    /// Items of an organization collection, by id.
     Collection(String),
-    /// Identifiants qui portent au moins une passkey.
+    /// Logins that carry at least one passkey.
     Passkeys,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Sort {
-    /// Pertinence quand on cherche, ordre alphabétique sinon.
+    /// Relevance when searching, alphabetical order otherwise.
     #[default]
     Relevance,
     Title,
     RecentlyModified,
-    /// Création, du plus récent au plus ancien.
+    /// Creation, newest first.
     Created,
-    /// Dernière utilisation sur cet appareil (remplissage, copie,
-    /// affichage d'un secret), du plus récent au plus ancien ; les éléments
-    /// jamais utilisés ensuite, par titre.
+    /// Last use on this device (fill, copy, showing a secret), most
+    /// recent first; never-used items after that, by title.
     LastUsed,
 }
 
-/// Un résultat : position de l'élément dans le coffre, score, et positions des
-/// caractères du titre à surligner.
+/// A result: position of the item in the vault, score, and positions of the
+/// title characters to highlight.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hit {
     pub index: usize,
@@ -69,8 +68,8 @@ pub struct Hit {
     pub title_indices: Vec<u32>,
 }
 
-/// Ensemble des caractères présents (lettres et chiffres repliés), pour
-/// écarter en une instruction un champ qui ne peut pas contenir le mot cherché.
+/// Set of the characters present (folded letters and digits), to rule out
+/// in one instruction a field that cannot contain the searched word.
 #[derive(Clone, Copy, Default)]
 struct CharMask(u64);
 
@@ -98,15 +97,19 @@ struct Entry {
     subtitle: Utf32String,
     hosts: Utf32String,
     extra: Utf32String,
-    /// Titre replié (minuscules, sans accents) pour le tri et le bonus de
-    /// préfixe.
+    /// Names of the item's category and template, in English and French:
+    /// matched as whole substrings only, so that these words common to
+    /// many items add no fuzzy noise.
+    labels: Utf32String,
+    /// Folded title (lowercase, no accents) for sorting and the prefix
+    /// bonus.
     folded_title: String,
-    /// Rang alphabétique, calculé une fois : trier 10 000 résultats compare
-    /// des entiers au lieu de chaînes.
+    /// Alphabetical rank, computed once: sorting 10,000 results compares
+    /// integers instead of strings.
     title_rank: u32,
     folder: Option<String>,
     tags: Vec<String>,
-    /// Sites des passkeys de l'élément (`rpId` repliés) ; vide : aucune.
+    /// Sites of the item's passkeys (folded `rpId`s); empty: none.
     passkey_sites: Vec<String>,
 }
 
@@ -114,8 +117,8 @@ pub(crate) struct SearchIndex {
     entries: Vec<Entry>,
 }
 
-// Poids des champs : un mot trouvé dans le titre compte quatre fois plus que
-// dans les étiquettes.
+// Field weights: a word found in the title counts four times more than
+// in the tags.
 const WEIGHT_TITLE: u32 = 4;
 const WEIGHT_HOST: u32 = 3;
 const WEIGHT_SUBTITLE: u32 = 2;
@@ -123,11 +126,11 @@ const WEIGHT_EXTRA: u32 = 1;
 const BONUS_TITLE_PREFIX: u32 = 400;
 const BONUS_TITLE_EXACT: u32 = 800;
 const BONUS_FAVORITE: u32 = 24;
-/// Résultats dont on calcule le surlignage du titre (au-delà, ils ne sont pas
-/// à l'écran).
+/// Results whose title highlighting is computed (beyond that, they are not
+/// on screen).
 pub const HIGHLIGHT_LIMIT: usize = 200;
 
-/// Texte replié : minuscules, sans accents (« Société » → « societe »).
+/// Folded text: lowercase, no accents ("Société" → "societe").
 pub fn fold(text: &str) -> String {
     text.nfkd()
         .filter(|c| !unicode_normalization::char::is_combining_mark(*c))
@@ -145,15 +148,20 @@ impl SearchIndex {
                     .iter()
                     .filter_map(|u| crate::matching::host_of(u))
                     .collect();
-                let mut extra = vec![item.kind.label().to_owned(), item.kind.keyword().to_owned()];
+                let kind = item.kind;
+                let mut labels = vec![kind.label(), kind.french_label()];
+                labels.extend(kind.keywords());
                 if let Some(template) = item.template() {
-                    extra.push(template.label().to_owned());
-                    extra.push(template.keyword().to_owned());
+                    labels.push(template.label());
+                    labels.push(template.french_label());
+                    labels.extend(template.keywords());
                 }
+                let labels = labels.join(" ");
+                let mut extra = Vec::new();
                 extra.extend(item.folder.iter().cloned());
                 extra.extend(item.tags.iter().cloned());
-                // Un élément partagé se retrouve aussi par le nom de son
-                // organisation ou de ses collections.
+                // A shared item is also found by the name of its
+                // organization or of its collections.
                 if let Some(shared) = &item.shared {
                     extra.push(shared.organization.clone());
                     extra.extend(shared.collections.iter().map(|(_, name)| name.clone()));
@@ -171,6 +179,7 @@ impl SearchIndex {
                     subtitle: Utf32String::from(item.subtitle.as_str()),
                     hosts: Utf32String::from(hosts.as_str()),
                     extra: Utf32String::from(extra.as_str()),
+                    labels: Utf32String::from(labels.as_str()),
                     folded_title: fold(&item.title),
                     title_rank: 0,
                     folder: item.folder.as_deref().map(fold),
@@ -193,8 +202,8 @@ impl SearchIndex {
         Self { entries }
     }
 
-    /// Note les passkeys de chaque élément (filtre « Passkeys », mot-clé
-    /// `passkey:`).
+    /// Records each item's passkeys ("Passkeys" filter, `passkey:`
+    /// keyword).
     pub(crate) fn mark_passkeys(&mut self, by_id: &HashMap<String, usize>, passkeys: &[Passkey]) {
         for entry in &mut self.entries {
             entry.passkey_sites.clear();
@@ -274,12 +283,12 @@ impl SearchIndex {
             }),
             Sort::LastUsed => {
                 let used = |hit: &Hit| last_used.get(&items[hit.index].id).copied();
-                // `Some` (utilisé) avant `None`, le plus récent d'abord.
+                // `Some` (used) before `None`, most recent first.
                 hits.sort_by(|a, b| used(b).cmp(&used(a)).then_with(|| by_title(a, b)));
             }
         }
-        // Le surlignage ne sert qu'aux lignes visibles : le calculer pour
-        // les 10 000 résultats d'une seule lettre doublait le temps de frappe.
+        // Highlighting only serves visible rows: computing it for the
+        // 10,000 results of a single letter doubled the keystroke time.
         let mut indices = Vec::new();
         for hit in hits.iter_mut().take(HIGHLIGHT_LIMIT) {
             for atom in parsed.atoms.iter().filter(|a| !a.negative) {
@@ -336,19 +345,29 @@ fn score_entry(
         (&entry.extra, WEIGHT_EXTRA),
     ];
     let mut total = 0u32;
-    for (atom, mask) in parsed.atoms.iter().zip(&parsed.masks) {
+    for ((atom, mask), label_atom) in parsed
+        .atoms
+        .iter()
+        .zip(&parsed.masks)
+        .zip(&parsed.label_atoms)
+    {
         if atom.negative {
-            // Un mot exclu (`!travail`) élimine l'élément s'il apparaît où que
-            // ce soit. Pour un atome négatif, `score` rend `None` quand le
-            // mot est présent.
+            // An excluded word (`!travail`) drops the item if it appears
+            // anywhere. For a negative atom, `score` returns `None` when the
+            // word is present.
             if fields
                 .iter()
-                .any(|(haystack, _)| atom.score(haystack.slice(..), matcher).is_none())
+                .map(|(haystack, _)| *haystack)
+                .chain([&entry.labels])
+                .any(|haystack| atom.score(haystack.slice(..), matcher).is_none())
             {
                 return None;
             }
             continue;
         }
+        let label = label_atom
+            .score(entry.labels.slice(..), matcher)
+            .map(|s| u32::from(s) * WEIGHT_EXTRA);
         let best = fields
             .iter()
             .zip(entry.masks)
@@ -357,6 +376,7 @@ fn score_entry(
                 atom.score(haystack.slice(..), matcher)
                     .map(|s| u32::from(s) * weight)
             })
+            .chain(label)
             .max()?;
         total += best;
     }
@@ -373,21 +393,50 @@ fn score_entry(
     Some(total)
 }
 
-/// Requête découpée : mots à chercher, et filtres explicites (`tag:`,
-/// `dossier:`, `type:`, `passkey:`, `has:`).
+/// A query word without its search operators (`!`, `^`, `'`, `$`).
+fn bare(word: &str) -> &str {
+    word.trim_start_matches(['!', '^', '\''])
+        .trim_end_matches('$')
+}
+
+/// The first of `all` with a keyword that starts with `prefix`: English
+/// keywords first, then the French aliases.
+fn keyword_match<T: Copy>(
+    all: &[T],
+    keywords: fn(T) -> &'static [&'static str],
+    prefix: &str,
+) -> Option<T> {
+    if prefix.is_empty() {
+        return None;
+    }
+    let max = all.iter().map(|t| keywords(*t).len()).max().unwrap_or(0);
+    (0..max).find_map(|rank| {
+        all.iter().copied().find(|t| {
+            keywords(*t)
+                .get(rank)
+                .is_some_and(|k| fold(k).starts_with(prefix))
+        })
+    })
+}
+
+/// Split query: words to search for, and explicit filters (`tag:`,
+/// `folder:`/`dossier:`, `type:`, `passkey:`, `has:`/`with:`/`avec:`).
 struct ParsedQuery {
     atoms: Vec<Atom>,
-    /// Caractères exigés par chaque mot, dans l'ordre de `atoms`.
+    /// Each word as a plain substring, for the category names
+    /// (`Entry::labels`), in `atoms` order.
+    label_atoms: Vec<Atom>,
+    /// Characters required by each word, in `atoms` order.
     masks: Vec<CharMask>,
     folded_text: String,
     tags: Vec<String>,
     folders: Vec<String>,
     kinds: Vec<ItemKind>,
     templates: Vec<Template>,
-    /// `passkey:` (vide : n'importe quelle passkey) ou `passkey:github`
-    /// (site de la passkey qui commence par…), et `has:passkey`.
+    /// `passkey:` (empty: any passkey) or `passkey:github`
+    /// (passkey site that starts with…), and `has:passkey`.
     passkeys: Vec<String>,
-    /// `has:totp` (ou `has:otp`).
+    /// `has:totp` (or `has:otp`).
     with_totp: bool,
 }
 
@@ -409,12 +458,13 @@ impl ParsedQuery {
                 passkeys.push(site.to_owned());
             } else if let Some(what) = lower
                 .strip_prefix("has:")
+                .or_else(|| lower.strip_prefix("with:"))
                 .or_else(|| lower.strip_prefix("avec:"))
             {
                 match what {
                     "passkey" | "passkeys" => passkeys.push(String::new()),
                     "totp" | "otp" | "2fa" => with_totp = true,
-                    // Inconnu : cherché comme un mot.
+                    // Unknown: searched as a word.
                     _ => words.push(token),
                 }
             } else if let Some(tag) = lower
@@ -425,23 +475,17 @@ impl ParsedQuery {
                     tags.push(tag.to_owned());
                 }
             } else if let Some(folder) = lower
-                .strip_prefix("dossier:")
-                .or_else(|| lower.strip_prefix("folder:"))
+                .strip_prefix("folder:")
+                .or_else(|| lower.strip_prefix("dossier:"))
             {
                 if !folder.is_empty() {
                     folders.push(folder.to_owned());
                 }
             } else if let Some(kind) = lower.strip_prefix("type:") {
-                if let Some(k) = ItemKind::ALL
-                    .iter()
-                    .find(|k| fold(k.keyword()).starts_with(kind) && !kind.is_empty())
-                {
-                    kinds.push(*k);
-                } else if let Some(t) = Template::ALL
-                    .iter()
-                    .find(|t| fold(t.keyword()).starts_with(kind) && !kind.is_empty())
-                {
-                    templates.push(*t);
+                if let Some(k) = keyword_match(&ItemKind::ALL, ItemKind::keywords, kind) {
+                    kinds.push(k);
+                } else if let Some(t) = keyword_match(&Template::ALL, Template::keywords, kind) {
+                    templates.push(t);
                 }
             } else {
                 words.push(token);
@@ -451,17 +495,23 @@ impl ParsedQuery {
             .iter()
             .map(|w| Atom::parse(w, CaseMatching::Ignore, Normalization::Smart))
             .collect();
-        let masks = words
+        let masks = words.iter().map(|w| CharMask::of(&fold(bare(w)))).collect();
+        let label_atoms = words
             .iter()
             .map(|w| {
-                CharMask::of(&fold(
-                    w.trim_start_matches(['!', '^', '\'']).trim_end_matches('$'),
-                ))
+                Atom::new(
+                    bare(w),
+                    CaseMatching::Ignore,
+                    Normalization::Smart,
+                    AtomKind::Substring,
+                    false,
+                )
             })
             .collect();
         let folded_text = fold(&words.join(" "));
         Self {
             atoms,
+            label_atoms,
             masks,
             folded_text,
             tags,
@@ -477,7 +527,7 @@ impl ParsedQuery {
         (!self.with_totp || item.has_totp())
             && self.passkeys.iter().all(|site| {
                 entry.passkey_sites.iter().any(|rp| {
-                    // `passkey:github` trouve `github.com` et `login.github.com`.
+                    // `passkey:github` finds `github.com` and `login.github.com`.
                     rp.starts_with(site.as_str())
                         || rp.split('.').any(|label| label.starts_with(site.as_str()))
                 })

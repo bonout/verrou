@@ -1,14 +1,14 @@
-//! Valeurs sensibles : effacées de la mémoire à la libération, jamais affichées
-//! par `Debug`.
+//! Sensitive values: wiped from memory when dropped, never printed
+//! by `Debug`.
 
 use std::fmt;
 
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
-/// Une chaîne secrète (mot de passe, numéro de carte, graine TOTP, note).
+/// A secret string (password, card number, TOTP seed, note).
 ///
-/// Le contenu est mis à zéro quand la valeur est libérée, et `Debug` ne
-/// l'affiche jamais : un `{:?}` oublié dans un journal ne fuit rien.
+/// The content is zeroed when the value is dropped, and `Debug` never
+/// prints it: a `{:?}` forgotten in a log leaks nothing.
 #[derive(Clone, Default, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct SecretString(String);
 
@@ -17,7 +17,7 @@ impl SecretString {
         Self(value.into())
     }
 
-    /// Accès explicite au contenu. Le nom rend chaque usage visible en revue.
+    /// Explicit access to the content. The name makes every use visible in review.
     pub fn expose(&self) -> &str {
         &self.0
     }

@@ -1,14 +1,13 @@
-//! Ce que Verrou garde sur le disque entre deux lancements.
+//! What Verrou keeps on disk between two launches.
 //!
-//! Rien n'y est lisible sans le mot de passe principal : la clé de
-//! l'utilisateur y est chiffrée par sa clé principale (comme sur le serveur),
-//! le cache du coffre est la réponse de synchronisation telle que le serveur
-//! l'envoie (chiffrée), et le jeton de renouvellement est chiffré par Verrou
-//! avec la clé de l'utilisateur. Les clés de sécurité enrôlées
-//! (`security-keys.json`) n'y gardent la clé de l'utilisateur que scellée par
-//! un secret qui ne quitte pas la clé physique. Les modifications faites
-//! hors ligne (`outbox.json`, voir `outbox`) y attendent le serveur,
-//! chiffrées en bloc par la clé de l'utilisateur.
+//! Nothing there is readable without the master password: the user key is
+//! encrypted by their master key (as on the server), the vault cache is the
+//! sync response as the server sends it (encrypted), and the refresh token
+//! is encrypted by Verrou with the user key. The enrolled security keys
+//! (`security-keys.json`) only keep the user key sealed by a secret that
+//! never leaves the physical key. Edits made offline (`outbox.json`, see
+//! `outbox`) wait there for the server, encrypted as a whole by the user
+//! key.
 
 use std::fs;
 use std::io::Write as _;
@@ -21,25 +20,24 @@ use crate::unlock_keys::EnrolledKey;
 
 const ACCOUNT_FILE: &str = "account.json";
 const DEVICE_FILE: &str = "device-id";
-/// Clés de sécurité enrôlées pour déverrouiller (voir `unlock_keys`).
+/// Security keys enrolled for unlocking (see `unlock_keys`).
 pub(crate) const SECURITY_KEYS_FILE: &str = "security-keys.json";
-/// File des modifications faites hors ligne (voir `outbox`).
+/// Queue of edits made offline (see `outbox`).
 const OUTBOX_FILE: &str = "outbox.json";
 const OUTBOX_VERSION: u32 = 1;
 const FORMAT_VERSION: u32 = 1;
 const SECURITY_KEYS_VERSION: u32 = 1;
 
-/// Contenu de `security-keys.json`.
+/// Contents of `security-keys.json`.
 #[derive(Serialize, Deserialize)]
 struct SecurityKeysFile {
     version: u32,
     keys: Vec<EnrolledKey>,
 }
 
-/// Contenu de `outbox.json` : la file entière, chiffrée par la clé de
-/// l'utilisateur (`data`). En clair : le compte auquel elle appartient et le
-/// nombre de modifications en attente, pour prévenir avant une déconnexion
-/// sans déverrouiller.
+/// Contents of `outbox.json`: the whole queue, encrypted by the user key
+/// (`data`). In clear: the account it belongs to and the number of pending
+/// edits, to warn before a sign-out without unlocking.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct OutboxFile {
     pub version: u32,
@@ -48,8 +46,8 @@ pub(crate) struct OutboxFile {
     pub data: String,
 }
 
-/// Paramètres de dérivation du mot de passe principal, dans un format propre
-/// à Verrou : le fichier ne dépend pas de la sérialisation du SDK.
+/// Master password derivation parameters, in a format of Verrou's own: the
+/// file doesn't depend on the SDK's serialization.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum KdfSettings {
@@ -71,18 +69,18 @@ pub struct Account {
     pub user_id: String,
     pub kdf: KdfSettings,
     pub salt: String,
-    /// Clé de l'utilisateur, chiffrée par la clé dérivée du mot de passe.
+    /// The user key, encrypted by the key derived from the password.
     pub wrapped_user_key: String,
-    /// Clé privée RSA de l'utilisateur, chiffrée par sa clé.
+    /// The user's RSA private key, encrypted by their key.
     pub private_key: String,
-    /// Jeton de renouvellement, chiffré par la clé de l'utilisateur.
+    /// Refresh token, encrypted by the user key.
     pub refresh_token: String,
-    /// Horodatage Unix de la dernière synchronisation réussie.
+    /// Unix timestamp of the last successful sync.
     pub synced_at: Option<i64>,
-    /// Réponse brute de `/api/sync`, chiffrée par Bitwarden.
+    /// Raw response of `/api/sync`, encrypted by Bitwarden.
     pub sync: Option<String>,
-    /// Domaines équivalents du compte (`/api/settings/domains`, en clair
-    /// sur le serveur aussi) ; `None` : pas encore lus.
+    /// The account's equivalent domains (`/api/settings/domains`, in clear on
+    /// the server too); `None`: not read yet.
     #[serde(default)]
     pub equivalent_domains: Option<Vec<Vec<String>>>,
 }
@@ -93,17 +91,17 @@ impl Account {
     }
 }
 
-/// Verrou entre processus (`flock`) des écritures du dossier : l'app
-/// iPhone et son extension de remplissage partagent le dossier du compte.
+/// Inter-process lock (`flock`) for the folder's writes: the iPhone app and
+/// its autofill extension share the account folder.
 const LOCK_FILE: &str = ".verrou.lock";
 
-/// Le dossier de Verrou (dans le conteneur de l'app sandboxée).
+/// Verrou's folder (in the sandboxed app's container).
 #[derive(Clone, Debug)]
 pub struct Store {
     dir: PathBuf,
-    /// Ouvert par un autre processus que l'app (extension de remplissage
-    /// automatique iOS) : la file des modifications appartient à l'app, il
-    /// n'y touche jamais (ni envoi, ni écriture). Voir `Store::guest`.
+    /// Opened by a process other than the app (iOS autofill extension): the
+    /// edit queue belongs to the app, it never touches it (neither sending
+    /// nor writing). See `Store::guest`.
     guest: bool,
 }
 
@@ -115,13 +113,12 @@ impl Store {
         }
     }
 
-    /// Le même dossier, ouvert en invité : par l'extension de remplissage
-    /// automatique, pendant que l'app peut tourner. L'invité lit le cache et
-    /// la file de l'app (pour afficher ses modifications pas encore
-    /// envoyées), écrit directement sur le serveur (passkeys) puis enregistre
-    /// le cache resynchronisé ; il n'envoie ni n'écrit jamais la file (l'app
-    /// la garde en mémoire : la réécrire ou l'envoyer depuis un autre
-    /// processus perdrait ou doublerait des modifications).
+    /// The same folder, opened as a guest: by the autofill extension, while
+    /// the app may be running. The guest reads the cache and the app's queue
+    /// (to show its edits not sent yet), writes directly to the server
+    /// (passkeys) then saves the resynced cache; it never sends nor writes
+    /// the queue (the app keeps it in memory: rewriting or sending it from
+    /// another process would lose or duplicate edits).
     #[must_use]
     pub fn guest(mut self) -> Self {
         self.guest = true;
@@ -136,15 +133,15 @@ impl Store {
         &self.dir
     }
 
-    /// Un petit fichier de l'appareil (réglages, registre d'utilisation),
-    /// tel quel ; `None` s'il n'existe pas ou ne se lit pas.
+    /// A small device file (settings, usage log), as is; `None` if it
+    /// doesn't exist or can't be read.
     pub fn read_file(&self, name: &str) -> Option<Vec<u8>> {
         fs::read(self.dir.join(name)).ok()
     }
 
-    /// Écrit un petit fichier de l'appareil, atomiquement et lisible par le
-    /// seul utilisateur. Permis à l'invité (extension de remplissage) : ce
-    /// n'est pas la file des modifications.
+    /// Writes a small device file, atomically and readable by the user only.
+    /// Allowed for the guest (autofill extension): it is not the edit
+    /// queue.
     pub fn write_file(&self, name: &str, data: &[u8]) -> Result<(), Error> {
         self.write_private(name, data)
     }
@@ -159,7 +156,7 @@ impl Store {
         let account: Account = serde_json::from_slice(&data).map_err(Error::storage)?;
         if account.version != FORMAT_VERSION {
             return Err(Error::Storage(format!(
-                "format de compte {} inconnu",
+                "unknown account format {}",
                 account.version
             )));
         }
@@ -179,8 +176,8 @@ impl Store {
         }
     }
 
-    /// La file des modifications hors ligne, telle qu'écrite (chiffrée).
-    /// Un fichier d'un autre format compte pour absent.
+    /// The offline edit queue, as written (encrypted). A file in another
+    /// format counts as missing.
     pub(crate) fn load_outbox(&self) -> Result<Option<OutboxFile>, Error> {
         let data = match fs::read(self.dir.join(OUTBOX_FILE)) {
             Ok(data) => data,
@@ -192,7 +189,7 @@ impl Store {
             .filter(|f| f.version == OUTBOX_VERSION))
     }
 
-    /// Remplace la file ; vide (`None`), le fichier est supprimé.
+    /// Replaces the queue; empty (`None`), the file is deleted.
     pub(crate) fn save_outbox(&self, file: Option<OutboxFile>) -> Result<(), Error> {
         if self.guest {
             return Ok(());
@@ -216,14 +213,14 @@ impl Store {
         }
     }
 
-    /// Modifications faites hors ligne qui attendent encore le serveur
-    /// (lisible coffre verrouillé : pour prévenir avant une déconnexion).
+    /// Edits made offline still waiting for the server (readable while the
+    /// vault is locked: to warn before a sign-out).
     pub fn pending_changes(&self) -> u32 {
         self.load_outbox().ok().flatten().map_or(0, |f| f.pending)
     }
 
-    /// Les clés de sécurité enrôlées pour déverrouiller (aucune si le
-    /// fichier n'existe pas).
+    /// The security keys enrolled for unlocking (none if the file doesn't
+    /// exist).
     pub fn load_security_keys(&self) -> Result<Vec<EnrolledKey>, Error> {
         let data = match fs::read(self.dir.join(SECURITY_KEYS_FILE)) {
             Ok(data) => data,
@@ -233,14 +230,14 @@ impl Store {
         let file: SecurityKeysFile = serde_json::from_slice(&data).map_err(Error::storage)?;
         if file.version != SECURITY_KEYS_VERSION {
             return Err(Error::Storage(format!(
-                "format de clés de sécurité {} inconnu",
+                "unknown security keys format {}",
                 file.version
             )));
         }
         Ok(file.keys)
     }
 
-    /// Remplace la liste ; une liste vide supprime le fichier.
+    /// Replaces the list; an empty list deletes the file.
     pub fn save_security_keys(&self, keys: &[EnrolledKey]) -> Result<(), Error> {
         if keys.is_empty() {
             return self.delete_security_keys();
@@ -261,8 +258,8 @@ impl Store {
         }
     }
 
-    /// Identifiant de cet appareil auprès du serveur, créé au premier besoin et
-    /// conservé ensuite : une reconnexion n'ajoute pas un nouvel appareil.
+    /// This device's id with the server, created when first needed and kept
+    /// afterwards: signing in again doesn't add a new device.
     pub fn device_id(&self) -> Result<String, Error> {
         let path = self.dir.join(DEVICE_FILE);
         if let Ok(id) = fs::read_to_string(&path) {
@@ -276,12 +273,12 @@ impl Store {
         Ok(id)
     }
 
-    /// Petit fichier partagé par l'app et son extension (création
-    /// conditionnelle de passkey, signaux des sites) : lu, transformé par
-    /// `change` et réécrit sous le verrou du dossier, pour qu'une écriture de
-    /// l'autre processus ne se perde pas entre la lecture et l'écriture.
-    /// `change` rend `None` : le fichier est supprimé. Le verrou n'est tenu
-    /// que le temps de ce travail local, jamais pendant le réseau.
+    /// Small file shared by the app and its extension (conditional passkey
+    /// creation, site signals): read, transformed by `change` and rewritten
+    /// under the folder lock, so that a write from the other process isn't
+    /// lost between the read and the write. `change` returns `None`: the
+    /// file is deleted. The lock is only held for this local work, never
+    /// during network calls.
     pub fn update_file<T>(
         &self,
         name: &str,
@@ -319,13 +316,12 @@ impl Store {
         Ok(result)
     }
 
-    /// Écriture atomique (fichier temporaire puis renommage), lisible par le
-    /// seul utilisateur. Le fichier temporaire est propre au processus et à
-    /// l'écriture, et le renommage se fait sous le verrou du dossier
-    /// (`flock`, tenu quelques millisecondes, jamais pendant le réseau :
-    /// iOS met fin à une app suspendue qui tient un verrou de fichier dans
-    /// un conteneur partagé). Un lecteur voit l'ancien fichier ou le
-    /// nouveau, jamais un mélange.
+    /// Atomic write (temporary file then rename), readable by the user only.
+    /// The temporary file is specific to the process and to the write, and
+    /// the rename happens under the folder lock (`flock`, held a few
+    /// milliseconds, never during network calls: iOS terminates a suspended
+    /// app that holds a file lock in a shared container). A reader sees the
+    /// old file or the new one, never a mix.
     pub(crate) fn write_private(&self, name: &str, data: &[u8]) -> Result<(), Error> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static WRITES: AtomicU64 = AtomicU64::new(0);
@@ -358,8 +354,8 @@ impl Store {
         written
     }
 
-    /// Verrou exclusif du dossier, entre processus, relâché à la fin de la
-    /// portée (fermeture du descripteur).
+    /// Exclusive inter-process lock of the folder, released at the end of
+    /// the scope (closing the descriptor).
     fn lock(&self) -> Result<DirLock, Error> {
         let file = fs::OpenOptions::new()
             .create(true)
@@ -379,7 +375,7 @@ impl Store {
     }
 }
 
-/// Verrou tenu (`Store::lock`) : fermer le fichier le relâche.
+/// Held lock (`Store::lock`): closing the file releases it.
 struct DirLock(#[allow(dead_code)] fs::File);
 
 #[cfg(test)]
@@ -462,7 +458,7 @@ mod tests {
         let data = fs::read(store.dir().join("shared.json")).unwrap();
         assert_eq!(data.len(), 4096);
         assert!(data.iter().all(|b| *b == data[0]));
-        // Aucun fichier temporaire oublié.
+        // No temporary file left behind.
         let leftovers = fs::read_dir(store.dir())
             .unwrap()
             .filter(|e| {

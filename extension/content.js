@@ -1,35 +1,35 @@
-// Dans chaque page (et chaque cadre) : repère les formulaires de connexion
-// et, quand Verrou a un identifiant (ou une passkey) pour ce site, affiche
-// une pastille en haut à gauche de la page, comme 1Password : le site,
-// l'identifiant proposé, « Se connecter » et « ✕ ». « Se connecter » remplit
-// puis envoie le formulaire quand plus rien n'est à taper (réglage de la
-// fenêtre de l'extension, actif par défaut). Sous la pastille,
-// l'onglet « Autres identifiants » déroule les autres identifiants du site,
-// « Remplir avec un autre identifiant… » et, sur une inscription,
-// « Générer un mot de passe ». Sur un champ « nouveau mot de passe », la
-// pastille propose un mot de passe fort ; sur un formulaire de paiement ou
-// d'adresse, une carte ou une identité. Après l'envoi d'un formulaire, un
-// bandeau au même endroit propose d'enregistrer l'identifiant dans Verrou.
+// In every page (and every frame): spots the sign-in forms and, when Verrou
+// has a login (or a passkey) for this site, shows a pill at the top left of
+// the page, like 1Password: the site, the suggested login, "Sign in" and
+// "✕". "Sign in" fills then submits the form when nothing is left to type
+// (setting in the extension's popup, on by default). Under the pill, the
+// "Other logins" tab unrolls the site's other logins,
+// "Fill with another login…" and, on a sign-up,
+// "Generate a password". On a "new password" field, the pill suggests a
+// strong password; on a payment or address form, a card or an identity.
+// After a form is submitted, a banner at the same place offers to save the
+// login in Verrou.
 //
-// Dans le champ actif, seule une petite icône Verrou, au bord droit, ouvre ou
-// ferme la pastille : plus de menu accroché sous le champ, qui gênait les
-// listes de suggestions des sites.
+// In the active field, only a small Verrou icon, at the right edge, opens or
+// closes the pill: no more menu hooked under the field, which got in the way
+// of the sites' suggestion lists.
 //
-// Quand la page attend une passkey en remplissage automatique (`mediation:
-// "conditional"`), la pastille propose d'abord la passkey de Verrou pour ce
-// site (passkeys.js, cadre principal).
+// When the page waits for a passkey in autofill (`mediation:
+// "conditional"`), the pill first offers Verrou's passkey for this site
+// (passkeys.js, main frame).
 //
-// La pastille, l'icône et le bandeau vivent dans des shadow DOM fermés : la
-// page ne peut ni les lire ni les modifier, et seuls les événements réels
-// (`isTrusted`) les déclenchent. Les secrets n'arrivent qu'au moment du
-// remplissage, pour l'élément choisi.
+// The pill, the icon and the banner live in closed shadow DOMs: the page can
+// neither read nor modify them, and only real events (`isTrusted`) trigger
+// them. Secrets only arrive at fill time, for the chosen item.
 
 (() => {
   if (globalThis.__verrouContent) return;
   globalThis.__verrouContent = true;
-  // API d'extension : `browser` (Firefox), sinon `chrome` (Brave). Le test sur
-  // `runtime.id` écarte un élément de la page nommé « browser » (voir browser.js).
+  // Extension API: `browser` (Firefox), otherwise `chrome` (Brave). The test on
+  // `runtime.id` rules out a page element named "browser" (see browser.js).
   const ext = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
+  // Text of the interface in the browser's language (extension/_locales).
+  const t = (name, ...substitutions) => ext.i18n.getMessage(name, substitutions.map(String));
 
   const USERNAME_HINT = /user|login|e-?mail|identifiant|courriel|account|compte|pseudo|nom d.utilisateur/i;
   const OTP_HINT = /otp|totp|2fa|mfa|one.?time|verification|vérification|authenticat|security.?code|code/i;
@@ -38,7 +38,7 @@
   const SIGNUP_FORM_HINT = /register|sign.?up|inscri|create.?account|créer.?(un|votre).?compte|join/i;
   const TEXT_TYPES = new Set(["text", "email", "tel", ""]);
 
-  // MARK: Champs
+  // MARK: Fields
 
   function visible(input) {
     const box = input.getBoundingClientRect();
@@ -74,9 +74,9 @@
     return [scope.id, scope.getAttribute("name"), scope.getAttribute("action"), buttons].filter(Boolean).join(" ");
   }
 
-  // Rôle de chaque champ mot de passe du formulaire : « current » (connexion,
-  // ancien mot de passe) ou « new » (inscription, changement, confirmation).
-  // `all` : aussi les champs masqués (le formulaire part, la page change).
+  // Role of each password field of the form: "current" (sign-in, old
+  // password) or "new" (sign-up, change, confirmation).
+  // `all`: hidden fields too (the form is leaving, the page changes).
   function passwordRoles(scope, all = false) {
     const fields = [...scope.querySelectorAll("input")]
       .filter((i) => typeOf(i) === "password" && (all ? !i.disabled : usable(i)));
@@ -89,9 +89,9 @@
       else if (autocomplete.includes("current-password")) role = "current";
       else if (CURRENT_HINT.test(hint)) role = "current";
       else if (NEW_HINT.test(hint)) role = "new";
-      // Un seul champ : connexion, sauf formulaire d'inscription.
+      // A single field: sign-in, unless it's a sign-up form.
       else if (fields.length === 1) role = SIGNUP_FORM_HINT.test(formHint(scope)) ? "new" : "current";
-      // Deux : le mot de passe et sa confirmation. Trois : l'ancien, puis le nouveau deux fois.
+      // Two: the password and its confirmation. Three: the old one, then the new one twice.
       else if (fields.length === 2) role = "new";
       else role = index === 0 ? "current" : "new";
       roles.set(input, role);
@@ -101,10 +101,10 @@
 
   const roleOf = (input) => passwordRoles(scopeOf(input)).get(input) ?? null;
 
-  // MARK: Cartes et adresses
+  // MARK: Cards and addresses
 
-  // Rôle d'un champ de carte ou d'adresse : d'abord `autocomplete`, sinon les
-  // indices (nom, libellé…), en français et en anglais.
+  // Role of a card or address field: `autocomplete` first, otherwise the
+  // hints (name, label…), in French and in English.
   const CARD_AUTOCOMPLETE = {
     "cc-name": "cardholder", "cc-number": "number", "cc-exp": "exp",
     "cc-exp-month": "exp_month", "cc-exp-year": "exp_year", "cc-csc": "code",
@@ -151,30 +151,30 @@
     return null;
   }
 
-  // Champs à remplir d'un formulaire : saisies visibles et listes déroulantes.
+  // Fields to fill in a form: visible inputs and drop-down lists.
   function formFields(scope) {
     return [...scope.querySelectorAll("input, select")].filter((element) =>
       !element.disabled && (element instanceof HTMLSelectElement ? visible(element) : usable(element))
       && (element instanceof HTMLSelectElement || !["hidden", "password", "checkbox", "radio", "submit", "button"].includes(typeOf(element))));
   }
 
-  // « card » ou « identity » (avec le rôle du champ), ou null.
+  // "card" or "identity" (with the field's role), or null.
   function formKindOf(input) {
     const card = fieldRole(input, CARD_AUTOCOMPLETE, CARD_HINTS);
     if (card) return { kind: "card", role: card };
     const scope = scopeOf(input);
-    // Un formulaire de connexion reste un formulaire de connexion.
+    // A sign-in form stays a sign-in form.
     if (scope.querySelector("input[type=password]")) return null;
     const role = fieldRole(input, IDENTITY_AUTOCOMPLETE, IDENTITY_HINTS);
     if (!role) return null;
-    // Une adresse, pas un simple champ e-mail : trois champs d'identité au moins.
+    // An address, not a mere email field: three identity fields at least.
     const count = formFields(scope).filter((f) => fieldRole(f, IDENTITY_AUTOCOMPLETE, IDENTITY_HINTS)).length;
     return count >= 3 ? { kind: "identity", role } : null;
   }
 
   const MONTHS = ["jan", "f", "mar", "av|apr", "mai|may", "juin|jun", "juil|jul", "ao|aug", "sep", "oct", "nov", "d"];
 
-  // Choisit l'option qui correspond à `value` (mois, année, pays…).
+  // Picks the option matching `value` (month, year, country…).
   function selectOption(select, role, value) {
     const wanted = String(value).trim().toLowerCase();
     const options = [...select.options];
@@ -196,7 +196,7 @@
     select.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
-  // Remplit le formulaire de `anchor` avec une carte ou une identité.
+  // Fills the form of `anchor` with a card or an identity.
   function applyForm(data, anchor) {
     withFilling(() => {
       const [table, hints] = data.kind === "card"
@@ -221,7 +221,7 @@
   }
   const isLoginPassword = (input) => typeOf(input) === "password" && roleOf(input) === "current";
 
-  // « username », « password », « new », « otp » ou null.
+  // "username", "password", "new", "otp" or null.
   function classify(input) {
     if (!usable(input)) return null;
     const type = typeOf(input);
@@ -236,12 +236,12 @@
     const inputs = inputsOf(scopeOf(input));
     const password = inputs.find((i) => typeOf(i) === "password");
     if (password) {
-      // Le champ texte qui précède le mot de passe est l'identifiant.
+      // The text field before the password is the username.
       const before = inputs.slice(0, inputs.indexOf(password)).filter(isText);
       if (before.at(-1) === input || type === "email" || USERNAME_HINT.test(hint)) return "username";
       return null;
     }
-    // Connexion en plusieurs étapes : l'identifiant seul sur la page.
+    // Multi-step sign-in: the username alone on the page.
     if (type === "email" || USERNAME_HINT.test(hint)) return "username";
     const short = input.maxLength > 0 && input.maxLength <= 8;
     if (OTP_HINT.test(hint) && (short || input.inputMode === "numeric")) return "otp";
@@ -267,8 +267,8 @@
     }
   }
 
-  // Le bouton d'envoi du formulaire : le premier du formulaire, ou, sans
-  // <form>, le premier qui suit le dernier champ rempli.
+  // The form's submit button: the first one of the form, or, without a
+  // <form>, the first one after the last filled field.
   function submitButtonOf(scope, after) {
     const buttons = [...scope.querySelectorAll("button, input[type=submit]")].filter((button) =>
       !button.disabled && visible(button)
@@ -277,10 +277,10 @@
     return buttons.find((b) => after.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ?? null;
   }
 
-  // MARK: Envoi après le remplissage
+  // MARK: Submit after filling
 
-  // Réglage « Envoyer le formulaire après le remplissage » de la fenêtre de
-  // l'extension, actif par défaut.
+  // "Submit the form after filling" setting of the extension's popup, on by
+  // default.
   async function autoSubmitEnabled() {
     try {
       const { autoSubmit } = await ext.storage.local.get("autoSubmit");
@@ -290,18 +290,18 @@
     }
   }
 
-  // Types de champ qui ne demandent rien à taper.
+  // Field types that need nothing typed.
   const NOT_TYPED = new Set(["checkbox", "radio", "hidden", "submit", "button", "file", "image", "reset", "search"]);
 
-  // Le plus petit élément qui contient tous `nodes`.
+  // The smallest element that contains all of `nodes`.
   function commonAncestor(nodes) {
     let node = nodes[0];
     while (node && !nodes.every((other) => node.contains(other))) node = node.parentNode;
     return node ?? document.documentElement;
   }
 
-  // Un champ visible, modifiable et vide reste à remplir (code client,
-  // chiffres d'un code découpé…) : c'est à l'utilisateur de finir.
+  // A visible, editable and empty field is left to fill (customer code,
+  // digits of a split code…): it's up to the user to finish.
   function emptyFieldLeft(area) {
     return [...area.querySelectorAll("input")].some((input) =>
       usable(input) && !NOT_TYPED.has(typeOf(input)) && !input.value);
@@ -309,8 +309,8 @@
 
   const CAPTCHA_SRC = /captcha|recaptcha|hcaptcha|challenges\.cloudflare|turnstile/i;
 
-  // Un captcha visible sur la page. Le badge de reCAPTCHA v3 et les widgets
-  // invisibles ne comptent pas : ils ne demandent rien à l'utilisateur.
+  // A visible captcha on the page. The reCAPTCHA v3 badge and the invisible
+  // widgets don't count: they ask nothing of the user.
   function visibleCaptcha() {
     const invisible = (node) => node.closest(".grecaptcha-badge")
       || (node.getAttribute("data-size") ?? "").toLowerCase() === "invisible";
@@ -319,21 +319,21 @@
       return CAPTCHA_SRC.test(src) && !/[?&]size=invisible/i.test(src);
     });
     const widgets = [...document.querySelectorAll(".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")]
-      // Le bouton d'envoi qui porte lui-même le captcha invisible.
+      // The submit button that carries the invisible captcha itself.
       .filter((node) => !(node instanceof HTMLInputElement) && node.tagName !== "BUTTON");
     return [...frames, ...widgets].some((node) => !invisible(node) && visible(node));
   }
 
-  // Le formulaire peut partir : tout ce que Verrou a rempli l'est encore, plus
-  // rien à taper autour, pas de captcha.
+  // The form can be submitted: everything Verrou filled still is, nothing
+  // left to type around, no captcha.
   function readyToSubmit(scope, filled, button) {
     if (!filled.length || !filled.every(([input, value]) => input.isConnected && input.value === value)) return false;
     const area = scope === document ? commonAncestor([...filled.map(([input]) => input), button].filter(Boolean)) : scope;
     return !emptyFieldLeft(area) && !visibleCaptcha();
   }
 
-  // Envoie comme un clic sur le bouton : `requestSubmit` déclenche la
-  // validation et l'événement « submit » que les sites écoutent.
+  // Submits like a click on the button: `requestSubmit` triggers the
+  // validation and the "submit" event the sites listen to.
   function submit(scope, button) {
     if (scope !== document && typeof scope.requestSubmit === "function") {
       try {
@@ -341,20 +341,20 @@
         else scope.requestSubmit();
         return;
       } catch {
-        // Bouton refusé par le navigateur : le clic, ci-dessous.
+        // Button refused by the browser: the click, below.
       }
     }
     button?.click();
   }
 
-  // Ce que Verrou vient de remplir : envoyé tel quel, le formulaire n'a rien
-  // de nouveau à proposer d'enregistrer.
+  // What Verrou just filled: submitted as is, the form has nothing new to
+  // offer to save.
   let lastFill = { username: null, password: null, at: 0 };
 
-  // Remplit le formulaire de `anchor` (ou la page) avec `credentials`, puis
-  // place le curseur sur le bouton d'envoi. Avec `autoSubmit` (choix explicite
-  // de l'utilisateur : pastille ou fenêtre de l'extension) et le réglage
-  // actif, le formulaire part si plus rien n'est à taper.
+  // Fills the form of `anchor` (or the page) with `credentials`, then puts
+  // the cursor on the submit button. With `autoSubmit` (explicit choice of
+  // the user: pill or extension's popup) and the setting on, the form is
+  // submitted if nothing is left to type.
   function apply(credentials, anchor, { autoSubmit = false } = {}) {
     let scope;
     let button;
@@ -381,7 +381,7 @@
           if (otp && credentials.totp) fill(otp, credentials.totp);
           last = otp ?? null;
         }
-        // Formulaire sans <form> : celui du champ rempli.
+        // Form without <form>: the one of the filled field.
         if (scope === document && last) scope = scopeOf(last);
       }
       lastFill = { username: credentials.username ?? null, password: credentials.password ?? null, at: Date.now() };
@@ -389,7 +389,7 @@
       (button ?? last)?.focus({ preventScroll: true });
     });
     if (!autoSubmit || !filled.length || (scope === document && !button)) return;
-    // Laisser les frameworks traiter la saisie, puis vérifier à nouveau.
+    // Let the frameworks process the input, then check again.
     (async () => {
       const enabled = await autoSubmitEnabled();
       await sleep(150);
@@ -397,8 +397,8 @@
     })();
   }
 
-  // Le mot de passe généré dans tous les champs « nouveau » du formulaire
-  // (le mot de passe et sa confirmation).
+  // The generated password in all the "new" fields of the form (the
+  // password and its confirmation).
   function applyGenerated(password, anchor) {
     withFilling(() => {
       for (const [input, role] of passwordRoles(scopeOf(anchor))) {
@@ -408,7 +408,7 @@
     });
   }
 
-  // MARK: Messages vers le service worker
+  // MARK: Messages to the service worker
 
   async function send(message) {
     try {
@@ -421,11 +421,10 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SITE = location.hostname.replace(/^www\./, "");
 
-  // MARK: Style commun
+  // MARK: Shared style
 
-  // Une capsule sombre, liseré violet, comme celle de 1Password, quel que
-  // soit le thème ; l'animation d'arrivée disparaît avec « réduire les
-  // animations ».
+  // A dark capsule with a purple border, like 1Password's, whatever the
+  // theme; the entry animation goes away with "reduce motion".
   const STYLE = `
     :host { all: initial; }
     * { box-sizing: border-box; }
@@ -435,12 +434,12 @@
       font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f4f6;
       -webkit-font-smoothing: antialiased;
     }
-    /* L'hôte couvre toute la largeur du haut de la page sans capter les
-       clics : seuls la pastille et le bandeau en reçoivent. */
+    /* The host covers the whole width of the top of the page without
+       catching clicks: only the pill and the banner receive them. */
     .pill, .banner { pointer-events: auto; }
     .pill { display: flex; flex-direction: column; align-items: center; max-width: 100%; animation: drop .18s ease-out; }
     .shell, .tab, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
-    /* La capsule, puis, ouverte, une carte arrondie : en-tête, filet, comptes. */
+    /* The capsule, then, open, a rounded card: header, rule, accounts. */
     .shell {
       display: flex; flex-direction: column; min-width: 360px; max-width: min(480px, calc(100vw - 32px));
       border-radius: 999px; overflow: hidden;
@@ -505,9 +504,9 @@
     }
   `;
 
-  // Un hôte de shadow DOM fermé. `pin` le tient en place par des styles en
-  // ligne `!important` : une feuille de style de la page ne le déplace ni ne
-  // le cache.
+  // A closed shadow DOM host. `pin` holds it in place with inline
+  // `!important` styles: a style sheet of the page neither moves nor hides
+  // it.
   function shadowHost(tag) {
     const host = document.createElement(tag);
     const root = host.attachShadow({ mode: "closed" });
@@ -540,20 +539,19 @@
     return node;
   }
 
-  // Clickjacking : la page peut rendre la pastille invisible (opacité,
-  // filtre, découpe ou masque sur <html>, que la pastille, posée sous <html>,
-  // ne peut pas annuler), la recouvrir d'un leurre, ou glisser son champ sous
-  // le pointeur juste avant un clic. Un clic de souris ne compte que sur une
-  // pastille affichée depuis un instant, visible, et au premier plan sous le
-  // pointeur. Chrome et Brave disent en plus si quoi que ce soit la recouvre
-  // (IntersectionObserver v2) ; Firefox ne le sait pas : Verrou demande de
-  // toute façon Touch ID pour une carte.
+  // Clickjacking: the page can make the pill invisible (opacity, filter,
+  // clip or mask on <html>, which the pill, placed under <html>, can't
+  // undo), cover it with a decoy, or slide its field under the pointer just
+  // before a click. A mouse click only counts on a pill shown for a moment,
+  // visible, and in the foreground under the pointer. Chrome and Brave also
+  // tell whether anything covers it (IntersectionObserver v2); Firefox
+  // doesn't know: Verrou asks for Touch ID for a card anyway.
   const MIN_SHOWN_MS = 300;
   const shownAt = new WeakMap();
   const reallyVisible = new WeakMap();
   let visibilityObserver;
 
-  // Pose la pastille (`host`) dans la page et note quand.
+  // Puts the pill (`host`) in the page and notes when.
   function attach(host) {
     if (host.isConnected) return;
     document.documentElement.append(host);
@@ -566,8 +564,8 @@
     visibilityObserver.observe(host);
   }
 
-  // Valeur calculée d'une propriété, ou celle par défaut si le navigateur ne
-  // la donne pas.
+  // Computed value of a property, or the default one if the browser doesn't
+  // give it.
   function computed(style, name, fallback) {
     const value = style?.[name];
     return value === undefined || value === "" ? fallback : String(value);
@@ -583,17 +581,17 @@
     const own = getComputedStyle(host);
     if (computed(own, "opacity", "1") !== "1" || computed(own, "visibility", "visible") !== "visible") return false;
     if (reallyVisible.get(host) === false) return false;
-    // Clavier (Entrée, Espace sur le bouton) : pas de pointeur, et la page
-    // ne peut pas taper dans la pastille.
+    // Keyboard (Enter, Space on the button): no pointer, and the page can't
+    // type into the pill.
     if (!(event.detail > 0)) return true;
     if (Date.now() - (shownAt.get(host) ?? 0) < MIN_SHOWN_MS) return false;
     return typeof document.elementFromPoint !== "function"
       || document.elementFromPoint(event.clientX, event.clientY) === host;
   }
 
-  // Un bouton qui n'obéit qu'aux vrais clics (souris, ou Entrée et Espace
-  // sur le bouton, que le navigateur transforme en clic réel), sur une
-  // pastille que l'utilisateur voit.
+  // A button that only obeys real clicks (mouse, or Enter and Space on the
+  // button, which the browser turns into a real click), on a pill the user
+  // sees.
   function trustedButton(label, className, action) {
     const button = document.createElement("button");
     button.setAttribute("type", "button");
@@ -607,7 +605,7 @@
     return button;
   }
 
-  // « Maif » → « Ma », comme les pastilles de 1Password.
+  // "Maif" → "Ma", like 1Password's badges.
   function initials(title) {
     const word = (title ?? "").trim().replace(/^[^\p{L}\p{N}]+/u, "");
     if (!word) return "?";
@@ -620,8 +618,8 @@
     return text;
   }
 
-  // Le cadenas de Verrou : anse, corps et trou de serrure, en SVG (le dessin
-  // en CSS se déformait selon la taille).
+  // Verrou's padlock: shackle, body and keyhole, in SVG (the CSS drawing got
+  // distorted depending on the size).
   function icon() {
     const node = div("icon");
     node.setAttribute("aria-hidden", "true");
@@ -641,10 +639,10 @@
     return node;
   }
 
-  // MARK: Pastille en haut à gauche (et bandeau d'enregistrement)
+  // MARK: Pill at the top left (and save banner)
 
-  // Un seul hôte, fixé à 16 px du coin haut gauche, au-dessus de la page :
-  // la pastille, puis le bandeau d'enregistrement en dessous.
+  // A single host, fixed 16 px from the top left corner, above the page: the
+  // pill, then the save banner below.
   const ui = {
     host: null,
     root: null,
@@ -655,16 +653,16 @@
       ({ host: this.host, root: this.root } = shadowHost("verrou-pill"));
       this.stack = div("stack");
       this.root.append(this.stack);
-      // Un clic dans la pastille ne prend pas le focus à la page.
+      // A click in the pill doesn't take the focus from the page.
       this.root.addEventListener("mousedown", (event) => event.preventDefault());
       this.root.addEventListener("keydown", (event) => pillKey(event));
     },
 
     attach() {
       this.ensure();
-      // Centrée en haut de la page, comme celle de 1Password : l'hôte prend
-      // toute la largeur (sans transformation, que la page ne peut donc pas
-      // détourner) et laisse passer les clics hors de la pastille.
+      // Centered at the top of the page, like 1Password's: the host takes
+      // the whole width (without a transform, which the page thus can't
+      // hijack) and lets clicks outside the pill through.
       pin(this.host, {
         ...HOST_STYLES, position: "fixed", top: "16px", left: "0", right: "0", bottom: "auto",
         width: "auto", "pointer-events": "none",
@@ -672,16 +670,15 @@
       attach(this.host);
     },
 
-    // Plus rien à montrer : l'hôte quitte la page.
+    // Nothing left to show: the host leaves the page.
     sync() {
       if (this.host && !this.stack.children.length) this.host.remove();
     },
   };
 
-  // Formulaires de connexion déjà proposés, par « étape » (les champs
-  // présents : identifiant, mot de passe, code…) : la pastille vient d'elle-
-  // même une fois par étape, jamais à chaque focus. Fermée (✕, Échap) : plus
-  // rien d'elle-même sur cette page.
+  // Sign-in forms already offered, by "step" (the fields present: username,
+  // password, code…): the pill comes by itself once per step, never on each
+  // focus. Closed (✕, Escape): nothing more by itself on this page.
   let dismissed = false;
   const queried = new Set();
   let offerSeq = 0;
@@ -696,8 +693,8 @@
     view: null,
     expanded: false,
     busy: false,
-    // Change à chaque fermeture : une attente (confirmation, déverrouillage)
-    // en cours s'arrête.
+    // Changes on each close: a wait in progress (confirmation, unlock)
+    // stops.
     token: 0,
 
     get open() {
@@ -713,7 +710,7 @@
       this.render();
     },
 
-    // Un état d'attente : plus d'action, la croix seulement.
+    // A waiting state: no more action, only the cross.
     wait(title, subtitle) {
       this.busy = true;
       this.view = { title, subtitle, primary: null, others: [] };
@@ -736,15 +733,15 @@
         capsule.append(primary);
       }
       const close = trustedButton("✕", "close", () => this.dismiss());
-      close.setAttribute("aria-label", "Fermer Verrou sur cette page");
-      close.setAttribute("title", "Fermer");
+      close.setAttribute("aria-label", t("pillClose"));
+      close.setAttribute("title", t("close"));
       close.setAttribute("data-key", "close");
       capsule.append(close);
       const shell = div(`shell${this.expanded && view.others?.length ? " open" : ""}`);
       shell.append(capsule);
       area.append(shell);
       if (view.others?.length) {
-        const tab = trustedButton(view.tab ?? "Autres identifiants", "tab", () => {
+        const tab = trustedButton(view.tab ?? t("pillOtherLogins"), "tab", () => {
           this.expanded = !this.expanded;
           this.render();
         });
@@ -756,7 +753,7 @@
         if (this.expanded) {
           const list = div("list");
           list.setAttribute("role", "group");
-          list.setAttribute("aria-label", view.tab ?? "Autres identifiants");
+          list.setAttribute("aria-label", view.tab ?? t("pillOtherLogins"));
           view.others.forEach((row, index) => {
             const line = trustedButton("", "row", row.run);
             line.setAttribute("data-key", `row-${index}`);
@@ -771,7 +768,7 @@
       if (this.node?.isConnected) this.node.replaceWith(area);
       else ui.stack.prepend(area);
       this.node = area;
-      // Rendu au clavier : le focus reste sur le même bouton.
+      // Rendered from the keyboard: the focus stays on the same button.
       if (focused) this.buttons().find((b) => b.getAttribute("data-key") === focused)?.focus();
     },
 
@@ -789,7 +786,7 @@
       ui.sync();
     },
 
-    // ✕ ou Échap : plus rien d'elle-même sur cette page.
+    // ✕ or Escape: nothing more by itself on this page.
     dismiss() {
       const anchor = this.anchor;
       const inside = Boolean(ui.root?.activeElement);
@@ -800,9 +797,8 @@
     },
   };
 
-  // Clavier dans la pastille (vraies touches seulement) : Échap la ferme, les
-  // flèches passent d'un bouton à l'autre ; Entrée et Espace sont ceux des
-  // boutons.
+  // Keyboard in the pill (real keys only): Escape closes it, the arrows move
+  // from one button to the next; Enter and Space are the buttons' own.
   function pillKey(event) {
     if (!event.isTrusted || !pill.open) return;
     if (event.key === "Escape") {
@@ -821,9 +817,9 @@
     buttons[(index + step + buttons.length) % buttons.length].focus();
   }
 
-  // Le champ à remplir au moment du choix : le champ actif s'il est du même
-  // genre, sinon celui de la pastille, sinon celui que la page montre
-  // maintenant (application monopage qui a redessiné son formulaire).
+  // The field to fill at the time of the choice: the active field if it is
+  // of the same kind, otherwise the pill's, otherwise the one the page shows
+  // now (single-page application that redrew its form).
   function fillTarget(kind, anchor) {
     const active = document.activeElement;
     if (active instanceof HTMLInputElement && sameGroup(classify(active), kind)) return active;
@@ -831,9 +827,9 @@
     return LOGIN_KINDS.has(kind) ? loginFields().anchor : null;
   }
 
-  // Réessaie tant que Verrou attend la confirmation d'un élément protégé
-  // (Touch ID ou mot de passe principal), une minute au plus, pastille
-  // ouverte.
+  // Tries again while Verrou waits for the confirmation of a protected item
+  // (Touch ID or master password), one minute at most, with the pill
+  // open.
   async function retryUntilConfirmed(kind, item, token) {
     for (let tries = 0; tries < 60 && pill.token === token; tries += 1) {
       await sleep(1000);
@@ -848,13 +844,13 @@
     const token = pill.token;
     let credentials = await send({ kind: "fill", item: item.id });
     if (credentials?.state === "confirm") {
-      pill.wait("Confirmez dans Verrou", `« ${item.title} » est protégé`);
+      pill.wait(t("confirmInVerrou"), t("pillProtected", item.title));
       credentials = await retryUntilConfirmed("fill", item.id, token);
     }
     if (pill.token !== token) return;
     const target = fillTarget(kind, anchor);
     pill.hide();
-    // Choix explicite dans la pastille (vrai clic) : le formulaire peut partir.
+    // Explicit choice in the pill (real click): the form can be submitted.
     if (credentials?.ok) apply(credentials, target, { autoSubmit: true });
   }
 
@@ -862,7 +858,7 @@
     const token = pill.token;
     let reply = await send({ kind: "fillForm", item: item.id });
     if (reply?.state === "confirm") {
-      pill.wait("Confirmez dans Verrou", `« ${item.title} » est protégé`);
+      pill.wait(t("confirmInVerrou"), t("pillProtected", item.title));
       reply = await retryUntilConfirmed("fillForm", item.id, token);
     }
     if (pill.token !== token) return;
@@ -871,11 +867,11 @@
     if (reply?.ok && target) applyForm(reply.data, target);
   }
 
-  // Après « Déverrouiller » : la pastille se remplit dès que Verrou est
-  // ouvert (une minute et demie au plus).
+  // After "Unlock": the pill fills in as soon as Verrou is open (a minute
+  // and a half at most).
   async function unlock(anchor, kind) {
     await send({ kind: "unlock" });
-    pill.wait("Déverrouillez Verrou…", "Touch ID ou mot de passe principal");
+    pill.wait(t("unlockWait"), t("unlockHint"));
     const token = pill.token;
     const form = kind === "card" || kind === "identity";
     for (let tries = 0; tries < 90; tries += 1) {
@@ -893,28 +889,28 @@
     if (pill.token === token) pill.hide();
   }
 
-  // MARK: Ce que propose la pastille
+  // MARK: What the pill offers
 
   function lockedView(anchor, kind) {
     return {
-      title: "Verrou est verrouillé",
+      title: t("verrouLocked"),
       subtitle: SITE,
-      primary: { label: "Déverrouiller", run: () => unlock(anchor, kind) },
+      primary: { label: t("unlock"), run: () => unlock(anchor, kind) },
       others: [],
     };
   }
 
-  // Ouverte à la main (icône du champ) alors que Verrou ne répond pas.
+  // Opened by hand (field icon) while Verrou doesn't respond.
   function unavailableView(state) {
     return state === "unpaired"
-      ? { title: "L'extension n'est pas reliée à Verrou", subtitle: "Reliez-la depuis son icône dans la barre d'outils", primary: null, others: [] }
-      : { title: "Verrou n'est pas joignable", subtitle: "Ouvrez l'app Verrou", primary: null, others: [] };
+      ? { title: t("pillUnpairedTitle"), subtitle: t("pillUnpairedHint"), primary: null, others: [] }
+      : { title: t("verrouUnreachable"), subtitle: t("pillOpenApp"), primary: null, others: [] };
   }
 
-  // L'interface de passkeys.js, dans le cadre principal seulement.
+  // The interface of passkeys.js, in the main frame only.
   const passkeyMenu = () => (window === top ? globalThis.__verrouPasskeyMenu : undefined);
 
-  // Les passkeys de Verrou que la page attend, pour un champ de connexion.
+  // Verrou's passkeys the page is waiting for, for a sign-in field.
   async function passkeyEntries(kind) {
     const api = passkeyMenu();
     if (!api || (kind !== "username" && kind !== "password")) return { state: "none" };
@@ -925,7 +921,7 @@
     }
   }
 
-  // Un champ « nouveau mot de passe » du formulaire de `anchor` (inscription).
+  // A "new password" field of the form of `anchor` (sign-up).
   function newPasswordField(anchor) {
     for (const [input, role] of passwordRoles(anchor ? scopeOf(anchor) : document)) {
       if (role === "new") return input;
@@ -936,7 +932,7 @@
   function generateRow(field) {
     const password = globalThis.verrouGenerator.password();
     return {
-      badge: "✦", title: "Générer un mot de passe", subtitle: password, mono: true,
+      badge: "✦", title: t("pillGenerate"), subtitle: password, mono: true,
       run: () => {
         pill.hide();
         applyGenerated(password, field);
@@ -944,11 +940,11 @@
     };
   }
 
-  // « Remplir avec un autre identifiant… » : la fenêtre de l'extension, où
-  // l'on choisit l'identifiant à relier à ce site. La page n'y voit rien.
+  // "Fill with another login…": the extension's popup, where the login to
+  // link to this site is chosen. The page sees nothing of it.
   function linkRow() {
     return {
-      badge: "…", title: "Remplir avec un autre identifiant…", subtitle: "Relier ce site à un identifiant de Verrou",
+      badge: "…", title: t("otherLogin"), subtitle: t("pillLinkHint"),
       run: () => {
         pill.hide();
         send({ kind: "openLinkSite" });
@@ -959,20 +955,20 @@
   async function loginView(anchor, kind, manual) {
     const [reply, passkeys] = await Promise.all([send({ kind: "suggest" }), passkeyEntries(kind)]);
     if (reply.state === "locked" || passkeys.state === "locked") {
-      // Verrouillé : pas pour un simple code de vérification, sauf à la main.
+      // Locked: not for a mere verification code, unless by hand.
       return kind === "otp" && !manual ? null : lockedView(anchor, kind);
     }
     if (reply.state !== "unlocked" && passkeys.state !== "ready") return manual ? unavailableView(reply.state) : null;
-    // Les passkeys d'abord, comme le navigateur.
+    // Passkeys first, like the browser.
     const rows = [
       ...(passkeys.state === "ready" ? passkeys.items : []).map((item) => ({
         badge: "🔑",
-        title: `Passkey · ${item.user_name || item.title}`,
+        title: t("pillPasskey", item.user_name || item.title),
         subtitle: item.title,
         username: item.user_name || item.title,
-        action: "Se connecter avec une passkey",
+        action: t("pillSignInPasskey"),
         run: () => {
-          // La signature et sa fenêtre d'avancement : passkeys.js.
+          // The signature and its progress window: passkeys.js.
           pill.hide();
           passkeyMenu()?.choose(item.credential);
         },
@@ -981,10 +977,10 @@
         .filter((item) => kind !== "otp" || item.has_totp)
         .map((item) => ({
           badge: initials(item.title),
-          title: kind === "otp" ? `Code de ${item.title}` : item.title,
+          title: kind === "otp" ? t("pillCodeOf", item.title) : item.title,
           subtitle: item.username,
           username: item.username,
-          action: kind === "otp" ? "Remplir le code" : "Se connecter",
+          action: kind === "otp" ? t("pillFillCode") : t("pillSignIn"),
           run: () => fillLogin(item, kind, anchor),
         })),
     ];
@@ -997,9 +993,9 @@
     ];
     return {
       title: SITE,
-      subtitle: top ? top.username || "—" : kind === "otp" ? "Aucun code pour ce site" : "Aucun identifiant pour ce site",
+      subtitle: top ? top.username || "—" : kind === "otp" ? t("pillNoCode") : t("pillNoLogin"),
       primary: top ? { label: top.action, run: top.run } : null,
-      tab: "Autres identifiants",
+      tab: t("pillOtherLogins"),
       others: [...rest, ...extras],
     };
   }
@@ -1019,11 +1015,11 @@
     const [top, ...rest] = rows;
     return {
       title: SITE,
-      subtitle: top ? top.title : card ? "Aucune carte dans Verrou" : "Aucune adresse dans Verrou",
+      subtitle: top ? top.title : card ? t("pillNoCard") : t("pillNoAddress"),
       primary: top
-        ? { label: card ? `Remplir la carte ${top.subtitle}`.trim() : "Remplir l'adresse", run: top.run }
+        ? { label: card ? t("pillFillCard", top.subtitle ?? "").trim() : t("pillFillAddress"), run: top.run }
         : null,
-      tab: card ? "Autres cartes" : "Autres adresses",
+      tab: card ? t("pillOtherCards") : t("pillOtherAddresses"),
       others: rest,
     };
   }
@@ -1035,7 +1031,7 @@
       subtitle: password,
       mono: true,
       primary: {
-        label: "Suggérer un mot de passe fort",
+        label: t("pillSuggestPassword"),
         run: () => {
           pill.hide();
           applyGenerated(password, anchor);
@@ -1046,15 +1042,15 @@
   }
 
   async function viewFor(anchor, kind, manual) {
-    // Proposé même coffre verrouillé : rien ne sort de Verrou.
+    // Offered even with the vault locked: nothing leaves Verrou.
     if (kind === "new") return generatorView(anchor);
     if (kind === "card" || kind === "identity") return formView(anchor, kind, manual);
     return loginView(anchor, kind, manual);
   }
 
-  // Affiche la pastille pour `anchor`. D'elle-même (`manual` faux) : rien
-  // sans identifiant pour ce site, ni après une fermeture. `refresh` : mise à
-  // jour de la pastille ouverte, qui s'efface s'il n'y a plus rien.
+  // Shows the pill for `anchor`. By itself (`manual` false): nothing without
+  // a login for this site, nor after a close. `refresh`: update of the open
+  // pill, which goes away if nothing is left.
   async function offer(anchor, kind, { manual = false, refresh = false } = {}) {
     const seq = ++offerSeq;
     const view = await viewFor(anchor, kind, manual);
@@ -1068,18 +1064,18 @@
     pill.show(anchor, kind, view, { expanded: keepOpen || (manual && !view.primary) });
   }
 
-  // MARK: Formulaires de connexion de la page
+  // MARK: Sign-in forms of the page
 
-  // Un identifiant seul (connexion en plusieurs étapes) ne compte que s'il
-  // se présente comme tel : pas le champ e-mail d'une lettre d'information.
+  // A username alone (multi-step sign-in) only counts if it presents itself
+  // as such: not the email field of a newsletter.
   function strongUsername(input) {
     const autocomplete = (input.autocomplete || "").toLowerCase();
     return /\b(username|webauthn)\b/.test(autocomplete)
       || /user|login|identifiant|account|compte|pseudo/i.test(`${input.name} ${input.id}`);
   }
 
-  // Le champ de connexion de la page, son genre, et l'étape (les genres de
-  // champs présents).
+  // The page's sign-in field, its kind, and the step (the kinds of fields
+  // present).
   function loginFields() {
     const found = new Map();
     for (const input of inputsOf(document)) {
@@ -1094,8 +1090,8 @@
     return { anchor, kind: anchor ? classify(anchor) : null, signature: `login:${kinds.join("+")}` };
   }
 
-  // Cherche un formulaire de connexion et, la première fois pour cette
-  // étape, propose les identifiants du site.
+  // Looks for a sign-in form and, the first time for this step, offers the
+  // site's logins.
   function scan() {
     if (dismissed || filling) return;
     const { anchor, kind, signature } = loginFields();
@@ -1110,9 +1106,9 @@
     scanTimer = setTimeout(scan, delay);
   }
 
-  // Formulaires qui arrivent après le chargement (applications monopages,
-  // fenêtres de connexion).
-  // Les mouvements de nos propres hôtes ne comptent pas.
+  // Forms that arrive after loading (single-page applications, sign-in
+  // dialogs).
+  // Movements of our own hosts don't count.
   const ours = (node) => node === ui.host || node === badge.host;
   const observer = typeof MutationObserver === "function"
     ? new MutationObserver((records) => {
@@ -1124,10 +1120,9 @@
     })
     : null;
 
-  // La page vient de demander une passkey (ou la demande s'est terminée) :
-  // la pastille ouverte se met à jour ; fermée, elle revient proposer la
-  // passkey (nouvelle demande de la page), jamais pour un simple mot de passe
-  // déjà proposé.
+  // The page just asked for a passkey (or the request ended): the open pill
+  // updates; closed, it comes back to offer the passkey (new request of the
+  // page), never for a mere password already offered.
   passkeyMenu()?.subscribe(async () => {
     if (dismissed || filling || pill.busy) return;
     const { anchor, kind, signature } = loginFields();
@@ -1141,7 +1136,7 @@
     offer(anchor, kind);
   });
 
-  // MARK: Icône Verrou dans le champ actif
+  // MARK: Verrou icon in the active field
 
   const badge = {
     host: null,
@@ -1152,10 +1147,10 @@
       if (this.host) return;
       ({ host: this.host, root: this.root } = shadowHost("verrou-field"));
       const button = trustedButton("", "field", () => this.toggle());
-      button.setAttribute("aria-label", "Verrou : identifiants pour ce site");
+      button.setAttribute("aria-label", t("fieldButton"));
       button.setAttribute("title", "Verrou");
-      // Hors de l'ordre de tabulation de la page ; un clic garde le focus
-      // dans le champ.
+      // Out of the page's tab order; a click keeps the focus in the
+      // field.
       button.setAttribute("tabindex", "-1");
       button.addEventListener("mousedown", (event) => event.preventDefault());
       button.append(icon());
@@ -1170,7 +1165,7 @@
       attach(this.host);
     },
 
-    // Au bord droit du champ, centrée verticalement ; trop petit : rien.
+    // At the right edge of the field, vertically centered; too small: nothing.
     place() {
       if (!this.input) return false;
       if (!this.input.isConnected) {
@@ -1197,7 +1192,7 @@
       this.input = null;
     },
 
-    // Ouvre la pastille pour ce champ (même après une fermeture), ou la ferme.
+    // Opens the pill for this field (even after a close), or closes it.
     toggle() {
       const input = this.input;
       if (pill.open) {
@@ -1209,23 +1204,23 @@
     },
   };
 
-  // Les secrets ne vont qu'au cadre dont l'adresse est celle pour laquelle
-  // Verrou les a donnés (la page a pu changer entre-temps).
+  // Secrets only go to the frame whose address is the one Verrou gave them
+  // for (the page may have changed in the meantime).
   function forThisPage(message) {
     return typeof message.origin === "string" && message.origin === location.origin;
   }
 
-  // MARK: Enregistrement après l'envoi d'un formulaire
+  // MARK: Saving after a form is submitted
 
   let lastCapture = { key: "", at: 0 };
   const FILL_MEMORY_MS = 5 * 60_000;
 
-  // Identifiant et mot de passe du formulaire, au moment où il part.
+  // Username and password of the form, at the moment it is submitted.
   function capture(scope) {
     const roles = passwordRoles(scope, true);
     const inputs = [...scope.querySelectorAll("input")].filter((i) => !i.disabled);
     if (!roles.size) {
-      // Première étape d'une connexion : l'identifiant seul, gardé pour l'étape suivante.
+      // First step of a sign-in: the username alone, kept for the next step.
       const username = inputs.find((i) => classify(i) === "username");
       if (username?.value.trim()) send({ kind: "rememberUsername", username: username.value.trim() });
       return;
@@ -1233,7 +1228,7 @@
     const filled = [...roles].filter(([input]) => input.value);
     const fresh = filled.filter(([, role]) => role === "new").map(([input]) => input.value);
     const current = filled.find(([, role]) => role === "current")?.[0].value ?? null;
-    // Confirmation différente du mot de passe : le site va refuser.
+    // Confirmation different from the password: the site will refuse.
     if (new Set(fresh).size > 1) return;
     const password = fresh[0] ?? current;
     if (!password) return;
@@ -1241,8 +1236,8 @@
     const texts = inputs.filter(isText);
     const before = texts.filter((i) => i.compareDocumentPosition(firstPassword) & Node.DOCUMENT_POSITION_FOLLOWING);
     const username = (texts.find((i) => classify(i) === "username") ?? before.at(-1))?.value.trim() ?? "";
-    // Identifiant et mot de passe tels que Verrou vient de les remplir (envoi
-    // automatique ou Entrée) : rien de nouveau à enregistrer.
+    // Username and password as Verrou just filled them (automatic submit or
+    // Enter): nothing new to save.
     if (!fresh.length && password === lastFill.password && (!username || username === lastFill.username)
       && Date.now() - lastFill.at < FILL_MEMORY_MS) return;
     const key = `${username}\n${password}`;
@@ -1254,7 +1249,7 @@
   function captureFrom(target) {
     if (!(target instanceof Element)) return;
     const scope = target.closest("form") ?? document;
-    // Formulaire sans <form> : seulement s'il y a un mot de passe sur la page.
+    // Form without <form>: only if there is a password on the page.
     if (scope === document && !document.querySelector("input[type=password]")) return;
     capture(scope);
   }
@@ -1271,9 +1266,9 @@
   }, true);
 
 
-  // MARK: Bandeau « Enregistrer dans Verrou » (cadre principal)
+  // MARK: "Save in Verrou" banner (main frame)
 
-  // Au même coin que la pastille, sous elle, dans la même capsule sombre.
+  // In the same corner as the pill, under it, in the same dark capsule.
   const banner = {
     node: null,
     timer: null,
@@ -1283,7 +1278,7 @@
       clearTimeout(this.timer);
       const box = div("banner");
       box.setAttribute("role", "dialog");
-      box.setAttribute("aria-label", "Verrou : enregistrement");
+      box.setAttribute("aria-label", t("bannerLabel"));
       box.append(...nodes);
       if (this.node?.isConnected) this.node.replaceWith(box);
       else ui.stack.append(box);
@@ -1326,15 +1321,15 @@
     if (window !== top) return;
     const offer = await send({ kind: "pendingSave" });
     if (!offer?.action) return;
-    const who = `${offer.username || "sans identifiant"} · ${offer.site}`;
+    const who = `${offer.username || t("bannerNoUsername")} · ${offer.site}`;
     if (offer.action === "locked") {
       banner.show(
-        bannerHead("Enregistrer dans Verrou ?", who),
+        bannerHead(t("bannerSaveTitle"), who),
         actions(
-          trustedButton("Pas maintenant", "", dismissSave),
-          trustedButton("Déverrouiller", "primary", async () => {
+          trustedButton(t("bannerNotNow"), "", dismissSave),
+          trustedButton(t("unlock"), "primary", async () => {
             await send({ kind: "unlock" });
-            banner.show(bannerHead("Déverrouillez Verrou…", "Touch ID ou mot de passe principal"));
+            banner.show(bannerHead(t("unlockWait"), t("unlockHint")));
             waitThenOffer();
           }),
         ),
@@ -1343,24 +1338,24 @@
     }
     const update = offer.action === "update";
     banner.show(
-      bannerHead(update ? `Mettre à jour le mot de passe de « ${offer.title} » ?` : "Enregistrer dans Verrou ?", who),
+      bannerHead(update ? t("bannerUpdateTitle", offer.title) : t("bannerSaveTitle"), who),
       actions(
-        trustedButton("Jamais pour ce site", "quiet", async () => {
+        trustedButton(t("bannerNever"), "quiet", async () => {
           await send({ kind: "neverSave" });
           banner.hide();
         }),
-        trustedButton("Pas maintenant", "", dismissSave),
-        trustedButton(update ? "Mettre à jour" : "Enregistrer", "primary", async () => {
-          banner.show(bannerHead("Enregistrement…", offer.site));
+        trustedButton(t("bannerNotNow"), "", dismissSave),
+        trustedButton(update ? t("bannerUpdate") : t("save"), "primary", async () => {
+          banner.show(bannerHead(t("saving"), offer.site));
           const result = await send({ kind: "confirmSave" });
-          if (result?.ok) notify(update ? "Mot de passe mis à jour" : "Enregistré dans Verrou");
-          else notify("Enregistrement impossible", result?.reason ?? "Verrou ne répond pas");
+          if (result?.ok) notify(update ? t("bannerPasswordUpdated") : t("bannerSaved"));
+          else notify(t("saveFailed"), result?.reason ?? t("verrouNotResponding"));
         }),
       ),
     );
   }
 
-  // Après « Déverrouiller » : la vraie proposition dès que Verrou est ouvert.
+  // After "Unlock": the real offer as soon as Verrou is open.
   function waitThenOffer() {
     let tries = 0;
     const poll = setInterval(async () => {
@@ -1376,10 +1371,10 @@
     }, 1000);
   }
 
-  // MARK: Écouteurs
+  // MARK: Listeners
 
-  // Le site gère lui-même une liste de suggestions sous ce champ : la flèche
-  // vers le bas reste la sienne.
+  // The site handles a suggestion list under this field itself: the down
+  // arrow stays its own.
   function siteListOpen(input) {
     return Boolean(input.getAttribute("list")) || input.getAttribute("aria-expanded") === "true";
   }
@@ -1395,12 +1390,12 @@
     }
     badge.show(target);
     if (LOGIN_KINDS.has(kind)) {
-      // Formulaire apparu sans mutation visible (style d'un parent…).
+      // Form that appeared without a visible mutation (style of a parent…).
       scheduleScan(0);
       return;
     }
-    // Mot de passe à créer (champ vide : ne pas écraser ce qu'on tape),
-    // carte, adresse : la pastille vient au premier passage dans le champ.
+    // Password to create (empty field: don't overwrite what is being typed),
+    // card, address: the pill comes the first time the field is entered.
     if (dismissed || (kind === "new" && target.value) || pill.busy) return;
     if (queried.has(kind)) return;
     queried.add(kind);
@@ -1415,21 +1410,20 @@
   }, true);
 
   document.addEventListener("input", (event) => {
-    // On tape soi-même son nouveau mot de passe : la suggestion s'efface.
+    // Typing one's own new password: the suggestion goes away.
     if (event.isTrusted && pill.open && pill.kind === "new" && !pill.busy && event.target === pill.anchor) pill.hide();
   }, true);
 
   document.addEventListener("keydown", (event) => {
-    // Seulement les vraies touches : la page ne choisit pas à la place de
-    // l'utilisateur.
+    // Real keys only: the page doesn't choose on behalf of the user.
     if (!event.isTrusted) return;
     if (pill.open && event.key === "Escape") {
-      // Pas d'arrêt de l'événement : la page ferme aussi ses propres listes.
+      // The event isn't stopped: the page closes its own lists too.
       pill.dismiss();
       return;
     }
-    // Flèche vers le bas dans le champ de la pastille : le clavier passe
-    // dans la pastille, sur son action principale.
+    // Down arrow in the pill's field: the keyboard moves into the pill, on
+    // its main action.
     if (pill.open && event.key === "ArrowDown" && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey
       && event.target instanceof HTMLInputElement && event.target === badge.input
       && sameGroup(classify(event.target), pill.kind) && !siteListOpen(event.target)) {
@@ -1440,7 +1434,7 @@
       first.focus();
       return;
     }
-    // Envoi au clavier : certains formulaires partent sans « submit ».
+    // Keyboard submit: some forms are submitted without "submit".
     if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
       captureFrom(event.target);
     }
@@ -1450,22 +1444,22 @@
   addEventListener("resize", () => badge.place());
 
   ext.runtime.onMessage.addListener((message) => {
-    // Remplissage demandé depuis la fenêtre de l'extension : seulement dans
-    // le cadre visé, et s'il est toujours à l'adresse remplie.
+    // Fill requested from the extension's popup: only in the targeted frame,
+    // and if it is still at the filled address.
     if (message?.kind === "apply" && forThisPage(message)) {
       const active = document.activeElement;
-      // Choix fait dans la fenêtre de l'extension : le formulaire peut partir.
+      // Choice made in the extension's popup: the form can be submitted.
       apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null,
         { autoSubmit: true });
       pill.hide();
     }
-    // Formulaire envoyé sans changer de page (application monopage).
+    // Form submitted without changing page (single-page application).
     if (message?.kind === "offerSave" && window === top) showOffer();
   });
 
-  // Page suivante d'un formulaire envoyé : une proposition attend peut-être.
+  // Next page of a submitted form: an offer may be waiting.
   showOffer();
-  // Formulaire de connexion déjà là, ou à venir.
+  // Sign-in form already there, or to come.
   scan();
   observer?.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "hidden", "type"],

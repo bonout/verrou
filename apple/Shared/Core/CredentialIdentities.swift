@@ -4,34 +4,32 @@ import CryptoKit
 import Foundation
 import os
 
-/// Les suggestions du système (barre QuickType au-dessus du clavier, liste
-/// de Safari) : le magasin d'identités d'AuthenticationServices.
+/// The system's suggestions (QuickType bar above the keyboard, Safari's
+/// list): AuthenticationServices' identity store.
 ///
-/// L'app y publie, après chaque déverrouillage, synchronisation ou écriture,
-/// les sites (domaines) et noms d'utilisateur de ses identifiants, les codes
-/// à usage unique (iOS 18) et ses passkeys (site, utilisateur, identifiant de
-/// l'accréditation). **Jamais un secret** : mot de passe, code et clé privée
-/// ne sortent du coffre que dans l'extension, après Face ID ou le mot de
-/// passe principal. Le magasin est vidé à la déconnexion ; le verrouillage
-/// le garde (rien de secret, et les suggestions restent utiles).
+/// After each unlock, sync or write, the app publishes there the sites
+/// (domains) and user names of its logins, the one-time codes (iOS 18) and
+/// its passkeys (site, user, credential ID). **Never a secret**: password,
+/// code and private key leave the vault only in the extension, after Face ID
+/// or the master password. The store is emptied on sign-out; locking keeps
+/// it (nothing secret, and the suggestions stay useful).
 enum CredentialIdentities {
     private static let log = Logger(subsystem: "app.verrou", category: "autofill")
-    /// Empreinte de la dernière liste publiée : rien à refaire si elle n'a
-    /// pas changé (la plupart des synchronisations).
+    /// Digest of the last published list: nothing to redo if it hasn't
+    /// changed (most syncs).
     private static let publishedKey = "autofillIdentitiesDigest"
 
-    /// Verrou est-il choisi dans Réglages → Général → Remplissage
-    /// automatique et mots de passe ?
+    /// Is Verrou chosen in Settings → General → AutoFill & Passwords?
     static func isEnabled() async -> Bool {
         await ASCredentialIdentityStore.shared.state().isEnabled
     }
 
-    /// Remplace les identités publiées par celles du coffre.
+    /// Replaces the published identities with the vault's.
     static func publish(_ identities: [AutofillIdentity]) async {
         let store = ASCredentialIdentityStore.shared
         guard await store.state().isEnabled else {
-            // Désactivé : le système a pu vider le magasin, tout republier
-            // quand Verrou sera de nouveau choisi.
+            // Disabled: the system may have emptied the store, republish
+            // everything when Verrou is chosen again.
             UserDefaults.standard.removeObject(forKey: publishedKey)
             return
         }
@@ -45,13 +43,13 @@ enum CredentialIdentities {
         do {
             try await store.replaceCredentialIdentities(converted)
             UserDefaults.standard.set(digest, forKey: publishedKey)
-            log.notice("identités publiées : \(converted.count, privacy: .public)")
+            log.notice("identities published: \(converted.count, privacy: .public)")
         } catch {
-            log.error("publication des identités impossible : \(error.localizedDescription, privacy: .public)")
+            log.error("could not publish identities: \(error.localizedDescription, privacy: .public)")
         }
     }
 
-    /// Déconnexion : plus aucune suggestion.
+    /// Sign-out: no suggestion any more.
     static func clear() async {
         UserDefaults.standard.removeObject(forKey: publishedKey)
         try? await ASCredentialIdentityStore.shared.removeAllCredentialIdentities()
@@ -78,7 +76,7 @@ enum CredentialIdentities {
         }
     }
 
-    /// Empreinte (SHA-256) de la liste : ni secret ni nom n'est gardé en clair.
+    /// Digest (SHA-256) of the list: neither secret nor name is kept in clear.
     private static func digest(of identities: [AutofillIdentity]) -> String {
         var text = ""
         for identity in identities {

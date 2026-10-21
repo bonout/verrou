@@ -1,10 +1,10 @@
-//! Le terminal de Verrou : la liaison avec l'app (`verrou link`), le
-//! dialogue par son pont, l'agent SSH, et la signature des commits git par
-//! cet agent.
+//! Verrou's terminal: the link with the app (`verrou link`), the dialogue
+//! through its bridge, the SSH agent, and git commit signing through that
+//! agent.
 //!
-//! Le coffre n'est déchiffré que dans l'app (Touch ID, mot de passe
-//! principal) : la CLI lui demande ce qu'elle affiche, et l'app décide de ce
-//! qu'elle donne (voir `verrou_bridge::access`).
+//! The vault is only decrypted in the app (Touch ID, master password): the
+//! CLI asks it for what it displays, and the app decides what it gives (see
+//! `verrou_bridge::access`).
 
 pub mod agent;
 pub mod config;

@@ -1,8 +1,8 @@
-//! Clés SSH du coffre, pour l'agent SSH du terminal (`verrou ssh-agent`).
+//! The vault's SSH keys, for the terminal's SSH agent (`verrou ssh-agent`).
 //!
-//! L'agent ne reçoit que les clés publiques et les signatures : la clé
-//! privée (OpenSSH, telle que Vaultwarden la garde) est lue et utilisée ici,
-//! dans l'app, le temps d'une signature.
+//! The agent only receives public keys and signatures: the private
+//! key (OpenSSH, as Vaultwarden keeps it) is read and used here,
+//! in the app, for the duration of a signature.
 
 use data_encoding::BASE64;
 use signature::Signer as _;
@@ -13,15 +13,15 @@ use verrou_core::{Item, ItemKind, Vault};
 
 use crate::protocol::SshIdentity;
 
-/// Drapeaux de `SSH_AGENTC_SIGN_REQUEST` (draft-miller-ssh-agent, 4.5.1).
+/// Flags of `SSH_AGENTC_SIGN_REQUEST` (draft-miller-ssh-agent, 4.5.1).
 pub const RSA_SHA2_256: u32 = 0x02;
 pub const RSA_SHA2_512: u32 = 0x04;
 
-/// Identifiant du champ de la clé privée (voir `verrou-vaultwarden`).
+/// Identifier of the private key field (see `verrou-vaultwarden`).
 const PRIVATE_KEY_FIELD: &str = "private_key";
 
-/// La clé privée d'un élément « clé SSH », si elle est lisible et sans
-/// phrase de passe (celles que Bitwarden génère ou importe n'en ont pas).
+/// The private key of an "SSH key" item, if it is readable and has no
+/// passphrase (those Bitwarden generates or imports have none).
 fn private_key(item: &Item) -> Option<PrivateKey> {
     if item.kind != ItemKind::SshKey {
         return None;
@@ -32,13 +32,13 @@ fn private_key(item: &Item) -> Option<PrivateKey> {
         .filter(|key| !key.is_encrypted())
 }
 
-/// Forme binaire SSH de la clé publique (`string` algorithme, puis la clé).
+/// SSH binary form of the public key (`string` algorithm, then the key).
 fn public_blob(key: &PrivateKey) -> Option<Vec<u8>> {
     key.public_key().to_bytes().ok()
 }
 
-/// Les clés SSH utilisables du coffre (ni archivées, ni à la corbeille) :
-/// leur clé publique et leur titre.
+/// The vault's usable SSH keys (neither archived nor in the trash):
+/// their public key and their title.
 pub fn identities(vault: &Vault) -> Vec<SshIdentity> {
     vault
         .items()
@@ -55,7 +55,7 @@ pub fn identities(vault: &Vault) -> Vec<SshIdentity> {
         .collect()
 }
 
-/// L'élément dont la clé publique est `blob`.
+/// The item whose public key is `blob`.
 pub fn key_item<'v>(vault: &'v Vault, blob: &[u8]) -> Option<&'v Item> {
     vault.items().iter().find(|item| {
         item.kind == ItemKind::SshKey
@@ -66,19 +66,19 @@ pub fn key_item<'v>(vault: &'v Vault, blob: &[u8]) -> Option<&'v Item> {
     })
 }
 
-/// En-tête des données que `ssh-keygen -Y sign` fait signer (PROTOCOL.sshsig
-/// d'OpenSSH) : pas de longueur devant, contrairement aux `string`.
+/// Header of the data `ssh-keygen -Y sign` has signed (OpenSSH's
+/// PROTOCOL.sshsig): no length in front, unlike `string`s.
 const SSHSIG_MAGIC: &[u8] = b"SSHSIG";
 
-/// Espace de noms (`-n`) des signatures de git (`gpg.format=ssh`) : commits,
-/// étiquettes et `push --signed`.
+/// Namespace (`-n`) of git signatures (`gpg.format=ssh`): commits,
+/// tags and `push --signed`.
 pub const GIT_NAMESPACE: &str = "git";
 
-/// L'espace de noms d'une demande `ssh-keygen -Y sign` : `data` est alors
-/// « SSHSIG », `string` espace de noms, `string` réservé, `string`
-/// algorithme de hachage, `string` empreinte du message. `None` pour tout
-/// autre contenu (l'authentification SSH, notamment, commence par la
-/// longueur de l'identifiant de session : jamais « SSHS »).
+/// The namespace of an `ssh-keygen -Y sign` request: `data` is then
+/// "SSHSIG", `string` namespace, `string` reserved, `string`
+/// hash algorithm, `string` message digest. `None` for any
+/// other content (SSH authentication, notably, starts with the
+/// length of the session identifier: never "SSHS").
 pub fn sshsig_namespace(data: &[u8]) -> Option<&str> {
     let mut rest = data.strip_prefix(SSHSIG_MAGIC)?;
     let mut string = || -> Option<&[u8]> {
@@ -99,18 +99,18 @@ pub fn sshsig_namespace(data: &[u8]) -> Option<&str> {
     std::str::from_utf8(namespace).ok()
 }
 
-/// La demande signe-t-elle pour git (commit, étiquette) ?
+/// Does the request sign for git (commit, tag)?
 pub fn is_git_signature(data: &[u8]) -> bool {
     sshsig_namespace(data) == Some(GIT_NAMESPACE)
 }
 
-/// Signe `data` avec la clé de l'élément dont la clé publique est `blob`.
-/// Rend la signature au format de l'agent : `string` algorithme, `string`
-/// signature. Pour RSA, `flags` choisit SHA-512, SHA-256, ou SHA-1
-/// (`ssh-rsa`) faute de drapeau.
+/// Signs `data` with the key of the item whose public key is `blob`.
+/// Returns the signature in the agent's format: `string` algorithm, `string`
+/// signature. For RSA, `flags` picks SHA-512, SHA-256, or SHA-1
+/// (`ssh-rsa`) when no flag is set.
 pub fn sign(vault: &Vault, blob: &[u8], data: &[u8], flags: u32) -> Result<Vec<u8>, String> {
-    let item = key_item(vault, blob).ok_or_else(|| "clé SSH inconnue".to_owned())?;
-    let key = private_key(item).ok_or_else(|| "clé SSH illisible".to_owned())?;
+    let item = key_item(vault, blob).ok_or_else(|| "unknown SSH key".to_owned())?;
+    let key = private_key(item).ok_or_else(|| "unreadable SSH key".to_owned())?;
     let signature = match key.key_data() {
         KeypairData::Rsa(rsa) => {
             let hash = if flags & RSA_SHA2_512 != 0 {
@@ -124,10 +124,10 @@ pub fn sign(vault: &Vault, blob: &[u8], data: &[u8], flags: u32) -> Result<Vec<u
         }
         other => other.try_sign(data),
     }
-    .map_err(|_| "signature impossible avec cette clé".to_owned())?;
+    .map_err(|_| "cannot sign with this key".to_owned())?;
     signature
         .encode_vec()
-        .map_err(|_| "signature impossible avec cette clé".to_owned())
+        .map_err(|_| "cannot sign with this key".to_owned())
 }
 
 #[cfg(test)]
@@ -220,9 +220,9 @@ mod tests {
         }
     }
 
-    /// Clé RSA 2048 jetable, créée pour ce test (`ssh-keygen -t rsa`) : en
-    /// générer une en mode debug prend trop de temps. Forme binaire OpenSSH,
-    /// sans l'enveloppe PEM.
+    /// Throwaway RSA 2048 key, created for this test (`ssh-keygen -t rsa`):
+    /// generating one in debug mode takes too long. OpenSSH binary form,
+    /// without the PEM envelope.
     const RSA_TEST_KEY: &str = concat!(
         "b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcnNhAAAA",
         "AwEAAQAAAQEAowAOcjB490Vmkbel88tGDKoM88NH44+Yxz2fKx4n2li/qFoqCInPVq5kMTeOyNQ+",
@@ -264,7 +264,7 @@ mod tests {
         }
     }
 
-    /// Ce que `ssh-keygen -Y sign -n <namespace>` fait signer à l'agent.
+    /// What `ssh-keygen -Y sign -n <namespace>` has the agent sign.
     fn sshsig(namespace: &str, hash: &str) -> Vec<u8> {
         let mut out = SSHSIG_MAGIC.to_vec();
         for part in [namespace.as_bytes(), b"", hash.as_bytes(), &[7u8; 64][..]] {
@@ -280,7 +280,7 @@ mod tests {
         assert!(is_git_signature(&sshsig("git", "sha256")));
         assert_eq!(sshsig_namespace(&sshsig("file", "sha512")), Some("file"));
         assert!(!is_git_signature(&sshsig("file", "sha512")));
-        // Ni SSHSIG, ni bien formé : rien.
+        // Not SSHSIG, or not well formed: nothing.
         assert_eq!(sshsig_namespace(b"donnees de session"), None);
         assert_eq!(sshsig_namespace(b"SSHSIG"), None);
         assert_eq!(sshsig_namespace(&sshsig("", "sha512")), None);
@@ -291,7 +291,7 @@ mod tests {
         let mut truncated = sshsig("git", "sha512");
         truncated.truncate(truncated.len() - 1);
         assert_eq!(sshsig_namespace(&truncated), None);
-        // Une authentification SSH : `string` identifiant de session, puis
+        // An SSH authentication: `string` session identifier, then
         // SSH_MSG_USERAUTH_REQUEST (50)…
         let mut userauth = vec![0, 0, 0, 32];
         userauth.extend_from_slice(&[1u8; 32]);

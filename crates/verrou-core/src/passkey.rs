@@ -1,17 +1,17 @@
-//! Passkeys (`WebAuthn`) : la clé privée reste dans Rust.
+//! Passkeys (`WebAuthn`): the private key stays in Rust.
 //!
-//! Format de Bitwarden et Vaultwarden (`login.fido2Credentials`), pour que
-//! les apps officielles et le coffre web les relisent : clé ECDSA P-256 en
-//! PKCS#8 (base64url), identifiant d'accréditation en UUID (16 octets) ou
-//! `b64.<base64url>`, identifiant d'utilisateur en base64url, compteur et
-//! « découvrable » en texte.
+//! Bitwarden and Vaultwarden format (`login.fido2Credentials`), so that the
+//! official apps and the web vault read them back: ECDSA P-256 key in
+//! PKCS#8 (base64url), credential identifier as a UUID (16 bytes) or
+//! `b64.<base64url>`, user identifier in base64url, counter and
+//! "discoverable" as text.
 //!
-//! Ce module fabrique ce que le navigateur rendrait à la page : création
-//! (attestation `none`, ou `packed` auto-signée si le site la demande) et
-//! assertion signée ES256. L'origine vient de l'adresse de la page (fournie
-//! par le navigateur, jamais par la page) ; l'identifiant du site (`rpId`)
-//! doit être cet hôte ou l'un de ses domaines parents, jamais un suffixe
-//! public. L'extension ne voit jamais la clé privée.
+//! This module builds what the browser would return to the page: creation
+//! (`none` attestation, or self-signed `packed` if the site asks for it) and
+//! ES256-signed assertion. The origin comes from the page address (supplied
+//! by the browser, never by the page); the site identifier (`rpId`) must be
+//! this host or one of its parent domains, never a public suffix. The
+//! extension never sees the private key.
 
 use std::fmt::Write as _;
 
@@ -27,48 +27,48 @@ use zeroize::Zeroize as _;
 
 use crate::secret::SecretString;
 
-/// Algorithme COSE d'ES256 (ECDSA P-256, SHA-256), le seul que Verrou crée.
+/// COSE algorithm of ES256 (ECDSA P-256, SHA-256), the only one Verrou creates.
 pub const ES256: i64 = -7;
 
-/// Indicateurs des données d'authentification (`WebAuthn` §6.1).
+/// Authenticator data flags (`WebAuthn` §6.1).
 const USER_PRESENT: u8 = 0x01;
 const USER_VERIFIED: u8 = 0x04;
-/// Sauvegardable et sauvegardée : la passkey est synchronisée par le coffre.
+/// Backup eligible and backed up: the passkey is synced by the vault.
 const BACKUP_ELIGIBLE: u8 = 0x08;
 const BACKED_UP: u8 = 0x10;
 const ATTESTED_DATA: u8 = 0x40;
 
-/// AAGUID nul : Verrou ne prétend être aucun modèle d'authentificateur
-/// (attestation `none`).
+/// Zero AAGUID: Verrou claims to be no authenticator model
+/// (`none` attestation).
 const AAGUID: [u8; 16] = [0; 16];
 
-/// Longueurs maximales acceptées depuis une page.
+/// Maximum lengths accepted from a page.
 const MAX_CHALLENGE: usize = 1024;
 const MAX_USER_ID: usize = 64;
 
-/// Une passkey du coffre, déchiffrée. `key` : la clé privée PKCS#8 en
-/// base64url, telle que Bitwarden la garde ; elle ne sort jamais de Rust.
+/// A vault passkey, decrypted. `key`: the PKCS#8 private key in
+/// base64url, as Bitwarden stores it; it never leaves Rust.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Passkey {
-    /// L'élément (identifiant) qui la porte.
+    /// The item (login) that holds it.
     pub item: String,
-    /// Identifiant au format de Bitwarden (UUID, ou `b64.…`).
+    /// Identifier in the Bitwarden format (UUID, or `b64.…`).
     pub credential_id: String,
     pub rp_id: String,
     pub rp_name: Option<String>,
-    /// Identifiant de l'utilisateur chez le site, base64url.
+    /// The user's identifier at the site, base64url.
     pub user_handle: Option<String>,
     pub user_name: Option<String>,
     pub user_display_name: Option<String>,
     pub counter: u32,
     pub discoverable: bool,
-    /// Horodatage Unix de création, en secondes.
+    /// Unix creation timestamp, in seconds.
     pub created: i64,
     pub key: SecretString,
 }
 
 impl Passkey {
-    /// L'identifiant tel que la page le voit (octets bruts).
+    /// The identifier as the page sees it (raw bytes).
     pub fn raw_id(&self) -> Option<Vec<u8>> {
         credential_id_bytes(&self.credential_id)
     }
@@ -76,21 +76,21 @@ impl Passkey {
 
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum PasskeyError {
-    #[error("page non sécurisée (HTTPS exigé)")]
+    #[error("insecure page (HTTPS required)")]
     InsecurePage,
-    #[error("identifiant de site (rpId) invalide pour cette page")]
+    #[error("invalid site identifier (rpId) for this page")]
     BadRpId,
-    #[error("cette passkey n'appartient pas à ce site")]
+    #[error("this passkey does not belong to this site")]
     WrongSite,
-    #[error("passkey illisible (clé ou identifiant)")]
+    #[error("unreadable passkey (key or identifier)")]
     BadKey,
-    #[error("requête de passkey invalide : {0}")]
+    #[error("invalid passkey request: {0}")]
     BadRequest(&'static str),
 }
 
-// MARK: Encodages
+// MARK: Encodings
 
-/// base64url, avec ou sans remplissage (Bitwarden n'en met pas).
+/// base64url, with or without padding (Bitwarden uses none).
 pub fn b64url_decode(input: &str) -> Option<Vec<u8>> {
     BASE64URL_NOPAD
         .decode(input.trim().trim_end_matches('=').as_bytes())
@@ -101,7 +101,7 @@ pub fn b64url(bytes: &[u8]) -> String {
     BASE64URL_NOPAD.encode(bytes)
 }
 
-/// `0f4e…` (UUID, 16 octets) ou `b64.<base64url>` → octets bruts.
+/// `0f4e…` (UUID, 16 bytes) or `b64.<base64url>` → raw bytes.
 pub fn credential_id_bytes(id: &str) -> Option<Vec<u8>> {
     if let Some(encoded) = id.strip_prefix("b64.") {
         return b64url_decode(encoded);
@@ -115,7 +115,7 @@ pub fn credential_id_bytes(id: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-/// Octets bruts → format de Bitwarden : UUID pour 16 octets, `b64.…` sinon.
+/// Raw bytes → Bitwarden format: UUID for 16 bytes, `b64.…` otherwise.
 pub fn credential_id_string(bytes: &[u8]) -> String {
     if bytes.len() != 16 {
         return format!("b64.{}", b64url(bytes));
@@ -134,11 +134,11 @@ pub fn credential_id_string(bytes: &[u8]) -> String {
     )
 }
 
-// MARK: Origine et identifiant du site
+// MARK: Origin and site identifier
 
-/// L'origine de la page (`https://hôte[:port]`) et l'identifiant du site
-/// retenu : `requested` s'il est cet hôte ou un domaine parent enregistrable,
-/// sinon l'hôte lui-même quand rien n'est demandé.
+/// The page origin (`https://host[:port]`) and the chosen site identifier:
+/// `requested` if it is this host or a registrable parent domain,
+/// otherwise the host itself when nothing is requested.
 pub fn origin_and_rp_id(
     page_url: &str,
     requested: Option<&str>,
@@ -154,7 +154,7 @@ pub fn origin_and_rp_id(
         "http" if host == "localhost" => {}
         _ => return Err(PasskeyError::InsecurePage),
     }
-    // Pas d'adresse IP : WebAuthn veut un nom de domaine.
+    // No IP address: WebAuthn wants a domain name.
     if host.parse::<std::net::IpAddr>().is_ok() || host.starts_with('[') {
         return Err(PasskeyError::BadRpId);
     }
@@ -163,8 +163,8 @@ pub fn origin_and_rp_id(
         None => host,
         Some(rp) if rp.is_empty() => host,
         Some(rp) if rp == host => rp,
-        // Domaine parent : il doit être enregistrable (`github.com`, pas `com`
-        // ni `co.uk`).
+        // Parent domain: it must be registrable (`github.com`, not `com`
+        // nor `co.uk`).
         Some(rp) if host.ends_with(&format!(".{rp}")) && psl::domain_str(&rp).is_some() => rp,
         Some(_) => return Err(PasskeyError::BadRpId),
     };
@@ -181,7 +181,7 @@ struct ClientData<'a> {
     cross_origin: bool,
 }
 
-/// `clientDataJSON`, comme Chrome l'écrit (même ordre des clés).
+/// `clientDataJSON`, as Chrome writes it (same key order).
 fn client_data(kind: &str, challenge: &[u8], origin: &str) -> Vec<u8> {
     serde_json::to_vec(&ClientData {
         kind,
@@ -194,12 +194,12 @@ fn client_data(kind: &str, challenge: &[u8], origin: &str) -> Vec<u8> {
 
 fn check_challenge(challenge: &[u8]) -> Result<(), PasskeyError> {
     if challenge.len() < 16 || challenge.len() > MAX_CHALLENGE {
-        return Err(PasskeyError::BadRequest("défi absent ou trop long"));
+        return Err(PasskeyError::BadRequest("challenge missing or too long"));
     }
     Ok(())
 }
 
-// MARK: CBOR (le strict nécessaire, forme canonique de CTAP2)
+// MARK: CBOR (the bare minimum, CTAP2 canonical form)
 
 fn cbor_head(out: &mut Vec<u8>, major: u8, value: u64) {
     let major = major << 5;
@@ -235,7 +235,7 @@ fn cbor_text(out: &mut Vec<u8>, text: &str) {
     out.extend_from_slice(text.as_bytes());
 }
 
-/// Clé publique COSE EC2 (P-256, ES256), clés dans l'ordre canonique.
+/// COSE EC2 public key (P-256, ES256), keys in canonical order.
 fn cose_public_key(key: &VerifyingKey) -> Vec<u8> {
     let point = key.to_encoded_point(false);
     let mut out = Vec::with_capacity(77);
@@ -264,13 +264,13 @@ fn authenticator_data(rp_id: &str, flags: u8, counter: u32, attested: Option<&[u
     data
 }
 
-/// Signature ES256 (DER) de `authenticatorData ‖ SHA-256(clientDataJSON)`.
+/// ES256 signature (DER) of `authenticatorData ‖ SHA-256(clientDataJSON)`.
 fn sign(key: &SigningKey, authenticator_data: &[u8], client_data: &[u8]) -> Vec<u8> {
     sign_hash(key, authenticator_data, &Sha256::digest(client_data))
 }
 
-/// Signature ES256 (DER) de `authenticatorData ‖ clientDataHash`, quand le
-/// système (iOS) a déjà calculé l'empreinte de `clientDataJSON`.
+/// ES256 signature (DER) of `authenticatorData ‖ clientDataHash`, when the
+/// system (iOS) has already computed the hash of `clientDataJSON`.
 fn sign_hash(key: &SigningKey, authenticator_data: &[u8], client_data_hash: &[u8]) -> Vec<u8> {
     let mut message = Vec::with_capacity(authenticator_data.len() + client_data_hash.len());
     message.extend_from_slice(authenticator_data);
@@ -290,8 +290,8 @@ fn flags(user_verified: bool) -> u8 {
     USER_PRESENT | BACKUP_ELIGIBLE | BACKED_UP | if user_verified { USER_VERIFIED } else { 0 }
 }
 
-/// Nouvelle clé, identifiant aléatoire (16 octets, un UUID pour Bitwarden)
-/// et données d'authentification de la création (compteur 0, clé COSE).
+/// New key, random identifier (16 bytes, a UUID for Bitwarden)
+/// and authenticator data of the creation (counter 0, COSE key).
 fn new_credential(
     rp_id: &str,
     user_verified: bool,
@@ -318,7 +318,7 @@ fn public_key_der(key: &SigningKey) -> Result<Vec<u8>, PasskeyError> {
         .into_vec())
 }
 
-/// Ce que la passkey enregistrée dit d'elle-même : site, utilisateur, élément.
+/// What the stored passkey says about itself: site, user, item.
 struct PasskeyOwner<'a> {
     item: &'a str,
     rp_id: String,
@@ -329,7 +329,7 @@ struct PasskeyOwner<'a> {
     created: i64,
 }
 
-/// La passkey telle que le coffre la garde (format de Bitwarden).
+/// The passkey as the vault stores it (Bitwarden format).
 fn stored_passkey(
     key: &SigningKey,
     credential_id: &[u8],
@@ -351,7 +351,7 @@ fn stored_passkey(
     })
 }
 
-/// `{ "fmt": "none", "attStmt": {}, "authData": … }`, dans l'ordre canonique.
+/// `{ "fmt": "none", "attStmt": {}, "authData": … }`, in canonical order.
 fn none_attestation(authenticator_data: &[u8]) -> Vec<u8> {
     let mut object = Vec::with_capacity(authenticator_data.len() + 32);
     cbor_head(&mut object, 5, 3);
@@ -364,9 +364,9 @@ fn none_attestation(authenticator_data: &[u8]) -> Vec<u8> {
     object
 }
 
-// MARK: Création
+// MARK: Creation
 
-/// Ce que la page demande à `navigator.credentials.create`.
+/// What the page asks of `navigator.credentials.create`.
 #[derive(Clone, Debug)]
 pub struct RegistrationRequest<'a> {
     pub page_url: &'a str,
@@ -376,26 +376,26 @@ pub struct RegistrationRequest<'a> {
     pub user_name: Option<&'a str>,
     pub user_display_name: Option<&'a str>,
     pub challenge: &'a [u8],
-    /// L'utilisateur a été vérifié (Touch ID) : indicateur UV.
+    /// The user was verified (Touch ID): UV flag.
     pub user_verified: bool,
-    /// Attestation demandée (`direct`, `enterprise`) : `packed` auto-signée,
-    /// sinon `none`.
+    /// Attestation requested (`direct`, `enterprise`): self-signed `packed`,
+    /// otherwise `none`.
     pub self_attestation: bool,
 }
 
-/// Réponse de création, pour la page. Aucun secret.
+/// Creation response, for the page. No secret.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Registration {
     pub credential_id: Vec<u8>,
     pub client_data_json: Vec<u8>,
     pub authenticator_data: Vec<u8>,
     pub attestation_object: Vec<u8>,
-    /// Clé publique `SubjectPublicKeyInfo` (DER), pour `getPublicKey()`.
+    /// `SubjectPublicKeyInfo` public key (DER), for `getPublicKey()`.
     pub public_key: Vec<u8>,
 }
 
-/// Crée une passkey pour la page : la passkey à enregistrer dans l'élément
-/// `item`, et la réponse pour la page.
+/// Creates a passkey for the page: the passkey to store in item `item`,
+/// and the response for the page.
 pub fn register(
     request: &RegistrationRequest<'_>,
     item: &str,
@@ -405,15 +405,13 @@ pub fn register(
     let (origin, rp_id) = origin_and_rp_id(request.page_url, request.rp_id)?;
     check_challenge(request.challenge)?;
     if request.user_id.is_empty() || request.user_id.len() > MAX_USER_ID {
-        return Err(PasskeyError::BadRequest(
-            "identifiant d'utilisateur invalide",
-        ));
+        return Err(PasskeyError::BadRequest("invalid user identifier"));
     }
     let (key, credential_id, authenticator_data) =
         new_credential(&rp_id, request.user_verified, rng);
     let client_data_json = client_data("webauthn.create", request.challenge, &origin);
 
-    // { "fmt", "attStmt", "authData" }, dans l'ordre canonique.
+    // { "fmt", "attStmt", "authData" }, in canonical order.
     let attestation_object = if request.self_attestation {
         // { "fmt": "packed", "attStmt": { alg, sig }, "authData" }.
         let mut object = Vec::with_capacity(authenticator_data.len() + 128);
@@ -472,8 +470,8 @@ pub struct AssertionRequest<'a> {
     pub user_verified: bool,
 }
 
-/// Réponse d'authentification, pour la page. `counter` : la nouvelle valeur
-/// du compteur, à enregistrer dans le coffre.
+/// Authentication response, for the page. `counter`: the new counter
+/// value, to store in the vault.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Assertion {
     pub credential_id: Vec<u8>,
@@ -484,7 +482,7 @@ pub struct Assertion {
     pub counter: u32,
 }
 
-/// Signe le défi de la page avec la passkey, si elle appartient au site.
+/// Signs the page's challenge with the passkey, if it belongs to the site.
 pub fn assert(
     passkey: &Passkey,
     request: &AssertionRequest<'_>,
@@ -511,17 +509,17 @@ pub fn assert(
     })
 }
 
-// MARK: Fournisseur du système (iOS)
+// MARK: System provider (iOS)
 //
-// Sur iPhone, c'est le système qui construit `clientDataJSON` (il connaît la
-// page ou l'app, et a vérifié que le site peut demander ce `rpId` : domaine
-// de la page dans Safari, domaines associés pour une app) ; l'extension de
-// remplissage ne reçoit que le `rpId` et l'empreinte SHA-256 de
-// `clientDataJSON`. Verrou fabrique les données d'authentification et signe
+// On iPhone, the system builds `clientDataJSON` (it knows the page or the
+// app, and has checked that the site may ask for this `rpId`: the page's
+// domain in Safari, associated domains for an app); the AutoFill extension
+// only receives the `rpId` and the SHA-256 hash of `clientDataJSON`. Verrou
+// builds the authenticator data and signs
 // `authenticatorData ‖ clientDataHash`.
 
-/// Vérifie la forme d'un `rpId` donné par le système : un nom de domaine
-/// (pas une adresse IP, pas un suffixe public seul), ou `localhost`.
+/// Checks the shape of an `rpId` given by the system: a domain name
+/// (not an IP address, not a bare public suffix), or `localhost`.
 pub fn system_rp_id(rp_id: &str) -> Result<String, PasskeyError> {
     let rp = rp_id.trim().trim_end_matches('.').to_ascii_lowercase();
     let valid_chars = rp
@@ -543,13 +541,11 @@ fn check_client_data_hash(hash: &[u8]) -> Result<(), PasskeyError> {
     if hash.len() == 32 {
         Ok(())
     } else {
-        Err(PasskeyError::BadRequest(
-            "empreinte de clientDataJSON invalide",
-        ))
+        Err(PasskeyError::BadRequest("invalid clientDataJSON hash"))
     }
 }
 
-/// Création demandée par le système (`ASPasskeyCredentialRequest`).
+/// Creation requested by the system (`ASPasskeyCredentialRequest`).
 #[derive(Clone, Debug)]
 pub struct SystemRegistrationRequest<'a> {
     pub rp_id: &'a str,
@@ -557,24 +553,24 @@ pub struct SystemRegistrationRequest<'a> {
     pub user_id: &'a [u8],
     pub user_name: Option<&'a str>,
     pub user_display_name: Option<&'a str>,
-    /// SHA-256 de `clientDataJSON`, calculé par le système.
+    /// SHA-256 of `clientDataJSON`, computed by the system.
     pub client_data_hash: &'a [u8],
-    /// Face ID ou mot de passe principal demandé pour cette création.
+    /// Face ID or master password asked for this creation.
     pub user_verified: bool,
 }
 
-/// Réponse de création pour le système : attestation `none`. Aucun secret.
+/// Creation response for the system: `none` attestation. No secret.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SystemRegistration {
     pub credential_id: Vec<u8>,
     pub authenticator_data: Vec<u8>,
     pub attestation_object: Vec<u8>,
-    /// Clé publique `SubjectPublicKeyInfo` (DER), pour les tests.
+    /// `SubjectPublicKeyInfo` public key (DER), for tests.
     pub public_key: Vec<u8>,
 }
 
-/// Crée une passkey pour le système : celle à enregistrer dans l'élément
-/// `item` (format de Bitwarden), et l'attestation `none` à lui rendre.
+/// Creates a passkey for the system: the one to store in item `item`
+/// (Bitwarden format), and the `none` attestation to return to it.
 pub fn register_for_system(
     request: &SystemRegistrationRequest<'_>,
     item: &str,
@@ -584,9 +580,7 @@ pub fn register_for_system(
     let rp_id = system_rp_id(request.rp_id)?;
     check_client_data_hash(request.client_data_hash)?;
     if request.user_id.is_empty() || request.user_id.len() > MAX_USER_ID {
-        return Err(PasskeyError::BadRequest(
-            "identifiant d'utilisateur invalide",
-        ));
+        return Err(PasskeyError::BadRequest("invalid user identifier"));
     }
     let (key, credential_id, authenticator_data) =
         new_credential(&rp_id, request.user_verified, rng);
@@ -616,8 +610,8 @@ pub fn register_for_system(
     ))
 }
 
-/// Assertion pour le système : signée, compteur augmenté (`counter`, à
-/// enregistrer dans le coffre).
+/// Assertion for the system: signed, counter incremented (`counter`, to
+/// store in the vault).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SystemAssertion {
     pub credential_id: Vec<u8>,
@@ -627,8 +621,8 @@ pub struct SystemAssertion {
     pub counter: u32,
 }
 
-/// Signe pour le système (`ASPasskeyCredentialRequest`) : `rp_id` doit être
-/// celui de la passkey.
+/// Signs for the system (`ASPasskeyCredentialRequest`): `rp_id` must be
+/// the passkey's.
 pub fn assert_for_system(
     passkey: &Passkey,
     rp_id: &str,
@@ -654,26 +648,26 @@ pub fn assert_for_system(
     })
 }
 
-// MARK: Création conditionnelle (iOS 18)
+// MARK: Conditional creation (iOS 18)
 //
-// Après un mot de passe rempli par Verrou, Safari peut demander en arrière-
-// plan une passkey pour le même compte (`mediation: "conditional"`), sans
-// interface. Le coffre est alors fermé (nouveau processus, sans Face ID) :
-// la clé est préparée **pendant** le remplissage, coffre ouvert, et sa partie
-// privée scellée avec la clé locale du compte ; la demande d'arrière-plan
-// n'a besoin que de la clé publique. La passkey rejoint l'élément à la
-// prochaine ouverture du coffre.
+// After a password filled by Verrou, Safari can ask in the background for a
+// passkey for the same account (`mediation: "conditional"`), with no UI.
+// The vault is then locked (new process, no Face ID): the key is prepared
+// **during** the fill, with the vault unlocked, and its private part sealed
+// with the account's local key; the background request only needs the
+// public key. The passkey joins the item the next time the vault is
+// unlocked.
 
-/// Clé préparée pour une création conditionnelle.
+/// Key prepared for a conditional creation.
 pub struct PreparedCredential {
     pub credential_id: [u8; 16],
-    /// Clé publique SEC1 non compressée (65 octets).
+    /// Uncompressed SEC1 public key (65 bytes).
     pub public_key: Vec<u8>,
-    /// Clé privée PKCS#8 en base64url, comme Bitwarden la garde.
+    /// PKCS#8 private key in base64url, as Bitwarden stores it.
     pub private_key: SecretString,
 }
 
-/// Nouvelle clé et identifiant aléatoire, sans site ni utilisateur.
+/// New key and random identifier, with no site or user.
 pub fn prepare_credential(
     rng: &mut (impl RngCore + CryptoRng),
 ) -> Result<PreparedCredential, PasskeyError> {
@@ -692,9 +686,9 @@ pub fn prepare_credential(
     })
 }
 
-/// Réponse à une création conditionnelle, avec la clé préparée : attestation
-/// `none`, sans présence ni vérification de l'utilisateur (aucune interface
-/// n'a été montrée), compteur 0. Aucun secret.
+/// Response to a conditional creation, with the prepared key: `none`
+/// attestation, without user presence or verification (no UI was shown),
+/// counter 0. No secret.
 pub fn conditional_registration(
     rp_id: &str,
     credential_id: &[u8],
@@ -726,21 +720,21 @@ pub fn conditional_registration(
     })
 }
 
-/// Ce qu'une création conditionnelle a enregistré chez le site, pour en
-/// faire la passkey du coffre.
+/// What a conditional creation registered at the site, to turn it into
+/// the vault passkey.
 pub struct ConditionalPasskey<'a> {
     pub item: &'a str,
     pub rp_id: &'a str,
     pub user_id: &'a [u8],
     pub user_name: Option<&'a str>,
     pub credential_id: &'a [u8],
-    /// Clé privée PKCS#8 en base64url (descellée, coffre ouvert).
+    /// PKCS#8 private key in base64url (unsealed, vault unlocked).
     pub private_key: &'a str,
     pub created: i64,
 }
 
-/// La passkey du coffre (format de Bitwarden) d'une création conditionnelle.
-/// La clé privée doit être une clé P-256 valide.
+/// The vault passkey (Bitwarden format) of a conditional creation.
+/// The private key must be a valid P-256 key.
 pub fn conditional_passkey(created: &ConditionalPasskey<'_>) -> Result<Passkey, PasskeyError> {
     let rp_id = system_rp_id(created.rp_id)?;
     let mut der = b64url_decode(created.private_key).ok_or(PasskeyError::BadKey)?;
@@ -793,7 +787,7 @@ mod tests {
         message.extend_from_slice(&Sha256::digest(client_data));
         let signature = DerSignature::try_from(sig).unwrap();
         key.verify(&message, &signature)
-            .expect("signature ES256 valide");
+            .expect("valid ES256 signature");
     }
 
     #[test]
@@ -857,12 +851,12 @@ mod tests {
         assert!(passkey.discoverable);
         assert_eq!(passkey.user_handle.as_deref(), Some("dXRpbGlzYXRldXItNDI"));
         assert_eq!(passkey.raw_id().unwrap(), registration.credential_id);
-        // La clé est une clé PKCS#8 P-256 que Bitwarden relit.
+        // The key is a PKCS#8 P-256 key that Bitwarden reads back.
         let der = b64url_decode(passkey.key.expose()).unwrap();
         assert!(SigningKey::from_pkcs8_der(&der).is_ok());
 
-        // Données d'authentification de la création : rpIdHash, UP|UV|BE|BS|AT,
-        // compteur 0, AAGUID, identifiant, clé COSE.
+        // Authenticator data of the creation: rpIdHash, UP|UV|BE|BS|AT,
+        // counter 0, AAGUID, identifier, COSE key.
         let data = &registration.authenticator_data;
         assert_eq!(&data[..32], Sha256::digest(b"github.com").as_slice());
         assert_eq!(data[32], 0x01 | 0x04 | 0x08 | 0x10 | 0x40);
@@ -875,7 +869,7 @@ mod tests {
         assert_eq!(client["type"], "webauthn.create");
         assert_eq!(client["origin"], "https://github.com");
         assert_eq!(client["challenge"], b64url(&[9; 32]));
-        // Attestation « none » : { fmt: "none", attStmt: {}, authData }.
+        // "none" attestation: { fmt: "none", attStmt: {}, authData }.
         assert!(
             registration
                 .attestation_object
@@ -909,7 +903,7 @@ mod tests {
                 &assertion.client_data_json,
                 &assertion.signature,
             );
-            // L'app enregistre le nouveau compteur.
+            // The app stores the new counter.
             passkey.counter = assertion.counter;
         }
     }
@@ -956,7 +950,7 @@ mod tests {
             ask("http://github.com/").unwrap_err(),
             PasskeyError::InsecurePage
         );
-        // Un défi trop court est refusé.
+        // A challenge that is too short is refused.
         assert!(
             assert(
                 &passkey,
@@ -971,8 +965,8 @@ mod tests {
         );
     }
 
-    /// Une passkey créée par Bitwarden (clé PKCS#8 de `p256`, identifiant
-    /// UUID, compteur à 0) signe chez Verrou.
+    /// A passkey created by Bitwarden (`p256` PKCS#8 key, UUID identifier,
+    /// counter at 0) signs in Verrou.
     #[test]
     fn signs_with_a_bitwarden_passkey() {
         let key = SigningKey::random(&mut rng());
@@ -1010,7 +1004,7 @@ mod tests {
         assert_eq!(assertion.user_handle.as_deref(), Some(&b"abc"[..]));
     }
 
-    // MARK: Fournisseur du système (iOS)
+    // MARK: System provider (iOS)
 
     fn system_request(hash: &[u8; 32]) -> SystemRegistrationRequest<'_> {
         SystemRegistrationRequest {
@@ -1054,15 +1048,15 @@ mod tests {
         }
     }
 
-    /// Vecteur de test : données d'authentification attendues octet par
-    /// octet pour `localhost`, UV posé, compteur 1.
+    /// Test vector: expected authenticator data byte by byte for
+    /// `localhost`, UV set, counter 1.
     #[test]
     fn system_assertion_matches_the_test_vector_and_verifies() {
         let hash = [0x42; 32];
         let (passkey, registration) =
             register_for_system(&system_request(&hash), "item-1", 1_700_000_000, &mut rng())
                 .unwrap();
-        // Création : rpIdHash(localhost), UP|UV|BE|BS|AT, compteur 0, AAGUID nul.
+        // Creation: rpIdHash(localhost), UP|UV|BE|BS|AT, counter 0, zero AAGUID.
         assert_eq!(
             hex(&registration.authenticator_data[..37]),
             "49960de5880e8c687434170f6476605b8fe4aeb9a28632c7995cf3ba831d97635d00000000"
@@ -1093,8 +1087,8 @@ mod tests {
             assertion.user_handle.as_deref(),
             Some(&b"utilisateur-42"[..])
         );
-        // Vérification par un vérificateur P-256 indépendant de la signature :
-        // le message est authenticatorData ‖ clientDataHash.
+        // Verification by a P-256 verifier independent of the signer:
+        // the message is authenticatorData ‖ clientDataHash.
         let key = VerifyingKey::from_public_key_der(&registration.public_key).unwrap();
         let mut message = assertion.authenticator_data.clone();
         message.extend_from_slice(&client_data_hash);
@@ -1102,12 +1096,12 @@ mod tests {
             &message,
             &DerSignature::try_from(assertion.signature.as_slice()).unwrap(),
         )
-        .expect("signature ES256 valide");
+        .expect("valid ES256 signature");
     }
 
-    /// Même passkey, même page : le chemin du navigateur (clientDataJSON) et
-    /// celui du système (son empreinte) signent exactement la même chose
-    /// (ECDSA déterministe, RFC 6979).
+    /// Same passkey, same page: the browser path (clientDataJSON) and the
+    /// system path (its hash) sign exactly the same thing
+    /// (deterministic ECDSA, RFC 6979).
     #[test]
     fn system_and_browser_paths_sign_identically() {
         let (passkey, _) =
@@ -1158,7 +1152,7 @@ mod tests {
             register_for_system(&public_suffix, "x", 0, &mut rng()).unwrap_err(),
             PasskeyError::BadRpId
         );
-        // Sans vérification de l'utilisateur : UP|BE|BS seulement.
+        // Without user verification: UP|BE|BS only.
         let assertion = assert_for_system(&passkey, "localhost", &hash, false).unwrap();
         assert_eq!(assertion.authenticator_data[32], 0x01 | 0x08 | 0x10);
     }
@@ -1176,7 +1170,7 @@ mod tests {
         .unwrap();
         let data = &registration.authenticator_data;
         assert_eq!(&data[..32], Sha256::digest(b"github.com").as_slice());
-        // Ni présence ni vérification : aucune interface montrée.
+        // Neither presence nor verification: no UI shown.
         assert_eq!(data[32] & (USER_PRESENT | USER_VERIFIED), 0);
         assert_eq!(data[32] & ATTESTED_DATA, ATTESTED_DATA);
         assert_eq!(&data[33..37], &[0, 0, 0, 0]);
@@ -1190,8 +1184,8 @@ mod tests {
                 .windows(4)
                 .any(|w| w == b"none")
         );
-        // La passkey du coffre signe avec la clé dont la page a reçu la
-        // partie publique.
+        // The vault passkey signs with the key whose public part the page
+        // received.
         let passkey = conditional_passkey(&ConditionalPasskey {
             item: "github",
             rp_id: "GitHub.com",
@@ -1213,8 +1207,8 @@ mod tests {
             &message,
             &DerSignature::try_from(assertion.signature.as_slice()).unwrap(),
         )
-        .expect("signature de la clé préparée");
-        // Entrées refusées.
+        .expect("signature of the prepared key");
+        // Refused inputs.
         assert!(
             conditional_registration(
                 "co.uk",

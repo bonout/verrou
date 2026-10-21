@@ -1,11 +1,11 @@
-//! Compléments de l'audit : double authentification disponible mais absente,
-//! cartes expirées ou bientôt expirées, mots de passe anciens, et repérage des
-//! mots de passe nouveaux (pour les vérifier dans les fuites connues).
+//! Audit additions: two-factor authentication available but missing,
+//! expired or soon-to-expire cards, old passwords, and spotting of new
+//! passwords (to check them against known breaches).
 //!
-//! Comme `audit`, tout se calcule ici sans réseau : la liste des sites qui
-//! proposent la double authentification (2fa.directory) est téléchargée et
-//! mise en cache par `verrou-vaultwarden` (`two_factor_directory`), puis
-//! analysée par `TwoFactorDirectory::parse`.
+//! Like `audit`, everything is computed here without network: the list of
+//! sites that offer two-factor authentication (2fa.directory) is downloaded
+//! and cached by `verrou-vaultwarden` (`two_factor_directory`), then parsed
+//! by `TwoFactorDirectory::parse`.
 
 use std::collections::HashMap;
 
@@ -15,36 +15,36 @@ use crate::audit::password_of;
 use crate::matching::{host_of, registrable_domain};
 use crate::{FieldKind, Item, ItemKind, Vault};
 
-/// Une carte expire dans moins de ce nombre de jours : à renouveler.
+/// A card expires in fewer than this many days: to renew.
 pub const CARD_WARNING_DAYS: i64 = 60;
-/// Un mot de passe que rien n'a changé depuis ce nombre de jours (3 ans).
+/// A password nothing has changed for this many days (3 years).
 pub const OLD_PASSWORD_DAYS: i64 = 3 * 365;
 
 const DAY: i64 = 24 * 60 * 60;
 
-// MARK: Double authentification
+// MARK: Two-factor authentication
 
-/// Un site de 2fa.directory qui propose la double authentification.
+/// A 2fa.directory site that offers two-factor authentication.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TwoFactorSite {
     pub name: String,
-    /// Domaine principal, normalisé (minuscules, sans `www.`).
+    /// Main domain, normalised (lowercase, without `www.`).
     pub domain: String,
-    /// Méthodes proposées, telles que la liste les nomme (`totp`, `sms`,
-    /// `u2f`, `call`, `email`, `custom-software`, `custom-hardware`).
+    /// Methods offered, as the list names them (`totp`, `sms`, `u2f`,
+    /// `call`, `email`, `custom-software`, `custom-hardware`).
     pub methods: Vec<String>,
-    /// Page d'aide du site pour activer la double authentification.
+    /// The site's help page for enabling two-factor authentication.
     pub documentation: Option<String>,
 }
 
 impl TwoFactorSite {
-    /// Codes à usage unique (TOTP) : Verrou peut les garder et les remplir.
+    /// One-time codes (TOTP): Verrou can keep and fill them.
     pub fn supports_totp(&self) -> bool {
         self.methods.iter().any(|m| m == "totp")
     }
 }
 
-/// Entrée brute de `tfa.json` (format v3 : `[nom, {domain, tfa, …}]`).
+/// Raw entry of `tfa.json` (v3 format: `[name, {domain, tfa, …}]`).
 #[derive(Deserialize)]
 struct RawSite {
     domain: String,
@@ -56,8 +56,8 @@ struct RawSite {
     documentation: Option<String>,
 }
 
-/// Liste des sites qui proposent la double authentification, indexée par
-/// domaine (principal et secondaires).
+/// List of the sites that offer two-factor authentication, indexed by
+/// domain (main and additional).
 #[derive(Clone, Debug, Default)]
 pub struct TwoFactorDirectory {
     sites: Vec<TwoFactorSite>,
@@ -65,9 +65,9 @@ pub struct TwoFactorDirectory {
 }
 
 impl TwoFactorDirectory {
-    /// Analyse `https://api.2fa.directory/v3/tfa.json`. Les entrées
-    /// illisibles sont ignorées : une évolution du format ne doit pas priver
-    /// l'audit de toute la liste.
+    /// Parses `https://api.2fa.directory/v3/tfa.json`. Unreadable entries
+    /// are skipped: a format change must not deprive the audit of the whole
+    /// list.
     pub fn parse(json: &[u8]) -> Result<Self, serde_json::Error> {
         let entries: Vec<(String, serde_json::Value)> = serde_json::from_slice(json)?;
         let mut directory = Self::default();
@@ -81,7 +81,7 @@ impl TwoFactorDirectory {
             if raw.tfa.is_empty() {
                 continue;
             }
-            // Seules les pages d'aide en HTTPS sont proposées à l'ouverture.
+            // Only HTTPS help pages are offered for opening.
             let documentation = raw
                 .documentation
                 .filter(|d| d.trim().starts_with("https://"))
@@ -110,19 +110,18 @@ impl TwoFactorDirectory {
         self.sites.is_empty()
     }
 
-    /// Le site dont relève `url` : l'hôte lui-même, puis ses domaines
-    /// parents jusqu'au domaine enregistrable (`login.github.com` →
-    /// `github.com`), jamais au-delà (`co.uk` n'est pas un site).
-    /// `amazon.com` ne relève pas d'une entrée `aws.amazon.com`.
+    /// The site `url` belongs to: the host itself, then its parent domains
+    /// up to the registrable domain (`login.github.com` → `github.com`),
+    /// never beyond (`co.uk` is not a site).
+    /// `amazon.com` does not belong to an `aws.amazon.com` entry.
     pub fn lookup(&self, url: &str) -> Option<&TwoFactorSite> {
         lookup_domain(&self.by_domain, url).map(|index| &self.sites[index])
     }
 }
 
-/// Recherche d'un site dans un index par domaine (2fa.directory, annuaire
-/// des passkeys) : l'hôte de `url` lui-même, puis ses domaines parents
-/// jusqu'au domaine enregistrable, jamais au-delà. Une adresse IP ne relève
-/// d'aucun site.
+/// Looks up a site in a by-domain index (2fa.directory, passkeys
+/// directory): the host of `url` itself, then its parent domains up to the
+/// registrable domain, never beyond. An IP address belongs to no site.
 pub(crate) fn lookup_domain(by_domain: &HashMap<String, usize>, url: &str) -> Option<usize> {
     let host = host_of(url)?;
     if host.parse::<std::net::IpAddr>().is_ok() {
@@ -141,9 +140,9 @@ pub(crate) fn lookup_domain(by_domain: &HashMap<String, usize>, url: &str) -> Op
     }
 }
 
-/// Identifiants (actifs, avec un mot de passe) dont un site propose la double
-/// authentification, mais qui n'ont pas de code à usage unique dans Verrou.
-/// Triés par titre.
+/// Logins (active, with a password) whose site offers two-factor
+/// authentication, but that have no one-time code in Verrou.
+/// Sorted by title.
 pub fn missing_two_factor<'d>(
     vault: &Vault,
     directory: &'d TwoFactorDirectory,
@@ -167,19 +166,19 @@ pub fn missing_two_factor<'d>(
         .collect()
 }
 
-// MARK: Cartes
+// MARK: Cards
 
-/// Échéance d'une carte bancaire.
+/// Expiry of a payment card.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CardExpiry {
     pub year: i32,
-    /// 1 à 12.
+    /// 1 to 12.
     pub month: u32,
 }
 
 impl CardExpiry {
-    /// Lit `MM/AA`, `MM/AAAA`, `M/AA`, `MM-AA`, `MM / AAAA`… Une année à
-    /// deux chiffres est de ce siècle (`29` → 2029).
+    /// Reads `MM/YY`, `MM/YYYY`, `M/YY`, `MM-YY`, `MM / YYYY`… A two-digit
+    /// year is in this century (`29` → 2029).
     pub fn parse(text: &str) -> Option<Self> {
         let (month, year) = text.split_once(['/', '-', '.'])?;
         let month: u32 = month.trim().parse().ok()?;
@@ -195,21 +194,21 @@ impl CardExpiry {
         Some(Self { year, month })
     }
 
-    /// Jours entre `now` (horodatage Unix, UTC) et la fin du mois
-    /// d'expiration, compris : une carte « 09/29 » vaut jusqu'au 30 septembre
-    /// 2029 inclus. Négatif : expirée.
+    /// Days between `now` (Unix timestamp, UTC) and the end of the expiry
+    /// month, inclusive: a "09/29" card is valid up to and including
+    /// 30 September 2029. Negative: expired.
     pub fn days_left(self, now: i64) -> i64 {
         let (next_year, next_month) = if self.month == 12 {
             (self.year + 1, 1)
         } else {
             (self.year, self.month + 1)
         };
-        // Premier jour du mois suivant, moins aujourd'hui.
+        // First day of the next month, minus today.
         days_from_civil(next_year, next_month, 1) - now.div_euclid(DAY) - 1
     }
 }
 
-/// Jours depuis le 1er janvier 1970 (algorithme de Howard Hinnant).
+/// Days since 1 January 1970 (Howard Hinnant's algorithm).
 fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     let year = i64::from(year) - i64::from(month <= 2);
     let era = year.div_euclid(400);
@@ -220,12 +219,12 @@ fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-/// Une carte expirée, ou qui expire dans moins de `CARD_WARNING_DAYS` jours.
+/// An expired card, or one that expires in fewer than `CARD_WARNING_DAYS` days.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExpiringCard {
     pub id: String,
     pub expiry: CardExpiry,
-    /// Négatif : expirée depuis autant de jours.
+    /// Negative: expired for that many days.
     pub days_left: i64,
 }
 
@@ -235,8 +234,8 @@ impl ExpiringCard {
     }
 }
 
-/// Cartes actives expirées ou bientôt expirées, la plus ancienne échéance
-/// d'abord. `now` : horodatage Unix.
+/// Active cards that are expired or expire soon, earliest expiry first.
+/// `now`: Unix timestamp.
 pub fn expiring_cards(vault: &Vault, now: i64) -> Vec<ExpiringCard> {
     let mut cards: Vec<ExpiringCard> = vault
         .items()
@@ -256,15 +255,15 @@ pub fn expiring_cards(vault: &Vault, now: i64) -> Vec<ExpiringCard> {
     cards
 }
 
-// MARK: Mots de passe anciens
+// MARK: Old passwords
 
-/// Identifiants dont l'élément n'a pas été modifié depuis plus de
-/// `OLD_PASSWORD_DAYS` jours, le plus ancien d'abord, avec leur âge en jours.
+/// Logins whose item has not been modified for more than
+/// `OLD_PASSWORD_DAYS` days, oldest first, with their age in days.
 ///
-/// La date de modification de l'élément borne celle du mot de passe : si
-/// l'élément n'a pas bougé depuis 3 ans, son mot de passe non plus. Un
-/// élément retouché récemment (titre, dossier) sans changer de mot de passe
-/// échappe donc à la liste : jamais de fausse alerte, quelques oublis.
+/// The item's modification date bounds the password's: if the item has not
+/// moved in 3 years, neither has its password. An item edited recently
+/// (title, folder) without a password change therefore escapes the list:
+/// never a false alarm, a few misses.
 pub fn old_passwords(vault: &Vault, now: i64) -> Vec<(String, i64)> {
     let mut old: Vec<(String, i64)> = vault
         .items()
@@ -278,11 +277,11 @@ pub fn old_passwords(vault: &Vault, now: i64) -> Vec<(String, i64)> {
     old
 }
 
-// MARK: Nouveaux mots de passe
+// MARK: New passwords
 
-/// Identifiants actifs parmi `after` dont le mot de passe est nouveau : absent
-/// de `before` (élément créé) ou différent. Sert à vérifier dans les fuites
-/// connues les mots de passe que l'on vient d'enregistrer.
+/// Active logins among `after` whose password is new: missing from
+/// `before` (item created) or different. Used to check the passwords just
+/// saved against known breaches.
 pub fn changed_passwords(before: Option<&Vault>, after: &[Item]) -> Vec<String> {
     after
         .iter()
@@ -353,8 +352,8 @@ mod tests {
         )
     }
 
-    /// Extrait de `tfa.json` (format v3), avec des entrées que l'analyse doit
-    /// ignorer sans échouer.
+    /// Excerpt of `tfa.json` (v3 format), with entries the parser must skip
+    /// without failing.
     const FIXTURE: &str = r#"[
         ["GitHub", {"domain": "github.com", "tfa": ["totp", "u2f", "sms"],
                     "documentation": "https://docs.github.com/en/authentication/securing-your-account-with-two-factor-authentication-2fa"}],
@@ -388,7 +387,7 @@ mod tests {
                 .unwrap()
                 .starts_with("https://docs.github.com")
         );
-        // Domaine normalisé ; page d'aide en HTTP écartée.
+        // Normalised domain; HTTP help page dropped.
         let bank = dir.lookup("banque.co.uk").unwrap();
         assert_eq!(bank.domain, "banque.co.uk");
         assert!(!bank.supports_totp());
@@ -413,7 +412,7 @@ mod tests {
             assert!(dir.lookup(url).is_some(), "{url}");
         }
         for url in [
-            // Le domaine parent n'hérite pas d'une entrée plus précise.
+            // The parent domain does not inherit a more specific entry.
             "https://amazon.com",
             "https://www.amazon.com/gp/cart",
             "https://github.io",
@@ -485,7 +484,7 @@ mod tests {
         }
     }
 
-    /// Horodatage Unix de minuit UTC, le jour donné.
+    /// Unix timestamp of midnight UTC on the given day.
     fn at(year: i32, month: u32, day: u32) -> i64 {
         days_from_civil(year, month, day) * DAY
     }
@@ -495,15 +494,15 @@ mod tests {
         assert_eq!(at(1970, 1, 1), 0);
         assert_eq!(at(2000, 3, 1), 951_868_800);
         let sept = CardExpiry::parse("09/26").unwrap();
-        // Valable jusqu'au dernier jour du mois, compris.
+        // Valid up to and including the last day of the month.
         assert_eq!(sept.days_left(at(2026, 9, 30) + 23 * 3600), 0);
         assert_eq!(sept.days_left(at(2026, 10, 1)), -1);
         assert_eq!(sept.days_left(at(2026, 9, 1)), 29);
-        // Décembre : la fin du mois passe à l'année suivante.
+        // December: the end of the month rolls into the next year.
         let dec = CardExpiry::parse("12/26").unwrap();
         assert_eq!(dec.days_left(at(2026, 12, 31)), 0);
         assert_eq!(dec.days_left(at(2027, 1, 1)), -1);
-        // Février d'une année bissextile.
+        // February of a leap year.
         let feb = CardExpiry::parse("02/28").unwrap();
         assert_eq!(feb.days_left(at(2028, 2, 1)), 28);
     }

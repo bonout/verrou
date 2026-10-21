@@ -1,18 +1,17 @@
-//! « Créer une passkey » : trouver la page où le faire sur un site.
+//! "Create a passkey": find the page where to do it on a site.
 //!
-//! Ordre : la norme du W3C « Passkey Endpoints »
-//! (`/.well-known/passkey-endpoints`, adresses `enroll` puis `manage`),
-//! vérifiée sur l'hôte de l'élément puis sur son domaine enregistrable ;
-//! puis une page connue d'avance pour quelques grands sites
-//! (`verrou_core::passkey_upgrade::known_setup_url`) ; puis l'adresse du
-//! site donnée par l'annuaire ; à défaut, l'accueil du site.
+//! Order: the W3C "Passkey Endpoints" standard
+//! (`/.well-known/passkey-endpoints`, `enroll` then `manage` addresses),
+//! checked on the item's host then on its registrable domain; then a page
+//! known in advance for a few big sites
+//! (`verrou_core::passkey_upgrade::known_setup_url`); then the site address
+//! given by the directory; failing that, the site's home page.
 //!
-//! Confidentialité : comme « Changer le mot de passe », seulement sur
-//! demande de l'utilisateur, pour un seul élément, jamais en masse. Les
-//! requêtes partent vers le site qu'il s'apprête à ouvrir, et vers lui seul :
-//! HTTPS, sans cookie, sans `Referer`, sans redirection, délai court, corps
-//! borné. Les adresses lues ne sont gardées que si elles restent sur le
-//! même domaine enregistrable.
+//! Privacy: like "Change password", only at the user's request, for a
+//! single item, never in bulk. The requests go to the site they are about
+//! to open, and to it alone: HTTPS, no cookie, no `Referer`, no redirect,
+//! short timeout, bounded body. The addresses read are kept only if they
+//! stay on the same registrable domain.
 
 use std::time::Duration;
 
@@ -24,34 +23,34 @@ use crate::Error;
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-/// Le fichier fait quelques centaines d'octets.
+/// The file is a few hundred bytes.
 const MAX_BODY: usize = 16 * 1024;
 
-/// D'où vient l'adresse proposée.
+/// Where the proposed address comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
-    /// Le site publie sa page de création (`passkey-endpoints`).
+    /// The site publishes its creation page (`passkey-endpoints`).
     WellKnown,
-    /// Table des grands sites, sans requête.
+    /// Table of big sites, without request.
     Known,
-    /// Le site n'indique pas sa page : l'adresse de l'annuaire, ou son accueil.
+    /// The site doesn't give its page: the directory's address, or its home page.
     Home,
 }
 
-/// Page à ouvrir pour créer une passkey.
+/// Page to open to create a passkey.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Page {
     pub url: String,
     pub source: Source,
 }
 
-/// La page de création d'une passkey pour l'hôte (ou l'adresse) d'un
-/// identifiant. `site_url` : l'adresse du site selon l'annuaire, s'il en
-/// donne une. Erreur seulement s'il n'y a pas de site.
+/// The passkey creation page for a login's host (or address). `site_url`:
+/// the site's address according to the directory, if it gives one. An
+/// error only if there is no site.
 pub async fn find(site: &str, site_url: Option<&str>) -> Result<Page, Error> {
     let hosts = candidate_hosts(site);
     let Some(host) = hosts.first() else {
-        return Err(Error::Invalid("cet élément n'a pas de site".to_owned()));
+        return Err(Error::Invalid("this item has no site".to_owned()));
     };
     let origins: Vec<(String, Url)> = hosts
         .iter()
@@ -84,8 +83,8 @@ pub async fn find(site: &str, site_url: Option<&str>) -> Result<Page, Error> {
 fn client(loopback_http: bool) -> Result<reqwest::Client, Error> {
     reqwest::Client::builder()
         .user_agent(concat!("Verrou/", env!("CARGO_PKG_VERSION")))
-        // Le fichier est servi à son adresse : une redirection n'est pas
-        // suivie (elle pourrait mener ailleurs, ou en HTTP).
+        // The file is served at its address: a redirect is not followed (it
+        // could lead elsewhere, or to HTTP).
         .redirect(redirect::Policy::none())
         .referer(false)
         .https_only(!loopback_http)
@@ -95,8 +94,8 @@ fn client(loopback_http: bool) -> Result<reqwest::Client, Error> {
         .map_err(|e| Error::Network(e.to_string()))
 }
 
-/// La page `enroll` (ou `manage`) publiée par `site`, si le fichier existe,
-/// se lit, et désigne une adresse HTTPS du même domaine que `host`.
+/// The `enroll` (or `manage`) page published by `site`, if the file exists,
+/// reads, and points to an HTTPS address on the same domain as `host`.
 async fn probe(
     client: &reqwest::Client,
     site: &Url,
@@ -128,8 +127,8 @@ mod tests {
 
     use super::*;
 
-    /// Serveur HTTP minimal sur la boucle locale : `ENDPOINTS_PATH` répond
-    /// `status` et `body`, le reste 404.
+    /// Minimal HTTP server on the loopback: `ENDPOINTS_PATH` answers
+    /// `status` and `body`, the rest 404.
     fn server(status: u16, body: &'static str) -> Url {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();

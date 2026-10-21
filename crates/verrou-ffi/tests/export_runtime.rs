@@ -1,13 +1,13 @@
-//! Toute méthode `async` exportée vers Swift doit tourner dans le runtime
-//! Tokio (`#[uniffi::export(async_runtime = "tokio")]`) : sans lui, le
-//! premier appel réseau échoue (« must be called from the context of a
-//! Tokio 1.x runtime »). Les tests Rust ne le voient pas, ils fournissent
-//! leur propre runtime : on vérifie donc les sources.
+//! Every `async` method exported to Swift must run on the Tokio runtime
+//! (`#[uniffi::export(async_runtime = "tokio")]`): without it, the first
+//! network call fails ("must be called from the context of a Tokio 1.x
+//! runtime"). Rust tests don't see it, they provide their own runtime: so
+//! we check the sources.
 
 use std::fs;
 use std::path::Path;
 
-/// Le bloc `{ … }` qui commence à `start` (position d'une accolade ouvrante).
+/// The `{ … }` block starting at `start` (position of an opening brace).
 fn block(source: &str, start: usize) -> &str {
     let mut depth = 0usize;
     for (offset, c) in source[start..].char_indices() {
@@ -59,6 +59,6 @@ fn async_exports_run_on_tokio() {
     }
     assert!(
         missing.is_empty(),
-        "export async sans runtime Tokio : {missing:?}"
+        "async export without the Tokio runtime: {missing:?}"
     );
 }

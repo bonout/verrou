@@ -1,10 +1,10 @@
-//! Partage avec les autres comptes du serveur : plusieurs éléments à la fois
-//! dans un coffre partagé, organisations (créer, renommer, quitter),
-//! collections et leurs accès, groupes, invitations reçues.
+//! Sharing with the server's other accounts: several items at once
+//! into a shared vault, organizations (create, rename, leave),
+//! collections and their access, groups, received invitations.
 //!
-//! Aucune clé ne traverse la frontière : la clé d'une organisation naît et
-//! reste dans le magasin de clés du SDK, côté Rust ; Swift ne voit que des
-//! noms, des identifiants et des droits.
+//! No key crosses the boundary: an organization's key is born and
+//! stays in the SDK's key store, on the Rust side; Swift only sees
+//! names, ids and rights.
 
 use verrou_vaultwarden::Skipped;
 use verrou_vaultwarden::collections::{CollectionMembers, Group};
@@ -15,65 +15,65 @@ use crate::bulk::BulkProgress;
 use crate::members::MemberCollectionAccess;
 use crate::{IdMapping, VaultSession, VerrouError};
 
-/// Bilan d'un retrait du partage.
+/// Result of removing items from sharing.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct UnshareResult {
-    /// Éléments ramenés dans le coffre personnel : identifiant
-    /// d'organisation (`temporary`) → nouvel identifiant (`server`).
+    /// Items brought back to the personal vault: organization
+    /// id (`temporary`) -> new id (`server`).
     pub moved: Vec<IdMapping>,
-    /// Écartés : pas dans une organisation.
+    /// Skipped: not in an organization.
     pub not_shared: u32,
-    /// Écartés : en lecture seule (il faut pouvoir modifier et supprimer).
+    /// Skipped: read-only (editing and deleting must be allowed).
     pub read_only: u32,
-    /// Écartés : l'organisation masque leurs mots de passe à ce compte.
+    /// Skipped: the organization hides their passwords from this account.
     pub passwords_hidden: u32,
-    /// Écartés : dans la corbeille.
+    /// Skipped: in the trash.
     pub in_trash: u32,
-    /// Écartés : plus dans le coffre.
+    /// Skipped: no longer in the vault.
     pub not_found: u32,
-    /// Refusés : titres et raisons.
+    /// Refused: titles and reasons.
     pub failures: Vec<String>,
 }
 
-/// Bilan d'un partage de plusieurs éléments.
+/// Result of sharing several items.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ShareResult {
-    /// Éléments passés dans l'organisation.
+    /// Items moved into the organization.
     pub shared: u32,
-    /// Écartés : déjà dans une organisation.
+    /// Skipped: already in an organization.
     pub already_shared: u32,
-    /// Écartés : partagés en lecture seule.
+    /// Skipped: shared read-only.
     pub read_only: u32,
-    /// Écartés : dans la corbeille.
+    /// Skipped: in the trash.
     pub in_trash: u32,
-    /// Écartés : plus dans le coffre.
+    /// Skipped: no longer in the vault.
     pub not_found: u32,
-    /// Refusés : titres et raisons.
+    /// Refused: titles and reasons.
     pub failures: Vec<String>,
 }
 
-/// Une organisation rejointe, en attente de la confirmation d'un
-/// administrateur (la clé de l'organisation n'est pas encore arrivée).
+/// An organization joined, awaiting an administrator's confirmation
+/// (the organization's key has not arrived yet).
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct PendingMembershipView {
     pub organization_id: String,
     pub name: String,
 }
 
-/// Ce que dit un lien d'invitation collé.
+/// What a pasted invitation link says.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct InvitationInfo {
     pub server: String,
     pub email: String,
     pub organization_name: Option<String>,
-    /// L'invitation vise le compte ouvert (même adresse).
+    /// The invitation targets the open account (same address).
     pub for_this_account: bool,
 }
 
-/// Un accès (d'un membre ou d'un groupe) à une collection.
+/// An access (of a member or a group) to a collection.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct AccessGrant {
-    /// Identifiant d'adhésion du membre, ou du groupe.
+    /// Membership id of the member, or the group id.
     pub id: String,
     pub read_only: bool,
     pub hide_passwords: bool,
@@ -102,7 +102,7 @@ impl From<CollectionAccess> for AccessGrant {
     }
 }
 
-/// Qui accède à une collection.
+/// Who accesses a collection.
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct CollectionAccessList {
     pub members: Vec<AccessGrant>,
@@ -118,12 +118,12 @@ impl From<CollectionAccessList> for CollectionMembers {
     }
 }
 
-/// Un groupe de membres.
+/// A group of members.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct OrganizationGroup {
     pub id: String,
     pub name: String,
-    /// Identifiants d'adhésion des membres.
+    /// Membership ids of the members.
     pub members: Vec<String>,
     pub collections: Vec<MemberCollectionAccess>,
 }
@@ -148,7 +148,7 @@ impl From<Group> for OrganizationGroup {
     }
 }
 
-/// Membres à confirmer dans une organisation que le compte administre.
+/// Members to confirm in an organization the account administers.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct PendingConfirmations {
     pub organization_id: String,
@@ -158,12 +158,12 @@ pub struct PendingConfirmations {
 
 fn mock_refusal() -> VerrouError {
     VerrouError::Invalid {
-        message: "coffre fictif : lecture seule".to_owned(),
+        message: "mock vault: read-only".to_owned(),
     }
 }
 
 impl VaultSession {
-    /// La connexion ouverte, ou l'erreur qui dit pourquoi il n'y en a pas.
+    /// The open connection, or the error that says why there is none.
     fn sharing_connection(
         &self,
     ) -> Result<std::sync::Arc<tokio::sync::Mutex<verrou_vaultwarden::Connection>>, VerrouError>
@@ -180,10 +180,10 @@ impl VaultSession {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// « Partager… » sur plusieurs éléments : rechiffrés sous la clé de
-    /// l'organisation et envoyés ensemble. Les éléments protégés doivent
-    /// avoir été confirmés (`authorize_item`) ; les autres écartés sont
-    /// comptés.
+    /// "Share..." on several items: re-encrypted under the
+    /// organization's key and sent together. Protected items must
+    /// have been confirmed (`authorize_item`); the other skipped ones are
+    /// counted.
     pub async fn share_items(
         &self,
         ids: Vec<String>,
@@ -219,18 +219,18 @@ impl VaultSession {
             failures: outcome
                 .failed
                 .iter()
-                .map(|(title, reason)| format!("{title} : {reason}"))
+                .map(|(title, reason)| format!("{title}: {reason}"))
                 .collect(),
         };
         self.install_if_current(&connection, outcome.vault)?;
         Ok(result)
     }
 
-    /// « Retirer du partage » : ramène des éléments d'organisation dans le
-    /// coffre personnel (copie chiffrée sous la clé de l'utilisateur, avec
-    /// une nouvelle clé d'élément et ses pièces jointes, puis suppression
-    /// définitive de l'élément de l'organisation). Demande le serveur ; les
-    /// éléments protégés doivent avoir été confirmés (`authorize_item`).
+    /// "Remove from sharing": brings organization items back to the
+    /// personal vault (copy encrypted under the user's key, with
+    /// a new item key and its attachments, then permanent deletion
+    /// of the organization's item). Needs the server; protected
+    /// items must have been confirmed (`authorize_item`).
     pub async fn unshare_items(
         &self,
         ids: Vec<String>,
@@ -271,15 +271,15 @@ impl VaultSession {
             failures: outcome
                 .failed
                 .iter()
-                .map(|(title, reason)| format!("{title} : {reason}"))
+                .map(|(title, reason)| format!("{title}: {reason}"))
                 .collect(),
         };
         self.install_if_current(&connection, outcome.vault)?;
         Ok(result)
     }
 
-    /// Crée une organisation (le compte en est propriétaire) avec une
-    /// première collection ; rend son identifiant.
+    /// Creates an organization (the account owns it) with a
+    /// first collection; returns its id.
     pub async fn create_organization(
         &self,
         name: String,
@@ -295,7 +295,7 @@ impl VaultSession {
         Ok(id)
     }
 
-    /// Renomme l'organisation (propriétaire).
+    /// Renames the organization (owner).
     pub async fn rename_organization(
         &self,
         organization_id: String,
@@ -310,7 +310,7 @@ impl VaultSession {
         self.install_if_current(&connection, vault)
     }
 
-    /// Quitte l'organisation : ses éléments disparaissent de ce coffre.
+    /// Leaves the organization: its items disappear from this vault.
     pub async fn leave_organization(&self, organization_id: String) -> Result<(), VerrouError> {
         let connection = self.sharing_connection()?;
         let vault = connection
@@ -321,8 +321,8 @@ impl VaultSession {
         self.install_if_current(&connection, vault)
     }
 
-    /// Organisations rejointes, en attente de confirmation (d'après la
-    /// dernière synchronisation, sans réseau).
+    /// Organizations joined, awaiting confirmation (from the
+    /// last sync, without network).
     pub async fn pending_memberships(&self) -> Vec<PendingMembershipView> {
         let Some(connection) = self.current_connection() else {
             return Vec::new();
@@ -339,11 +339,11 @@ impl VaultSession {
             .collect()
     }
 
-    /// Lit un lien d'invitation collé (sans réseau).
+    /// Reads a pasted invitation link (without network).
     pub fn invitation_info(&self, link: String) -> Result<InvitationInfo, VerrouError> {
         let SignupLink::Invite(invite) = register::parse_link(&link)? else {
             return Err(VerrouError::Invalid {
-                message: "ce lien n'est pas une invitation à une organisation".to_owned(),
+                message: "this link is not an invitation to an organization".to_owned(),
             });
         };
         let account = self.account();
@@ -357,9 +357,9 @@ impl VaultSession {
         })
     }
 
-    /// « Rejoindre une organisation » avec ce compte : accepte l'invitation
-    /// du lien ; rend le nom de l'organisation. Un administrateur doit
-    /// ensuite confirmer le membre.
+    /// "Join an organization" with this account: accepts the link's
+    /// invitation; returns the organization's name. An administrator must
+    /// then confirm the member.
     pub async fn join_organization(&self, link: String) -> Result<String, VerrouError> {
         let connection = self.sharing_connection()?;
         let (name, vault) = connection.lock().await.join_organization(&link).await?;
@@ -367,7 +367,7 @@ impl VaultSession {
         Ok(name)
     }
 
-    /// Qui accède à la collection (membres et groupes).
+    /// Who accesses the collection (members and groups).
     pub async fn collection_access(
         &self,
         organization_id: String,
@@ -385,7 +385,7 @@ impl VaultSession {
         })
     }
 
-    /// Crée une collection ; rend son identifiant.
+    /// Creates a collection; returns its id.
     pub async fn create_collection(
         &self,
         organization_id: String,
@@ -402,7 +402,7 @@ impl VaultSession {
         Ok(id)
     }
 
-    /// Renomme la collection et remplace ses accès.
+    /// Renames the collection and replaces its access.
     pub async fn update_collection(
         &self,
         organization_id: String,
@@ -419,7 +419,7 @@ impl VaultSession {
         self.install_if_current(&connection, vault)
     }
 
-    /// Supprime la collection (ses éléments restent dans l'organisation).
+    /// Deletes the collection (its items stay in the organization).
     pub async fn delete_collection(
         &self,
         organization_id: String,
@@ -434,7 +434,7 @@ impl VaultSession {
         self.install_if_current(&connection, vault)
     }
 
-    /// Les groupes de l'organisation (vide si le serveur ne les active pas).
+    /// The organization's groups (empty if the server doesn't enable them).
     pub async fn organization_groups(
         &self,
         organization_id: String,
@@ -448,7 +448,7 @@ impl VaultSession {
         Ok(groups.into_iter().map(Into::into).collect())
     }
 
-    /// Crée (`id` absent) ou modifie un groupe ; rend son identifiant.
+    /// Creates (`id` absent) or edits a group; returns its id.
     pub async fn save_organization_group(
         &self,
         organization_id: String,
@@ -485,9 +485,9 @@ impl VaultSession {
             .await?)
     }
 
-    /// Pour chaque organisation que le compte administre, le nombre de
-    /// membres qui ont accepté l'invitation et attendent d'être confirmés.
-    /// Une organisation injoignable est passée.
+    /// For each organization the account administers, the number of
+    /// members who accepted the invitation and are waiting to be confirmed.
+    /// An unreachable organization is skipped.
     pub async fn members_to_confirm(&self) -> Vec<PendingConfirmations> {
         let Some(connection) = self.current_connection() else {
             return Vec::new();
@@ -539,7 +539,7 @@ mod tests {
             .unwrap();
         assert_eq!(info.email, "lea@exemple.fr");
         assert_eq!(info.organization_name.as_deref(), Some("Famille Martin"));
-        assert!(!info.for_this_account, "aucun compte ouvert");
+        assert!(!info.for_this_account, "no open account");
         assert!(
             session
                 .invitation_info("https://exemple.fr".to_owned())

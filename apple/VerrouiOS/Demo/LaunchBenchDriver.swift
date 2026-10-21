@@ -1,16 +1,16 @@
 #if DEBUG
 import Foundation
 
-/// Lancement à froid avec Face ID, contre un vrai serveur Vaultwarden
-/// (builds Debug, `scripts/ios-bench.sh`) :
+/// Cold launch with Face ID, against a real Vaultwarden server (Debug
+/// builds, `scripts/ios-bench.sh`):
 ///
 /// - `VERROU_BENCH_LAUNCH=setup` (+ `VERROU_BENCH_SERVER`, `_EMAIL`,
-///   `_PASSWORD`, `_TOTP`) : se connecte au compte, active Face ID, attend la
-///   fin de la synchronisation et quitte (`BENCH_SETUP_DONE`) ;
-/// - `VERROU_BENCH_LAUNCH=measure` : ne touche à rien. L'app suit son chemin
-///   normal (écran verrouillé, Face ID demandé de lui-même, que le script
-///   accepte), les étapes s'affichent en lignes `PERF …` ; le pilote attend la
-///   fin de la première synchronisation, puis quitte (`BENCH_DONE`).
+///   `_PASSWORD`, `_TOTP`): signs in to the account, turns on Face ID, waits
+///   for the sync to finish and quits (`BENCH_SETUP_DONE`);
+/// - `VERROU_BENCH_LAUNCH=measure`: touches nothing. The app follows its
+///   normal path (lock screen, Face ID requested on its own, which the
+///   script accepts), the steps show as `PERF …` lines; the driver waits for
+///   the end of the first sync, then quits (`BENCH_DONE`).
 @MainActor
 final class LaunchBenchDriver {
     enum Phase: String {
@@ -37,7 +37,7 @@ final class LaunchBenchDriver {
             case .measure: await measure()
             }
             fflush(stdout)
-            // `VERROU_BENCH_HOLD=1` : l'app reste ouverte (captures).
+            // `VERROU_BENCH_HOLD=1`: the app stays open (screenshots).
             if ProcessInfo.processInfo.environment["VERROU_BENCH_HOLD"] != "1" { exit(0) }
         }
     }
@@ -60,7 +60,7 @@ final class LaunchBenchDriver {
         let environment = ProcessInfo.processInfo.environment
         guard let server = environment["VERROU_BENCH_SERVER"], let email = environment["VERROU_BENCH_EMAIL"],
               let password = environment["VERROU_BENCH_PASSWORD"], let secret = environment["VERROU_BENCH_TOTP"]
-        else { return say("BENCH_FAIL variables du compte absentes") }
+        else { return say("BENCH_FAIL account variables missing") }
         if !model.needsLogin {
             model.logout()
         }
@@ -71,10 +71,10 @@ final class LaunchBenchDriver {
         for offset in [0.0, 30.0] where model.lockState != .unlocked {
             await model.answerTwoFactor(.authenticator, token: EndToEndDriver.totp(secret, at: now + offset))
         }
-        guard model.lockState == .unlocked else { return say("BENCH_FAIL connexion : \(model.loginError ?? "?")") }
-        guard await wait(20, until: { model.biometricEnrolled }) else { return say("BENCH_FAIL Face ID non activé") }
+        guard model.lockState == .unlocked else { return say("BENCH_FAIL sign-in: \(model.loginError ?? "?")") }
+        guard await wait(20, until: { model.biometricEnrolled }) else { return say("BENCH_FAIL Face ID not turned on") }
         _ = await wait(30) { model.syncsFinished > 0 && model.syncState != .syncing }
-        // Captures de l'accueil sans favori : `VERROU_BENCH_NO_FAVORITES=1`.
+        // Home screen screenshots without a favorite: `VERROU_BENCH_NO_FAVORITES=1`.
         if environment["VERROU_BENCH_NO_FAVORITES"] == "1" {
             let favorites = model.summaries.filter(\.favorite).map(\.id)
             if !favorites.isEmpty { await model.performBulk(.favorite(favorite: false), on: favorites) }
@@ -83,8 +83,8 @@ final class LaunchBenchDriver {
     }
 
     private func measure() async {
-        guard await wait(60, until: { model.lockState == .unlocked }) else { return say("BENCH_FAIL jamais déverrouillé") }
-        guard await wait(90, until: { model.syncsFinished > 0 }) else { return say("BENCH_FAIL synchro sans fin") }
+        guard await wait(60, until: { model.lockState == .unlocked }) else { return say("BENCH_FAIL never unlocked") }
+        guard await wait(90, until: { model.syncsFinished > 0 }) else { return say("BENCH_FAIL sync never finished") }
         try? await Task.sleep(for: .milliseconds(800))
         say("BENCH_DONE")
     }

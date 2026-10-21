@@ -1,9 +1,9 @@
-//! `verrou` : le coffre depuis le terminal.
+//! `verrou`: the vault from the terminal.
 //!
-//! Le coffre n'est déchiffré que dans l'app : la CLI, reliée une fois par
-//! `verrou link`, lui pose ses questions par le pont (TCP `127.0.0.1`, canal
-//! chiffré). Les secrets demandent l'accord de l'utilisateur dans Verrou
-//! (Touch ID). `--mock` travaille sur le coffre fictif, sans l'app.
+//! The vault is only decrypted in the app: the CLI, linked once with
+//! `verrou link`, asks it its questions through the bridge (TCP
+//! `127.0.0.1`, encrypted channel). Secrets require the user's approval in
+//! Verrou (Touch ID). `--mock` works on the mock vault, without the app.
 
 use std::io::Write as _;
 use std::path::PathBuf;
@@ -24,21 +24,17 @@ use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
 
 #[derive(Parser)]
-#[command(
-    name = "verrou",
-    version,
-    about = "Gestionnaire de mots de passe pour Vaultwarden"
-)]
+#[command(name = "verrou", version, about = "Password manager for Vaultwarden")]
 struct Cli {
-    /// Travailler sur le coffre fictif, sans l'app.
+    /// Work on the mock vault, without the app.
     #[arg(long, global = true)]
     mock: bool,
 
-    /// Taille du coffre fictif (avec `--mock`).
+    /// Size of the mock vault (with `--mock`).
     #[arg(long, global = true, env = "VERROU_MOCK_SIZE", default_value_t = 0)]
     mock_size: usize,
 
-    /// Sortie JSON (pour les scripts).
+    /// JSON output (for scripts).
     #[arg(long, global = true)]
     json: bool,
 
@@ -48,17 +44,17 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Relier ce terminal à Verrou (une fois) : un code à comparer dans l'app.
+    /// Link this terminal to Verrou (once): a code to compare in the app.
     Link {
-        /// Nom montré dans Verrou.
-        #[arg(long, default_value = "le terminal (verrou)")]
+        /// Name shown in Verrou.
+        #[arg(long, default_value = "terminal (verrou)")]
         name: String,
     },
-    /// Délier ce terminal de Verrou.
+    /// Unlink this terminal from Verrou.
     Unlink,
-    /// État de la liaison et du coffre.
+    /// State of the link and the vault.
     Status,
-    /// Chercher des éléments (sans requête : tout lister). Aucun secret.
+    /// Search items (no query: list everything). No secrets.
     #[command(visible_alias = "ls")]
     Search {
         query: Vec<String>,
@@ -69,20 +65,20 @@ enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
-    /// Afficher un élément (titre ou identifiant). Les secrets restent masqués
-    /// sans `--reveal` ou `--field` ; Verrou demande alors votre accord.
+    /// Show an item (title or id). Secrets stay hidden without `--reveal` or
+    /// `--field`; Verrou then asks for your approval.
     Get {
         query: Vec<String>,
-        /// N'afficher que ce champ (`password`, `username`, `totp`, `notes`…), brut.
+        /// Print only this field (`password`, `username`, `totp`, `notes`…), raw.
         #[arg(short, long)]
         field: Option<String>,
         #[arg(long)]
         reveal: bool,
     },
-    /// Code à usage unique de l'élément trouvé (accord demandé dans Verrou).
+    /// One-time code of the item found (approval asked in Verrou).
     Totp { query: Vec<String> },
-    /// Générer un mot de passe, ou une phrase de passe avec `--words`
-    /// (sur place, sans l'app).
+    /// Generate a password, or a passphrase with `--words` (locally,
+    /// without the app).
     Generate {
         #[arg(short, long, default_value_t = 20, conflicts_with = "words")]
         length: usize,
@@ -90,55 +86,55 @@ enum Command {
         no_symbols: bool,
         #[arg(long, conflicts_with = "words")]
         no_digits: bool,
-        /// Phrase de passe de N mots (3 à 20), tirés dans une liste de
-        /// 7 776 mots.
+        /// Passphrase of N words (3 to 20), drawn from a list of 7,776
+        /// words.
         #[arg(short, long, value_parser = clap::value_parser!(u8).range(3..=20))]
         words: Option<u8>,
-        /// Séparateur des mots : `-`, `' '` (ou `space`), `.`, `_`, `,` ou
-        /// `digit` (un chiffre au hasard).
+        /// Word separator: `-`, `' '` (or `space`), `.`, `_`, `,` or
+        /// `digit` (a random digit).
         #[arg(long, default_value = "-", requires = "words", value_parser = parse_separator)]
         separator: Separator,
-        /// Initiale de chaque mot en majuscule.
+        /// Capitalize the first letter of each word.
         #[arg(long, requires = "words")]
         capitalize: bool,
-        /// Ajouter un chiffre à la fin d'un des mots.
+        /// Add a digit at the end of one of the words.
         #[arg(long, requires = "words")]
         number: bool,
-        /// Langue des mots.
+        /// Language of the words.
         #[arg(long, value_enum, default_value_t = LangArg::Fr, requires = "words")]
         lang: LangArg,
     },
-    /// Agent SSH : les clés SSH du coffre, signées par Verrou. Tourne au
-    /// premier plan et affiche la ligne `export SSH_AUTH_SOCK=…`.
+    /// SSH agent: the vault's SSH keys, signed by Verrou. Runs in the
+    /// foreground and prints the `export SSH_AUTH_SOCK=…` line.
     SshAgent {
-        /// Socket Unix (défaut : `~/.verrou/agent.sock`).
+        /// Unix socket (default: `~/.verrou/agent.sock`).
         #[arg(long)]
         socket: Option<PathBuf>,
     },
-    /// Signer ses commits git avec une clé SSH du coffre, par l'agent de
-    /// Verrou. Affiche les réglages de git ; `--apply` les écrit.
+    /// Sign your git commits with an SSH key from the vault, through
+    /// Verrou's agent. Prints the git settings; `--apply` writes them.
     GitSigning {
-        /// Titre ou empreinte de la clé (inutile s'il n'y en a qu'une).
+        /// Title or fingerprint of the key (not needed if there is only one).
         query: Vec<String>,
-        /// Adresse des commits (défaut : `git config user.email`).
+        /// Commit address (default: `git config user.email`).
         #[arg(long)]
         email: Option<String>,
-        /// Signataires autorisés, pour vérifier les signatures (défaut :
+        /// Allowed signers, to verify signatures (default:
         /// `~/.config/verrou/allowed_signers`).
         #[arg(long)]
         allowed_signers: Option<PathBuf>,
-        /// Socket de l'agent (défaut : `~/.verrou/agent.sock`).
+        /// Agent socket (default: `~/.verrou/agent.sock`).
         #[arg(long)]
         socket: Option<PathBuf>,
-        /// Écrire les réglages (configuration globale de git) et ajouter la
-        /// clé aux signataires autorisés.
+        /// Write the settings (global git configuration) and add the key to
+        /// the allowed signers.
         #[arg(long)]
         apply: bool,
-        /// Configuration du dépôt courant plutôt que la globale.
+        /// Current repository's configuration rather than the global one.
         #[arg(long)]
         local: bool,
     },
-    /// Mesurer la recherche sur un gros coffre fictif.
+    /// Benchmark search on a large mock vault.
     Bench {
         #[arg(long, default_value_t = 10_000)]
         items: usize,
@@ -153,7 +149,7 @@ enum LangArg {
 
 fn parse_separator(value: &str) -> Result<Separator, String> {
     Separator::parse(value)
-        .ok_or_else(|| format!("séparateur inconnu « {value} » : -, ' ', ., _, , ou digit"))
+        .ok_or_else(|| format!("unknown separator \"{value}\": -, ' ', ., _, , or digit"))
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -207,7 +203,7 @@ impl<'a> From<&'a ItemSummary> for ItemJson<'a> {
     }
 }
 
-/// `verrou get --json` : l'élément et ses champs, valeurs secrètes absentes.
+/// `verrou get --json`: the item and its fields, without secret values.
 #[derive(Serialize)]
 struct ItemDetailJson<'a> {
     #[serde(flatten)]
@@ -221,7 +217,7 @@ fn main() -> ExitCode {
     match run(&cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
-            eprintln!("verrou : {message}");
+            eprintln!("verrou: {message}");
             ExitCode::FAILURE
         }
     }
@@ -233,7 +229,7 @@ fn now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
-/// D'où viennent les éléments : l'app (par le pont) ou le coffre fictif.
+/// Where items come from: the app (through the bridge) or the mock vault.
 enum Source {
     Mock(Vault),
     App(Remote),
@@ -242,7 +238,7 @@ enum Source {
 impl Source {
     fn open(cli: &Cli) -> Result<Self, String> {
         if cli.mock {
-            eprintln!("\x1b[2m(coffre fictif, --mock)\x1b[0m");
+            eprintln!("\x1b[2m(mock vault, --mock)\x1b[0m");
             return Ok(Self::Mock(Vault::new(mock::vault_items(cli.mock_size, 42))));
         }
         let path = Config::default_path()?;
@@ -312,7 +308,7 @@ impl Source {
         }
     }
 
-    /// Code, période, secondes restantes.
+    /// Code, period, seconds remaining.
     fn totp(&mut self, item: &str) -> Result<(String, u64, u64), String> {
         match self {
             Self::Mock(vault) => access::totp_code(vault, item, now()),
@@ -332,7 +328,7 @@ impl Source {
         }
     }
 
-    /// Les clés SSH du coffre : clés publiques seulement, sans accord à donner.
+    /// The vault's SSH keys: public keys only, no approval needed.
     fn ssh_keys(&mut self) -> Result<Vec<git_signing::SigningKey>, String> {
         let identities = match self {
             Self::Mock(vault) => verrou_bridge::ssh::identities(vault),
@@ -349,7 +345,7 @@ impl Source {
 }
 
 fn unexpected(reply: &ReplyResult) -> String {
-    format!("réponse inattendue de Verrou : {reply:?}")
+    format!("unexpected reply from Verrou: {reply:?}")
 }
 
 fn run(cli: &Cli) -> Result<(), String> {
@@ -378,7 +374,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             let item = source.item(&query.join(" "))?;
             if let Some(field_id) = field {
                 let value = field_value(&mut source, &item, field_id)?;
-                // Un champ demandé explicitement sort brut, pour `| pbcopy`.
+                // A field asked for explicitly is printed raw, for `| pbcopy`.
                 writeln!(out, "{value}").ok();
                 return Ok(());
             }
@@ -402,10 +398,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             let mut source = Source::open(cli)?;
             let item = source.item(&query.join(" "))?;
             if !item.summary.has_totp {
-                return Err(format!(
-                    "« {} » n'a pas de code à usage unique",
-                    item.summary.title
-                ));
+                return Err(format!("\"{}\" has no one-time code", item.summary.title));
             }
             let (code, period, remaining) = source.totp(&item.summary.id)?;
             if cli.json {
@@ -427,7 +420,7 @@ fn run(cli: &Cli) -> Result<(), String> {
     Ok(())
 }
 
-/// `verrou generate` : mot de passe, ou phrase de passe avec `--words`.
+/// `verrou generate`: password, or passphrase with `--words`.
 fn generate(cli: &Cli, out: &mut impl std::io::Write) {
     let Command::Generate {
         length,
@@ -479,8 +472,8 @@ fn generate(cli: &Cli, out: &mut impl std::io::Write) {
     }
 }
 
-/// `verrou git-signing` : affiche (ou, avec `--apply`, écrit) les réglages
-/// de git pour signer avec une clé SSH du coffre.
+/// `verrou git-signing`: prints (or, with `--apply`, writes) the git
+/// settings to sign with an SSH key from the vault.
 fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), String> {
     let Command::GitSigning {
         query,
@@ -499,7 +492,7 @@ fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), Str
     let email = email
         .clone()
         .or_else(|| git_signing::git_email(git))
-        .ok_or("adresse des commits inconnue : --email, ou « git config user.email »")?;
+        .ok_or("commit address unknown: --email, or `git config user.email`")?;
     let plan = git_signing::Plan {
         key,
         email,
@@ -520,7 +513,7 @@ fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), Str
     if *apply {
         plan.apply(git)?;
         eprintln!(
-            "git signera avec « {} » ({}) ; clé ajoutée à {}.\nDans chaque terminal : export SSH_AUTH_SOCK={} (et « verrou ssh-agent » lancé).",
+            "git will sign with \"{}\" ({}); key added to {}.\nIn each terminal: export SSH_AUTH_SOCK={} (with `verrou ssh-agent` running).",
             plan.key.title,
             plan.key.fingerprint,
             plan.allowed_signers.display(),
@@ -528,23 +521,23 @@ fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), Str
         );
     } else {
         write!(out, "{}", plan.script(&socket)).ok();
-        eprintln!("(rien n'est écrit : relancez avec --apply pour appliquer ces réglages)");
+        eprintln!("(nothing written: run again with --apply to apply these settings)");
     }
     Ok(())
 }
 
-/// Valeur d'un champ : visible dans l'élément, ou demandée à Verrou.
+/// A field's value: visible in the item, or asked of Verrou.
 fn field_value(source: &mut Source, item: &ItemView, field_id: &str) -> Result<String, String> {
     let title = &item.summary.title;
     if field_id == "totp" {
         if !item.summary.has_totp {
-            return Err(format!("« {title} » n'a pas de code à usage unique"));
+            return Err(format!("\"{title}\" has no one-time code"));
         }
         return source.totp(&item.summary.id).map(|(code, _, _)| code);
     }
     if field_id == "notes" {
         if !item.has_notes {
-            return Err(format!("« {title} » n'a pas de notes"));
+            return Err(format!("\"{title}\" has no notes"));
         }
         return source.reveal(&item.summary.id, "notes");
     }
@@ -552,7 +545,7 @@ fn field_value(source: &mut Source, item: &ItemView, field_id: &str) -> Result<S
         .fields
         .iter()
         .find(|f| f.id == field_id)
-        .ok_or_else(|| format!("« {title} » n'a pas de champ « {field_id} »"))?;
+        .ok_or_else(|| format!("\"{title}\" has no field \"{field_id}\""))?;
     match &field.value {
         Some(value) => Ok(value.clone()),
         None => source.reveal(&item.summary.id, field_id),
@@ -563,29 +556,29 @@ fn link(name: &str) -> Result<(), String> {
     let path = Config::default_path()?;
     if Config::load(&path)?.is_some() {
         eprintln!(
-            "verrou : ce terminal était déjà relié ; le nouveau lien remplace l'ancien (déliez l'ancien dans les réglages de Verrou)."
+            "verrou: this terminal was already linked; the new link replaces the old one (unlink the old one in Verrou's settings)."
         );
     }
-    eprintln!("Demande envoyée à Verrou…");
+    eprintln!("Request sent to Verrou…");
     let config = remote::link(Endpoint::from_env(), name, |code| {
         eprintln!(
-            "Code de vérification : \x1b[1m{code}\x1b[0m\nAcceptez dans Verrou seulement s'il affiche exactement ce code."
+            "Verification code: \x1b[1m{code}\x1b[0m\nAccept in Verrou only if it shows exactly this code."
         );
     })
     .map_err(|e| e.to_string())?;
     config.save(&path)?;
-    eprintln!("Terminal relié à Verrou ({}).", path.display());
+    eprintln!("Terminal linked to Verrou ({}).", path.display());
     Ok(())
 }
 
 fn unlink() -> Result<(), String> {
     let path = Config::default_path()?;
     let Some(config) = Config::load(&path)? else {
-        eprintln!("Ce terminal n'était pas relié.");
+        eprintln!("This terminal was not linked.");
         return Ok(());
     };
-    // Prévenir Verrou s'il est ouvert ; sinon, le lien reste dans ses
-    // réglages, à délier à la main.
+    // Tell Verrou if it is open; otherwise, the link stays in its settings,
+    // to be unlinked by hand.
     let endpoint = Endpoint {
         launch: false,
         ..Endpoint::from_env()
@@ -595,10 +588,10 @@ fn unlink() -> Result<(), String> {
         .is_ok_and(|reply| reply == ReplyResult::Done);
     Config::remove(&path)?;
     if told {
-        eprintln!("Terminal délié.");
+        eprintln!("Terminal unlinked.");
     } else {
         eprintln!(
-            "Lien effacé de ce terminal. Verrou ne répond pas : déliez aussi « le terminal » dans ses réglages."
+            "Link removed from this terminal. Verrou does not answer: also unlink the terminal in its settings."
         );
     }
     Ok(())
@@ -636,11 +629,11 @@ fn status(out: &mut impl std::io::Write, json: bool) -> Result<(), String> {
         return Ok(());
     }
     let line = match (config.is_some(), linked, reachable, unlocked) {
-        (false, ..) => "non relié : « verrou link »".to_owned(),
-        (true, false, ..) => "lien révoqué dans Verrou : « verrou link »".to_owned(),
-        (true, true, Some(false), _) => "relié ; Verrou n'est pas ouvert".to_owned(),
-        (true, true, _, Some(true)) => "relié ; coffre déverrouillé".to_owned(),
-        _ => "relié ; coffre verrouillé".to_owned(),
+        (false, ..) => "not linked: `verrou link`".to_owned(),
+        (true, false, ..) => "link revoked in Verrou: `verrou link`".to_owned(),
+        (true, true, Some(false), _) => "linked; Verrou is not open".to_owned(),
+        (true, true, _, Some(true)) => "linked; vault unlocked".to_owned(),
+        _ => "linked; vault locked".to_owned(),
     };
     writeln!(out, "{line}").ok();
     Ok(())
@@ -661,7 +654,7 @@ fn ssh_agent(socket: Option<&std::path::Path>) -> Result<(), String> {
     );
     let _ = std::io::stdout().flush();
     eprintln!(
-        "Agent SSH de Verrou à l'écoute (Ctrl-C pour l'arrêter). Chaque clé demande votre accord dans Verrou."
+        "Verrou SSH agent listening (Ctrl-C to stop it). Each key asks for your approval in Verrou."
     );
     let keys: Arc<dyn Keys> = Arc::new(BridgeKeys {
         config,
@@ -671,7 +664,7 @@ fn ssh_agent(socket: Option<&std::path::Path>) -> Result<(), String> {
     Ok(())
 }
 
-/// Entre apostrophes si besoin, pour coller la ligne dans un shell.
+/// In single quotes if needed, to paste the line into a shell.
 fn shell_quote(text: &str) -> String {
     if text
         .chars()
@@ -711,7 +704,7 @@ fn print_results(
         .ok();
     }
     if total > items.len() {
-        writeln!(out, "\x1b[2m… et {} autres\x1b[0m", total - items.len()).ok();
+        writeln!(out, "\x1b[2m… and {} more\x1b[0m", total - items.len()).ok();
     }
     Ok(())
 }
@@ -756,10 +749,10 @@ fn print_item(
         writeln!(out, "  {:<22} {}", "Notes", shown.replace('\n', PAD)).ok();
     }
     if let Some(folder) = &summary.folder {
-        writeln!(out, "  {:<22} \x1b[2m{folder}\x1b[0m", "Dossier").ok();
+        writeln!(out, "  {:<22} \x1b[2m{folder}\x1b[0m", "Folder").ok();
     }
     if let Some(shared) = &summary.shared {
-        writeln!(out, "  {:<22} \x1b[2m{shared}\x1b[0m", "Coffre partagé").ok();
+        writeln!(out, "  {:<22} \x1b[2m{shared}\x1b[0m", "Shared vault").ok();
     }
     Ok(())
 }
@@ -791,15 +784,10 @@ fn bench(out: &mut impl std::io::Write, items: usize) {
     times.sort();
     let p50 = times[times.len() / 2];
     let p99 = times[times.len() * 99 / 100];
+    writeln!(out, "{} items — index built in {built:.2?}", vault.len()).ok();
     writeln!(
         out,
-        "{} éléments — index construit en {built:.2?}",
-        vault.len()
-    )
-    .ok();
-    writeln!(
-        out,
-        "recherche par frappe : médiane {p50:.2?}, p99 {p99:.2?} ({} mesures)",
+        "search per keystroke: median {p50:.2?}, p99 {p99:.2?} ({} samples)",
         times.len()
     )
     .ok();

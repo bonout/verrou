@@ -1,18 +1,18 @@
-//! Phrases de passe pour le générateur de l'app : tirées dans le cœur, avec
-//! leur entropie exacte (la jauge ne peut pas la deviner d'après les
-//! caractères, qui la surestiment de beaucoup).
+//! Passphrases for the app's generator: drawn in the core, with their
+//! exact entropy (the gauge can't guess it from the characters, which
+//! overestimate it by a lot).
 
 use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 
-/// Langue de la liste de mots.
+/// Language of the word list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum PassphraseLanguage {
-    /// Par défaut.
+    /// Default.
     French,
     English,
 }
 
-/// Ce qui sépare les mots.
+/// What separates the words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum PassphraseSeparator {
     Hyphen,
@@ -20,13 +20,13 @@ pub enum PassphraseSeparator {
     Period,
     Underscore,
     Comma,
-    /// Un chiffre au hasard entre chaque paire de mots.
+    /// A random digit between each pair of words.
     Digit,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct PassphraseSettings {
-    /// Ramené entre 3 et 20.
+    /// Clamped between 3 and 20.
     pub words: u32,
     pub separator: PassphraseSeparator,
     pub capitalize: bool,
@@ -37,7 +37,7 @@ pub struct PassphraseSettings {
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct GeneratedPassphrase {
     pub value: String,
-    /// Entropie exacte, en bits, pour la jauge de robustesse.
+    /// Exact entropy, in bits, for the strength gauge.
     pub entropy_bits: f64,
 }
 

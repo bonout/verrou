@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Entrée de la barre latérale : l'audit occupe alors la colonne centrale.
+/// Sidebar entry: the audit then occupies the middle column.
 struct AuditSidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SidebarPaneButton(title: "Audit de sécurité", symbol: "checkmark.shield", tint: .orange,
+        SidebarPaneButton(title: String(localized: "Security Audit"), symbol: "checkmark.shield", tint: .orange,
                           active: model.showAudit,
                           badge: model.showAudit ? model.audit.map(issues) : nil) {
             model.openAudit()
@@ -18,8 +18,8 @@ struct AuditSidebarButton: View {
     }
 }
 
-/// Audit du coffre : fuites connues (sur demande), mots de passe réutilisés,
-/// faibles, sites en HTTP. Un clic montre l'élément à droite.
+/// Vault audit: known leaks (on request), reused and weak passwords, HTTP
+/// sites. A click shows the item on the right.
 struct AuditView: View {
     @Environment(AppModel.self) private var model
 
@@ -31,30 +31,30 @@ struct AuditView: View {
                 breachSection
                 if let audit = model.audit {
                     if !audit.reused.isEmpty {
-                        title("Réutilisés", count: audit.reused.reduce(0) { $0 + $1.count },
-                              detail: "Un même mot de passe sur plusieurs sites : une fuite chez l'un ouvre les autres.")
+                        title("Reused passwords", count: audit.reused.reduce(0) { $0 + $1.count },
+                              detail: String(localized: "The same password on several sites: a leak at one opens the others."))
                         ForEach(Array(audit.reused.enumerated()), id: \.offset) { _, group in
-                            Text("Même mot de passe sur \(group.count) éléments")
+                            Text("Same password on \(group.count) items")
                                 .font(.caption).foregroundStyle(.secondary)
                                 .padding(.horizontal, 8).padding(.top, 6)
                             ForEach(group, id: \.id) { row($0, change: true).id("reused-\($0.id)") }
                         }
                     }
                     if !audit.weak.isEmpty {
-                        title("Faibles", count: audit.weak.count,
-                              detail: "Trop courts ou trop simples pour résister à une attaque hors ligne.")
+                        title("Weak passwords", count: audit.weak.count,
+                              detail: String(localized: "Too short or too simple to withstand an offline attack."))
                         ForEach(audit.weak, id: \.item.id) { weak in
-                            row(weak.item, note: "\(Int(weak.bits)) bits", change: true)
+                            row(weak.item, note: String(localized: "\(Int(weak.bits)) bits"), change: true)
                                 .id("weak-\(weak.item.id)")
                         }
                     }
                     if !audit.insecure.isEmpty {
-                        title("Sites en HTTP", count: audit.insecure.count,
-                              detail: "Le mot de passe y circule en clair : Verrou ne le remplit pas dans Brave.")
+                        title("HTTP sites", count: audit.insecure.count,
+                              detail: String(localized: "The password travels there in the clear: Verrou doesn't fill it in Brave."))
                         ForEach(audit.insecure, id: \.id) { row($0, change: true).id("http-\($0.id)") }
                     }
                     if audit.reused.isEmpty && audit.weak.isEmpty && audit.insecure.isEmpty {
-                        Label("Aucun mot de passe réutilisé ou faible", systemImage: "checkmark.seal.fill")
+                        Label("No reused or weak passwords", systemImage: "checkmark.seal.fill")
                             .foregroundStyle(.green)
                             .padding(8)
                     }
@@ -66,7 +66,7 @@ struct AuditView: View {
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .task(id: model.watchtower.focus) {
-            // Revue visuelle : une section précise en haut du volet.
+            // Visual review: a specific section at the top of the pane.
             guard let focus = model.watchtower.focus else { return }
             try? await Task.sleep(for: .milliseconds(100))
             proxy.scrollTo(focus, anchor: .top)
@@ -76,7 +76,7 @@ struct AuditView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text("Audit de sécurité").font(.title3.weight(.semibold))
+            Text("Security Audit").font(.title3.weight(.semibold))
                 .layoutMark("pane-title")
             if let audit = model.audit {
                 Text(summaryLine(audit))
@@ -88,31 +88,32 @@ struct AuditView: View {
     }
 
     private func summaryLine(_ audit: AuditReport) -> String {
-        var line = "\(audit.checked) mots de passe examinés, sur ce Mac"
+        var line = String(localized: "\(Int(audit.checked)) passwords checked, on this Mac")
         if let count = model.watchtower.passkeys?.candidates.count, count > 0 {
-            line += " · \(count) passkey\(count > 1 ? "s" : "") possible\(count > 1 ? "s" : "")"
+            line += " · " + (count > 1 ? String(localized: "\(count) passkeys available")
+                                       : String(localized: "\(count) passkey available"))
         }
         return line
     }
 
     @ViewBuilder private var breachSection: some View {
         if let breaches = model.breaches {
-            title("Fuites connues", count: breaches.count,
+            title("Known leaks", count: breaches.count,
                   detail: breaches.isEmpty
-                      ? "Aucun de vos mots de passe n'apparaît dans les fuites recensées."
-                      : "Ces mots de passe circulent dans des fuites publiques : changez-les en premier.")
+                      ? String(localized: "None of your passwords appears in the recorded leaks.")
+                      : String(localized: "These passwords circulate in public leaks: change them first."))
             ForEach(breaches, id: \.item.id) { breach in
-                row(breach.item, note: "vu \(breach.count.formatted()) fois", change: true)
+                row(breach.item, note: String(localized: "seen \(breach.count.formatted()) times"), change: true)
                     .id("breach-\(breach.item.id)")
             }
         } else {
             VStack(alignment: .leading, spacing: 8) {
-                Text("Fuites connues").font(.headline)
-                Text("Verrou peut vérifier vos mots de passe auprès de Have I Been Pwned. Seuls les 5 premiers caractères de leur empreinte SHA-1 partent : ni les mots de passe, ni leur empreinte complète ne quittent ce Mac.")
+                Text("Known leaks").font(.headline)
+                Text("Verrou can check your passwords with Have I Been Pwned. Only the first 5 characters of their SHA-1 hash go out: neither the passwords nor their full hash leave this Mac.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack {
-                    Button("Vérifier les fuites") { Task { await model.checkBreaches() } }
+                    Button("Check for Leaks") { Task { await model.checkBreaches() } }
                         .disabled(model.checkingBreaches || model.mode == .demo)
                     if model.checkingBreaches { ProgressView().controlSize(.small) }
                 }
@@ -126,7 +127,7 @@ struct AuditView: View {
         }
     }
 
-    private func title(_ text: String, count: Int, detail: String) -> some View {
+    private func title(_ text: LocalizedStringKey, count: Int, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(text).font(.headline)
@@ -140,8 +141,7 @@ struct AuditView: View {
         .padding(.bottom, 2)
     }
 
-    /// `change` : la ligne propose « Changer le mot de passe » (identifiant
-    /// avec un site).
+    /// `change`: the row offers "Change Password" (login with a site).
     private func row(_ summary: ItemSummary, note: String? = nil, change: Bool = false) -> some View {
         let selected = summary.id == model.selection
         return HStack {
@@ -151,7 +151,7 @@ struct AuditView: View {
                     .foregroundStyle(selected ? Color.white.opacity(0.85) : .secondary)
             }
             if change, summary.canChangePassword {
-                ChangePasswordButton(summary: summary, title: "Changer", selected: selected)
+                ChangePasswordButton(summary: summary, title: "Change", selected: selected)
             }
         }
         .padding(.horizontal, 8)
@@ -162,11 +162,11 @@ struct AuditView: View {
     }
 }
 
-/// Compléments de l'audit : double authentification disponible, cartes
-/// expirées ou bientôt expirées, mots de passe anciens (`Watchtower`).
+/// Audit additions: two-factor authentication available, expired or soon
+/// expired cards, old passwords (`Watchtower`).
 private struct WatchtowerSections<Row: View>: View {
     @Environment(AppModel.self) private var model
-    /// Ligne d'un élément : note, et bouton « Changer le mot de passe ».
+    /// Row of an item: note, and "Change Password" button.
     let row: (ItemSummary, String?, Bool) -> Row
 
     var body: some View {
@@ -175,16 +175,16 @@ private struct WatchtowerSections<Row: View>: View {
         passkeySection(watchtower)
         if let report = watchtower.report {
             if !report.cards.isEmpty {
-                title("Cartes expirées ou bientôt expirées", count: report.cards.count,
-                      detail: "Mettez à jour la date et le cryptogramme de la nouvelle carte, ici et chez les marchands.")
+                title("Expired or soon expired cards", count: report.cards.count,
+                      detail: String(localized: "Update the date and the security code of the new card, here and with merchants."))
                 ForEach(report.cards, id: \.item.id) { card in
                     row(card.item, cardNote(card), false)
                         .id("card-\(card.item.id)")
                 }
             }
             if !report.old.isEmpty {
-                title("Mots de passe anciens", count: report.old.count,
-                      detail: "Éléments inchangés depuis plus de 3 ans : leur mot de passe date au moins de cette époque.")
+                title("Old passwords", count: report.old.count,
+                      detail: String(localized: "Items unchanged for more than 3 years: their password dates back at least that far."))
                 ForEach(report.old, id: \.item.id) { old in
                     row(old.item, age(days: old.days), true)
                         .id("old-\(old.item.id)")
@@ -196,7 +196,7 @@ private struct WatchtowerSections<Row: View>: View {
     @ViewBuilder private func twoFactorSection(_ watchtower: Watchtower) -> some View {
         if let report = watchtower.twoFactor {
             if !report.missing.isEmpty {
-                title("Double authentification disponible", count: report.missing.count,
+                title("Two-factor authentication available", count: report.missing.count,
                       detail: twoFactorDetail(report))
                 ForEach(report.missing, id: \.item.id) { missing in
                     HStack(spacing: 4) {
@@ -206,7 +206,7 @@ private struct WatchtowerSections<Row: View>: View {
                                 Image(systemName: "questionmark.circle")
                             }
                             .buttonStyle(.borderless)
-                            .help("Activer la double authentification sur \(missing.site)")
+                            .help("Turn on two-factor authentication on \(missing.site)")
                         }
                     }
                     .id("2fa-\(missing.item.id)")
@@ -215,20 +215,20 @@ private struct WatchtowerSections<Row: View>: View {
         } else if watchtower.loadingTwoFactor {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Recherche des sites qui proposent la double authentification…")
+                Text("Looking for sites that offer two-factor authentication…")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8).padding(.top, 14)
         } else if let error = watchtower.twoFactorError, model.mode == .vaultwarden {
-            title("Double authentification disponible", count: 0,
-                  detail: "Catégorie ignorée : la liste de 2fa.directory n'a pas pu être téléchargée (\(error)).")
+            title("Two-factor authentication available", count: 0,
+                  detail: String(localized: "Category skipped: the 2fa.directory list could not be downloaded (\(error))."))
         }
     }
 
     @ViewBuilder private func passkeySection(_ watchtower: Watchtower) -> some View {
         if let report = watchtower.passkeys {
             if !report.candidates.isEmpty {
-                title("Passkey possible", count: report.candidates.count, detail: passkeyDetail(report))
+                title("Passkey available", count: report.candidates.count, detail: passkeyDetail(report))
                     .id("passkeys")
                 ForEach(report.candidates, id: \.item.id) { candidate in
                     HStack(spacing: 4) {
@@ -236,22 +236,22 @@ private struct WatchtowerSections<Row: View>: View {
                         if !candidate.passwordless {
                             Image(systemName: "2.circle")
                                 .foregroundStyle(.secondary)
-                                .help("Second facteur seulement : la passkey s'ajoute au mot de passe")
-                                .accessibilityLabel("Second facteur seulement")
+                                .help("Second factor only: the passkey is added to the password")
+                                .accessibilityLabel("Second factor only")
                         }
                         if let doc = candidate.documentation, let url = URL(string: doc) {
                             Link(destination: url) {
                                 Image(systemName: "questionmark.circle")
                             }
                             .buttonStyle(.borderless)
-                            .help("Aide de \(candidate.domain) sur les passkeys")
+                            .help("Help from \(candidate.domain) on passkeys")
                         }
                         CreatePasskeyButton(candidate: candidate,
                                             mark: candidate.item.id == report.candidates.first?.item.id)
                     }
                     .id("passkey-\(candidate.item.id)")
                 }
-                Text("Une fois la passkey enregistrée, l'élément quitte cette liste à la synchronisation suivante. Gardez le mot de passe en secours ; si le site permet la connexion sans mot de passe, vous pourrez le retirer chez lui, puis ici.")
+                Text("Once the passkey is saved, the item leaves this list at the next sync. Keep the password as a backup; if the site allows passwordless login, you can remove it there, then here.")
                     .font(.caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 8).padding(.top, 4)
@@ -259,30 +259,30 @@ private struct WatchtowerSections<Row: View>: View {
         } else if watchtower.loadingPasskeys {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("Recherche des sites qui acceptent les passkeys…")
+                Text("Looking for sites that accept passkeys…")
                     .font(.caption).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8).padding(.top, 14)
         } else if let error = watchtower.passkeysError, model.mode == .vaultwarden {
-            title("Passkey possible", count: 0,
-                  detail: "Catégorie ignorée : l'annuaire passkeys.2fa.directory n'a pas pu être téléchargé (\(error)).")
+            title("Passkey available", count: 0,
+                  detail: String(localized: "Category skipped: the passkeys.2fa.directory directory could not be downloaded (\(error))."))
         }
     }
 
     private func passkeyDetail(_ report: PasskeyReport) -> String {
-        var text = "Ces sites acceptent les passkeys : rien à retenir, rien à hameçonner. « Créer une passkey » ouvre la page du site ; l'extension Verrou de Brave ou Firefox propose ensuite de l'enregistrer dans l'élément. D'après passkeys.2fa.directory"
+        var text = String(localized: "These sites accept passkeys: nothing to remember, nothing to phish. “Create a Passkey” opens the site's page; the Verrou extension for Brave or Firefox then offers to save it in the item. According to passkeys.2fa.directory")
         if report.stale {
             let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
-            text += " (annuaire du \(date.formatted(date: .abbreviated, time: .omitted)), hors ligne)"
+            text += " " + String(localized: "(directory of \(date.formatted(date: .abbreviated, time: .omitted)), offline)")
         }
         return text + "."
     }
 
     private func twoFactorDetail(_ report: TwoFactorReport) -> String {
-        var text = "Ces sites proposent la double authentification, mais aucun code à usage unique n'est enregistré dans Verrou. D'après 2fa.directory"
+        var text = String(localized: "These sites offer two-factor authentication, but no one-time code is saved in Verrou. According to 2fa.directory")
         if report.stale {
             let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
-            text += " (liste du \(date.formatted(date: .abbreviated, time: .omitted)), hors ligne)"
+            text += " " + String(localized: "(list of \(date.formatted(date: .abbreviated, time: .omitted)), offline)")
         }
         return text + "."
     }
@@ -291,11 +291,11 @@ private struct WatchtowerSections<Row: View>: View {
         let names = methods.map { method -> String in
             switch method {
             case "sms": "SMS"
-            case "call": "appel"
-            case "email": "e-mail"
-            case "u2f": "clé de sécurité"
-            case "custom-software": "application"
-            case "custom-hardware": "matériel"
+            case "call": String(localized: "call")
+            case "email": String(localized: "email")
+            case "u2f": String(localized: "security key")
+            case "custom-software": String(localized: "app")
+            case "custom-hardware": String(localized: "hardware")
             default: method
             }
         }
@@ -303,17 +303,18 @@ private struct WatchtowerSections<Row: View>: View {
     }
 
     private func cardNote(_ card: ExpiringCard) -> String {
-        if card.daysLeft < 0 { return "expirée (\(card.expiry))" }
-        if card.daysLeft == 0 { return "expire aujourd'hui" }
-        return "expire dans \(card.daysLeft) jour\(card.daysLeft > 1 ? "s" : "")"
+        if card.daysLeft < 0 { return String(localized: "expired (\(card.expiry))") }
+        if card.daysLeft == 0 { return String(localized: "expires today") }
+        let days = Int(card.daysLeft)
+        return days > 1 ? String(localized: "expires in \(days) days") : String(localized: "expires in \(days) day")
     }
 
     private func age(days: Int64) -> String {
-        let years = days / 365
-        return "\(years) an\(years > 1 ? "s" : "")"
+        let years = Int(days / 365)
+        return years > 1 ? String(localized: "\(years) years") : String(localized: "\(years) year")
     }
 
-    private func title(_ text: String, count: Int, detail: String) -> some View {
+    private func title(_ text: LocalizedStringKey, count: Int, detail: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(text).font(.headline)
@@ -328,12 +329,12 @@ private struct WatchtowerSections<Row: View>: View {
     }
 }
 
-/// « Créer une passkey » : ouvre la page du site où la créer
-/// (`AppModel.createPasskey`). Un indicateur le temps de la recherche.
+/// "Create a Passkey": opens the site's page where it is created
+/// (`AppModel.createPasskey`). A spinner while looking it up.
 struct CreatePasskeyButton: View {
     @Environment(AppModel.self) private var model
     let candidate: PasskeyCandidate
-    /// Repère de la revue visuelle (le premier bouton seulement).
+    /// Marker for the visual review (the first button only).
     var mark = false
 
     var body: some View {
@@ -355,26 +356,26 @@ struct CreatePasskeyButton: View {
                 } else {
                     Image(systemName: "person.badge.key")
                 }
-                Text("Créer une passkey")
+                Text("Create a Passkey")
             }
         }
         .disabled(model.watchtower.creatingPasskey != nil || model.lockState != .unlocked)
-        .help("Ouvrir la page de \(candidate.domain) où créer une passkey")
+        .help("Open the page of \(candidate.domain) where a passkey is created")
         .buttonStyle(.borderless)
         .font(.caption.weight(.medium))
         .foregroundStyle(Theme.accent)
     }
 }
 
-/// « Changer le mot de passe » : ouvre la page du site où le faire
-/// (`AppModel.changePassword`). Un indicateur le temps de la vérification.
+/// "Change Password": opens the site's page where it is done
+/// (`AppModel.changePassword`). A spinner while checking.
 struct ChangePasswordButton: View {
     @Environment(AppModel.self) private var model
     let summary: ItemSummary
-    var title = "Changer le mot de passe"
-    /// Ligne sélectionnée (fond d'accent) : texte blanc.
+    var title: LocalizedStringKey = "Change Password"
+    /// Selected row (accent background): white text.
     var selected = false
-    /// Bouton bordé (fiche de l'élément) plutôt que lien discret (audit).
+    /// Bordered button (item detail) rather than a discreet link (audit).
     var bordered = false
 
     var body: some View {
@@ -392,8 +393,8 @@ struct ChangePasswordButton: View {
             }
         }
         .disabled(model.changingPassword != nil || model.lockState != .unlocked)
-        .help("Ouvrir la page de changement du mot de passe sur \(summary.host ?? "le site")")
-        .accessibilityLabel("Changer le mot de passe")
+        .help("Open the change-password page on \(summary.host ?? String(localized: "the website"))")
+        .accessibilityLabel("Change Password")
         if bordered {
             button
         } else {

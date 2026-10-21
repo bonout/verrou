@@ -2,19 +2,18 @@ import AppKit
 import Carbon.HIToolbox
 import SwiftUI
 
-/// Fenêtre d'accès rapide, ouverte depuis n'importe quelle application par
-/// ⌘⇧Espace, à la manière de Spotlight.
+/// Quick access window, opened from any application with ⌘⇧Space, the way
+/// Spotlight is.
 @MainActor
 final class QuickAccessController {
     private let model: AppModel
     private var panel: QuickAccessPanel?
     private var hotKey: HotKey?
-    /// Démonstration : la fenêtre reste ouverte même si Verrou n'est pas au
-    /// premier plan (macOS refuse de lui donner la main pendant qu'on se sert
-    /// d'une autre app).
+    /// Demo: the window stays open even if Verrou is not in the foreground
+    /// (macOS refuses to hand it control while another app is in use).
     var staysOpen = false
-    /// Remplissage dans les apps (⌘\) : la fenêtre sert aussi à choisir
-    /// l'identifiant à taper dans l'app au premier plan.
+    /// Filling in apps (⌘\): the window also serves to choose the login to
+    /// type in the frontmost app.
     var autofill: UniversalAutofill?
 
     init(model: AppModel) {
@@ -35,8 +34,8 @@ final class QuickAccessController {
         }
     }
 
-    /// `anchor` : centrer sur ce rectangle plutôt que sur l'écran (la
-    /// démonstration s'en sert pour que la fenêtre tienne dans la capture).
+    /// `anchor`: center on this rectangle rather than on the screen (the demo
+    /// uses it so the window fits in the capture).
     func show(query: String = "", anchor: NSRect? = nil) {
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -97,14 +96,14 @@ final class QuickAccessPanel: NSPanel {
     }
 }
 
-/// Raccourci global via Carbon : la seule API qui ne demande pas l'accès
-/// « Accessibilité » pour un raccourci clavier. Plusieurs raccourcis
-/// (accès rapide ⌘⇧Espace, remplissage ⌘\) partagent un seul gestionnaire,
-/// qui retrouve l'action par l'identifiant du raccourci.
+/// Global shortcut through Carbon: the only API that doesn't require
+/// "Accessibility" access for a keyboard shortcut. Several shortcuts (quick
+/// access ⌘⇧Space, filling ⌘\) share a single handler, which finds the
+/// action by the shortcut's ID.
 final class HotKey {
     private var reference: EventHotKeyRef?
     private let id: UInt32
-    /// `false` : la combinaison est déjà prise (par une autre app, souvent).
+    /// `false`: the combination is already taken (by another app, often).
     let isRegistered: Bool
     nonisolated(unsafe) private static var actions: [UInt32: () -> Void] = [:]
     nonisolated(unsafe) private static var handler: EventHandlerRef?
@@ -115,7 +114,7 @@ final class HotKey {
         id = Self.nextID
         Self.nextID += 1
         Self.actions[id] = { MainActor.assumeIsolated { action() } }
-        let hotKeyID = EventHotKeyID(signature: OSType(0x5652_5255), id: id) // « VRRU »
+        let hotKeyID = EventHotKeyID(signature: OSType(0x5652_5255), id: id) // "VRRU"
         isRegistered = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &reference) == noErr
     }
 
@@ -138,7 +137,7 @@ final class HotKey {
     }
 }
 
-// MARK: Vue
+// MARK: View
 
 struct QuickAccessView: View {
     @Environment(AppModel.self) private var model
@@ -152,10 +151,10 @@ struct QuickAccessView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 AppMark(size: 26)
-                // Le texte indicatif ne prend pas la police du champ : sans la
-                // lui donner, ni une hauteur explicite, il est coupé en bas.
+                // The placeholder doesn't take the field's font: without giving
+                // it that, nor an explicit height, it is cut off at the bottom.
                 TextField("", text: $model.quickQuery,
-                          prompt: Text("Rechercher un identifiant, une carte, un code…")
+                          prompt: Text("Search for a login, a card, a code…")
                               .font(.system(size: 22, weight: .regular)))
                     .textFieldStyle(.plain)
                     .font(.system(size: 22, weight: .regular))
@@ -202,17 +201,17 @@ struct QuickAccessView: View {
             Divider()
             HStack(spacing: 16) {
                 if autofill?.target != nil {
-                    KeyHint(keys: "↩", label: "Remplir")
+                    KeyHint(keys: "↩", label: "Fill")
                     if model.canEdit {
-                        KeyHint(keys: "⌘↩", label: "Associer et remplir")
+                        KeyHint(keys: "⌘↩", label: "Link and Fill")
                     }
                 } else {
-                    KeyHint(keys: "↩", label: "Copier le mot de passe")
+                    KeyHint(keys: "↩", label: "Copy Password")
                 }
-                KeyHint(keys: "⌘C", label: "Identifiant")
+                KeyHint(keys: "⌘C", label: "Username")
                 KeyHint(keys: "⌥⌘C", label: "Code")
                 Spacer()
-                KeyHint(keys: "esc", label: "Fermer")
+                KeyHint(keys: "esc", label: "Close")
             }
             .padding(.horizontal, 16)
             .frame(height: 34)
@@ -221,7 +220,7 @@ struct QuickAccessView: View {
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(.separator, lineWidth: 0.5))
-        // Le curseur dans le champ à chaque ouverture : on tape directement.
+        // The cursor in the field on each opening: typing goes straight in.
         .onAppear { focused = true; selected = 0 }
         .onChange(of: model.quickAccessOpenings) {
             selected = 0
@@ -229,7 +228,7 @@ struct QuickAccessView: View {
             Task { focused = true }
         }
         .onChange(of: model.quickQuery) { selected = 0 }
-        // Déverrouillé depuis la fenêtre : les identifiants de l'app arrivent.
+        // Unlocked from the window: the app's logins arrive.
         .onChange(of: model.lockState) { autofill?.refreshSuggestions() }
         .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
         .onKeyPress(.upArrow) { selected = max(selected - 1, 0); return .handled }
@@ -247,8 +246,8 @@ struct QuickAccessView: View {
     private var hits: [ResultRow] {
         guard model.lockState == .unlocked else { return [] }
         guard let autofill, autofill.target != nil else { return model.quickRows }
-        // Remplissage : sans recherche, les identifiants reliés à l'app ;
-        // en cherchant, seulement des identifiants (le reste ne se tape pas).
+        // Filling: without a search, the logins linked to the app; when
+        // searching, only logins (the rest can't be typed).
         if model.quickQuery.isEmpty {
             return autofill.suggestions.map { ResultRow(summary: $0, highlights: []) }
         }
@@ -258,10 +257,10 @@ struct QuickAccessView: View {
     private var emptyMessage: String {
         if let target = autofill?.target, model.quickQuery.isEmpty {
             return model.canEdit
-                ? "Aucun identifiant relié à « \(target.name) ». Cherchez-le, puis ⌘↩ pour le remplir et l'associer à cette app."
-                : "Aucun identifiant relié à « \(target.name) ». Tapez pour chercher dans le coffre."
+                ? String(localized: "No login linked to “\(target.name)”. Search for it, then ⌘↩ to fill it and link it to this app.")
+                : String(localized: "No login linked to “\(target.name)”. Type to search the vault.")
         }
-        return model.quickQuery.isEmpty ? "Tapez pour chercher dans le coffre" : "Aucun résultat"
+        return model.quickQuery.isEmpty ? String(localized: "Type to search the vault") : String(localized: "No results")
     }
 
     private var resultsList: some View {
@@ -274,7 +273,7 @@ struct QuickAccessView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             HighlightedText(text: summary.title, highlights: hit.highlights,
                                             tint: index == selected ? nil : Theme.accent).lineLimit(1)
-                            Text(summary.subtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
+                            Text(summary.displaySubtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
                         }
                         Spacer()
                         if summary.hasTotp {
@@ -296,17 +295,17 @@ struct QuickAccessView: View {
     private var lockedState: some View {
         VStack(spacing: 14) {
             Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
-            Text("Verrou est verrouillé").font(.headline)
+            Text("Verrou is locked").font(.headline)
             if model.canUseTouchID {
                 Button {
                     Task { await model.unlockWithBiometrics() }
                 } label: {
-                    Label("Déverrouiller avec Touch ID", systemImage: "touchid")
+                    Label("Unlock with Touch ID", systemImage: "touchid")
                 }
                 .buttonStyle(.borderedProminent)
             } else {
-                // Sans Touch ID, le mot de passe se saisit dans la fenêtre principale.
-                Button("Ouvrir Verrou") {
+                // Without Touch ID, the password is entered in the main window.
+                Button("Open Verrou") {
                     close()
                     NSApp.activate()
                     NSApp.windows.first { !($0 is NSPanel) && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
@@ -343,7 +342,7 @@ struct QuickAccessView: View {
 
     private func copyUsername() {
         guard let item = current, item.category == .login else { return }
-        model.copy(item.subtitle, label: "Identifiant", secret: false)
+        model.copy(item.subtitle, label: String(localized: "Username"), secret: false)
     }
 
     private func copyCode() {
@@ -367,11 +366,11 @@ struct QuickDetail: View {
                 }
             }
             if summary.category == .login {
-                labeled("Identifiant") { Text(summary.subtitle).lineLimit(1) }
-                labeled("Mot de passe") { MaskedText() }
+                labeled("Username") { Text(summary.subtitle).lineLimit(1) }
+                labeled("Password") { MaskedText() }
             }
             if summary.hasTotp {
-                labeled("Code à usage unique") {
+                labeled("One-time code") {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         if let code = model.totpCode(of: summary.id, at: context.date) {
                             TotpCodeView(code: code, size: 18)
@@ -387,7 +386,7 @@ struct QuickDetail: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func labeled(_ label: String, @ViewBuilder content: () -> some View) -> some View {
+    private func labeled(_ label: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label).font(.caption).foregroundStyle(.secondary)
             content()

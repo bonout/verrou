@@ -1,19 +1,19 @@
 import Foundation
 
-/// Fichiers temporaires des pièces jointes déchiffrées (Quick Look,
-/// partage). Rien n'est gardé hors ligne : un fichier se télécharge et se
-/// déchiffre (dans Rust) à chaque ouverture, puis son fichier temporaire est
-/// effacé à la fermeture de l'aperçu, au verrouillage et au lancement suivant.
+/// Temporary files of decrypted attachments (Quick Look, sharing). Nothing
+/// is kept offline: a file is downloaded and decrypted (in Rust) on each
+/// opening, then its temporary file is erased when the preview closes, on
+/// lock and at the next launch.
 enum Attachments {
-    /// Taille maximale d'un fichier (comme le cœur Rust).
+    /// Maximum size of a file (as in the Rust core).
     static let maxSize = 100 * 1024 * 1024
 
     private static var directory: URL {
-        FileManager.default.temporaryDirectory.appending(path: "pieces-jointes", directoryHint: .isDirectory)
+        FileManager.default.temporaryDirectory.appending(path: "attachments", directoryHint: .isDirectory)
     }
 
-    /// Écrit le fichier déchiffré sous son vrai nom (Quick Look s'en sert),
-    /// protégé par le chiffrement de l'iPhone tant qu'il est verrouillé.
+    /// Writes the decrypted file under its real name (Quick Look uses it),
+    /// protected by the iPhone's encryption while it is locked.
     static func temporaryFile(named name: String, data: Data) throws -> URL {
         let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -30,10 +30,10 @@ enum Attachments {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    /// Un nom de fichier sans chemin.
+    /// A file name without a path.
     static func safeName(_ name: String) -> String {
         let cleaned = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned.isEmpty || cleaned.hasPrefix(".") ? "fichier\(cleaned)" : cleaned
+        return cleaned.isEmpty || cleaned.hasPrefix(".") ? "file\(cleaned)" : cleaned
     }
 }

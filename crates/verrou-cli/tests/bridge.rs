@@ -1,7 +1,7 @@
-//! La CLI et son agent SSH contre un vrai pont (en mémoire, faux coffre) :
-//! appairage, déverrouillage demandé, secrets, et un client SSH qui parle à
-//! l'agent par un socket Unix ; enfin `ssh-keygen -Y sign` et un commit git
-//! signés par cet agent.
+//! The CLI and its SSH agent against a real bridge (in memory, fake vault):
+//! pairing, requested unlock, secrets, and an SSH client talking to the
+//! agent over a Unix socket; finally `ssh-keygen -Y sign` and a git commit
+//! signed by that agent.
 
 use std::io::{Read as _, Write as _};
 use std::os::unix::net::UnixStream;
@@ -58,7 +58,7 @@ impl Backend for Fake {
         Box::pin(async { None })
     }
 
-    /// Comme Touch ID qui réussit un instant plus tard.
+    /// Like Touch ID succeeding a moment later.
     fn request_unlock(&self) {
         std::thread::sleep(Duration::from_millis(300));
         self.unlocked.store(true, Ordering::SeqCst);
@@ -139,8 +139,8 @@ fn login() -> Item {
     }
 }
 
-/// Un dossier temporaire au chemin court (les sockets Unix sont limités à
-/// une centaine d'octets).
+/// A temporary directory with a short path (Unix sockets are limited to
+/// about a hundred bytes).
 fn temp_dir() -> PathBuf {
     let dir = std::env::temp_dir().join(format!("vc-{}", &uuid::Uuid::new_v4().to_string()[..8]));
     std::fs::create_dir_all(&dir).unwrap();
@@ -164,7 +164,7 @@ fn ssh_string(out: &mut Vec<u8>, value: &[u8]) {
     out.extend_from_slice(value);
 }
 
-/// Lit un `string` SSH en tête de `bytes`.
+/// Reads an SSH `string` at the start of `bytes`.
 fn take_string(bytes: &mut &[u8]) -> Vec<u8> {
     let length = u32::from_be_bytes(bytes[..4].try_into().unwrap()) as usize;
     let value = bytes[4..4 + length].to_vec();
@@ -173,7 +173,7 @@ fn take_string(bytes: &mut &[u8]) -> Vec<u8> {
 }
 
 #[test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
 fn link_then_ssh_agent_signs_through_verrou() {
     let key = PrivateKey::random(
         &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
@@ -194,19 +194,19 @@ fn link_then_ssh_agent_signs_through_verrou() {
         launch: false,
     };
 
-    // `verrou link` : Verrou voit un terminal, avec le même code.
+    // `verrou link`: Verrou sees a terminal, with the same code.
     let approver = {
         let bridge = Arc::clone(&bridge);
         std::thread::spawn(move || {
             let request: PairingRequest = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
             assert_eq!(request.kind, ClientKind::Cli);
-            assert_eq!(request.name, "le terminal (verrou)");
+            assert_eq!(request.name, "terminal (verrou)");
             bridge.answer_pairing(&request.id, true);
             request.code
         })
     };
     let mut shown = String::new();
-    let config = remote::link(endpoint, "le terminal (verrou)", |code| {
+    let config = remote::link(endpoint, "terminal (verrou)", |code| {
         shown = code.to_owned();
     })
     .unwrap();
@@ -215,7 +215,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
     config.save(&path).unwrap();
     let config = Config::load(&path).unwrap().unwrap();
 
-    // Coffre verrouillé : la CLI demande le déverrouillage et attend.
+    // Vault locked: the CLI asks for unlocking and waits.
     let mut remote = Remote::connect(&config, endpoint).unwrap();
     assert!(!remote.unlocked().unwrap());
     let found = remote
@@ -227,7 +227,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         })
         .unwrap();
     let ReplyResult::Items { items, total } = found else {
-        panic!("résultats attendus : {found:?}");
+        panic!("expected results: {found:?}");
     };
     assert_eq!((items[0].id.as_str(), total), ("github", 1));
     let secret = remote
@@ -237,14 +237,14 @@ fn link_then_ssh_agent_signs_through_verrou() {
         })
         .unwrap();
     assert!(matches!(secret, ReplyResult::Secret(ref s) if s.value == "hunter2"));
-    // Une commande de l'extension : refusée.
+    // An extension command: refused.
     let fill = remote.ask(&Command::Fill {
         url: "https://github.com/".to_owned(),
         item: "github".to_owned(),
     });
     assert!(matches!(fill, Err(Error::Denied(_))), "{fill:?}");
 
-    // L'agent SSH, sur un socket Unix, signe par Verrou.
+    // The SSH agent, on a Unix socket, signs through Verrou.
     let socket = dir.join("a.sock");
     let listener = agent::bind(&socket, false).unwrap();
     let keys: Arc<dyn Keys> = Arc::new(BridgeKeys {
@@ -284,7 +284,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         ]
     );
 
-    // Ce que l'agent ne fait pas : échec, sans couper la connexion.
+    // What the agent does not do: failure, without closing the connection.
     assert_eq!(agent_call(&mut ssh, &[17, 0, 0, 0, 0]), agent::failure());
     let mut unknown = vec![agent::SSH_AGENTC_SIGN_REQUEST];
     ssh_string(&mut unknown, b"cle inconnue");
@@ -292,7 +292,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
     unknown.extend_from_slice(&0u32.to_be_bytes());
     assert_eq!(agent_call(&mut ssh, &unknown), agent::failure());
 
-    // Délié dans Verrou : la CLI le dit, l'agent échoue.
+    // Unlinked in Verrou: the CLI says so, the agent fails.
     bridge.revoke(&config.client);
     assert_eq!(remote.call(&Command::Status), Err(Error::UnknownClient));
     assert_eq!(
@@ -302,8 +302,8 @@ fn link_then_ssh_agent_signs_through_verrou() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// Un programme du système (`ssh-keygen`, `git`), avec un `HOME` jetable :
-/// rien de la configuration de l'utilisateur n'est lu ni écrit.
+/// A system program (`ssh-keygen`, `git`), with a throwaway `HOME`:
+/// nothing of the user's configuration is read or written.
 fn tool(program: &str, home: &Path, socket: &Path) -> std::process::Command {
     let mut command = std::process::Command::new(program);
     command
@@ -316,8 +316,8 @@ fn tool(program: &str, home: &Path, socket: &Path) -> std::process::Command {
     command
 }
 
-/// `arg` ne doit rien faire d'autre qu'afficher l'aide ou la version
-/// (`ssh-keygen` sans argument créerait une clé dans `~/.ssh`).
+/// `arg` must do nothing but print the help or the version (`ssh-keygen`
+/// without arguments would create a key in `~/.ssh`).
 fn installed(program: &str, arg: &str) -> bool {
     std::process::Command::new(program)
         .arg(arg)
@@ -328,22 +328,22 @@ fn installed(program: &str, arg: &str) -> bool {
 fn check(output: &std::process::Output, what: &str) {
     assert!(
         output.status.success(),
-        "{what} : {}\n{}",
+        "{what}: {}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
 }
 
-/// `ssh-keygen -Y sign` (ce que git appelle en `gpg.format=ssh`) puis
-/// `ssh-keygen -Y verify`, par l'agent de Verrou sur un socket jetable ;
-/// puis un vrai commit signé, vérifié par `git verify-commit`. Ed25519 et
-/// RSA (l'agent reçoit alors le drapeau SHA-512). Sans `ssh-keygen` sur la
-/// machine, le test ne fait rien.
+/// `ssh-keygen -Y sign` (what git calls with `gpg.format=ssh`) then
+/// `ssh-keygen -Y verify`, through Verrou's agent on a throwaway socket;
+/// then a real signed commit, verified by `git verify-commit`. Ed25519 and
+/// RSA (the agent then receives the SHA-512 flag). Without `ssh-keygen` on
+/// the machine, the test does nothing.
 #[test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
 fn git_signs_through_the_agent() {
     if !installed("ssh-keygen", "-?") {
-        eprintln!("ssh-keygen absent : test ignoré");
+        eprintln!("ssh-keygen missing: test skipped");
         return;
     }
     let mut rng = getrandom::rand_core::UnwrapErr(getrandom::SysRng);
@@ -376,15 +376,15 @@ fn git_signs_through_the_agent() {
             bridge.answer_pairing(&request.id, true);
         })
     };
-    let config = remote::link(endpoint, "le terminal (verrou)", |_| {}).unwrap();
+    let config = remote::link(endpoint, "terminal (verrou)", |_| {}).unwrap();
     approver.join().unwrap();
     let config_path = dir.join("cli.json");
     config.save(&config_path).unwrap();
 
-    // Les clés, comme les voit `verrou git-signing`.
+    // The keys, as `verrou git-signing` sees them.
     let mut remote = Remote::connect(&config, endpoint).unwrap();
     let ReplyResult::SshKeys { keys } = remote.ask(&Command::SshKeys).unwrap() else {
-        panic!("clés SSH attendues");
+        panic!("expected SSH keys");
     };
     let keys: Vec<SigningKey> = keys.iter().filter_map(SigningKey::from_identity).collect();
     assert_eq!(keys.len(), 2);
@@ -392,7 +392,7 @@ fn git_signs_through_the_agent() {
         assert_eq!(
             key.public_key,
             private.public_key().to_openssh().unwrap(),
-            "clé publique OpenSSH, sans commentaire"
+            "OpenSSH public key, without comment"
         );
         assert_eq!(
             key.fingerprint,
@@ -400,7 +400,7 @@ fn git_signs_through_the_agent() {
         );
     }
 
-    // L'agent, sur un socket jetable (jamais ~/.verrou/agent.sock).
+    // The agent, on a throwaway socket (never ~/.verrou/agent.sock).
     let socket = dir.join("a.sock");
     let listener = agent::bind(&socket, false).unwrap();
     let agent_keys: Arc<dyn Keys> = Arc::new(BridgeKeys {
@@ -449,13 +449,10 @@ fn git_signs_through_the_agent() {
             &verify("git"),
             &format!("ssh-keygen -Y verify ({})", key.title),
         );
-        assert!(
-            !verify("file").status.success(),
-            "autre espace de noms : refus"
-        );
+        assert!(!verify("file").status.success(), "other namespace: refused");
         std::fs::remove_file(&signature).unwrap();
     }
-    // L'accord demandé dit « commit git », une fois par clé (puis 5 minutes).
+    // The approval request says "git commit", once per key (then 5 minutes).
     assert_eq!(
         *backend.confirmations.lock().unwrap(),
         [
@@ -464,10 +461,10 @@ fn git_signs_through_the_agent() {
         ]
     );
 
-    // Un vrai commit : `verrou git-signing --apply`, sur une configuration
-    // globale de git jetable (`GIT_CONFIG_GLOBAL`).
+    // A real commit: `verrou git-signing --apply`, on a throwaway global git
+    // configuration (`GIT_CONFIG_GLOBAL`).
     if !installed("git", "--version") {
-        eprintln!("git absent : commit signé non testé");
+        eprintln!("git missing: signed commit not tested");
         let _ = std::fs::remove_dir_all(dir);
         return;
     }
@@ -482,7 +479,7 @@ fn git_signs_through_the_agent() {
     assert_eq!(
         std::fs::read_to_string(&plan.allowed_signers).unwrap(),
         format!("{}\n", plan.allowed_signers_line()),
-        "appliquer deux fois n'ajoute pas la clé deux fois"
+        "applying twice does not add the key twice"
     );
     let global = std::fs::read_to_string(home.join("gitconfig")).unwrap();
     assert!(global.contains("format = ssh"), "{global}");
@@ -510,8 +507,8 @@ fn git_signs_through_the_agent() {
     ]);
     git(&["verify-commit", "HEAD"]);
     let shown = git(&["log", "-1", "--format=%G?"]);
-    assert_eq!(shown.trim(), "G", "signature bonne et de confiance");
-    // Toujours dans les 5 minutes de l'accord : pas de nouvelle demande.
+    assert_eq!(shown.trim(), "G", "good and trusted signature");
+    // Still within the approval's 5 minutes: no new request.
     assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
     let _ = std::fs::remove_dir_all(dir);
 }

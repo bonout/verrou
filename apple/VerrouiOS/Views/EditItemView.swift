@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Création ou modification d'un élément : identifiant (avec le
-/// générateur), note, carte, identité, modèle ; pour tous : champs
-/// personnalisés, dossier, favori et notes. Le reste de l'élément (passkeys,
-/// pièces jointes, champs réservés à Verrou) repart tel quel.
+/// Creating or editing an item: login (with the generator), note, card,
+/// identity, template; for all: custom fields, folder, favorite and notes.
+/// The rest of the item (passkeys, attachments, fields reserved for Verrou)
+/// goes back as is.
 struct EditItemView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -12,7 +12,7 @@ struct EditItemView: View {
     @State private var destination: SharedDestination?
     @State private var showPassword = false
     @State private var showGenerator = false
-    /// Entropie exacte de la dernière phrase de passe générée.
+    /// Exact entropy of the last generated passphrase.
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
     @FocusState private var titleFocused: Bool
@@ -31,7 +31,7 @@ struct EditItemView: View {
                 Section {
                     HStack(spacing: 14) {
                         TintedSymbol(symbol: kindSymbol.symbol, tint: kindSymbol.tint, size: 44)
-                        TextField("Titre", text: $draft.name, prompt: Text(titlePrompt))
+                        TextField("Title", text: $draft.name, prompt: Text(titlePrompt))
                             .font(.title3.weight(.semibold))
                             .focused($titleFocused)
                             .accessibilityIdentifier("edit-title")
@@ -42,15 +42,15 @@ struct EditItemView: View {
                 if draft.card != nil { cardSection }
                 if draft.identity != nil { identitySections }
                 vaultSection
-                PhoneCustomFieldsSection(fields: $draft.fields)
+                PhoneCustomFieldsSection(fields: $draft.fields, template: draft.template)
                 Section {
-                    Picker("Dossier", selection: $draft.folderId) {
-                        Text("Aucun").tag(String?.none)
+                    Picker("Folder", selection: $draft.folderId) {
+                        Text("None").tag(String?.none)
                         ForEach(model.folders, id: \.id) { folder in
                             Text(folder.name).tag(Optional(folder.id))
                         }
                     }
-                    Toggle("Favori", isOn: $draft.favorite)
+                    Toggle("Favorite", isOn: $draft.favorite)
                 }
                 Section(header: SectionHeader("Notes")) {
                     TextField("Notes", text: optionalText(\.notes), axis: .vertical)
@@ -61,7 +61,7 @@ struct EditItemView: View {
                 }
                 if !isNew {
                     Section {
-                        Button("Mettre à la corbeille…", role: .destructive) { confirmTrash = true }
+                        Button("Move to Trash…", role: .destructive) { confirmTrash = true }
                             .disabled(model.editorBusy)
                     }
                 }
@@ -71,13 +71,13 @@ struct EditItemView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { model.editor = nil }
+                    Button("Cancel") { model.editor = nil }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if model.editorBusy {
                         ProgressView()
                     } else {
-                        Button(isNew ? "Créer" : "Enregistrer") { save() }
+                        Button(isNew ? "Create" : "Save") { save() }
                             .fontWeight(.semibold)
                             .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
@@ -92,13 +92,13 @@ struct EditItemView: View {
                 })
                 .presentationDetents([.medium, .large])
             }
-            .confirmationDialog("Mettre « \(draft.name) » à la corbeille ?", isPresented: $confirmTrash,
+            .confirmationDialog("Move “\(draft.name)” to the trash?", isPresented: $confirmTrash,
                                 titleVisibility: .visible) {
-                Button("Mettre à la corbeille", role: .destructive) {
+                Button("Move to Trash", role: .destructive) {
                     if let id = editor.itemID { Task { await model.trash(id) } }
                 }
             } message: {
-                Text("L'élément reste restaurable depuis la corbeille pendant 30 jours.")
+                Text("The item can be restored from the trash for 30 days.")
             }
             .sheet(item: scanBinding) { flow in
                 OTPScanSheet(flow: flow)
@@ -115,21 +115,21 @@ struct EditItemView: View {
         }
     }
 
-    // MARK: Identifiant
+    // MARK: Login
 
     @ViewBuilder private var loginSections: some View {
         Section {
-            TextField("Identifiant", text: loginText(\.username), prompt: Text("e-mail ou nom d'utilisateur"))
+            TextField("Username", text: loginText(\.username), prompt: Text("email or user name"))
                 .textContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             HStack(spacing: 10) {
                 Group {
                     if showPassword {
-                        TextField("Mot de passe", text: loginText(\.password))
+                        TextField("Password", text: loginText(\.password))
                             .font(.system(.body, design: .monospaced))
                     } else {
-                        SecureField("Mot de passe", text: loginText(\.password))
+                        SecureField("Password", text: loginText(\.password))
                     }
                 }
                 .textContentType(.newPassword)
@@ -141,56 +141,56 @@ struct EditItemView: View {
                     Image(systemName: showPassword ? "eye.slash" : "eye")
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(showPassword ? "Masquer" : "Afficher")
+                .accessibilityLabel(showPassword ? "Hide" : "Show")
                 Button {
                     showGenerator = true
                 } label: {
                     Image(systemName: "wand.and.stars")
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Générer un mot de passe")
+                .accessibilityLabel("Generate a password")
             }
             if let password = draft.login?.password, !password.isEmpty {
                 StrengthMeter(password: password, bits: generated?.value == password ? generated?.bits : nil)
             }
-            TextField("Code à usage unique", text: loginText(\.totp), prompt: Text("graine ou lien otpauth://"))
+            TextField("One-time code", text: loginText(\.totp), prompt: Text("seed or otpauth:// link"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("edit-totp")
-            // Aperçu du code : la graine saisie ou scannée est lisible.
+            // Code preview: the entered or scanned seed is readable.
             if let value = draft.login?.totp, !value.isEmpty {
                 if (try? totpPreview(value: value, unixTime: 0)) != nil {
-                    LabeledContent("Code actuel") {
+                    LabeledContent("Current code") {
                         LiveCode(value: value, size: 17)
                     }
                     .font(.callout)
                 } else {
-                    Label("Graine illisible (Base32 ou lien otpauth:// attendu)", systemImage: "exclamationmark.triangle.fill")
+                    Label("Unreadable seed (Base32 or otpauth:// link expected)", systemImage: "exclamationmark.triangle.fill")
                         .font(.footnote)
                         .foregroundStyle(.orange)
                 }
             }
-            Button("Scanner un QR code", systemImage: "qrcode.viewfinder") {
+            Button("Scan a QR code", systemImage: "qrcode.viewfinder") {
                 model.startOTPScan(.editor(isNew: isNew))
             }
             .accessibilityIdentifier("edit-scan-qr")
         } header: {
-            SectionHeader("Identifiant")
+            SectionHeader("Login")
         }
         Section {
             ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
                 VStack(alignment: .leading, spacing: 6) {
-                    TextField("https://exemple.fr", text: urlBinding(index))
+                    TextField("https://example.com", text: urlBinding(index))
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     Picker(selection: matchBinding(index)) {
-                        Text("Par défaut (\(fallbackRule.label))").tag(UriMatchRule?.none)
+                        Text("Default (\(fallbackRule.label))").tag(UriMatchRule?.none)
                         ForEach(UriMatchRule.all) { rule in
                             Text(rule.label).tag(Optional(rule))
                         }
                     } label: {
-                        Label("Correspondance", systemImage: "scope")
+                        Label("Match", systemImage: "scope")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -201,97 +201,97 @@ struct EditItemView: View {
             .onDelete { offsets in
                 for index in offsets.sorted(by: >) { draft.login?.removeURL(at: index) }
             }
-            Button("Ajouter un site", systemImage: "plus.circle.fill") { draft.login?.appendURL() }
+            Button("Add a site", systemImage: "plus.circle.fill") { draft.login?.appendURL() }
         } header: {
             SectionHeader("Sites")
         } footer: {
-            Text("La correspondance décide des pages où l'identifiant est proposé ; elle est enregistrée avec l'élément, comme dans Bitwarden.")
+            Text("Matching decides the pages where the login is offered; it is saved with the item, as in Bitwarden.")
         }
     }
 
-    // MARK: Carte
+    // MARK: Card
 
     @ViewBuilder private var cardSection: some View {
-        Section(header: SectionHeader("Carte")) {
-            TextField("Titulaire", text: cardText(\.cardholderName))
+        Section(header: SectionHeader("Card")) {
+            TextField("Cardholder", text: cardText(\.cardholderName))
                 .textContentType(.name)
                 .textInputAutocapitalization(.characters)
-            Picker("Réseau", selection: cardText(\.brand)) {
-                Text("Autre").tag("")
+            Picker("Network", selection: cardText(\.brand)) {
+                Text("Other").tag("")
                 ForEach(brands, id: \.self) { brand in
                     Text(brand).tag(brand)
                 }
             }
-            TextField("Numéro", text: cardText(\.number))
+            TextField("Number", text: cardText(\.number))
                 .keyboardType(.numberPad)
                 .textContentType(.creditCardNumber)
                 .font(.system(.body, design: .monospaced))
             LabeledContent("Expiration") {
                 HStack(spacing: 6) {
-                    Picker("Mois", selection: cardText(\.expMonth)) {
-                        Text("Mois").tag("")
+                    Picker("Month", selection: cardText(\.expMonth)) {
+                        Text("Month").tag("")
                         ForEach(1...12, id: \.self) { month in Text(String(format: "%02d", month)).tag("\(month)") }
                     }
                     .labelsHidden()
                     .fixedSize()
                     Text("/").foregroundStyle(.secondary)
-                    TextField("Année", text: cardText(\.expYear))
+                    TextField("Year", text: cardText(\.expYear))
                         .keyboardType(.numberPad)
                         .frame(width: 60)
                 }
             }
-            SecureField("Cryptogramme", text: cardText(\.code))
+            SecureField("Security code", text: cardText(\.code))
                 .keyboardType(.numberPad)
         }
     }
 
-    /// Réseaux proposés, plus celui de la carte s'il n'y figure pas.
+    /// Networks offered, plus the card's if it isn't among them.
     private var brands: [String] {
         let known = ["Visa", "Mastercard", "Amex", "Discover", "Diners Club", "JCB", "Maestro", "UnionPay", "RuPay"]
         guard let current = draft.card?.brand, !current.isEmpty, !known.contains(current) else { return known }
         return known + [current]
     }
 
-    // MARK: Identité
+    // MARK: Identity
 
     @ViewBuilder private var identitySections: some View {
-        Section(header: SectionHeader("Identité")) {
-            TextField("Civilité", text: identityText(\.title))
-            TextField("Prénom", text: identityText(\.firstName)).textContentType(.givenName)
-            TextField("Deuxième prénom", text: identityText(\.middleName)).textContentType(.middleName)
-            TextField("Nom", text: identityText(\.lastName)).textContentType(.familyName)
-            TextField("Société", text: identityText(\.company)).textContentType(.organizationName)
+        Section(header: SectionHeader("Identity")) {
+            TextField("Honorific", text: identityText(\.title))
+            TextField("First name", text: identityText(\.firstName)).textContentType(.givenName)
+            TextField("Middle name", text: identityText(\.middleName)).textContentType(.middleName)
+            TextField("Last name", text: identityText(\.lastName)).textContentType(.familyName)
+            TextField("Company", text: identityText(\.company)).textContentType(.organizationName)
         }
         Section(header: SectionHeader("Contact")) {
-            TextField("E-mail", text: identityText(\.email))
+            TextField("Email", text: identityText(\.email))
                 .keyboardType(.emailAddress).textContentType(.emailAddress).textInputAutocapitalization(.never)
-            TextField("Téléphone", text: identityText(\.phone)).keyboardType(.phonePad).textContentType(.telephoneNumber)
-            TextField("Nom d'utilisateur", text: identityText(\.username)).textInputAutocapitalization(.never)
+            TextField("Phone", text: identityText(\.phone)).keyboardType(.phonePad).textContentType(.telephoneNumber)
+            TextField("User name", text: identityText(\.username)).textInputAutocapitalization(.never)
         }
-        Section(header: SectionHeader("Adresse")) {
-            TextField("Adresse", text: identityText(\.address1)).textContentType(.streetAddressLine1)
-            TextField("Complément", text: identityText(\.address2)).textContentType(.streetAddressLine2)
-            TextField("Complément (suite)", text: identityText(\.address3))
-            TextField("Code postal", text: identityText(\.postalCode)).textContentType(.postalCode)
-            TextField("Ville", text: identityText(\.city)).textContentType(.addressCity)
-            TextField("Région", text: identityText(\.state)).textContentType(.addressState)
-            TextField("Pays", text: identityText(\.country)).textContentType(.countryName)
+        Section(header: SectionHeader("Address")) {
+            TextField("Address", text: identityText(\.address1)).textContentType(.streetAddressLine1)
+            TextField("Address line 2", text: identityText(\.address2)).textContentType(.streetAddressLine2)
+            TextField("Address line 3", text: identityText(\.address3))
+            TextField("Postal code", text: identityText(\.postalCode)).textContentType(.postalCode)
+            TextField("City", text: identityText(\.city)).textContentType(.addressCity)
+            TextField("State", text: identityText(\.state)).textContentType(.addressState)
+            TextField("Country", text: identityText(\.country)).textContentType(.countryName)
         }
         Section(header: SectionHeader("Documents")) {
-            SecureField("N° de sécurité sociale", text: identityText(\.ssn))
-            SecureField("N° de passeport", text: identityText(\.passportNumber))
-            SecureField("N° de permis de conduire", text: identityText(\.licenseNumber))
+            SecureField("Social security number", text: identityText(\.ssn))
+            SecureField("Passport number", text: identityText(\.passportNumber))
+            SecureField("Driver's license number", text: identityText(\.licenseNumber))
         }
     }
 
-    // MARK: Coffre
+    // MARK: Vault
 
-    /// Coffre de l'élément : choisi à la création, rappelé ensuite.
+    /// The item's vault: chosen on creation, shown afterwards.
     @ViewBuilder private var vaultSection: some View {
         if isNew, !model.writableOrganizations.isEmpty {
             Section {
-                Picker("Coffre", selection: $destination) {
-                    Text("Personnel").tag(SharedDestination?.none)
+                Picker("Vault", selection: $destination) {
+                    Text("Personal").tag(SharedDestination?.none)
                     ForEach(model.writableOrganizations, id: \.id) { org in
                         ForEach(org.collections.filter { !$0.readOnly }, id: \.id) { collection in
                             Text("\(org.name) › \(collection.name)")
@@ -301,25 +301,25 @@ struct EditItemView: View {
                 }
             } footer: {
                 if destination != nil {
-                    Text("Chiffré avec la clé de l'organisation : les membres de la collection le verront.")
+                    Text("Encrypted with the organization's key: the collection's members will see it.")
                 }
             }
         } else if let id = editor.itemID, let sharing = model.summary(id: id)?.sharing {
             Section {
-                LabeledContent("Coffre partagé", value: sharing.organization)
+                LabeledContent("Shared vault", value: sharing.organization)
             }
         }
     }
 
     private var titlePrompt: String {
         if let template = draft.template { return template.titlePrompt }
-        if draft.login != nil { return "GitHub, Banque…" }
-        if draft.card != nil { return "Visa perso" }
-        if draft.identity != nil { return "Moi" }
-        return "Digicode, code du portail…"
+        if draft.login != nil { return String(localized: "GitHub, Bank…") }
+        if draft.card != nil { return String(localized: "Personal Visa") }
+        if draft.identity != nil { return String(localized: "Me") }
+        return String(localized: "Door code, gate code…")
     }
 
-    /// Symbole et teinte du type d'élément, en tête de l'écran.
+    /// Icon symbol and tint of the item type, at the top of the screen.
     private var kindSymbol: (symbol: String, tint: Color) {
         if let template = draft.template { return (template.symbol, template.tint) }
         if draft.login != nil { return (ItemCategory.login.symbol, ItemCategory.login.tint) }
@@ -329,22 +329,22 @@ struct EditItemView: View {
     }
 
     private var windowTitle: String {
-        guard isNew else { return "Modifier" }
+        guard isNew else { return String(localized: "Edit") }
         if let template = draft.template { return template.singular }
-        if draft.login != nil { return "Nouvel identifiant" }
-        if draft.card != nil { return "Nouvelle carte" }
-        if draft.identity != nil { return "Nouvelle identité" }
-        return "Nouvelle note"
+        if draft.login != nil { return String(localized: "New login") }
+        if draft.card != nil { return String(localized: "New card") }
+        if draft.identity != nil { return String(localized: "New identity") }
+        return String(localized: "New note")
     }
 
-    /// Feuille du QR code ouverte depuis cet écran.
+    /// QR code sheet opened from this screen.
     private var scanBinding: Binding<OTPScanFlow?> {
         Binding(get: { model.otpScan?.purpose.isEditor == true ? model.otpScan : nil },
                 set: { if $0 == nil { model.otpScan = nil } })
     }
 
-    /// Compte scanné : le lien canonique (graine comprise) va dans le
-    /// brouillon ; titre et identifiant complètent les champs vides.
+    /// Scanned account: the canonical link (seed included) goes into the
+    /// draft; title and username fill in the empty fields.
     private func applyScanned(_ account: ScannedOtp) {
         guard draft.login != nil else { return }
         draft.login?.totp = account.uri
@@ -357,11 +357,11 @@ struct EditItemView: View {
     }
 
     private func save() {
-        // Les sites laissés vides ne partent pas, ni les champs sans nom ni valeur.
+        // Sites left empty don't go, nor fields with neither name nor value.
         draft.login?.dropEmptyURLs()
         draft.fields.removeAll { $0.name.trimmingCharacters(in: .whitespaces).isEmpty && ($0.value ?? "").isEmpty
             && $0.fieldType != .linked }
-        // Le numéro de carte s'enregistre sans espaces.
+        // The card number is saved without spaces.
         if let number = draft.card?.number {
             draft.card?.number = number.filter { !$0.isWhitespace }
         }
@@ -369,7 +369,7 @@ struct EditItemView: View {
         Task { await model.saveEditor(toSave, destination: isNew ? destination : nil) }
     }
 
-    // MARK: Liaisons
+    // MARK: Bindings
 
     private func loginText(_ path: WritableKeyPath<LoginFields, String?>) -> Binding<String> {
         Binding(get: { draft.login?[keyPath: path] ?? "" },
@@ -391,8 +391,8 @@ struct EditItemView: View {
                 set: { draft[keyPath: path] = $0.isEmpty ? nil : $0 })
     }
 
-    /// Règle des sites sans règle propre : celle du dossier, sinon celle de
-    /// l'iPhone.
+    /// Rule for sites without their own rule: the folder's, otherwise the
+    /// iPhone's.
     private var fallbackRule: UriMatchRule {
         model.matchSettings?.fallback(folderID: draft.folderId) ?? .domain
     }
@@ -408,11 +408,13 @@ struct EditItemView: View {
     }
 }
 
-/// Champs personnalisés : texte, masqué, case à cocher ; un champ lié se
-/// montre et se déplace sans se modifier. Les champs réservés à Verrou
-/// n'arrivent jamais ici (le cœur Rust les garde de côté).
+/// Custom fields: text, hidden, checkbox; a linked field is shown and moved
+/// without being edited. The fields reserved for Verrou never get here (the
+/// Rust core keeps them aside).
 private struct PhoneCustomFieldsSection: View {
     @Binding var fields: [CustomField]
+    /// The item's template: its fields' names are shown translated.
+    var template: ItemTemplate?
     @State private var shown: Set<Int> = []
 
     var body: some View {
@@ -425,17 +427,17 @@ private struct PhoneCustomFieldsSection: View {
                 shown.removeAll()
             }
             Menu {
-                Button("Texte", systemImage: "textformat") { add(.text) }
-                Button("Masqué", systemImage: "eye.slash") { add(.hidden) }
-                Button("Case à cocher", systemImage: "checkmark.square") { add(.boolean) }
+                Button("Text", systemImage: "textformat") { add(.text) }
+                Button("Hidden", systemImage: "eye.slash") { add(.hidden) }
+                Button("Checkbox", systemImage: "checkmark.square") { add(.boolean) }
             } label: {
-                Label("Ajouter un champ", systemImage: "plus.circle.fill")
+                Label("Add a field", systemImage: "plus.circle.fill")
             }
         } header: {
-            SectionHeader("Champs personnalisés")
+            SectionHeader("Custom fields")
         } footer: {
             if !fields.isEmpty {
-                Text("Balayez un champ vers la gauche pour le supprimer.")
+                Text("Swipe a field to the left to delete it.")
             }
         }
     }
@@ -443,22 +445,22 @@ private struct PhoneCustomFieldsSection: View {
     @ViewBuilder private func row(_ index: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                TextField("Nom du champ", text: nameBinding(index))
+                TextField("Field name", text: nameBinding(index))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Menu {
-                    Button("Monter", systemImage: "arrow.up") { move(index, by: -1) }
+                    Button("Move up", systemImage: "arrow.up") { move(index, by: -1) }
                         .disabled(index == 0)
-                    Button("Descendre", systemImage: "arrow.down") { move(index, by: 1) }
+                    Button("Move down", systemImage: "arrow.down") { move(index, by: 1) }
                         .disabled(index == fields.count - 1)
-                    Button("Supprimer", systemImage: "trash", role: .destructive) {
+                    Button("Delete", systemImage: "trash", role: .destructive) {
                         fields.remove(at: index)
                         shown.removeAll()
                     }
                 } label: {
                     Image(systemName: "ellipsis.circle").foregroundStyle(.secondary)
                 }
-                .accessibilityLabel("Actions du champ")
+                .accessibilityLabel("Field actions")
             }
             value(index)
         }
@@ -468,13 +470,13 @@ private struct PhoneCustomFieldsSection: View {
     @ViewBuilder private func value(_ index: Int) -> some View {
         switch fields[index].fieldType {
         case .text:
-            TextField("Valeur", text: valueBinding(index))
+            TextField("Value", text: valueBinding(index))
         case .hidden:
             HStack {
                 if shown.contains(index) {
-                    TextField("Valeur", text: valueBinding(index)).font(.system(.body, design: .monospaced))
+                    TextField("Value", text: valueBinding(index)).font(.system(.body, design: .monospaced))
                 } else {
-                    SecureField("Valeur", text: valueBinding(index))
+                    SecureField("Value", text: valueBinding(index))
                 }
                 Button {
                     if shown.contains(index) { shown.remove(index) } else { shown.insert(index) }
@@ -484,11 +486,11 @@ private struct PhoneCustomFieldsSection: View {
                 .buttonStyle(.borderless)
             }
         case .boolean:
-            Toggle("Coché", isOn: Binding(
+            Toggle("Checked", isOn: Binding(
                 get: { fields.indices.contains(index) && fields[index].value == "true" },
                 set: { if fields.indices.contains(index) { fields[index].value = $0 ? "true" : "false" } }))
         case .linked:
-            Text("Champ lié (modifiable dans le coffre web)").foregroundStyle(.secondary)
+            Text("Linked field (editable in the web vault)").foregroundStyle(.secondary)
         }
     }
 
@@ -504,8 +506,17 @@ private struct PhoneCustomFieldsSection: View {
     }
 
     private func nameBinding(_ index: Int) -> Binding<String> {
-        Binding(get: { fields.indices.contains(index) ? fields[index].name : "" },
-                set: { if fields.indices.contains(index) { fields[index].name = $0 } })
+        Binding(get: {
+            guard fields.indices.contains(index) else { return "" }
+            let name = fields[index].name
+            return CoreText.isTemplateField(name, template: template) ? CoreText.localized(name) : name
+        }, set: {
+            guard fields.indices.contains(index) else { return }
+            // A template field keeps the core's label as long as its translation is not edited.
+            let name = fields[index].name
+            if CoreText.isTemplateField(name, template: template), $0 == CoreText.localized(name) { return }
+            fields[index].name = $0
+        })
     }
 
     private func valueBinding(_ index: Int) -> Binding<String> {

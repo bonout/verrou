@@ -1,35 +1,35 @@
-// Mise à jour de l'extension livrée avec Verrou.
+// Update of the extension shipped with Verrou.
 //
-// L'extension est chargée « non empaquetée » depuis Verrou.app : quand l'app
-// est mise à jour, les fichiers changent sur le disque, mais le navigateur garde
-// l'ancien code en mémoire jusqu'à ce qu'on la recharge. On compare donc la
-// version qui tourne à celle du manifest.json sur le disque, et à celle
-// qu'annonce Verrou ; si elles diffèrent,
-// `runtime.reload()` relit l'extension depuis le disque.
+// The extension is loaded "unpacked" from Verrou.app: when the app is
+// updated, the files change on disk, but the browser keeps the old code in
+// memory until the extension is reloaded. So we compare the running version
+// with the one in manifest.json on disk, and with the one Verrou
+// announces; if they differ,
+// `runtime.reload()` reads the extension again from disk.
 //
-// Firefox : une extension temporaire (about:debugging) se recharge depuis
-// son dossier comme dans Brave ; un module signé (.xpi) ne change pas en se
-// rechargeant. L'appelant y passe `reloadForBundled: false` : seul un
-// changement du manifeste sur le disque recharge, une version différente
-// chez Verrou ne fait qu'avertir (`state().mismatch`).
+// Firefox: a temporary extension (about:debugging) reloads from its folder
+// as in Brave; a signed add-on (.xpi) doesn't change when it reloads. The
+// caller passes `reloadForBundled: false` there: only a change of the
+// manifest on disk reloads, a different version from Verrou only warns
+// (`state().mismatch`).
 //
-// Pas de boucle : une seule tentative par version visée, et au plus une par
-// minute, retenues dans `storage.local` (`storage.session` est vidé
-// par le rechargement lui-même).
+// No loop: a single attempt per target version, and at most one per
+// minute, kept in `storage.local` (`storage.session` is cleared by the
+// reload itself).
 //
-// Sans navigateur : les dépendances sont fournies par l'appelant (testé
-// dans extension/test/seamless.test.mjs).
+// No browser: the dependencies are provided by the caller (tested in
+// extension/test/seamless.test.mjs).
 
 export const ATTEMPT_KEY = "reloadAttempt";
 export const MIN_INTERVAL_MS = 60_000;
 
 const differs = (a, b) => Boolean(a && b && a !== b);
 
-// running : version qui tourne. readDisk() : version du manifeste sur le
-// disque (null si illisible). reload() : recharger. store : { get(), set(v) }
-// pour la dernière tentative. busy() : ne pas recharger maintenant
-// (appairage en cours…). reloadForBundled : recharger aussi quand seule la
-// version annoncée par Verrou diffère (vrai dans Brave).
+// running: the running version. readDisk(): the version of the manifest on
+// disk (null if unreadable). reload(): reload. store: { get(), set(v) } for
+// the last attempt. busy(): don't reload now (pairing in progress…).
+// reloadForBundled: also reload when only the version announced by Verrou
+// differs (true in Brave).
 export function createUpdater({
   running, readDisk, reload, store, busy = () => false, now = Date.now, reloadForBundled = true,
 }) {
@@ -43,9 +43,9 @@ export function createUpdater({
     } catch {
       disk = null;
     }
-    // Le disque d'abord ; sinon la version de l'app livrée (disque illisible,
-    // ou lu depuis un cache). Une extension chargée d'ailleurs se recharge
-    // ainsi une fois pour rien, puis la fenêtre de l'extension avertit.
+    // The disk first; otherwise the version of the shipped app (disk
+    // unreadable, or read from a cache). An extension loaded from elsewhere
+    // thus reloads once for nothing, then the extension's popup warns.
     const target = differs(disk, running) ? disk
       : (reloadForBundled && differs(bundled, running) ? bundled : null);
     if (!target) return { reloading: false, disk, bundled };
@@ -56,19 +56,19 @@ export function createUpdater({
     } catch {
       last = null;
     }
-    if (last?.version === target) return { reloading: false, blocked: "déjà tenté pour cette version", target };
-    if (last && now() - last.at < MIN_INTERVAL_MS) return { reloading: false, blocked: "trop tôt", target };
+    if (last?.version === target) return { reloading: false, blocked: "already tried for this version", target };
+    if (last && now() - last.at < MIN_INTERVAL_MS) return { reloading: false, blocked: "too soon", target };
     try {
       await store.set({ version: target, from: running, at: now() });
     } catch {
-      // Sans trace de la tentative, pas de rechargement : il pourrait boucler.
-      return { reloading: false, blocked: "stockage indisponible", target };
+      // Without a record of the attempt, no reload: it could loop.
+      return { reloading: false, blocked: "storage unavailable", target };
     }
     reload();
     return { reloading: true, target };
   }
 
-  // Pour la fenêtre de l'extension : l'extension et l'app concordent-elles ?
+  // For the extension's popup: do the extension and the app match?
   function state() {
     return { running, bundled, mismatch: differs(bundled, running) };
   }

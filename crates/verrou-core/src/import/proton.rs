@@ -1,13 +1,12 @@
-//! Export de Proton Pass, non chiffré : une archive ZIP contenant
-//! `Proton Pass/data.json` (coffres → éléments).
+//! Unencrypted Proton Pass export: a ZIP archive containing
+//! `Proton Pass/data.json` (vaults → items).
 //!
-//! Identifiants, notes, cartes et identités sont repris ; un réseau Wi-Fi
-//! devient le modèle Wi-Fi de Verrou ; un alias (une adresse e-mail relais,
-//! sans mot de passe) est laissé de côté.
+//! Logins, notes, cards and identities are taken over; a Wi-Fi network
+//! becomes Verrou's Wi-Fi template; an alias (a relay e-mail address,
+//! without a password) is left out.
 //!
-//! Pièces jointes : l'élément cite ses fichiers (`files`) sous leur nom
-//! d'export, `<nom>.<identifiant><extension>`, rangés dans
-//! `Proton Pass/files/`.
+//! Attachments: the item lists its files (`files`) under their export
+//! name, `<name>.<id><extension>`, stored in `Proton Pass/files/`.
 
 use serde_json::Value;
 
@@ -18,10 +17,10 @@ use super::{
 use crate::secret::SecretString;
 use crate::template::{Template, WIFI_PASSWORD, WIFI_SECURITY, WIFI_SSID};
 
-/// État d'un élément dans Proton Pass : 1 actif, 2 à la corbeille.
+/// State of an item in Proton Pass: 1 active, 2 in the trash.
 const TRASHED: i64 = 2;
 
-/// Fichiers cités par l'élément, à lire ensuite dans l'archive.
+/// Files listed by the item, to read from the archive afterwards.
 fn files(entry: &Value) -> Vec<ImportedFile> {
     entry
         .get("files")
@@ -34,8 +33,8 @@ fn files(entry: &Value) -> Vec<ImportedFile> {
         .collect()
 }
 
-/// `facture.1a2b3c.pdf` → `facture.pdf` : Proton Pass glisse un identifiant
-/// hexadécimal avant l'extension (ou à la fin, sans extension).
+/// `facture.1a2b3c.pdf` → `facture.pdf`: Proton Pass slips a hexadecimal
+/// id before the extension (or at the end, without an extension).
 fn original_name(export_name: &str) -> String {
     let hex = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_hexdigit());
     let mut parts: Vec<&str> = export_name.split('.').collect();
@@ -47,7 +46,7 @@ fn original_name(export_name: &str) -> String {
     parts.join(".")
 }
 
-/// `Proton Pass/files/<nom d'export>`, où `/` et `\` deviennent `_`.
+/// `Proton Pass/files/<export name>`, where `/` and `\` become `_`.
 pub(super) fn archive_entry(name: &str, export_name: &str) -> bool {
     let sanitized = export_name.replace(['/', '\\'], "_");
     name.strip_suffix(sanitized.trim())
@@ -86,7 +85,7 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
     let content = data.get("content").unwrap_or(&Value::Null);
     let title = string(metadata, "name").unwrap_or_default();
     if entry.get("state").and_then(Value::as_i64) == Some(TRASHED) {
-        return parsed.skip(title, "dans la corbeille de Proton Pass");
+        return parsed.skip(title, "in the Proton Pass trash");
     }
     let mut item = ImportedItem::new(ImportKind::SecureNote, title);
     item.folder = vault.cloned();
@@ -109,13 +108,13 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
         "login" => login(content, &mut item),
         "creditCard" => card(content, &mut item),
         "alias" => {
-            return parsed.skip(title, "alias e-mail de Proton Pass (sans mot de passe)");
+            return parsed.skip(title, "Proton Pass email alias (no password)");
         }
         "note" => {}
         "wifi" => wifi(content, &mut item),
         "identity" => identity(content, &mut item),
         _ => {
-            // Identité, clé SSH, Wi-Fi… : chaque champ renseigné, dans les notes.
+            // Identity, SSH key, Wi-Fi…: each filled-in field, in the notes.
             if let Some(map) = content.as_object() {
                 lines.extend(map.iter().filter_map(|(key, value)| {
                     let value = text(value.as_str())?;
@@ -124,17 +123,17 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
             }
         }
     }
-    // Seul un identifiant a un code à usage unique.
+    // Only a login has a one-time code.
     if item.kind != ImportKind::Login
         && let Some(totp) = item.totp.take()
     {
         item.fields.push(ExtraField {
-            name: "Code à usage unique".to_owned(),
+            name: "One-time code".to_owned(),
             value: totp,
             hidden: true,
         });
     }
-    // Champs supplémentaires d'une note (ou d'un autre type) : dans les notes.
+    // Extra fields of a note (or of another type): in the notes.
     if item.kind == ImportKind::SecureNote && item.template.is_none() {
         lines.extend(
             item.fields
@@ -147,8 +146,8 @@ fn item(entry: &Value, vault: Option<&String>, parsed: &mut Parsed) {
     parsed.push(item);
 }
 
-/// Identifiant : l'identifiant est `itemUsername`, sinon `itemEmail` (l'autre
-/// devient un champ « E-mail »).
+/// Login: the username is `itemUsername`, otherwise `itemEmail` (the other
+/// one becomes an "Email" field).
 fn login(content: &Value, item: &mut ImportedItem) {
     item.kind = ImportKind::Login;
     let username =
@@ -161,7 +160,7 @@ fn login(content: &Value, item: &mut ImportedItem) {
         item.fields.insert(
             0,
             ExtraField {
-                name: "E-mail".to_owned(),
+                name: "Email".to_owned(),
                 value: email.into(),
                 hidden: false,
             },
@@ -169,10 +168,10 @@ fn login(content: &Value, item: &mut ImportedItem) {
     }
     item.password = secret(string(content, "password"));
     if let Some(totp) = secret(string(content, "totpUri")) {
-        // Le code de l'identifiant passe avant celui d'un champ.
+        // The login's code takes precedence over a field's.
         if let Some(other) = item.totp.replace(totp) {
             item.fields.push(ExtraField {
-                name: "Code à usage unique".to_owned(),
+                name: "One-time code".to_owned(),
                 value: other,
                 hidden: true,
             });
@@ -210,10 +209,10 @@ fn card(content: &Value, item: &mut ImportedItem) {
     item.card = Some(card);
 }
 
-/// Réseau Wi-Fi : le modèle Wi-Fi de Verrou.
+/// Wi-Fi network: Verrou's Wi-Fi template.
 fn wifi(content: &Value, item: &mut ImportedItem) {
     item.template = Some(Template::Wifi);
-    // Énumération de Proton Pass : 1 WPA, 2 WPA2, 3 WPA3, 4 WEP.
+    // Proton Pass enum: 1 WPA, 2 WPA2, 3 WPA3, 4 WEP.
     let security = match content.get("security") {
         Some(Value::Number(n)) => match n.as_i64() {
             Some(1) => Some("WPA".to_owned()),
@@ -240,8 +239,8 @@ fn wifi(content: &Value, item: &mut ImportedItem) {
     item.fields = template_fields(Template::Wifi, &found, others);
 }
 
-/// Identité : les champs que Bitwarden connaît ; les autres (date de
-/// naissance, réseaux sociaux, sections ajoutées…) en champs personnalisés.
+/// Identity: the fields Bitwarden knows; the others (birth date, social
+/// networks, added sections…) as custom fields.
 fn identity(content: &Value, item: &mut ImportedItem) {
     item.kind = ImportKind::Identity;
     let mut used: Vec<&str> = Vec::new();
@@ -267,7 +266,7 @@ fn identity(content: &Value, item: &mut ImportedItem) {
         license_number: take("licenseNumber").map(Into::into),
         ..IdentityData::default()
     };
-    // Le nom complet seul : prénom(s), puis nom (le dernier mot).
+    // Full name alone: first name(s), then last name (the last word).
     if let Some(full) = take("fullName")
         && identity.first_name.is_none()
         && identity.last_name.is_none()
@@ -296,8 +295,8 @@ fn identity(content: &Value, item: &mut ImportedItem) {
                     });
                 }
             }
-            // `extraPersonalDetails`, `extraSections`… : des champs comme
-            // ceux de `extraFields`, parfois rangés dans des sections.
+            // `extraPersonalDetails`, `extraSections`…: fields like those of
+            // `extraFields`, sometimes grouped in sections.
             Value::Array(list) => {
                 for entry in list {
                     let nested = entry.get("sectionFields").and_then(Value::as_array);
@@ -307,7 +306,7 @@ fn identity(content: &Value, item: &mut ImportedItem) {
                         .chain(entry.get("fieldName").is_some().then_some(entry))
                     {
                         let mut holder = ImportedItem::new(ImportKind::Identity, "");
-                        // Graine déjà « prise » : un champ TOTP reste un champ masqué.
+                        // Seed already "taken": a TOTP field stays a hidden field.
                         holder.totp = Some(SecretString::default());
                         extra_field(field, &mut holder);
                         fields.extend(holder.fields);
@@ -320,10 +319,10 @@ fn identity(content: &Value, item: &mut ImportedItem) {
     item.fields.splice(0..0, fields);
 }
 
-/// Champ personnalisé : texte, masqué, TOTP (le premier sert de code à usage
-/// unique si l'identifiant n'en a pas).
+/// Custom field: text, hidden, TOTP (the first one serves as the one-time
+/// code if the login has none).
 fn extra_field(field: &Value, item: &mut ImportedItem) {
-    let name = text(string(field, "fieldName")).unwrap_or_else(|| "Champ".to_owned());
+    let name = text(string(field, "fieldName")).unwrap_or_else(|| "Field".to_owned());
     let data = field.get("data").unwrap_or(&Value::Null);
     let value = string(data, "content")
         .or_else(|| string(data, "totpUri"))
@@ -338,7 +337,7 @@ fn extra_field(field: &Value, item: &mut ImportedItem) {
     };
     let kind = string(field, "type").unwrap_or("text");
     if kind == "totp" && item.totp.is_none() {
-        // Graine de l'identifiant, sauf s'il en a déjà une (voir `item`).
+        // The login's seed, unless it already has one (see `item`).
         item.totp = Some(value.into());
         return;
     }
@@ -515,7 +514,7 @@ mod tests {
         assert_eq!(wifi.fields[0].value.expose(), "Martin-5G");
         assert!(wifi.fields[1].hidden && !wifi.fields[0].hidden);
         assert_eq!(wifi.fields[2].value.expose(), "WPA2");
-        assert!(wifi.notes.is_none(), "les champs restent des champs");
+        assert!(wifi.notes.is_none(), "the fields stay fields");
 
         let netflix = parsed.items.iter().find(|i| i.title == "Netflix").unwrap();
         assert_eq!(netflix.folder.as_deref(), Some("Famille"));
@@ -558,7 +557,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .expose()
-                .contains("« absent.txt » : non importée")
+                .contains("\"absent.txt\": not imported")
         );
     }
 

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Échange avec une clé de sécurité (déverrouillage ou enrôlement) : ce que
-/// la clé attend, le champ du code PIN, et « Annuler ».
+/// Exchange with a security key (unlock or enrollment): what the key is
+/// waiting for, the PIN field, and "Cancel".
 struct SecurityKeyPanel: View {
     @Environment(AppModel.self) private var model
     @State private var pin = ""
@@ -22,17 +22,19 @@ struct SecurityKeyPanel: View {
 
             if case .pin(let retry, let attemptsLeft) = model.keyPrompt {
                 if retry {
-                    Text(attemptsLeft.map { "Code PIN incorrect : \($0) essai\($0 > 1 ? "s" : "") restant\($0 > 1 ? "s" : "")." }
-                         ?? "Code PIN incorrect.")
+                    Text(attemptsLeft.map { left in
+                        left > 1 ? String(localized: "Incorrect PIN: \(Int(left)) attempts left.")
+                                 : String(localized: "Incorrect PIN: \(Int(left)) attempt left.")
+                    } ?? String(localized: "Incorrect PIN."))
                         .font(.caption)
                         .foregroundStyle(.red)
                 }
                 HStack(spacing: 8) {
-                    SecureField("Code PIN de la clé", text: $pin)
+                    SecureField("Key PIN", text: $pin)
                         .textFieldStyle(.roundedBorder)
                         .focused($pinFocused)
                         .onSubmit(submit)
-                    Button("Valider", action: submit)
+                    Button("Submit", action: submit)
                         .keyboardShortcut(.defaultAction)
                         .disabled(pin.isEmpty)
                 }
@@ -42,21 +44,21 @@ struct SecurityKeyPanel: View {
                 ProgressView().controlSize(.small)
             }
 
-            Button("Annuler") { model.cancelKeyExchange() }
+            Button("Cancel") { model.cancelKeyExchange() }
                 .buttonStyle(.link)
                 .keyboardShortcut(.cancelAction)
         }
         .onDisappear { pin = "" }
     }
 
-    private var message: String {
+    private var message: LocalizedStringKey {
         switch model.keyPrompt {
-        case .touch?: "Touchez votre clé de sécurité."
-        case .pin?: "Saisissez le code PIN de votre clé de sécurité."
+        case .touch?: "Touch your security key."
+        case .pin?: "Enter your security key's PIN."
         case nil:
             model.keyExchange == .enroll
-                ? "Branchez la clé de sécurité à ajouter."
-                : "Branchez votre clé de sécurité."
+                ? "Plug in the security key to add."
+                : "Plug in your security key."
         }
     }
 

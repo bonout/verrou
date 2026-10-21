@@ -1,4 +1,4 @@
-//! Le coffre déverrouillé : les éléments et leur index de recherche.
+//! The unlocked vault: the items and their search index.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -12,29 +12,29 @@ pub struct Vault {
     items: Vec<Item>,
     index: SearchIndex,
     by_id: HashMap<String, usize>,
-    /// Passkeys des identifiants ([`Vault::with_passkeys`]).
+    /// The logins' passkeys ([`Vault::with_passkeys`]).
     passkeys: Vec<Passkey>,
-    /// Règles de correspondance de l'appareil ([`Vault::with_match_rules`]).
+    /// The device's match rules ([`Vault::with_match_rules`]).
     match_rules: MatchRules,
 }
 
-/// Effectifs affichés dans la barre latérale.
+/// Counts shown in the sidebar.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Counts {
-    /// Éléments actifs (ni archivés, ni à la corbeille), comme les suivants.
+    /// Active items (neither archived nor in the trash), like the following ones.
     pub all: usize,
     pub archived: usize,
     pub trashed: usize,
     pub favorites: usize,
     pub with_totp: usize,
-    /// Identifiants actifs qui portent au moins une passkey.
+    /// Active logins that carry at least one passkey.
     pub passkeys: usize,
     pub kinds: Vec<(ItemKind, usize)>,
-    /// Modèles présents dans le coffre (les autres ne sont pas listés).
+    /// Templates present in the vault (the others are not listed).
     pub templates: Vec<(Template, usize)>,
     pub folders: Vec<(String, usize)>,
     pub tags: Vec<(String, usize)>,
-    /// Éléments actifs par organisation et par collection (identifiants).
+    /// Active items per organization and per collection (ids).
     pub organizations: Vec<(String, usize)>,
     pub collections: Vec<(String, usize)>,
 }
@@ -76,8 +76,8 @@ impl Vault {
         self.search_with_usage(query, filter, sort, &HashMap::new())
     }
 
-    /// Comme [`Vault::search`], avec les dates de dernière utilisation sur
-    /// l'appareil (identifiant → horodatage Unix) pour [`Sort::LastUsed`].
+    /// Like [`Vault::search`], with the last-used dates on the
+    /// device (id → Unix timestamp) for [`Sort::LastUsed`].
     pub fn search_with_usage(
         &self,
         query: &str,
@@ -89,15 +89,15 @@ impl Vault {
             .search(&self.items, query, filter, sort, last_used)
     }
 
-    /// Règles de correspondance de l'appareil (défaut, dossiers, domaines
-    /// équivalents du compte).
+    /// The device's match rules (default, folders, the account's equivalent
+    /// domains).
     #[must_use]
     pub fn with_match_rules(mut self, rules: MatchRules) -> Self {
         self.match_rules = rules;
         self
     }
 
-    /// Change les règles de correspondance (réglages de l'appareil modifiés).
+    /// Changes the match rules (device settings changed).
     pub fn set_match_rules(&mut self, rules: MatchRules) {
         self.match_rules = rules;
     }
@@ -106,8 +106,8 @@ impl Vault {
         &self.match_rules
     }
 
-    /// Identifiants proposés pour une page, du plus précis au moins précis.
-    /// Chaque site suit sa règle de correspondance (voir `matching`).
+    /// Logins suggested for a page, from most to least precise.
+    /// Each site follows its match rule (see `matching`).
     pub fn suggestions_for(&self, page_url: &str) -> Vec<&Item> {
         let mut found = matching_items(
             self.items
@@ -124,8 +124,8 @@ impl Vault {
         found.into_iter().map(|(_, item)| item).collect()
     }
 
-    /// Identifiants reliés à une application du Mac (`macapp://`), favoris
-    /// d'abord, puis par titre.
+    /// Logins linked to a Mac app (`macapp://`), favorites
+    /// first, then by title.
     pub fn app_suggestions(&self, bundle_id: &str) -> Vec<&Item> {
         let mut found: Vec<&Item> = self
             .items
@@ -197,8 +197,8 @@ impl Vault {
 // MARK: Passkeys
 
 impl Vault {
-    /// Les passkeys des éléments du coffre (leur clé privée comprise, effacée
-    /// à la libération).
+    /// The passkeys of the vault's items (their private key included, wiped
+    /// when dropped).
     #[must_use]
     pub fn with_passkeys(mut self, passkeys: Vec<Passkey>) -> Self {
         self.index.mark_passkeys(&self.by_id, &passkeys);
@@ -210,13 +210,13 @@ impl Vault {
         &self.passkeys
     }
 
-    /// Les passkeys d'un élément.
+    /// An item's passkeys.
     pub fn passkeys_of(&self, item: &str) -> Vec<&Passkey> {
         self.passkeys.iter().filter(|p| p.item == item).collect()
     }
 
-    /// Les passkeys utilisables pour le site `rp_id` : celles des
-    /// identifiants actifs.
+    /// The passkeys usable for the site `rp_id`: those of the
+    /// active logins.
     pub fn passkeys_for(&self, rp_id: &str) -> Vec<&Passkey> {
         self.passkeys
             .iter()
@@ -253,7 +253,7 @@ mod tests {
             assert_eq!(hits.len(), 1);
             assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
         }
-        // Le nom de l'organisation se cherche comme un dossier.
+        // The organization's name is searchable like a folder.
         let hits = vault.search("famille martin", &Filter::All, Sort::Relevance);
         assert_eq!(vault.items()[hits[0].index].title, "Google — famille");
     }
@@ -266,7 +266,7 @@ mod tests {
         item.fields
             .push(Field::new("history-0", "Ancien", FieldKind::Concealed, "x"));
         let hidden_count = |item: &Item| item.fields.iter().filter(|f| item.hides(f)).count();
-        assert_eq!(hidden_count(&item), 0, "coffre personnel : rien de caché");
+        assert_eq!(hidden_count(&item), 0, "personal vault: nothing hidden");
         item.shared = Some(Sharing {
             hide_passwords: true,
             ..Sharing::default()

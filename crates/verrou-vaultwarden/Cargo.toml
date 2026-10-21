@@ -1,6 +1,6 @@
 [package]
 name = "verrou-vaultwarden"
-description = "Connexion de Verrou à un serveur Vaultwarden, sur le SDK Rust de Bitwarden."
+description = "Connection of Verrou to a Vaultwarden server, on the Bitwarden Rust SDK."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,10 +12,10 @@ bitwarden-core.workspace = true
 bitwarden-crypto.workspace = true
 bitwarden-vault.workspace = true
 bitwarden-api-api.workspace = true
-# Bitwarden Send : chiffrement des envois (clé de l'envoi, dérivation, mot de passe).
+# Bitwarden Send: encryption of Sends (Send key, derivation, password).
 bitwarden-send.workspace = true
 bitwarden-collections.workspace = true
-# Base64 des clés de la connexion avec un appareil (`device_login`).
+# Base64 of the keys of login with a device (`device_login`).
 bitwarden-encoding.workspace = true
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 data-encoding.workspace = true
@@ -27,42 +27,42 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
-# Envoi de la file en arrière-plan (`sync_shared`) : la connexion partagée
-# derrière un verrou asynchrone, comme dans l'app.
+# Sending the queue in the background (`sync_shared`): the shared connection
+# behind an async lock, as in the app.
 tokio = { workspace = true, features = ["sync", "rt", "time"] }
-# Déverrouillage par clé de sécurité : scellement de la clé de l'utilisateur
-# (HKDF-SHA256, AES-256-GCM), les primitives du pont vers l'extension.
+# Unlock with a security key: sealing of the user's key
+# (HKDF-SHA256, AES-256-GCM), the primitives of the bridge to the extension.
 hkdf = "0.12"
 aes-gcm = "0.10"
 rand.workspace = true
 zeroize.workspace = true
-# Génération des clés SSH : la version que le SDK de Bitwarden utilise déjà,
-# et le générateur du système (ssh-key attend rand_core 0.10).
+# SSH key generation: the version the Bitwarden SDK already uses,
+# and the system generator (ssh-key expects rand_core 0.10).
 ssh-key = { version = "0.7.0-rc.11", features = ["ed25519", "rsa"] }
 getrandom = { version = "0.4", features = ["sys_rng"] }
-# Verrou entre processus du dossier du compte (`flock`) : l'app iPhone et son
-# extension de remplissage le partagent.
+# Inter-process lock on the account folder (`flock`): the iPhone app and its
+# AutoFill extension share it.
 rustix = { version = "1", default-features = false, features = ["fs", "std"] }
-# Mises à jour en direct (`hub`) : le canal WebSocket de Vaultwarden
-# (SignalR, messages MessagePack), en TLS par rustls avec ring, comme
-# reqwest (pas d'aws-lc à compiler pour iOS), et les racines de webpki.
+# Live updates (`hub`): Vaultwarden's WebSocket channel
+# (SignalR, MessagePack messages), over TLS by rustls with ring, like
+# reqwest (no aws-lc to build for iOS), and the webpki roots.
 tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "__rustls-tls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = "1"
 rmpv = "1"
 
-# Dialogue USB avec les clés de sécurité (bibliothèque de Firefox), avec la
-# cryptographie de RustCrypto plutôt que NSS. Seulement sur macOS : la CI
-# Linux n'en a pas besoin.
+# USB dialog with security keys (Firefox's library), with RustCrypto's
+# cryptography rather than NSS. Only on macOS: the Linux CI
+# doesn't need it.
 [target.'cfg(target_os = "macos")'.dependencies]
 authenticator = { version = "0.5.0", default-features = false, features = ["crypto_rust"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["net", "time", "io-util"] }
-# Clé de sécurité logicielle des tests : signe comme une YubiKey.
+# Software security key for the tests: signs like a YubiKey.
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 ciborium = "0.2"
-# Vecteurs de Bitwarden Send recalculés sans le SDK (PBKDF2 à la main).
+# Bitwarden Send vectors recomputed without the SDK (PBKDF2 by hand).
 hmac.workspace = true
 
 [lints]

@@ -1,4 +1,4 @@
-//! Doublons sur le coffre fictif, et garde-fou de performance.
+//! Duplicates on the mock vault, and a performance guard.
 
 use std::time::Instant;
 
@@ -7,8 +7,8 @@ use verrou_core::mock;
 
 #[test]
 fn the_mock_vault_has_no_duplicates() {
-    // Nextcloud, Vaultwarden et Jellyfin : même domaine, même identifiant,
-    // trois services. Deux comptes GitHub : deux identifiants.
+    // Nextcloud, Vaultwarden and Jellyfin: same domain, same username,
+    // three services. Two GitHub accounts: two usernames.
     assert_eq!(find_duplicates(&mock::vault_items(0, 42)), Vec::new());
 }
 
@@ -25,9 +25,9 @@ fn duplicate_fixtures_survive_a_large_vault() {
     assert_eq!(maif.members.len(), 4);
 }
 
-/// 10 000 éléments en moins de 200 ms (`cargo test --release -- --ignored`).
+/// 10,000 items in under 200 ms (`cargo test --release -- --ignored`).
 #[test]
-#[ignore = "mesure de performance : à lancer en release"]
+#[ignore = "performance measurement: run in release"]
 fn duplicates_are_fast() {
     let mut items = mock::vault_items(10_000, 7);
     items.extend(mock::duplicate_items());
@@ -36,9 +36,9 @@ fn duplicates_are_fast() {
     let groups = find_duplicates(&items);
     let elapsed = started.elapsed();
     eprintln!(
-        "{} éléments, {} groupes : {elapsed:?}",
+        "{} items, {} groups: {elapsed:?}",
         items.len(),
         groups.len()
     );
-    assert!(elapsed.as_millis() < 200, "trop lent : {elapsed:?}");
+    assert!(elapsed.as_millis() < 200, "too slow: {elapsed:?}");
 }

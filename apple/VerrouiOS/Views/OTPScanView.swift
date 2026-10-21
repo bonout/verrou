@@ -5,9 +5,9 @@ import UIKit
 import UniformTypeIdentifiers
 import VisionKit
 
-/// Feuille « Scanner un QR code » : la caméra (cadre et consigne), puis
-/// une photo ou capture d'écran, ou le presse-papiers ; ensuite l'aperçu
-/// (service, compte, premier code) et l'enregistrement.
+/// "Scan a QR code" sheet: the camera (frame and instruction), then a
+/// photo or screenshot, or the clipboard; next the preview (service,
+/// account, first code) and saving.
 struct OTPScanSheet: View {
     @Environment(PhoneModel.self) private var model
     @Bindable var flow: OTPScanFlow
@@ -23,15 +23,15 @@ struct OTPScanSheet: View {
                         .transition(.opacity)
                 }
             }
-            .navigationTitle(flow.result == nil ? "Scanner un QR code" : "Code à usage unique")
+            .navigationTitle(flow.result == nil ? "Scan a QR code" : "One-time code")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Annuler") { model.otpScan = nil }
+                    Button("Cancel") { model.otpScan = nil }
                 }
                 if flow.result != nil {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("Rescanner", systemImage: "qrcode.viewfinder") { flow.rescan() }
+                        Button("Scan again", systemImage: "qrcode.viewfinder") { flow.rescan() }
                             .disabled(flow.busy)
                     }
                 }
@@ -43,7 +43,7 @@ struct OTPScanSheet: View {
 
 // MARK: Sources
 
-/// Caméra en haut, autres sources en dessous.
+/// Camera at the top, other sources below.
 private struct OTPScannerPane: View {
     @Environment(PhoneModel.self) private var model
     @Bindable var flow: OTPScanFlow
@@ -62,11 +62,11 @@ private struct OTPScannerPane: View {
         .onChange(of: photo) { _, item in
             guard let item else { return }
             Task {
-                // Les octets de l'image ne vivent que le temps de la lecture.
+                // The image's bytes only live while it is being read.
                 if let data = try? await item.loadTransferable(type: Data.self) {
                     await flow.handle(imageData: data, session: model.session)
                 } else {
-                    flow.error = "Image illisible."
+                    flow.error = String(localized: "Unreadable image.")
                 }
                 photo = nil
             }
@@ -79,8 +79,8 @@ private struct OTPScannerPane: View {
         }
     }
 
-    /// Savoir si le presse-papiers contient quelque chose ne le lit pas (pas
-    /// d'alerte de collage) ; seul `PasteButton` le lit, au toucher.
+    /// Knowing whether the clipboard holds something doesn't read it (no
+    /// paste alert); only `PasteButton` reads it, on tap.
     private func refreshClipboard() {
         clipboardHasContent = UIPasteboard.general.hasStrings || UIPasteboard.general.hasImages
             || UIPasteboard.general.hasURLs
@@ -93,7 +93,7 @@ private struct OTPScannerPane: View {
                     .accessibilityIdentifier("otp-scan-error")
             }
             PhotosPicker(selection: $photo, matching: .images, preferredItemEncoding: .current) {
-                Label("Photo ou capture d'écran", systemImage: "photo.on.rectangle.angled")
+                Label("Photo or screenshot", systemImage: "photo.on.rectangle.angled")
                     .font(.body.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 34)
             }
@@ -104,9 +104,9 @@ private struct OTPScannerPane: View {
             if clipboardHasContent {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Coller depuis le presse-papiers")
+                        Text("Paste from the clipboard")
                             .font(.callout.weight(.semibold))
-                        Text("Lien otpauth:// ou image d'un QR code")
+                        Text("otpauth:// link or image of a QR code")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -120,7 +120,7 @@ private struct OTPScannerPane: View {
                     .disabled(flow.busy)
                 }
             }
-            Text("Sur cet iPhone, faites une capture d'écran du QR code affiché par le site, puis choisissez-la ici. L'image n'est pas conservée.")
+            Text("On this iPhone, take a screenshot of the QR code shown by the site, then choose it here. The image is not kept.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -134,7 +134,7 @@ private struct OTPScannerPane: View {
     }
 }
 
-/// Image de la caméra avec le cadre, ou la raison de son absence.
+/// Camera image with the frame, or the reason it is missing.
 private struct CameraArea: View {
     @Environment(PhoneModel.self) private var model
     @Bindable var flow: OTPScanFlow
@@ -152,12 +152,12 @@ private struct CameraArea: View {
                 MetadataScannerView { flow.handle(text: $0, session: model.session, fromCamera: true) }
                 viewfinder
             case .denied:
-                unavailable(symbol: "video.slash.fill", title: "Accès à la caméra refusé",
-                            text: "Autorisez la caméra dans Réglages pour scanner, ou choisissez une capture d'écran du QR code.",
+                unavailable(symbol: "video.slash.fill", title: "Camera access denied",
+                            text: "Allow the camera in Settings to scan, or choose a screenshot of the QR code.",
                             settings: true)
             case .unavailable:
-                unavailable(symbol: "camera.fill", title: "Caméra indisponible",
-                            text: "Choisissez une photo ou une capture d'écran du QR code.", settings: false)
+                unavailable(symbol: "camera.fill", title: "Camera unavailable",
+                            text: "Choose a photo or a screenshot of the QR code.", settings: false)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
@@ -166,12 +166,12 @@ private struct CameraArea: View {
         .accessibilityIdentifier("otp-scan-camera")
     }
 
-    /// Cadre aux coins arrondis et consigne.
+    /// Rounded-corner frame and instruction.
     private var viewfinder: some View {
         VStack(spacing: 22) {
             ViewfinderFrame()
                 .frame(width: 230, height: 230)
-            Text("Placez le QR code du site dans le cadre")
+            Text("Place the site's QR code in the frame")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
@@ -182,7 +182,7 @@ private struct CameraArea: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func unavailable(symbol: String, title: String, text: String, settings: Bool) -> some View {
+    private func unavailable(symbol: String, title: LocalizedStringKey, text: LocalizedStringKey, settings: Bool) -> some View {
         VStack(spacing: 12) {
             ZStack {
                 ViewfinderFrame()
@@ -203,7 +203,7 @@ private struct CameraArea: View {
                 .fixedSize(horizontal: false, vertical: true)
             if settings, let url = URL(string: UIApplication.openSettingsURLString) {
                 Link(destination: url) {
-                    Label("Ouvrir Réglages", systemImage: "gear")
+                    Label("Open Settings", systemImage: "gear")
                         .font(.callout.weight(.semibold))
                 }
                 .controlSize(.regular)
@@ -215,7 +215,7 @@ private struct CameraArea: View {
     }
 }
 
-/// Quatre coins arrondis, à la manière de l'appareil photo.
+/// Four rounded corners, like the Camera app.
 private struct ViewfinderFrame: View {
     var body: some View {
         GeometryReader { geometry in
@@ -239,10 +239,10 @@ private struct ViewfinderFrame: View {
     }
 }
 
-// MARK: Caméra
+// MARK: Camera
 
-/// VisionKit : QR codes seulement, mise en évidence et guidage du système.
-/// Aucune image n'est gardée, seul le texte du code remonte.
+/// VisionKit: QR codes only, the system's highlighting and guidance.
+/// No image is kept, only the code's text comes up.
 private struct DataScannerView: UIViewControllerRepresentable {
     let found: (String) -> Void
 
@@ -287,8 +287,8 @@ private struct DataScannerView: UIViewControllerRepresentable {
     }
 }
 
-/// Repli AVFoundation (appareils sans VisionKit) : `AVCaptureMetadataOutput`
-/// ne rend que le texte des QR codes, aucune image.
+/// AVFoundation fallback (devices without VisionKit): `AVCaptureMetadataOutput`
+/// only returns the QR codes' text, no image.
 private struct MetadataScannerView: UIViewControllerRepresentable {
     let found: (String) -> Void
 
@@ -312,7 +312,7 @@ final class MetadataScannerController: UIViewController, AVCaptureMetadataOutput
     }
 
     @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) indisponible") }
+    required init?(coder: NSCoder) { fatalError("init(coder:) unavailable") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -357,10 +357,10 @@ final class MetadataScannerController: UIViewController, AVCaptureMetadataOutput
     }
 }
 
-// MARK: Aperçu
+// MARK: Preview
 
-/// Service, compte et premier code de chaque compte lu, puis où
-/// l'enregistrer.
+/// Service, account and first code of each scanned account, then where to
+/// save it.
 private struct OTPPreviewView: View {
     @Environment(PhoneModel.self) private var model
     @Bindable var flow: OTPScanFlow
@@ -382,9 +382,9 @@ private struct OTPPreviewView: View {
                                       choices: choices(for: account))
                     }
                 } header: {
-                    SectionHeader("\(result.accounts.count) comptes")
+                    SectionHeader("\(result.accounts.count) accounts")
                 } footer: {
-                    Text("Chaque compte rejoint l'identifiant choisi, ou un nouvel identifiant.")
+                    Text("Each account joins the chosen login, or a new login.")
                 }
                 Section {
                     Button {
@@ -410,7 +410,7 @@ private struct OTPPreviewView: View {
             }
             Section {
             } footer: {
-                Label("La graine part chiffrée dans l'élément. Rien n'est copié ni conservé : ni image, ni texte du QR code.",
+                Label("The seed goes encrypted into the item. Nothing is copied or kept: neither the image nor the QR code's text.",
                       systemImage: "lock.fill")
                     .font(.footnote)
             }
@@ -420,7 +420,7 @@ private struct OTPPreviewView: View {
     @ViewBuilder private var notices: some View {
         if let number = result.batchNumber, let count = result.batchCount {
             Section {
-                Label("Export Google Authenticator en \(count) QR codes : voici le n° \(number). Enregistrez-le, puis scannez les suivants.",
+                Label("Google Authenticator export in \(count) QR codes: this is no. \(number). Save it, then scan the next ones.",
                       systemImage: "square.stack.3d.up")
                     .font(.callout)
             }
@@ -428,8 +428,8 @@ private struct OTPPreviewView: View {
         if result.skipped > 0 {
             Section {
                 Label(result.skipped == 1
-                      ? "1 compte HOTP (à compteur) ignoré : seuls les codes TOTP sont pris en charge."
-                      : "\(result.skipped) comptes HOTP (à compteur) ignorés : seuls les codes TOTP sont pris en charge.",
+                      ? "1 HOTP (counter-based) account skipped: only TOTP codes are supported."
+                      : "\(result.skipped) HOTP (counter-based) accounts skipped: only TOTP codes are supported.",
                       systemImage: "exclamationmark.triangle")
                     .font(.callout)
                     .foregroundStyle(.orange)
@@ -437,25 +437,25 @@ private struct OTPPreviewView: View {
         }
     }
 
-    // Un seul compte : des boutons.
+    // A single account: buttons.
     @ViewBuilder private func singleActions(_ account: ScannedOtp) -> some View {
         Section {
             switch flow.purpose {
             case .item(let id, let title):
-                primary("Ajouter à « \(title) »", symbol: "plus.circle.fill") {
+                primary(String(localized: "Add to “\(title)”"), symbol: "plus.circle.fill") {
                     apply([(account, .attach(id))])
                 }
             case .editor(let isNew):
                 if isNew {
                     ForEach(account.matches.prefix(3), id: \.id) { target in
-                        primary("Ajouter à « \(target.title) »", symbol: "plus.circle.fill",
+                        primary(String(localized: "Add to “\(target.title)”"), symbol: "plus.circle.fill",
                                 subtitle: target.subtitle.isEmpty ? nil : target.subtitle) {
                             apply([(account, .attach(target.id))])
                         }
                     }
                 }
-                let fill = isNew ? (account.matches.isEmpty ? "Utiliser pour ce nouvel identifiant" : "Créer un nouvel identifiant")
-                                 : "Utiliser ce code"
+                let fill = isNew ? (account.matches.isEmpty ? String(localized: "Use for this new login") : String(localized: "Create a new login"))
+                                 : String(localized: "Use this code")
                 primary(fill, symbol: isNew ? "person.crop.circle.badge.plus" : "checkmark.circle.fill",
                         prominent: !isNew || account.matches.isEmpty) {
                     apply([(account, .form)])
@@ -463,7 +463,7 @@ private struct OTPPreviewView: View {
             }
         } header: {
             if flow.purpose == .editor(isNew: true), !account.matches.isEmpty {
-                SectionHeader("Identifiant déjà dans le coffre")
+                SectionHeader("Login already in the vault")
             }
         }
     }
@@ -491,22 +491,22 @@ private struct OTPPreviewView: View {
         .accessibilityIdentifier("otp-action")
     }
 
-    // Plusieurs comptes : une destination par compte.
+    // Several accounts: one destination per account.
     private func choices(for account: ScannedOtp) -> [DestinationChoice] {
         var list: [DestinationChoice] = []
         if flow.purpose.isEditor {
-            list.append(DestinationChoice(title: "Ce formulaire", destination: .form))
+            list.append(DestinationChoice(title: String(localized: "This form"), destination: .form))
         }
-        list += account.matches.map { DestinationChoice(title: "Ajouter à « \($0.title) »", destination: .attach($0.id)) }
-        list.append(DestinationChoice(title: "Nouvel identifiant", destination: .newLogin))
-        list.append(DestinationChoice(title: "Ignorer", destination: .skip))
+        list += account.matches.map { DestinationChoice(title: String(localized: "Add to “\($0.title)”"), destination: .attach($0.id)) }
+        list.append(DestinationChoice(title: String(localized: "New login"), destination: .newLogin))
+        list.append(DestinationChoice(title: String(localized: "Skip"), destination: .skip))
         return list
     }
 
     private func destinationBinding(_ index: Int) -> Binding<OTPScanFlow.Destination> {
         Binding(get: { flow.destinations[index] ?? .skip },
                 set: { value in
-                    // Un seul compte peut remplir le formulaire.
+                    // Only one account can fill the form.
                     if value == .form {
                         for (other, destination) in flow.destinations where destination == .form {
                             flow.destinations[other] = .newLogin
@@ -519,7 +519,7 @@ private struct OTPPreviewView: View {
     private var selectedCount: Int { flow.destinations.values.filter { $0 != .skip }.count }
 
     private var importTitle: String {
-        selectedCount == 1 ? "Enregistrer 1 compte" : "Enregistrer \(selectedCount) comptes"
+        selectedCount == 1 ? String(localized: "Save 1 account") : String(localized: "Save \(selectedCount) accounts")
     }
 
     private func apply(_ plan: [(ScannedOtp, OTPScanFlow.Destination)]) {
@@ -527,7 +527,7 @@ private struct OTPPreviewView: View {
     }
 }
 
-/// Grande carte d'un compte : service, compte, code qui défile.
+/// Large card of an account: service, account, scrolling code.
 private struct OTPAccountCard: View {
     let account: ScannedOtp
 
@@ -535,7 +535,7 @@ private struct OTPAccountCard: View {
         VStack(spacing: 10) {
             TintedSymbol(symbol: "qrcode", tint: Theme.accent, size: 52)
             VStack(spacing: 3) {
-                Text(account.issuer ?? account.title)
+                Text(account.displayTitle)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
                 if let user = account.account, account.issuer != nil {
@@ -550,7 +550,7 @@ private struct OTPAccountCard: View {
                 .accessibilityIdentifier("otp-preview-code")
             HStack(spacing: 5) {
                 Image(systemName: "checkmark.seal.fill")
-                Text("Graine valide · \(account.code.code.count) chiffres · \(account.code.period) s")
+                Text("Valid seed · \(account.code.code.count) digits · \(account.code.period) s")
             }
             .font(.caption.weight(.medium))
             .foregroundStyle(.green)
@@ -560,13 +560,13 @@ private struct OTPAccountCard: View {
     }
 }
 
-/// Destination proposée pour un compte d'un export.
+/// Destination offered for an account of an export.
 private struct DestinationChoice {
     let title: String
     let destination: OTPScanFlow.Destination
 }
 
-/// Ligne d'un compte d'un export, avec sa destination.
+/// Row of an account of an export, with its destination.
 private struct OTPAccountRow: View {
     let account: ScannedOtp
     @Binding var destination: OTPScanFlow.Destination
@@ -576,7 +576,7 @@ private struct OTPAccountRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(account.issuer ?? account.title).font(.headline)
+                    Text(account.displayTitle).font(.headline)
                     if let user = account.account, account.issuer != nil {
                         Text(user).font(.caption).foregroundStyle(.secondary)
                     }
@@ -584,7 +584,7 @@ private struct OTPAccountRow: View {
                 Spacer(minLength: 8)
                 LiveCode(account: account, size: 17)
             }
-            Picker("Enregistrer dans", selection: $destination) {
+            Picker("Save in", selection: $destination) {
                 ForEach(choices, id: \.destination) { choice in
                     Text(choice.title).tag(choice.destination)
                 }
@@ -597,7 +597,7 @@ private struct OTPAccountRow: View {
     }
 }
 
-/// Code du moment, recalculé chaque seconde par le cœur Rust.
+/// Current code, recomputed every second by the Rust core.
 struct LiveCode: View {
     let value: String
     var fallback: TotpView?
@@ -609,7 +609,7 @@ struct LiveCode: View {
         self.size = size
     }
 
-    /// Graine ou lien saisi dans l'écran de modification.
+    /// Seed or link entered in the edit screen.
     init(value: String, size: CGFloat) {
         self.value = value
         self.size = size

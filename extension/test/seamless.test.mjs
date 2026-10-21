@@ -1,12 +1,12 @@
-// Une extension qui se fait oublier : elle se recharge quand Verrou est mis
-// à jour (update.js, version annoncée par le vrai pont), propose ses
-// passkeys dans le remplissage automatique (`mediation: "conditional"`), et
-// dit quand une passkey part au navigateur faute de Verrou.
+// An extension that goes unnoticed: it reloads when Verrou is updated
+// (update.js, version announced by the real bridge), offers its passkeys in
+// autofill (`mediation: "conditional"`), and says when a passkey goes to the
+// browser for lack of Verrou.
 //
-// passkey-page.js (monde de la page) et passkeys.js (monde isolé) tournent
-// ici dans deux contextes, reliés par un faux `postMessage` ; le service
-// worker est remplacé par passkey-bridge.js et le vrai pont, à travers le
-// vrai hôte Native Messaging. Les signatures sont vérifiées avec WebCrypto.
+// passkey-page.js (page world) and passkeys.js (isolated world) run here in
+// two contexts, linked by a fake `postMessage`; the service worker is
+// replaced by passkey-bridge.js and the real bridge, through the real Native
+// Messaging host. The signatures are checked with WebCrypto.
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node --test extension/test/seamless.test.mjs
@@ -24,6 +24,7 @@ import vm from "node:vm";
 import { Channel } from "../bridge.js";
 import { passkeyCommand, passkeyResult } from "../passkey-bridge.js";
 import { createUpdater } from "../update.js";
+import { i18n } from "./fake-dom.mjs";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const source = (name) => readFileSync(`${root}extension/${name}`, "utf8");
@@ -34,15 +35,15 @@ async function eventually(probe, what, timeout = 5000) {
   for (;;) {
     const value = await probe();
     if (value) return value;
-    if (Date.now() > end) throw new Error(`délai dépassé : ${what}`);
+    if (Date.now() > end) throw new Error(`timed out: ${what}`);
     await sleep(20);
   }
 }
 
-// MARK: Faux Verrou (le vrai pont, sur un faux coffre)
+// MARK: Fake Verrou (the real bridge, on a fake vault)
 
 const scratch = mkdtempSync(join(tmpdir(), "verrou-seamless-"));
-// Le manifest.json « livré avec l'app » : le pont annonce sa version.
+// The manifest.json "shipped with the app": the bridge announces its version.
 const bundledManifest = join(scratch, "manifest.json");
 const writeBundled = (version) => writeFileSync(bundledManifest, JSON.stringify({ name: "Verrou", version }));
 writeBundled("0.3.0");
@@ -85,7 +86,7 @@ function hostTransport() {
       buffer = buffer.subarray(4 + length);
     }
   });
-  host.on("exit", () => onDisconnect("hôte arrêté"));
+  host.on("exit", () => onDisconnect("host stopped"));
   return {
     post(message) {
       const body = Buffer.from(JSON.stringify(message));
@@ -109,14 +110,14 @@ async function pairedChannel() {
   return paired;
 }
 
-// MARK: A. Rechargement après une mise à jour de l'app
+// MARK: A. Reload after an app update
 
 function memoryStore() {
   let value;
   return { get: async () => value, set: async (v) => { value = v; }, peek: () => value };
 }
 
-test("la version annoncée par Verrou, puis un seul rechargement par version", async () => {
+test("the version announced by Verrou, then a single reload per version", async () => {
   const channel = await pairedChannel();
   let disk = "0.3.0";
   let reloads = 0;
@@ -131,12 +132,12 @@ test("la version annoncée par Verrou, puis un seul rechargement par version", a
   });
   const status = async () => (await channel.request({ cmd: "status" })).extension_version;
 
-  // Même version partout : rien.
+  // Same version everywhere: nothing.
   assert.equal(await status(), "0.3.0");
   assert.equal((await updater.check({ bridgeVersion: await status() })).reloading, false);
   assert.equal(updater.state().mismatch, false);
 
-  // L'app est mise à jour : le disque et Verrou annoncent la nouvelle version.
+  // The app is updated: the disk and Verrou announce the new version.
   writeBundled("0.3.0.4242");
   disk = "0.3.0.4242";
   assert.equal(await status(), "0.3.0.4242");
@@ -145,18 +146,18 @@ test("la version annoncée par Verrou, puis un seul rechargement par version", a
   assert.deepEqual(store.peek(), { version: "0.3.0.4242", from: "0.3.0", at: clock });
   assert.equal(updater.state().mismatch, true);
 
-  // Le rechargement n'a rien changé (le même ancien code tourne encore) :
-  // pas de deuxième tentative pour cette version, même bien plus tard.
+  // The reload changed nothing (the same old code still runs): no second
+  // attempt for this version, even much later.
   clock += 3_600_000;
   for (let i = 0; i < 3; i += 1) assert.equal((await updater.check({ bridgeVersion: await status() })).reloading, false);
   assert.equal(reloads, 1);
 
-  // Le service worker redémarre dans la nouvelle version : plus rien à faire.
+  // The service worker restarts in the new version: nothing more to do.
   const next = createUpdater({ running: "0.3.0.4242", readDisk: async () => disk, reload: () => { reloads += 1; }, store, now: () => clock });
   assert.equal((await next.check({ bridgeVersion: await status() })).reloading, false);
   assert.equal(next.state().mismatch, false);
 
-  // Nouvelle mise à jour, une seconde après la précédente tentative : on attend.
+  // New update, one second after the previous attempt: we wait.
   writeBundled("0.3.0.777");
   disk = "0.3.0.777";
   await store.set({ version: "0.3.0.4242", at: clock - 1000 });
@@ -166,26 +167,26 @@ test("la version annoncée par Verrou, puis un seul rechargement par version", a
   assert.equal(reloads, 2);
 });
 
-test("disque illisible : la version de Verrou décide ; chargée d'ailleurs : avertir sans boucler", async () => {
+test("unreadable disk: Verrou's version decides; loaded from elsewhere: warn without looping", async () => {
   const store = memoryStore();
   let reloads = 0;
   const unreadable = createUpdater({
-    running: "0.3.0", readDisk: async () => { throw new Error("illisible"); }, reload: () => { reloads += 1; }, store,
+    running: "0.3.0", readDisk: async () => { throw new Error("unreadable"); }, reload: () => { reloads += 1; }, store,
   });
-  assert.equal((await unreadable.check()).reloading, false, "rien d'annoncé : rien à faire");
+  assert.equal((await unreadable.check()).reloading, false, "nothing announced: nothing to do");
   assert.equal((await unreadable.check({ bridgeVersion: "0.3.0.9" })).reloading, true);
   assert.equal((await unreadable.check({ bridgeVersion: "0.3.0.9" })).reloading, false);
   assert.equal(reloads, 1);
 
-  // Extension chargée depuis le dépôt : le disque a la même version que ce
-  // qui tourne, Verrou en livre une autre. Un seul essai, puis l'avertissement.
+  // Extension loaded from the repository: the disk has the same version as
+  // what runs, Verrou ships another one. A single attempt, then the warning.
   const dev = createUpdater({ running: "0.3.0", readDisk: async () => "0.3.0", reload: () => { reloads += 1; }, store: memoryStore() });
   assert.equal((await dev.check({ bridgeVersion: "0.3.0.9" })).reloading, true);
   for (let i = 0; i < 3; i += 1) assert.equal((await dev.check({ bridgeVersion: "0.3.0.9" })).reloading, false);
   assert.deepEqual(dev.state(), { running: "0.3.0", bundled: "0.3.0.9", mismatch: true });
   assert.equal(reloads, 2);
 
-  // Appairage en cours : plus tard ; stockage en panne : jamais (risque de boucle).
+  // Pairing in progress: later; storage broken: never (risk of a loop).
   let busy = true;
   const later = createUpdater({ running: "0.3.0", readDisk: async () => "0.3.1", reload: () => { reloads += 1; }, store: memoryStore(), busy: () => busy });
   assert.equal((await later.check()).deferred, true);
@@ -194,13 +195,13 @@ test("disque illisible : la version de Verrou décide ; chargée d'ailleurs : av
   assert.equal(reloads, 3);
   const broken = createUpdater({
     running: "0.3.0", readDisk: async () => "0.3.1", reload: () => { reloads += 1; },
-    store: { get: async () => undefined, set: async () => { throw new Error("plein"); } },
+    store: { get: async () => undefined, set: async () => { throw new Error("full"); } },
   });
   assert.equal((await broken.check()).reloading, false);
   assert.equal(reloads, 3);
 });
 
-test("la version livrée dépend du contenu de l'extension, et reste valable", () => {
+test("the shipped version depends on the extension's content, and stays valid", () => {
   const copy = join(scratch, "extension");
   cpSync(`${root}extension`, copy, { recursive: true });
   const stamp = () => {
@@ -208,26 +209,26 @@ test("la version livrée dépend du contenu de l'extension, et reste valable", (
     return JSON.parse(readFileSync(join(copy, "manifest.json"), "utf8")).version;
   };
   const committed = JSON.parse(source("manifest.json")).version;
-  assert.match(committed, /^\d+\.\d+\.\d+$/, "la version du dépôt reste a.b.c");
+  assert.match(committed, /^\d+\.\d+\.\d+$/, "the repository's version stays a.b.c");
   const first = stamp();
   assert.match(first, new RegExp(`^${committed.replaceAll(".", "\\.")}\\.\\d{1,5}$`));
   assert.ok(Number(first.split(".")[3]) <= 65535);
-  assert.equal(stamp(), first, "relancer ne change rien");
-  // Les tests ne comptent pas ; un fichier livré, si.
+  assert.equal(stamp(), first, "running again changes nothing");
+  // Tests don't count; a shipped file does.
   appendFileSync(join(copy, "test", "bridge.test.mjs"), "\n");
   assert.equal(stamp(), first);
-  appendFileSync(join(copy, "content.js"), "\n// changement\n");
+  appendFileSync(join(copy, "content.js"), "\n// change\n");
   const second = stamp();
   assert.notEqual(second, first);
-  // Le reste du manifeste est intact.
+  // The rest of the manifest is intact.
   const before = JSON.parse(source("manifest.json"));
   const stamped = JSON.parse(readFileSync(join(copy, "manifest.json"), "utf8"));
   assert.deepEqual({ ...stamped, version: before.version }, before);
 });
 
-// MARK: Faux navigateur : la page et le script de contenu
+// MARK: Fake browser: the page and the content script
 
-// Un DOM minimal, pour la fenêtre de passkeys.js (shadow DOM compris).
+// A minimal DOM, for the window of passkeys.js (shadow DOM included).
 class FakeElement {
   constructor(tag, owner) {
     this.tagName = tag.toUpperCase();
@@ -303,10 +304,10 @@ function fakeDocument() {
   return document;
 }
 
-// Une page à `origin`, avec ses deux mondes. `background(message)` répond
-// aux demandes de passkeys.js, comme le service worker. `firefox` : le monde
-// isolé a `browser` (promesses) ; `chrome` y est piégé pour prouver qu'il
-// ne sert pas.
+// A page at `origin`, with its two worlds. `background(message)` answers the
+// requests of passkeys.js, like the service worker. `firefox`: the isolated
+// world has `browser` (promises); `chrome` is trapped there to prove it
+// isn't used.
 function openPage(origin, background, { firefox = false } = {}) {
   const url = new URL(origin);
   const listeners = [];
@@ -338,18 +339,18 @@ function openPage(origin, background, { firefox = false } = {}) {
     context.top = context;
     context.globalThis = context;
     vm.createContext(context);
-    // Le `window` que voient les scripts : l'objet global du contexte (vm le
-    // substitue à `context` vu de l'intérieur).
+    // The `window` the scripts see: the context's global object (vm
+    // substitutes it for `context` seen from the inside).
     context.self = vm.runInContext("globalThis", context);
     contexts.push(context);
     return context;
   };
 
-  // Monde de la page.
+  // Page world.
   class PublicKeyCredential {}
   const credentials = {
-    create: async (options) => { native.push(["create", options]); return "natif"; },
-    get: async (options) => { native.push(["get", options]); return "natif"; },
+    create: async (options) => { native.push(["create", options]); return "native"; },
+    get: async (options) => { native.push(["get", options]); return "native"; },
   };
   const page = makeContext({
     navigator: { credentials },
@@ -361,26 +362,26 @@ function openPage(origin, background, { firefox = false } = {}) {
   vm.runInContext(source("passkey-codec.js"), page);
   vm.runInContext(source("passkey-page.js"), page);
 
-  // Monde isolé de l'extension.
+  // The extension's isolated world.
   const runtime = {
     id: "extension",
     sendMessage: async (message) => background(message, `${url.origin}/connexion`),
   };
-  const unused = { id: "extension", sendMessage: async () => { throw new Error("chrome.runtime utilisé dans Firefox"); } };
+  const unused = { id: "extension", sendMessage: async () => { throw new Error("chrome.runtime used in Firefox"); } };
   const isolated = makeContext(firefox
-    ? { browser: { runtime }, chrome: { runtime: unused }, document }
-    : { chrome: { runtime }, document });
+    ? { browser: { runtime, i18n }, chrome: { runtime: unused }, document }
+    : { chrome: { runtime, i18n }, document });
   vm.runInContext(source("passkeys.js"), isolated);
 
   const panelText = () => {
     const host = document.documentElement.children.find((n) => n.tagName === "VERROU-PASSKEY");
     return host?.shadow?.querySelector("panel")?.textContent ?? "";
   };
-  // Un vrai clic (isTrusted) sur le bouton de la fenêtre dont le texte est `label`.
+  // A real click (isTrusted) on the window's button whose text is `label`.
   const press = (label) => {
     const host = document.documentElement.children.find((n) => n.tagName === "VERROU-PASSKEY");
     const node = [...(host?.shadow?.walk() ?? [])].find((n) => n.tagName === "BUTTON" && n.textContent === label);
-    assert.ok(node, `bouton « ${label} »`);
+    assert.ok(node, `button "${label}"`);
     for (const listener of node.listeners.click ?? []) {
       listener({ isTrusted: true, preventDefault() {}, stopPropagation() {} });
     }
@@ -396,12 +397,12 @@ function openPage(origin, background, { firefox = false } = {}) {
   };
 }
 
-// Le service worker : passkey-bridge.js et un canal vers le vrai pont.
+// The service worker: passkey-bridge.js and a channel to the real bridge.
 function backgroundFor(channel) {
   return async (message, url) => {
     if (message.kind === "unlock") return { ok: true };
     const command = passkeyCommand(message, url);
-    if (!command) return { error: "commande inconnue" };
+    if (!command) return { error: "unknown command" };
     try {
       return passkeyResult(await channel.request(command));
     } catch (error) {
@@ -410,7 +411,7 @@ function backgroundFor(channel) {
   };
 }
 
-// Signature ECDSA DER → r ‖ s (64 octets), la forme qu'attend WebCrypto.
+// DER ECDSA signature → r ‖ s (64 bytes), the form WebCrypto expects.
 function derToRaw(der) {
   const integer = (offset) => {
     const length = der[offset + 1];
@@ -427,12 +428,12 @@ function derToRaw(der) {
 
 const b64url = (bytes) => Buffer.from(bytes).toString("base64url");
 
-// MARK: B. Passkeys dans la pastille (remplissage automatique)
+// MARK: B. Passkeys in the pill (autofill)
 
-test("remplissage automatique : la passkey de Verrou à la pastille, une signature valide", async () => {
+test("autofill: Verrou's passkey in the pill, a valid signature", async () => {
   const channel = await pairedChannel();
   const origin = "http://localhost:8000";
-  // Une passkey dans l'identifiant du site de test.
+  // A passkey in the test site's login.
   const created = await channel.request({
     cmd: "passkey_create", url: `${origin}/inscription`, rp_id: "localhost", user_id: b64url(Buffer.from("id-camille")),
     user_name: "camille@exemple.fr", challenge: b64url(crypto.getRandomValues(new Uint8Array(32))),
@@ -443,24 +444,24 @@ test("remplissage automatique : la passkey de Verrou à la pastille, une signatu
   const page = openPage(origin, backgroundFor(channel));
   const notified = [];
   page.menu().subscribe(() => notified.push(Date.now()));
-  assert.deepEqual({ ...(await page.menu().entries()) }, { state: "none" }, "rien en attente");
+  assert.deepEqual({ ...(await page.menu().entries()) }, { state: "none" }, "nothing pending");
 
   const challenge = crypto.getRandomValues(new Uint8Array(32));
   let settled = null;
   const pending = page.credentials.get({ mediation: "conditional", publicKey: { challenge, rpId: "localhost", userVerification: "discouraged" } })
     .then((c) => { settled = { ok: true, c }; }, (e) => { settled = { ok: false, e }; });
-  // La demande reste en attente ; la pastille est prévenue, et propose la passkey.
-  await eventually(() => notified.length > 0, "pastille prévenue");
+  // The request stays pending; the pill is notified, and offers the passkey.
+  await eventually(() => notified.length > 0, "pill notified");
   const entries = await page.menu().entries();
   assert.equal(entries.state, "ready");
   assert.deepEqual(entries.items.map((i) => [i.item, i.credential, i.user_name]), [["local", created.credential, "camille@exemple.fr"]]);
   await sleep(100);
-  assert.equal(settled, null, "en attente d'un choix");
-  assert.deepEqual(page.native, [], "rien pour le navigateur");
+  assert.equal(settled, null, "waiting for a choice");
+  assert.deepEqual(page.native, [], "nothing for the browser");
 
-  // Une passkey inconnue ne se choisit pas.
-  assert.equal(page.menu().choose("inconnue"), false);
-  // Choisie dans la pastille : la même signature qu'une connexion explicite.
+  // An unknown passkey can't be chosen.
+  assert.equal(page.menu().choose("unknown"), false);
+  // Chosen in the pill: the same signature as an explicit sign-in.
   assert.equal(page.menu().choose(created.credential), true);
   await pending;
   assert.equal(settled.ok, true, String(settled.e));
@@ -473,39 +474,39 @@ test("remplissage automatique : la passkey de Verrou à la pastille, une signatu
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", credential.response.clientDataJSON));
   const data = Buffer.concat([Buffer.from(credential.response.authenticatorData), hash]);
   const signature = derToRaw(new Uint8Array(credential.response.signature));
-  assert.equal(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signature, data), true, "signature ES256 valide");
-  assert.equal(Buffer.from(credential.response.authenticatorData).readUInt32BE(33), 1, "compteur enregistré");
+  assert.equal(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, signature, data), true, "valid ES256 signature");
+  assert.equal(Buffer.from(credential.response.authenticatorData).readUInt32BE(33), 1, "counter saved");
   assert.equal(Buffer.from(credential.response.userHandle).toString(), "id-camille");
-  // Terminé : plus rien à la pastille.
+  // Done: nothing more in the pill.
   assert.equal((await page.menu().entries()).state, "none");
   assert.equal(page.menu().choose(created.credential), false);
 
-  // La page annule (AbortSignal) : la promesse est rejetée, la pastille vidée.
+  // The page cancels (AbortSignal): the promise is rejected, the pill emptied.
   const controller = new AbortController();
   const aborted = page.credentials.get({ mediation: "conditional", signal: controller.signal, publicKey: { challenge, rpId: "localhost" } })
-    .then(() => "résolue", (e) => e.name);
-  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey proposée");
+    .then(() => "resolved", (e) => e.name);
+  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey offered");
   const before = notified.length;
   controller.abort();
   assert.equal(await aborted, "AbortError");
-  await eventually(() => notified.length > before, "pastille prévenue de l'annulation");
+  await eventually(() => notified.length > before, "pill notified of the cancellation");
   assert.equal((await page.menu().entries()).state, "none");
   assert.equal(page.menu().choose(created.credential), false);
 
-  // Une demande explicite remplace celle du remplissage automatique.
+  // An explicit request replaces the autofill one.
   const replaced = page.credentials.get({ mediation: "conditional", publicKey: { challenge, rpId: "localhost" } })
-    .then(() => "résolue", (e) => e.name);
-  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey proposée");
+    .then(() => "resolved", (e) => e.name);
+  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey offered");
   const modal = page.credentials.get({ publicKey: { challenge, rpId: "localhost", userVerification: "discouraged" } });
   assert.equal(await replaced, "NotAllowedError");
-  await eventually(() => page.panelText().includes("Se connecter avec une passkey de Verrou"), "fenêtre de connexion");
+  await eventually(() => page.panelText().includes("Sign in with a Verrou passkey"), "sign-in window");
   assert.equal((await page.menu().entries()).state, "none");
-  page.press("Annuler");
+  page.press("Cancel");
   await assert.rejects(modal, { name: "NotAllowedError" });
   assert.deepEqual(page.native, []);
 });
 
-test("Firefox : les mêmes passkeys à la pastille, par l'API `browser`", async () => {
+test("Firefox: the same passkeys in the pill, through the `browser` API", async () => {
   const channel = await pairedChannel();
   const origin = "http://localhost:8000";
   const created = await channel.request({
@@ -518,7 +519,7 @@ test("Firefox : les mêmes passkeys à la pastille, par l'API `browser`", async 
   const page = openPage(origin, backgroundFor(channel), { firefox: true });
   const challenge = crypto.getRandomValues(new Uint8Array(32));
   const pending = page.credentials.get({ mediation: "conditional", publicKey: { challenge, rpId: "localhost", userVerification: "discouraged" } });
-  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey proposée");
+  await eventually(async () => (await page.menu().entries()).state === "ready", "passkey offered");
   const entries = await page.menu().entries();
   assert.ok(entries.items.some((i) => i.credential === created.credential), JSON.stringify(entries));
   assert.equal(page.menu().choose(created.credential), true);
@@ -526,84 +527,84 @@ test("Firefox : les mêmes passkeys à la pastille, par l'API `browser`", async 
   assert.equal(credential.id, created.credential);
   const clientData = JSON.parse(Buffer.from(credential.response.clientDataJSON).toString());
   assert.deepEqual(clientData, { type: "webauthn.get", challenge: b64url(challenge), origin, crossOrigin: false });
-  assert.deepEqual(page.native, [], "rien pour le navigateur");
+  assert.deepEqual(page.native, [], "nothing for the browser");
 });
 
-test("remplissage automatique sans passkey de Verrou, ou sans Verrou : le navigateur", async () => {
+test("autofill without a Verrou passkey, or without Verrou: the browser", async () => {
   const channel = await pairedChannel();
-  // Aucune passkey pour ce site dans Verrou.
+  // No passkey for this site in Verrou.
   const page = openPage("https://exemple.org", backgroundFor(channel));
   const challenge = new Uint8Array(32);
   const result = await page.credentials.get({ mediation: "conditional", publicKey: { challenge } });
-  assert.equal(result, "natif");
+  assert.equal(result, "native");
   assert.equal(page.native.length, 1);
-  assert.equal(page.native[0][1].mediation, "conditional", "le remplissage du navigateur, avec les mêmes options");
-  assert.equal(page.panelText(), "", "aucun avis : l'utilisateur n'a rien demandé");
+  assert.equal(page.native[0][1].mediation, "conditional", "the browser's autofill, with the same options");
+  assert.equal(page.panelText(), "", "no notice: the user asked for nothing");
 
-  // Verrou injoignable : de même.
+  // Verrou unreachable: likewise.
   const offline = openPage("http://localhost:8000", async () => ({ state: "offline" }));
-  assert.equal(await offline.credentials.get({ mediation: "conditional", publicKey: { challenge } }), "natif");
+  assert.equal(await offline.credentials.get({ mediation: "conditional", publicKey: { challenge } }), "native");
   assert.equal(offline.native[0][1].mediation, "conditional");
   assert.equal(offline.panelText(), "");
 });
 
-// MARK: C. Pas de repli silencieux
+// MARK: C. No silent fallback
 
-test("une passkey laissée au navigateur faute de Verrou : un avis le dit", async () => {
+test("a passkey left to the browser for lack of Verrou: a notice says so", async () => {
   const challenge = new Uint8Array(32);
   const creation = (alg = -7) => ({ publicKey: {
     rp: { name: "Site" }, user: { id: new Uint8Array([1]), name: "dominique", displayName: "Dominique" },
     challenge, pubKeyCredParams: [{ type: "public-key", alg }],
   } });
   const cases = [
-    ["injoignable", async () => ({ state: "offline" }), "Verrou n'est pas joignable", "Ouvrez Verrou"],
-    ["non reliée", backgroundFor(new Channel(hostTransport)), "n'est pas reliée à Verrou", "Reliez l'extension"],
+    ["unreachable", async () => ({ state: "offline" }), "Verrou can't be reached", "Open Verrou"],
+    ["not linked", backgroundFor(new Channel(hostTransport)), "is not linked to Verrou", "Link the extension"],
   ];
   for (const [what, background, title, hint] of cases) {
     const page = openPage("http://localhost:8000", background);
-    assert.equal(await page.credentials.get({ publicKey: { challenge } }), "natif", what);
+    assert.equal(await page.credentials.get({ publicKey: { challenge } }), "native", what);
     assert.match(page.panelText(), new RegExp(title));
     assert.match(page.panelText(), new RegExp(hint));
-    assert.match(page.panelText(), /laissée au navigateur/);
-    assert.equal(await page.credentials.create(creation()), "natif", what);
+    assert.match(page.panelText(), /left to the browser/);
+    assert.equal(await page.credentials.create(creation()), "native", what);
     assert.match(page.panelText(), new RegExp(title));
-    // L'avis se ferme d'un clic, sans rien bloquer.
+    // The notice closes with a click, without blocking anything.
     page.press("OK");
     await sleep(10);
     assert.equal(page.panelText(), "");
   }
 
-  // Extension rechargée (mise à jour) pendant que la page était ouverte.
+  // Extension reloaded (update) while the page was open.
   const stale = openPage("http://localhost:8000", async () => { throw new Error("Extension context invalidated."); });
   delete stale.runtime.id;
-  assert.equal(await stale.credentials.get({ publicKey: { challenge } }), "natif");
-  assert.match(stale.panelText(), /vient d'être mis à jour/);
-  assert.match(stale.panelText(), /Rechargez la page/);
+  assert.equal(await stale.credentials.get({ publicKey: { challenge } }), "native");
+  assert.match(stale.panelText(), /was just updated/);
+  assert.match(stale.panelText(), /Reload the page/);
 
-  // Type de clé que Verrou ne sait pas créer.
+  // Key type Verrou can't create.
   const channel = await pairedChannel();
   const eddsa = openPage("http://localhost:8000", backgroundFor(channel));
-  assert.equal(await eddsa.credentials.create(creation(-8)), "natif");
-  assert.match(eddsa.panelText(), /Verrou ne gère pas ce type de clé/);
+  assert.equal(await eddsa.credentials.create(creation(-8)), "native");
+  assert.match(eddsa.panelText(), /Verrou doesn't support this key type/);
 });
 
-test("pas d'avis pour un choix de l'utilisateur, ni quand Verrou n'a rien pour le site", async () => {
+test("no notice for a choice of the user, nor when Verrou has nothing for the site", async () => {
   const channel = await pairedChannel();
   const challenge = new Uint8Array(32);
-  // Rien pour ce site : le navigateur, sans détour ni avis.
+  // Nothing for this site: the browser, straight away and without a notice.
   const empty = openPage("https://exemple.org", backgroundFor(channel));
-  assert.equal(await empty.credentials.get({ publicKey: { challenge } }), "natif");
+  assert.equal(await empty.credentials.get({ publicKey: { challenge } }), "native");
   assert.equal(empty.panelText(), "");
 
-  // « Utiliser le navigateur » : choisi, donc pas d'avis.
+  // "Use the browser": chosen, so no notice.
   const page = openPage("http://localhost:8000", backgroundFor(channel));
   const created = page.credentials.create({ publicKey: {
     rp: { name: "Site" }, user: { id: new Uint8Array([2]), name: "alex", displayName: "Alex" },
     challenge, pubKeyCredParams: [{ type: "public-key", alg: -7 }],
   } });
-  await eventually(() => page.panelText().includes("Enregistrer une passkey dans Verrou"), "fenêtre d'enregistrement");
-  page.press("Utiliser le navigateur");
-  assert.equal(await created, "natif");
+  await eventually(() => page.panelText().includes("Save a passkey in Verrou"), "save window");
+  page.press("Use the browser");
+  assert.equal(await created, "native");
   await sleep(50);
   assert.equal(page.panelText(), "");
 });

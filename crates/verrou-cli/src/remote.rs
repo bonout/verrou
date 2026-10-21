@@ -1,7 +1,7 @@
-//! Dialogue avec Verrou par son pont : TCP `127.0.0.1`, trames « longueur
-//! (u32 petit-boutiste) + JSON », comme celles que l'hôte Native Messaging
-//! relaie pour l'extension, et canal chiffré par la clé obtenue à
-//! l'appairage.
+//! Dialogue with Verrou through its bridge: TCP `127.0.0.1`, "length (u32
+//! little-endian) + JSON" frames, like the ones the Native Messaging host
+//! relays for the extension, and a channel encrypted with the key obtained
+//! at pairing.
 
 use std::fmt;
 use std::io::{self, Read as _, Write as _};
@@ -17,22 +17,22 @@ use zeroize::Zeroize as _;
 
 use crate::config::Config;
 
-/// Une réponse peut attendre l'accord de l'utilisateur (90 s au plus côté
-/// Verrou) ; un appairage, deux minutes.
+/// A reply may wait for the user's approval (90 s at most on Verrou's
+/// side); a pairing, two minutes.
 const READ_TIMEOUT: Duration = Duration::from_secs(150);
-/// Le temps laissé à l'utilisateur pour déverrouiller le coffre.
+/// The time given to the user to unlock the vault.
 const UNLOCK_WAIT: Duration = Duration::from_secs(60);
 
-/// Où joindre Verrou.
+/// Where to reach Verrou.
 #[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
     pub port: u16,
-    /// Ouvrir Verrou s'il ne répond pas.
+    /// Open Verrou if it does not answer.
     pub launch: bool,
 }
 
 impl Endpoint {
-    /// Le port de Verrou (`VERROU_BRIDGE_PORT` le remplace).
+    /// Verrou's port (`VERROU_BRIDGE_PORT` overrides it).
     pub fn from_env() -> Self {
         Self {
             port: verrou_bridge::port_from_env(),
@@ -43,15 +43,15 @@ impl Endpoint {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Error {
-    /// Pas de fichier de liaison.
+    /// No link file.
     NotLinked,
-    /// Verrou ne répond pas (fermé, ou pont désactivé).
+    /// Verrou does not answer (closed, or bridge disabled).
     AppUnavailable,
-    /// Lien révoqué dans Verrou.
+    /// Link revoked in Verrou.
     UnknownClient,
-    /// Coffre resté verrouillé.
+    /// Vault stayed locked.
     Locked,
-    /// Refus de Verrou ou de l'utilisateur, avec sa raison.
+    /// Refusal by Verrou or the user, with its reason.
     Denied(String),
     Protocol(String),
 }
@@ -59,18 +59,18 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NotLinked => write!(f, "ce terminal n'est pas relié à Verrou : « verrou link »"),
+            Self::NotLinked => write!(f, "this terminal is not linked to Verrou: `verrou link`"),
             Self::AppUnavailable => write!(
                 f,
-                "Verrou ne répond pas : ouvrez l'app et activez « Brave, Firefox et le terminal » dans ses réglages"
+                "Verrou does not answer: open the app and turn on \"Brave, Firefox and the terminal\" in its settings"
             ),
             Self::UnknownClient => write!(
                 f,
-                "ce terminal n'est plus relié à Verrou (lien révoqué) : « verrou link »"
+                "this terminal is no longer linked to Verrou (link revoked): `verrou link`"
             ),
-            Self::Locked => write!(f, "le coffre est resté verrouillé"),
+            Self::Locked => write!(f, "the vault stayed locked"),
             Self::Denied(reason) => write!(f, "{reason}"),
-            Self::Protocol(message) => write!(f, "dialogue avec Verrou : {message}"),
+            Self::Protocol(message) => write!(f, "dialogue with Verrou: {message}"),
         }
     }
 }
@@ -94,7 +94,7 @@ fn read_frame(stream: &mut TcpStream) -> Result<Outgoing, Error> {
     stream.read_exact(&mut length)?;
     let length = u32::from_le_bytes(length) as usize;
     if length == 0 || length > MAX_FRAME {
-        return Err(Error::Protocol("trame invalide".to_owned()));
+        return Err(Error::Protocol("invalid frame".to_owned()));
     }
     let mut body = vec![0u8; length];
     stream.read_exact(&mut body)?;
@@ -114,8 +114,8 @@ fn now_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// Relie ce terminal à Verrou : demande l'appairage, montre le code par
-/// `show_code`, attend l'accord de l'utilisateur dans Verrou.
+/// Links this terminal to Verrou: requests pairing, shows the code through
+/// `show_code`, waits for the user's approval in Verrou.
 pub fn link(endpoint: Endpoint, name: &str, show_code: impl FnOnce(&str)) -> Result<Config, Error> {
     let mut stream = open_stream(endpoint)?;
     let ours = KeyPair::generate();
@@ -133,11 +133,10 @@ pub fn link(endpoint: Endpoint, name: &str, show_code: impl FnOnce(&str)) -> Res
             code: ErrorCode::Busy,
         } => {
             return Err(Error::Denied(
-                "un appairage est déjà en cours dans Verrou : réessayez dans quelques secondes"
-                    .to_owned(),
+                "a pairing is already in progress in Verrou: try again in a few seconds".to_owned(),
             ));
         }
-        other => return Err(Error::Protocol(format!("réponse inattendue : {other:?}"))),
+        other => return Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
     };
     let channel = ours
         .agree(&key, false)
@@ -149,12 +148,12 @@ pub fn link(endpoint: Endpoint, name: &str, show_code: impl FnOnce(&str)) -> Res
             key: channel.to_base64(),
             linked: now_ms() / 1000,
         }),
-        Outgoing::Refused => Err(Error::Denied("appairage refusé dans Verrou".to_owned())),
-        other => Err(Error::Protocol(format!("réponse inattendue : {other:?}"))),
+        Outgoing::Refused => Err(Error::Denied("pairing refused in Verrou".to_owned())),
+        other => Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
     }
 }
 
-/// Une connexion de client relié.
+/// A linked client's connection.
 pub struct Remote {
     stream: TcpStream,
     client: String,
@@ -173,7 +172,7 @@ impl Remote {
         })
     }
 
-    /// Envoie une commande et rend la réponse telle quelle.
+    /// Sends a command and returns the reply as is.
     pub fn call(&mut self, command: &Command) -> Result<ReplyResult, Error> {
         let id = self.next;
         self.next += 1;
@@ -203,20 +202,20 @@ impl Remote {
                 plain.zeroize();
                 let reply = reply.map_err(|e| Error::Protocol(e.to_string()))?;
                 if reply.id != id {
-                    return Err(Error::Protocol("réponse à une autre requête".to_owned()));
+                    return Err(Error::Protocol("reply to another request".to_owned()));
                 }
                 Ok(reply.result)
             }
             Outgoing::Error {
                 code: ErrorCode::UnknownClient,
             } => Err(Error::UnknownClient),
-            other => Err(Error::Protocol(format!("réponse inattendue : {other:?}"))),
+            other => Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
         }
     }
 
-    /// Comme [`Self::call`], mais un refus devient une erreur, et un coffre
-    /// verrouillé est d'abord déverrouillé : Verrou demande Touch ID, on
-    /// attend jusqu'à une minute.
+    /// Like [`Self::call`], but a refusal becomes an error, and a locked
+    /// vault is unlocked first: Verrou asks for Touch ID, we wait up to a
+    /// minute.
     pub fn ask(&mut self, command: &Command) -> Result<ReplyResult, Error> {
         let mut result = self.call(command)?;
         if result == ReplyResult::Locked {
@@ -233,13 +232,13 @@ impl Remote {
     pub fn unlocked(&mut self) -> Result<bool, Error> {
         match self.call(&Command::Status)? {
             ReplyResult::Status { unlocked, .. } => Ok(unlocked),
-            other => Err(Error::Protocol(format!("réponse inattendue : {other:?}"))),
+            other => Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
         }
     }
 
     fn unlock(&mut self) -> Result<(), Error> {
         self.call(&Command::Unlock)?;
-        eprintln!("verrou : coffre verrouillé, déverrouillez-le dans Verrou…");
+        eprintln!("verrou: vault locked, unlock it in Verrou…");
         let start = Instant::now();
         while start.elapsed() < UNLOCK_WAIT {
             if self.unlocked()? {

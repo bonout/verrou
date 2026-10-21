@@ -1,6 +1,6 @@
-// Le protocole de l'extension contre le vrai pont, à travers le vrai hôte
-// Native Messaging : même code que dans Brave (bridge.js, crypto.js), seul
-// le transport change (un processus au lieu de chrome.runtime.connectNative).
+// The extension's protocol against the real bridge, through the real Native
+// Messaging host: same code as in Brave (bridge.js, crypto.js), only the
+// transport changes (a process instead of chrome.runtime.connectNative).
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node --test extension/test/bridge.test.mjs
@@ -36,7 +36,7 @@ before(async () => {
 
 after(() => server.kill());
 
-// Transport Native Messaging sur l'hôte : trames « longueur (u32 LE) + JSON ».
+// Native Messaging transport over the host: "length (u32 LE) + JSON" frames.
 function hostTransport() {
   const host = spawn(`${root}target/debug/verrou-native-host`, {
     env: { ...process.env, VERROU_BRIDGE_PORT: port },
@@ -53,7 +53,7 @@ function hostTransport() {
       buffer = buffer.subarray(4 + length);
     }
   });
-  host.on("exit", () => onDisconnect("hôte arrêté"));
+  host.on("exit", () => onDisconnect("host stopped"));
   return {
     post(message) {
       const body = Buffer.from(JSON.stringify(message));
@@ -67,15 +67,15 @@ function hostTransport() {
   };
 }
 
-test("appairage, suggestions et remplissage depuis l'extension", async () => {
+test("pairing, suggestions and filling from the extension", async () => {
   const channel = new Channel(hostTransport);
   await assert.rejects(channel.request({ cmd: "status" }), (e) => e.code === "unpaired");
 
   let shown;
   const client = await channel.pair("Brave", (code) => { shown = code; });
   assert.match(shown, /^\d{3} \d{3}$/);
-  // Verrou a affiché le même code.
-  assert.ok(codes.includes(shown), `code ${shown} absent de ${codes}`);
+  // Verrou showed the same code.
+  assert.ok(codes.includes(shown), `code ${shown} missing from ${codes}`);
   channel.setClient(client);
 
   const status = await channel.request({ cmd: "status" });
@@ -93,8 +93,8 @@ test("appairage, suggestions et remplissage depuis l'extension", async () => {
   const denied = await channel.request({ cmd: "fill", url: "https://evil.example/", item: "github" });
   assert.equal(denied.result, "denied");
 
-  // Règle de correspondance du site (« commence par ») : l'extension envoie
-  // l'adresse complète de la page, le pont décide.
+  // Site matching rule ("starts with"): the extension sends the page's full
+  // address, the bridge decides.
   const sso = await channel.request({ cmd: "suggest", url: "https://banque.exemple.fr/connexion/etape-2" });
   assert.deepEqual(sso.items.map((i) => i.id), ["banque-sso"]);
   const elsewhere = await channel.request({ cmd: "suggest", url: "https://banque.exemple.fr/aide" });
@@ -102,7 +102,7 @@ test("appairage, suggestions et remplissage depuis l'extension", async () => {
   const refused = await channel.request({ cmd: "fill", url: "https://banque.exemple.fr/aide", item: "banque-sso" });
   assert.equal(refused.result, "denied");
 
-  // Après l'envoi d'un formulaire : nouveau compte, puis enregistré.
+  // After a form is submitted: new account, then saved.
   const page = "http://localhost:8000/inscription";
   const fresh = await channel.request({ cmd: "check", url: page, username: "dominique", password: "Nouveau-42!" });
   assert.equal(fresh.action, "new");
@@ -112,21 +112,21 @@ test("appairage, suggestions et remplissage depuis l'extension", async () => {
   assert.equal(known.action, "known");
   assert.equal(known.item.id, saved.item);
 
-  // QR code de double authentification ajouté à l'identifiant du site.
+  // Two-factor QR code added to the site's login.
   const totp = await channel.request({ cmd: "set_totp", url: page, item: saved.item,
     totp: "otpauth://totp/Local:dominique?secret=JBSWY3DPEHPK3PXP&issuer=Local" });
   assert.equal(totp.result, "saved");
   const withCode = await channel.request({ cmd: "fill", url: page, item: saved.item });
   assert.match(withCode.totp, /^\d{6}$/);
 
-  // Une nouvelle connexion (le service worker se rendort) garde l'appairage.
+  // A new connection (the service worker goes back to sleep) keeps the pairing.
   channel.disconnect();
   const again = await channel.request({ cmd: "suggest", url: "http://localhost:8000/connexion" });
   assert.ok(again.items.some((i) => i.id === "local"));
   channel.disconnect();
 });
 
-test("une clé inventée n'obtient rien", async () => {
+test("a made-up key gets nothing", async () => {
   const channel = new Channel(hostTransport);
   const key = await crypto.subtle.importKey(
     "raw", new Uint8Array(32), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
@@ -136,8 +136,8 @@ test("une clé inventée n'obtient rien", async () => {
   channel.disconnect();
 });
 
-test("Verrou injoignable : l'extension le sait", async () => {
-  // Port fermé : l'hôte tente d'ouvrir l'app, abandonne, et le dit.
+test("Verrou unreachable: the extension knows it", async () => {
+  // Closed port: the host tries to open the app, gives up, and says so.
   const closed = new Channel(() => {
     const host = spawn(`${root}target/debug/verrou-native-host`, {
       env: { ...process.env, VERROU_BRIDGE_PORT: "1", VERROU_BRIDGE_NO_LAUNCH: "1" },
@@ -145,12 +145,12 @@ test("Verrou injoignable : l'extension le sait", async () => {
     });
     let onMessage = () => {};
     let onDisconnect = () => {};
-    // L'hôte peut être déjà sorti quand la requête part : écrire échoue
-    // (EPIPE), comme pour un navigateur dont l'hôte s'est arrêté.
+    // The host may already have exited when the request is sent: writing
+    // fails (EPIPE), as for a browser whose host stopped.
     host.stdin.on("error", () => {});
     host.stdout.on("data", (chunk) => onMessage(JSON.parse(chunk.subarray(4).toString())));
-    host.on("exit", () => onDisconnect("hôte arrêté"));
-    // L'hôte peut s'arrêter avant notre écriture (port fermé) : EPIPE attendu.
+    host.on("exit", () => onDisconnect("host stopped"));
+    // The host can stop before our write (closed port): EPIPE expected.
     host.stdin.on("error", () => {});
     return {
       post: (message) => host.stdin.write(JSON.stringify(message)),
@@ -164,7 +164,7 @@ test("Verrou injoignable : l'extension le sait", async () => {
   await assert.rejects(closed.request({ cmd: "status" }), (e) => e.code === "offline");
 });
 
-test("l'identifiant de l'extension est celui que l'app déclare au navigateur", async () => {
+test("the extension's ID is the one the app declares to the browser", async () => {
   const manifest = JSON.parse(readFileSync(`${root}extension/manifest.json`, "utf8"));
   const key = Uint8Array.from(atob(manifest.key), (c) => c.charCodeAt(0));
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", key));
@@ -173,12 +173,12 @@ test("l'identifiant de l'extension est celui que l'app déclare au navigateur", 
     .map((nibble) => String.fromCharCode(97 + nibble))
     .join("");
   const swift = readFileSync(`${root}apple/Verrou/App/BrowserBridge.swift`, "utf8");
-  assert.ok(swift.includes(`extensionID = "${id}"`), `BrowserBridge.swift doit déclarer ${id}`);
+  assert.ok(swift.includes(`extensionID = "${id}"`), `BrowserBridge.swift must declare ${id}`);
   const e2e = readFileSync(`${root}extension/e2e/brave.mjs`, "utf8");
   assert.ok(e2e.includes(`EXTENSION_ID = "${id}"`));
 });
 
-test("le générateur suit les règles de Verrou", () => {
+test("the generator follows Verrou's rules", () => {
   const context = { crypto };
   vm.runInNewContext(readFileSync(`${root}extension/generator.js`, "utf8"), context);
   const { password, CLASSES } = context.verrouGenerator;
@@ -186,7 +186,7 @@ test("le générateur suit les règles de Verrou", () => {
   for (let i = 0; i < 200; i += 1) {
     const value = password();
     assert.equal(value.length, 20);
-    for (const set of CLASSES) assert.ok([...value].some((c) => set.includes(c)), `${value} sans ${set}`);
+    for (const set of CLASSES) assert.ok([...value].some((c) => set.includes(c)), `${value} without ${set}`);
     assert.doesNotMatch(value, /[lIO01]/);
     seen.add(value);
   }

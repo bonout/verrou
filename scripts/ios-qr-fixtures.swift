@@ -1,10 +1,9 @@
-// Images de QR codes pour scripts/ios-e2e.sh : des « captures d'écran »
-// de la taille d'un iPhone, où le site montre son QR code de double
-// authentification, comme celles que l'on choisit dans Photos.
+// QR code images for scripts/ios-e2e.sh: iPhone-sized "screenshots" where
+// the site shows its two-factor QR code, like the ones picked in Photos.
 //
-//   swift scripts/ios-qr-fixtures.swift <dossier>
+//   swift scripts/ios-qr-fixtures.swift <folder>
 //
-// Les graines sont celles qu'attend apple/VerrouiOS/Demo/EndToEndDriver.swift.
+// The seeds are the ones apple/VerrouiOS/Demo/EndToEndDriver.swift expects.
 import AppKit
 import CoreImage
 import ImageIO
@@ -59,12 +58,12 @@ try screenshot("qr-nouveau.png", title: "Exemple Cloud",
 try screenshot("qr-amazon.png", title: "Amazon",
                detail: "Connexion en deux étapes : scannez le code avec votre application d'authentification.",
                payload: "otpauth://totp/Amazon:camille%40exemple.fr?secret=MFWWC6TPNYQGG33EMUQGC5DUMFRWQZLE&issuer=Amazon")
-// Export de Google Authenticator : deux comptes TOTP et un HOTP, lot 1 sur 2
-// (le même que dans crates/verrou-core/src/otp_scan.rs).
+// Google Authenticator export: two TOTP accounts and one HOTP, batch 1 of 2
+// (the same as in crates/verrou-core/src/otp_scan.rs).
 try screenshot("qr-export.png", title: "Authenticator",
                detail: "Transférer des comptes : scannez ce QR code (1 sur 2).",
                payload: "otpauth-migration://offline?data=CjcKFDEyMzQ1Njc4OTAxMjM0NTY3ODkwEg9yZmNAZXhhbXBsZS5jb20aCFJGQyA2MjM4IAEoAjACCkIKIDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyEg%2FDiXF1aXBlOmNhbWlsbGUaB8OJcXVpcGUgAigBMAIKMAoKSGVsbG8h3q2%2B7xIQaG90cEBleGFtcGxlLmNvbRoIQ29tcHRldXIgASgBMAE4BxABGAIgACjAxAc%3D")
-// Un QR code qui n'est pas un code à usage unique.
+// A QR code that is not a one-time code.
 try screenshot("qr-wifi.png", title: "Wi-Fi invités", detail: "Rejoignez le réseau.",
                payload: "WIFI:S:Invites;T:WPA;P:lilas-annecy;;")
-print("images : \(out.path)")
+print("images: \(out.path)")

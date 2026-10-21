@@ -1,26 +1,25 @@
 import AuthenticationServices
 import Foundation
 
-/// Fournisseur d'identifiants du système (Réglages → Général → Remplissage
-/// automatique et mots de passe) : l'extension `VerrouAutoFillMac`, livrée
-/// seulement dans un build signé par l'équipe (voir `VerrouStorage`).
+/// System credential provider (Settings → General → AutoFill & Passwords):
+/// the `VerrouAutoFillMac` extension, shipped only in a build signed by the
+/// team (see `VerrouStorage`).
 ///
-/// L'app publie, après chaque rechargement du coffre, les sites, noms
-/// d'utilisateur, codes et passkeys (jamais un secret) dans le magasin
-/// d'identités d'AuthenticationServices : Safari et les apps les proposent,
-/// puis l'extension remplit après Touch ID.
+/// After each vault reload, the app publishes the sites, usernames, codes
+/// and passkeys (never a secret) to AuthenticationServices' identity store:
+/// Safari and the apps offer them, then the extension fills after Touch ID.
 @MainActor
 enum SystemAutofill {
     private static var task: Task<Void, Never>?
 
-    /// L'extension est dans l'app (build signé par l'équipe, groupe d'apps).
+    /// The extension is in the app (build signed by the team, app group).
     static var isBundled: Bool {
         VerrouStorage.appGroupID != nil
             && FileManager.default.fileExists(atPath: Bundle.main.builtInPlugInsURL?
                 .appending(path: "VerrouAutoFillMac.appex").path ?? "")
     }
 
-    /// Un instant après le dernier changement, hors du fil principal.
+    /// A moment after the last change, off the main thread.
     static func publish(_ session: VaultSession) {
         guard isBundled, session.isUnlocked() else { return }
         task?.cancel()
@@ -31,20 +30,20 @@ enum SystemAutofill {
         }
     }
 
-    /// Déconnexion : plus aucune suggestion.
+    /// Logout: no more suggestions.
     static func clear() {
         task?.cancel()
         guard isBundled else { return }
         Task { await CredentialIdentities.clear() }
     }
 
-    /// Verrou est-il choisi dans les réglages du système ?
+    /// Is Verrou chosen in the system settings?
     static func isEnabled() async -> Bool {
         guard isBundled else { return false }
         return await CredentialIdentities.isEnabled()
     }
 
-    /// Ouvre les réglages où choisir Verrou.
+    /// Opens the settings where Verrou is chosen.
     static func openSettings() {
         Task { try? await ASSettingsHelper.openCredentialProviderAppSettings() }
     }

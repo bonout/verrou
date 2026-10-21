@@ -1,14 +1,14 @@
-// Passkeys dans un vrai Brave, en arrière-plan, sur un profil jetable : une
-// page appelle `navigator.credentials.create` puis `.get` ; la fenêtre de
-// Verrou s'ouvre, un clic (réel pour la page) enregistre puis utilise la
-// passkey, et la page vérifie elle-même la signature avec WebCrypto.
+// Passkeys in a real Brave, in the background, on a throwaway profile: a
+// page calls `navigator.credentials.create` then `.get`; Verrou's window
+// opens, a click (real for the page) saves then uses the passkey, and the
+// page checks the signature itself with WebCrypto.
 //
 //   cargo build -p verrou-bridge --example test_server --bin verrou-native-host
 //   node extension/e2e/passkeys.mjs
 //
-// Verrou est remplacé par le serveur de test du pont (faux coffre, accords
-// donnés d'office). L'hôte Native Messaging est déclaré dans le profil
-// jetable seulement : rien n'est écrit hors de lui.
+// Verrou is replaced by the bridge's test server (fake vault, approvals
+// given automatically). The Native Messaging host is declared in the
+// throwaway profile only: nothing is written outside it.
 
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -32,12 +32,12 @@ async function eventually(probe, what, timeout = 10_000) {
   for (;;) {
     const value = await probe();
     if (value) return value;
-    if (Date.now() > end) throw new Error(`délai dépassé : ${what}`);
+    if (Date.now() > end) throw new Error(`timed out: ${what}`);
     await sleep(150);
   }
 }
 
-// MARK: Faux Verrou et page de test
+// MARK: Fake Verrou and test page
 
 const server = spawn(`${root}target/debug/examples/test_server`, {
   env: { ...process.env, VERROU_BRIDGE_PORT: "0" },
@@ -62,7 +62,7 @@ const pageUrl = `http://localhost:${page.address().port}/compte`;
 // MARK: Brave
 
 const profile = mkdtempSync(join(tmpdir(), "verrou-passkeys-"));
-// Hôtes Native Messaging de l'utilisateur : `<profil>/NativeMessagingHosts`.
+// The user's Native Messaging hosts: `<profile>/NativeMessagingHosts`.
 mkdirSync(join(profile, "NativeMessagingHosts"));
 writeFileSync(join(profile, "NativeMessagingHosts", "app.verrou.bridge.json"), JSON.stringify({
   name: "app.verrou.bridge",
@@ -89,7 +89,7 @@ const endpoint = await eventually(async () => {
   } catch {
     return null;
   }
-}, "DevTools de Brave", 20_000);
+}, "Brave's DevTools", 20_000);
 
 const socket = new WebSocket(endpoint);
 await new Promise((resolve) => socket.addEventListener("open", resolve, { once: true }));
@@ -124,8 +124,8 @@ async function evaluate(sessionId, expression) {
   return result.value;
 }
 
-// Centre de l'élément de la fenêtre de Verrou (shadow DOM fermé : DevTools
-// le traverse, pas la page) dont le texte est `text`.
+// Center of the element of Verrou's window (closed shadow DOM: DevTools goes
+// through it, the page doesn't) whose text is `text`.
 async function find(sessionId, text) {
   const { root: tree } = await cdp("DOM.getDocument", { depth: -1, pierce: true }, sessionId);
   let found = null;
@@ -150,25 +150,32 @@ async function click(sessionId, [x, y]) {
   }
 }
 
+// A text of the extension in the browser's language, asked of the
+// extension's popup (extension/_locales).
+let popup;
+const message = (name) => evaluate(popup, `chrome.i18n.getMessage(${JSON.stringify(name)})`);
+
 let failed = false;
 try {
   await eventually(async () => (await cdp("Target.getTargets")).targetInfos
-    .some((t) => t.url.startsWith(`chrome-extension://${EXTENSION_ID}/`)), "service worker de l'extension");
-  // Appairage (accepté d'office par le faux Verrou).
-  const popup = await openTab(`chrome-extension://${EXTENSION_ID}/popup.html`);
-  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === "Relier à Verrou"`), "popup");
+    .some((t) => t.url.startsWith(`chrome-extension://${EXTENSION_ID}/`)), "extension service worker");
+  // Pairing (accepted automatically by the fake Verrou).
+  popup = await openTab(`chrome-extension://${EXTENSION_ID}/popup.html`);
+  const pair = await eventually(() => message("popupPair"), "extension texts");
+  await eventually(() => evaluate(popup, `document.querySelector("button")?.textContent === ${JSON.stringify(pair)}`), "popup");
   await evaluate(popup, `document.querySelector("button").click()`);
-  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === "Déverrouillé"`),
-    "extension reliée", 20_000);
-  step("extension reliée");
+  const unlocked = await message("popupUnlocked");
+  await eventually(() => evaluate(popup, `document.getElementById("state").textContent === ${JSON.stringify(unlocked)}`),
+    "extension linked", 20_000);
+  step("extension linked");
 
   const tab = await openTab(pageUrl);
-  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page chargée");
+  await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page loaded");
   await cdp("Page.bringToFront", {}, tab);
   await cdp("DOM.enable", {}, tab);
-  assert.equal(await evaluate(tab, `"__verrouPasskeyCodec" in globalThis`), false, "le codec ne reste pas dans la page");
+  assert.equal(await evaluate(tab, `"__verrouPasskeyCodec" in globalThis`), false, "the codec doesn't stay in the page");
 
-  // Création : la page attend, la fenêtre de Verrou propose d'enregistrer.
+  // Creation: the page waits, Verrou's window offers to save.
   await evaluate(tab, `window.created = navigator.credentials.create({ publicKey: {
     rp: { name: "Site local" },
     user: { id: new TextEncoder().encode("id-dominique"), name: "dominique", displayName: "Dominique" },
@@ -177,9 +184,10 @@ try {
     authenticatorSelection: { residentKey: "required", userVerification: "discouraged" },
     extensions: { credProps: true },
   } }).then((c) => ({ ok: true, c }), (e) => ({ ok: false, error: e.name + ": " + e.message })); true`);
-  const save = await eventually(() => find(tab, "Enregistrer"), "fenêtre « Enregistrer une passkey »");
-  step("fenêtre d'enregistrement ouverte");
-  // Un clic simulé par la page n'enregistre rien.
+  const saveLabel = await message("save");
+  const save = await eventually(() => find(tab, saveLabel), "\"Save a passkey\" window");
+  step("save window open");
+  // A click simulated by the page saves nothing.
   await evaluate(tab, `document.querySelector("verrou-passkey").dispatchEvent(new MouseEvent("click", { bubbles: true })); true`);
   await sleep(300);
   assert.deepEqual(saved, []);
@@ -200,14 +208,14 @@ try {
   assert.equal(registration.client.type, "webauthn.create");
   assert.equal(registration.client.origin, new URL(pageUrl).origin);
   assert.equal(saved.length, 1);
-  step(`passkey créée par Verrou et enregistrée (${saved[0]})`);
+  step(`passkey created by Verrou and saved (${saved[0]})`);
 
-  // Connexion : la passkey est proposée, un clic signe.
+  // Sign-in: the passkey is offered, a click signs.
   await evaluate(tab, `window.challenge = crypto.getRandomValues(new Uint8Array(32));
     window.used = navigator.credentials.get({ publicKey: { challenge: window.challenge, rpId: "localhost",
       userVerification: "discouraged" } }).then((c) => ({ ok: true, c }), (e) => ({ ok: false, error: e.name + ": " + e.message })); true`);
-  const row = await eventually(() => find(tab, "dominique"), "passkey proposée");
-  step("passkey proposée à la connexion");
+  const row = await eventually(() => find(tab, "dominique"), "passkey offered");
+  step("passkey offered at sign-in");
   await click(tab, row);
   const assertion = await evaluate(tab, `window.used.then(async (r) => {
     if (!r.ok) return r;
@@ -231,9 +239,9 @@ try {
   })`);
   assert.equal(assertion.ok, true, assertion.error);
   assert.deepEqual(assertion, { ok: true, valid: true, same: true, counter: 1, type: "webauthn.get", challenge: true, user: "id-dominique" });
-  step("signature vérifiée par la page, compteur à 1");
+  step("signature checked by the page, counter at 1");
 
-  // Annulation par la page (AbortSignal) : la fenêtre se ferme.
+  // Cancellation by the page (AbortSignal): the window closes.
   const aborted = await evaluate(tab, `(async () => {
     const controller = new AbortController();
     const pending = navigator.credentials.get({ publicKey: { challenge: new Uint8Array(32), userVerification: "discouraged" },
@@ -244,8 +252,8 @@ try {
   })()`);
   assert.equal(aborted, "AbortError");
   await sleep(200);
-  assert.equal(await find(tab, "Annuler"), null, "fenêtre fermée");
-  step("annulation par la page");
+  assert.equal(await find(tab, await message("cancel")), null, "window closed");
+  step("cancellation by the page");
 } catch (error) {
   failed = true;
   console.error(`PASSKEY_FAIL ${error.stack}`);

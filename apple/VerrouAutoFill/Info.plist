@@ -48,7 +48,7 @@
 		<string>$(PRODUCT_MODULE_NAME).CredentialProviderViewController</string>
 	</dict>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Face ID déverrouille votre coffre pour remplir identifiants, codes et passkeys.</string>
+	<string>Face ID unlocks your vault to fill logins, codes and passkeys.</string>
 	<key>VerrouAppGroup</key>
 	<string>$(VERROU_APP_GROUP)</string>
 </dict>

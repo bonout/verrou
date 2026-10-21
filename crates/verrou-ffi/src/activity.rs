@@ -1,8 +1,8 @@
-//! Nouveautés à notifier et mises à jour en direct, pour les apps.
+//! News to notify and live updates, for the apps.
 //!
-//! Swift ne reçoit que des noms d'organisation, une adresse et des
-//! nombres : de quoi composer une notification locale, jamais un secret.
-//! Le jeton d'accès du canal des mises à jour reste ici.
+//! Swift only receives organization names, an address and some
+//! numbers: enough to compose a local notification, never a secret.
+//! The access token of the updates channel stays here.
 
 use verrou_vaultwarden::activity::{self, Notice, NoticeKind, Remote, Snapshot};
 use verrou_vaultwarden::hub::{HubUpdate, UpdateKind};
@@ -13,17 +13,17 @@ use crate::{VaultSession, VerrouError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ActivityKind {
-    /// Invitation acceptée, en attente de la confirmation d'un administrateur.
+    /// Invitation accepted, waiting for an administrator's confirmation.
     MembershipPending,
-    /// Le compte a été confirmé : l'organisation est lisible.
+    /// The account was confirmed: the organization is readable.
     MembershipConfirmed,
-    /// Des membres attendent la confirmation de ce compte.
+    /// Members are waiting for this account's confirmation.
     MembersToConfirm,
-    /// Nouveaux éléments dans une organisation.
+    /// New items in an organization.
     ItemsShared,
-    /// Un contact d'urgence demande l'accès au coffre.
+    /// An emergency contact requests access to the vault.
     EmergencyRequested,
-    /// Un proche a accordé l'accès à son coffre.
+    /// A grantor has granted access to their vault.
     EmergencyApproved,
 }
 
@@ -40,10 +40,10 @@ impl From<NoticeKind> for ActivityKind {
     }
 }
 
-/// Une notification à poster.
+/// A notification to post.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ActivityNotice {
-    /// Identifiant stable : une nouvelle du même sujet remplace l'ancienne.
+    /// Stable identifier: news on the same subject replaces the previous one.
     pub key: String,
     pub kind: ActivityKind,
     pub organization_id: Option<String>,
@@ -65,43 +65,43 @@ impl From<Notice> for ActivityNotice {
     }
 }
 
-/// Bilan d'un examen, coffre ouvert : les nouvelles, et l'état des
-/// invitations pour les bandeaux de l'app.
+/// Result of a check, vault unlocked: the news, and the state of the
+/// invitations for the app's banners.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ActivityReport {
     pub notices: Vec<ActivityNotice>,
-    /// Organisations rejointes, en attente de confirmation.
+    /// Joined organizations, waiting for confirmation.
     pub pending: Vec<PendingMembershipView>,
-    /// Membres à confirmer, par organisation administrée (vide si le
-    /// réseau n'a pas été consulté ou n'a pas répondu).
+    /// Members to confirm, per managed organization (empty if the
+    /// network was not queried or did not answer).
     pub to_confirm: Vec<PendingConfirmations>,
-    /// Le serveur a répondu pour les membres à confirmer.
+    /// The server answered for the members to confirm.
     pub to_confirm_checked: bool,
-    /// Organisations confirmées.
+    /// Confirmed organizations.
     pub organizations: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ServerChangeKind {
-    /// Canal (r)ouvert : des changements ont pu passer entre-temps.
+    /// Channel (re)opened: changes may have happened in the meantime.
     Connected,
     Items,
     Folders,
     Vault,
     Organizations,
     Settings,
-    /// Le serveur ferme les sessions (mot de passe principal changé…).
+    /// The server closes the sessions (master password changed...).
     LogOut,
     Sends,
     AuthRequest,
     Other,
 }
 
-/// Un changement annoncé par le serveur.
+/// A change announced by the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct ServerChange {
     pub kind: ServerChangeKind,
-    /// Fait par cet appareil : rien à relire.
+    /// Made by this device: nothing to reload.
     pub from_this_device: bool,
 }
 
@@ -126,12 +126,12 @@ impl From<HubUpdate> for ServerChange {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Coffre ouvert, après une synchronisation : ce qui est nouveau depuis
-    /// la dernière fois (une seule fois chaque chose, même après une
-    /// relance). `network` : consulter aussi le serveur (membres à
-    /// confirmer ; accès d'urgence si `emergency`). `notify` faux : tout
-    /// est marqué vu sans rien rendre (après une action locale qui
-    /// produirait sinon une nouvelle de soi-même).
+    /// Vault unlocked, after a sync: what is new since last time (each
+    /// thing only once, even after a relaunch). `network`: also query
+    /// the server (members to confirm; emergency access if
+    /// `emergency`). `notify` false: everything is marked seen without
+    /// returning anything (after a local action that would otherwise
+    /// produce news about oneself).
     pub async fn check_activity(
         &self,
         network: bool,
@@ -163,7 +163,7 @@ impl VaultSession {
             let mut waiting = Vec::new();
             let mut reachable = true;
             for (id, name) in managed {
-                // Le verrou de la connexion n'est tenu que le temps d'une requête.
+                // The connection lock is only held for the duration of one request.
                 let Ok(members) = connection.lock().await.organization_members(&id).await else {
                     reachable = false;
                     continue;
@@ -215,8 +215,8 @@ impl VaultSession {
         })
     }
 
-    /// Coffre verrouillé (tâche d'arrière-plan) : ce que le cache seul
-    /// permet de dire, sans clé ni réseau. Vide pour un coffre fictif.
+    /// Vault locked (background task): what the cache alone can tell,
+    /// without key or network. Empty for a mock vault.
     pub fn check_activity_locked(&self) -> Vec<ActivityNotice> {
         let Some(store) = &self.store else {
             return Vec::new();
@@ -228,16 +228,16 @@ impl VaultSession {
             .collect()
     }
 
-    /// Attend le prochain changement annoncé par le serveur, coffre ouvert.
-    /// Le premier appel ouvre le canal et rend aussitôt `Connected` (à
-    /// suivre d'une synchronisation). Une erreur : le canal est perdu
-    /// (rappeler après un délai) ; `NotFound` : le serveur ne l'a pas ;
-    /// `Locked` : le coffre a été verrouillé (s'arrêter).
+    /// Waits for the next change announced by the server, vault unlocked.
+    /// The first call opens the channel and returns `Connected` right
+    /// away (to be followed by a sync). An error: the channel is lost
+    /// (call again after a delay); `NotFound`: the server doesn't have
+    /// it; `Locked`: the vault was locked (stop).
     pub async fn wait_for_server_change(&self) -> Result<ServerChange, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let mut epoch = self.hub_epoch.subscribe();
         let mut guard = self.hub.lock().await;
-        // Verrouillé pendant l'attente du verrou du canal.
+        // Locked while waiting for the channel lock.
         if !self
             .current_connection()
             .is_some_and(|current| std::sync::Arc::ptr_eq(&current, &connection))
@@ -272,7 +272,7 @@ impl VaultSession {
         }
     }
 
-    /// Ferme le canal des mises à jour (l'attente en cours rend `Locked`).
+    /// Closes the updates channel (the pending wait returns `Locked`).
     pub fn stop_server_changes(&self) {
         self.hub_epoch.send_modify(|epoch| *epoch += 1);
         if let Ok(mut hub) = self.hub.try_lock() {
@@ -294,7 +294,7 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        // Pas de connexion au serveur : ni bilan ni canal.
+        // No server connection: neither report nor channel.
         assert!(matches!(
             runtime.block_on(session.check_activity(true, true, true)),
             Err(VerrouError::Locked)

@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Aucun suivi, aucune donnée collectée par le développeur : le coffre
-	     ne part que vers le serveur Vaultwarden de l'utilisateur. -->
+	<!-- No tracking, no data collected by the developer: the vault only
+	     goes to the user's Vaultwarden server. -->
 	<key>NSPrivacyTracking</key>
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
@@ -12,7 +12,7 @@
 	<array/>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
-		<!-- Réglages de l'app (verrouillage, presse-papiers, Face ID). -->
+		<!-- App settings (locking, clipboard, Face ID). -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
@@ -21,7 +21,7 @@
 				<string>CA92.1</string>
 			</array>
 		</dict>
-		<!-- Dates des fichiers du compte, dans le conteneur de l'app ou du groupe. -->
+		<!-- Dates of the account files, in the app's or the group's container. -->
 		<dict>
 			<key>NSPrivacyAccessedAPIType</key>
 			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>

@@ -1,16 +1,15 @@
-//! `verrou git-signing` : faire signer ses commits git par une clé SSH du
-//! coffre (`gpg.format=ssh`).
+//! `verrou git-signing`: have git commits signed by an SSH key from the
+//! vault (`gpg.format=ssh`).
 //!
-//! git appelle `ssh-keygen -Y sign -n git`, qui demande la signature à
-//! l'agent de `SSH_AUTH_SOCK` : celui de Verrou (`verrou ssh-agent`), qui
-//! montre « signer un commit git » dans sa demande d'accord. La clé privée
-//! ne quitte pas l'app ; la configuration de git ne contient que la clé
-//! publique.
+//! git calls `ssh-keygen -Y sign -n git`, which asks the `SSH_AUTH_SOCK`
+//! agent for the signature: Verrou's (`verrou ssh-agent`), which shows
+//! "sign a git commit" in its approval request. The private key does not
+//! leave the app; the git configuration only contains the public key.
 //!
-//! Par défaut, la commande affiche les réglages à appliquer ; `--apply` les
-//! écrit (configuration globale de git, ou celle du dépôt avec `--local`) et
-//! ajoute la clé au fichier `allowed_signers`, qui sert à vérifier les
-//! signatures (`git log --show-signature`, `git verify-commit`).
+//! By default, the command prints the settings to apply; `--apply` writes
+//! them (global git configuration, or the repository's with `--local`) and
+//! adds the key to the `allowed_signers` file, used to verify signatures
+//! (`git log --show-signature`, `git verify-commit`).
 
 use std::fs;
 use std::io::Write as _;
@@ -21,21 +20,21 @@ use data_encoding::{BASE64, BASE64_NOPAD};
 use sha2::{Digest as _, Sha256};
 use verrou_bridge::protocol::SshIdentity;
 
-/// Une clé SSH du coffre, telle que git la veut.
+/// An SSH key from the vault, the way git wants it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SigningKey {
     pub title: String,
-    /// Ligne OpenSSH sans commentaire : `ssh-ed25519 AAAA…`.
+    /// OpenSSH line without comment: `ssh-ed25519 AAAA…`.
     pub public_key: String,
-    /// `SHA256:…`, comme `ssh-keygen -l`.
+    /// `SHA256:…`, like `ssh-keygen -l`.
     pub fingerprint: String,
 }
 
 impl SigningKey {
-    /// `None` : forme binaire illisible.
+    /// `None`: unreadable binary form.
     pub fn from_identity(identity: &SshIdentity) -> Option<Self> {
         let blob = BASE64.decode(identity.public_key.as_bytes()).ok()?;
-        // La forme binaire commence par le nom de l'algorithme (`string`).
+        // The binary form starts with the algorithm name (`string`).
         let (length, rest) = blob.split_at_checked(4)?;
         let length = u32::from_be_bytes(length.try_into().ok()?) as usize;
         let algorithm = std::str::from_utf8(rest.get(..length)?).ok()?;
@@ -47,8 +46,8 @@ impl SigningKey {
     }
 }
 
-/// La clé désignée par `query` (titre, ou empreinte, en entier ou en
-/// partie, sans casse) ; sans requête, la seule clé du coffre.
+/// The key designated by `query` (title, or fingerprint, whole or in
+/// part, case-insensitive); without a query, the vault's only key.
 pub fn choose<'k>(keys: &'k [SigningKey], query: &str) -> Result<&'k SigningKey, String> {
     let query = query.trim().to_lowercase();
     let found: Vec<&SigningKey> = keys
@@ -68,20 +67,20 @@ pub fn choose<'k>(keys: &'k [SigningKey], query: &str) -> Result<&'k SigningKey,
     match found.as_slice() {
         [key] => Ok(key),
         [] if keys.is_empty() => {
-            Err("aucune clé SSH dans le coffre (Verrou : « Nouvelle clé SSH… »)".to_owned())
+            Err("no SSH key in the vault (Verrou: \"New SSH Key…\")".to_owned())
         }
         [] => Err(format!(
-            "aucune clé SSH ne correspond ; clés du coffre :{}",
+            "no SSH key matches; keys in the vault:{}",
             list(&keys.iter().collect::<Vec<_>>())
         )),
         several => Err(format!(
-            "plusieurs clés SSH correspondent, précisez (titre ou empreinte) :{}",
+            "several SSH keys match, be more specific (title or fingerprint):{}",
             list(several)
         )),
     }
 }
 
-/// Configuration de git visée : globale (`~/.gitconfig`) ou du dépôt courant.
+/// Target git configuration: global (`~/.gitconfig`) or the current repository's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Scope {
     Global,
@@ -97,23 +96,23 @@ impl Scope {
     }
 }
 
-/// Les réglages à écrire pour signer avec `key`.
+/// The settings to write to sign with `key`.
 #[derive(Clone, Debug)]
 pub struct Plan {
     pub key: SigningKey,
-    /// Adresse des commits (`user.email`) : celle de `allowed_signers`.
+    /// Commit address (`user.email`): the one in `allowed_signers`.
     pub email: String,
     pub allowed_signers: PathBuf,
     pub scope: Scope,
 }
 
 impl Plan {
-    /// Ligne de `allowed_signers` (format de `ssh-keygen -Y verify`).
+    /// `allowed_signers` line (`ssh-keygen -Y verify` format).
     pub fn allowed_signers_line(&self) -> String {
         format!("{} namespaces=\"git\" {}", self.email, self.key.public_key)
     }
 
-    /// Arguments de chaque `git config`.
+    /// Arguments of each `git config`.
     pub fn git_settings(&self) -> Vec<[String; 4]> {
         let scope = self.scope.flag().to_owned();
         [
@@ -131,10 +130,10 @@ impl Plan {
         .collect()
     }
 
-    /// Les commandes à copier dans un shell.
+    /// The commands to paste into a shell.
     pub fn script(&self, socket: &Path) -> String {
         let mut lines = vec![format!(
-            "# Clé « {} » ({})",
+            "# Key \"{}\" ({})",
             self.key.title, self.key.fingerprint
         )];
         for args in self.git_settings() {
@@ -149,7 +148,7 @@ impl Plan {
         lines.push(format!(
             "grep -qxF {line} {file} 2>/dev/null || echo {line} >> {file}"
         ));
-        lines.push("# git signe par l'agent de Verrou (« verrou ssh-agent ») :".to_owned());
+        lines.push("# git signs through Verrou's agent (`verrou ssh-agent`):".to_owned());
         lines.push(format!(
             "export SSH_AUTH_SOCK={}",
             shell_quote(&socket.to_string_lossy())
@@ -157,27 +156,27 @@ impl Plan {
         lines.join("\n") + "\n"
     }
 
-    /// Écrit les réglages : `git config` (par `git`, qui fabrique la
-    /// commande : les tests y mettent leur propre configuration), puis la
-    /// ligne de `allowed_signers` si elle n'y est pas déjà.
+    /// Writes the settings: `git config` (through `git`, which builds the
+    /// command: tests put their own configuration in it), then the
+    /// `allowed_signers` line if it is not there already.
     pub fn apply(&self, git: impl Fn() -> Command) -> Result<(), String> {
         for args in self.git_settings() {
             let status = git()
                 .args(&args)
                 .status()
-                .map_err(|e| format!("git introuvable : {e}"))?;
+                .map_err(|e| format!("git not found: {e}"))?;
             if !status.success() {
-                return Err(format!("« git {} » a échoué", args.join(" ")));
+                return Err(format!("`git {}` failed", args.join(" ")));
             }
         }
         add_line(&self.allowed_signers, &self.allowed_signers_line())
     }
 }
 
-/// Ajoute `line` au fichier (créé au besoin, avec son dossier), sauf si
-/// elle y est déjà.
+/// Appends `line` to the file (created if needed, with its directory),
+/// unless it is already there.
 fn add_line(path: &Path, line: &str) -> Result<(), String> {
-    let error = |e: std::io::Error| format!("{} : {e}", path.display());
+    let error = |e: std::io::Error| format!("{}: {e}", path.display());
     let current = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
@@ -202,20 +201,20 @@ fn add_line(path: &Path, line: &str) -> Result<(), String> {
     writeln!(file, "{separator}{line}").map_err(error)
 }
 
-/// `~/.config/verrou/allowed_signers` : à côté du lien du terminal.
+/// `~/.config/verrou/allowed_signers`: next to the terminal's link.
 pub fn default_allowed_signers() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME").ok_or("HOME n'est pas défini")?;
+    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
     Ok(PathBuf::from(home).join(".config/verrou/allowed_signers"))
 }
 
-/// `user.email` de git, s'il est réglé (lecture seule).
+/// git's `user.email`, if set (read only).
 pub fn git_email(git: impl Fn() -> Command) -> Option<String> {
     let output = git().args(["config", "user.email"]).output().ok()?;
     let email = String::from_utf8(output.stdout).ok()?.trim().to_owned();
     (output.status.success() && !email.is_empty()).then_some(email)
 }
 
-/// Entre apostrophes si besoin, pour coller la ligne dans un shell.
+/// In single quotes if needed, to paste the line into a shell.
 pub fn shell_quote(text: &str) -> String {
     if !text.is_empty()
         && text
@@ -232,7 +231,7 @@ pub fn shell_quote(text: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Clé publique Ed25519 de test (forme binaire, base64).
+    /// Test Ed25519 public key (binary form, base64).
     const ED25519: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIOFNTvDpEWMXDZ5qaNhmyAbLfuAQ3HAPwt+7hyBCPMF+";
 
     fn identity(title: &str, public_key: &str) -> SshIdentity {
@@ -247,12 +246,12 @@ mod tests {
     fn identity_becomes_an_openssh_line_and_fingerprint() {
         let key = SigningKey::from_identity(&identity("Clé du N100", ED25519)).unwrap();
         assert_eq!(key.public_key, format!("ssh-ed25519 {ED25519}"));
-        // `ssh-keygen -lf` sur cette clé.
+        // `ssh-keygen -lf` on this key.
         assert_eq!(
             key.fingerprint,
             "SHA256:77Wl7hE5KZkme+QoJOptP86XOOlFINl0NUDZx6Aq6Gs"
         );
-        assert!(SigningKey::from_identity(&identity("x", "pas du base64")).is_none());
+        assert!(SigningKey::from_identity(&identity("x", "not base64")).is_none());
         assert!(SigningKey::from_identity(&identity("x", "AAAA")).is_none());
     }
 
@@ -265,14 +264,14 @@ mod tests {
         let keys = vec![one.clone(), two.clone()];
         assert_eq!(choose(&keys, "github").unwrap(), &one);
         assert_eq!(choose(&keys, "sha256:AUTRE").unwrap(), &two);
-        assert!(choose(&keys, "").unwrap_err().contains("plusieurs"));
+        assert!(choose(&keys, "").unwrap_err().contains("several"));
         assert!(
             choose(&keys, "gitlab")
                 .unwrap_err()
-                .contains("aucune clé SSH ne")
+                .contains("no SSH key matches")
         );
         assert_eq!(choose(&keys[..1], "").unwrap(), &one);
-        assert!(choose(&[], "").unwrap_err().contains("Nouvelle clé SSH"));
+        assert!(choose(&[], "").unwrap_err().contains("New SSH Key"));
     }
 
     #[test]

@@ -1,15 +1,15 @@
-//! Agent SSH (`verrou ssh-agent`) : parle le protocole de l'agent OpenSSH
-//! (draft-miller-ssh-agent) sur un socket Unix, et fait signer Verrou.
+//! SSH agent (`verrou ssh-agent`): speaks the OpenSSH agent protocol
+//! (draft-miller-ssh-agent) on a Unix socket, and has Verrou sign.
 //!
-//! - `SSH_AGENTC_REQUEST_IDENTITIES` : les clés publiques des clés SSH du
-//!   coffre, avec leur titre en commentaire.
-//! - `SSH_AGENTC_SIGN_REQUEST` : Verrou signe, après l'accord de
-//!   l'utilisateur (Touch ID) ; la clé privée ne quitte jamais l'app.
-//! - Tout le reste (ajout, retrait, verrouillage de l'agent, extensions) :
+//! - `SSH_AGENTC_REQUEST_IDENTITIES`: the public keys of the vault's SSH
+//!   keys, with their title as comment.
+//! - `SSH_AGENTC_SIGN_REQUEST`: Verrou signs, after the user's approval
+//!   (Touch ID); the private key never leaves the app.
+//! - Everything else (adding, removing, locking the agent, extensions):
 //!   `SSH_AGENT_FAILURE`.
 //!
-//! Le socket est dans un dossier 700 et lui-même en 600 ; comme pour
-//! `ssh-agent`, tout programme lancé par l'utilisateur peut s'en servir.
+//! The socket is in a 700 directory and is itself 600; as with
+//! `ssh-agent`, any program run by the user can use it.
 
 use std::fs;
 use std::io::{self, Read as _, Write as _};
@@ -30,10 +30,10 @@ pub const SSH_AGENT_IDENTITIES_ANSWER: u8 = 12;
 pub const SSH_AGENTC_SIGN_REQUEST: u8 = 13;
 pub const SSH_AGENT_SIGN_RESPONSE: u8 = 14;
 
-/// Taille maximale d'un message (OpenSSH en accepte 256 Kio).
+/// Maximum message size (OpenSSH accepts 256 KiB).
 const MAX_MESSAGE: usize = 256 * 1024;
 
-/// Une requête de client SSH.
+/// An SSH client's request.
 #[derive(Debug, PartialEq, Eq)]
 pub enum AgentRequest {
     Identities,
@@ -42,26 +42,26 @@ pub enum AgentRequest {
         data: Vec<u8>,
         flags: u32,
     },
-    /// Message que l'agent ne sait pas traiter : on répond par un échec.
+    /// Message the agent cannot handle: answered with a failure.
     Unsupported(u8),
 }
 
-/// Une clé proposée par l'agent : forme binaire SSH et commentaire.
+/// A key offered by the agent: SSH binary form and comment.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub key: Vec<u8>,
     pub comment: String,
 }
 
-/// Ce qui fournit les clés et les signatures : Verrou, ou un faux pour les tests.
+/// What provides the keys and signatures: Verrou, or a fake for tests.
 pub trait Keys: Send + Sync {
     fn identities(&self) -> Result<Vec<Identity>, String>;
     fn sign(&self, key: &[u8], data: &[u8], flags: u32) -> Result<Vec<u8>, String>;
 }
 
-// MARK: Encodage
+// MARK: Encoding
 
-/// Lecteur des types de la RFC 4251 (`uint32`, `string`).
+/// Reader for RFC 4251 types (`uint32`, `string`).
 struct Reader<'a>(&'a [u8]);
 
 impl<'a> Reader<'a> {
@@ -94,7 +94,7 @@ fn put_string(out: &mut Vec<u8>, value: &[u8]) {
     out.extend_from_slice(value);
 }
 
-/// Lit le corps d'un message (sans sa longueur). `None` : message tronqué.
+/// Reads a message body (without its length). `None`: truncated message.
 pub fn parse(message: &[u8]) -> Option<AgentRequest> {
     let mut reader = Reader(message);
     match reader.u8()? {
@@ -129,7 +129,7 @@ pub fn failure() -> Vec<u8> {
     vec![SSH_AGENT_FAILURE]
 }
 
-/// La réponse à un message (corps sans longueur).
+/// The answer to a message (body without length).
 pub fn handle(keys: &dyn Keys, message: &[u8]) -> Vec<u8> {
     match parse(message) {
         Some(AgentRequest::Identities) => match keys.identities() {
@@ -150,7 +150,7 @@ pub fn handle(keys: &dyn Keys, message: &[u8]) -> Vec<u8> {
     }
 }
 
-/// Lit un message : `Ok(None)` à la fin de la connexion.
+/// Reads a message: `Ok(None)` at the end of the connection.
 fn read_message(stream: &mut UnixStream) -> io::Result<Option<Vec<u8>>> {
     let mut length = [0u8; 4];
     match stream.read_exact(&mut length) {
@@ -162,7 +162,7 @@ fn read_message(stream: &mut UnixStream) -> io::Result<Option<Vec<u8>>> {
     if length == 0 || length > MAX_MESSAGE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "message SSH invalide",
+            "invalid SSH message",
         ));
     }
     let mut body = vec![0u8; length];
@@ -177,7 +177,7 @@ fn write_message(stream: &mut UnixStream, body: &[u8]) -> io::Result<()> {
     stream.flush()
 }
 
-/// Sert une connexion de client SSH jusqu'à sa fermeture.
+/// Serves an SSH client connection until it closes.
 pub fn serve_connection(keys: &dyn Keys, mut stream: UnixStream) {
     while let Ok(Some(message)) = read_message(&mut stream) {
         if write_message(&mut stream, &handle(keys, &message)).is_err() {
@@ -186,7 +186,7 @@ pub fn serve_connection(keys: &dyn Keys, mut stream: UnixStream) {
     }
 }
 
-/// Accepte les connexions, une par fil, sans fin.
+/// Accepts connections, one per thread, forever.
 pub fn serve(listener: &UnixListener, keys: &Arc<dyn Keys>) {
     for stream in listener.incoming().flatten() {
         let keys = Arc::clone(keys);
@@ -198,16 +198,16 @@ pub fn serve(listener: &UnixListener, keys: &Arc<dyn Keys>) {
 
 /// `~/.verrou/agent.sock`.
 pub fn default_socket() -> Result<PathBuf, String> {
-    let home = std::env::var_os("HOME").ok_or("HOME n'est pas défini")?;
+    let home = std::env::var_os("HOME").ok_or("HOME is not set")?;
     Ok(PathBuf::from(home).join(".verrou/agent.sock"))
 }
 
-/// Écoute sur `path` : dossier créé en 700 (et ramené à 700 pour le dossier
-/// par défaut), socket en 600. Un socket laissé par un agent arrêté est
-/// remplacé ; un agent qui répond encore, ou un fichier qui n'est pas un
-/// socket, ne l'est pas.
+/// Listens on `path`: directory created as 700 (and reset to 700 for the
+/// default directory), socket as 600. A socket left by a stopped agent is
+/// replaced; an agent that still answers, or a file that is not a socket,
+/// is not.
 pub fn bind(path: &Path, private_dir: bool) -> Result<UnixListener, String> {
-    let error = |e: io::Error| format!("{} : {e}", path.display());
+    let error = |e: io::Error| format!("{}: {e}", path.display());
     if let Some(dir) = path.parent().filter(|d| !d.as_os_str().is_empty()) {
         let created = !dir.exists();
         if created {
@@ -220,12 +220,15 @@ pub fn bind(path: &Path, private_dir: bool) -> Result<UnixListener, String> {
     if let Ok(metadata) = fs::symlink_metadata(path) {
         if !metadata.file_type().is_socket() {
             return Err(format!(
-                "{} existe et n'est pas un socket : je n'y touche pas",
+                "{} exists and is not a socket: leaving it alone",
                 path.display()
             ));
         }
         if UnixStream::connect(path).is_ok() {
-            return Err(format!("un agent écoute déjà sur {}", path.display()));
+            return Err(format!(
+                "an agent is already listening on {}",
+                path.display()
+            ));
         }
         fs::remove_file(path).map_err(error)?;
     }
@@ -236,7 +239,7 @@ pub fn bind(path: &Path, private_dir: bool) -> Result<UnixListener, String> {
 
 // MARK: Verrou
 
-/// Les clés de Verrou, par le pont : une connexion par requête.
+/// Verrou's keys, through the bridge: one connection per request.
 pub struct BridgeKeys {
     pub config: Config,
     pub endpoint: Endpoint,
@@ -262,7 +265,7 @@ impl Keys for BridgeKeys {
                     })
                 })
                 .collect()),
-            other => Err(format!("réponse inattendue : {other:?}")),
+            other => Err(format!("unexpected reply: {other:?}")),
         }
     }
 
@@ -276,7 +279,7 @@ impl Keys for BridgeKeys {
             ReplyResult::Signature { signature } => BASE64
                 .decode(signature.as_bytes())
                 .map_err(|e| e.to_string()),
-            other => Err(format!("réponse inattendue : {other:?}")),
+            other => Err(format!("unexpected reply: {other:?}")),
         }
     }
 }
@@ -299,7 +302,7 @@ mod tests {
             if key == b"cle" {
                 Ok([data, &flags.to_be_bytes()].concat())
             } else {
-                Err("clé SSH inconnue".to_owned())
+                Err("unknown SSH key".to_owned())
             }
         }
     }
@@ -326,10 +329,10 @@ mod tests {
                 flags: 4,
             })
         );
-        // Ajout de clé (17), extension (27) : non pris en charge.
+        // Adding a key (17), extension (27): not supported.
         assert_eq!(parse(&[17, 0, 0]), Some(AgentRequest::Unsupported(17)));
         assert_eq!(parse(&[27]), Some(AgentRequest::Unsupported(27)));
-        // Tronqués : longueur annoncée plus grande que le reste, drapeaux absents.
+        // Truncated: announced length larger than the rest, missing flags.
         assert_eq!(parse(&[]), None);
         assert_eq!(parse(&[SSH_AGENTC_SIGN_REQUEST, 0, 0, 0, 9, 1]), None);
         let mut no_flags = sign_request(b"k", b"d", 0);
@@ -363,21 +366,25 @@ mod tests {
     #[test]
     fn socket_is_private_and_stale_sockets_are_replaced() {
         use std::os::unix::fs::PermissionsExt as _;
-        // Chemin court : les sockets Unix sont limités à ~100 octets.
+        // Short path: Unix sockets are limited to ~100 bytes.
         let dir = std::env::temp_dir().join(format!("vra-{}", std::process::id()));
         let path = dir.join("a.sock");
         let listener = bind(&path, false).unwrap();
         let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode(&dir), 0o700);
         assert_eq!(mode(&path), 0o600);
-        // Un agent écoute : pas question de lui voler son socket.
-        assert!(bind(&path, false).unwrap_err().contains("écoute déjà"));
+        // An agent is listening: don't steal its socket.
+        assert!(
+            bind(&path, false)
+                .unwrap_err()
+                .contains("already listening")
+        );
         drop(listener);
-        // Agent arrêté : son socket est remplacé.
+        // Agent stopped: its socket is replaced.
         let listener = bind(&path, false).unwrap();
         drop(listener);
         fs::remove_file(&path).unwrap();
-        fs::write(&path, b"pas un socket").unwrap();
+        fs::write(&path, b"not a socket").unwrap();
         assert!(bind(&path, false).is_err());
         let _ = fs::remove_dir_all(dir);
     }

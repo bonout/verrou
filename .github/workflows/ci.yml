@@ -13,13 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # En parallèle des tests : Clippy n'a pas besoin de Vaultwarden.
+  # In parallel with the tests: Clippy doesn't need Vaultwarden.
   lint:
     name: Lint (fmt, clippy)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # Seules les actions de GitHub, épinglées par SHA : rustup est déjà sur le runner.
+      # Only GitHub's own actions, pinned by SHA: rustup is already on the runner.
       - run: rustup toolchain install stable --profile minimal --component rustfmt,clippy && rustup default stable
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -36,8 +36,8 @@ jobs:
   rust:
     name: Tests (Rust, extension)
     runs-on: ubuntu-latest
-    # Vaultwarden jetable, version épinglée : les tests
-    # d'intégration y créent leurs comptes (connexion, TOTP, synchronisation).
+    # Throwaway Vaultwarden, pinned version: the integration
+    # tests create their accounts there (sign-in, TOTP, sync).
     services:
       vaultwarden:
         image: vaultwarden/server:1.37.4
@@ -45,12 +45,12 @@ jobs:
         env:
           I_REALLY_WANT_VOLATILE_STORAGE: "true"
           SIGNUPS_ALLOWED: "true"
-          # WebAuthn (clé de sécurité) exige un nom de domaine.
+          # WebAuthn (security key) requires a domain name.
           DOMAIN: http://localhost:8099
           LOGIN_RATELIMIT_MAX_BURST: "1000"
           LOGIN_RATELIMIT_SECONDS: "1"
-          # Inscription, prélogin et jetons d'envoi partagent une limite
-          # anonyme (50 d'affilée par IP) : la suite crée des dizaines de comptes.
+          # Registration, prelogin and send tokens share an anonymous
+          # limit (50 in a row per IP): the suite creates dozens of accounts.
           UNAUTHENTICATED_RATELIMIT_MAX_BURST: "1000"
     env:
       VERROU_TEST_SERVER: http://localhost:8099
@@ -67,16 +67,16 @@ jobs:
           key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
       - run: cargo test --workspace
-      # L'extension (bridge.js, crypto.js) contre le vrai pont, à travers le
-      # vrai hôte Native Messaging.
+      # The extension (bridge.js, crypto.js) against the real bridge, through the
+      # real Native Messaging host.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
       - run: cargo build -p verrou-bridge --example test_server --bin verrou-native-host
-      - run: node --test extension/test/bridge.test.mjs extension/test/passkeys.test.mjs extension/test/seamless.test.mjs extension/test/firefox.test.mjs extension/test/content.test.mjs
-      # Garde-fou de performance : 10 000 éléments, moins d'une image à 60 Hz.
+      - run: node --test extension/test/bridge.test.mjs extension/test/passkeys.test.mjs extension/test/seamless.test.mjs extension/test/firefox.test.mjs extension/test/content.test.mjs extension/test/i18n.test.mjs
+      # Performance guard: 10,000 items, less than one frame at 60 Hz.
       - run: cargo test --release -p verrou-core --test search -- --include-ignored search_is_fast
-      # Doublons : 10 000 éléments en moins de 200 ms.
+      # Duplicates: 10,000 items in less than 200 ms.
       - run: cargo test --release -p verrou-core --test duplicates -- --include-ignored duplicates_are_fast
 
   macos:
@@ -94,18 +94,18 @@ jobs:
             target/
           key: cargo-${{ runner.os }}-${{ github.job }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-${{ github.job }}-
-      # Le code vise Xcode 26 (SDK iOS 26) ; le runner prend Xcode 16 par défaut.
+      # The code targets Xcode 26 (iOS 26 SDK); the runner uses Xcode 16 by default.
       - run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && xcodebuild -version
       - run: brew install xcodegen
-      # macOS et simulateur iPhone dans le même xcframework (sans tranche appareil).
+      # macOS and iPhone simulator in the same xcframework (no device slice).
       - run: PROFILE=debug PLATFORMS=all TARGETS=aarch64-apple-darwin IOS_TARGETS="" scripts/build-apple.sh
       - run: cd apple && xcodegen generate
-      - name: Compiler l'app
+      - name: Build the app
         run: |
           xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode.noindex \
             CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
-      - name: Compiler l'app iPhone (simulateur, sans signature)
+      - name: Build the iPhone app (simulator, unsigned)
         run: |
           xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
             -destination 'generic/platform=iOS Simulator' ARCHS=arm64 -derivedDataPath target/xcode-ios.noindex \

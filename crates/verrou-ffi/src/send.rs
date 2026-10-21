@@ -1,11 +1,11 @@
-//! Envois (Bitwarden Send) : partager un texte ou un fichier par un lien
-//! chiffré.
+//! Sends (Bitwarden Send): share a text or a file through an encrypted
+//! link.
 //!
-//! La liste ne porte ni le texte ni le lien (qui contient la clé) : Swift
-//! les demande à part, quand l'utilisateur copie le lien ou ouvre l'écran de
-//! modification. Le contenu d'un fichier traverse la frontière une seule
-//! fois, de Swift vers Rust, à la création ; celui d'une pièce jointe ne la
-//! traverse pas du tout (déchiffré puis chiffré de nouveau dans Rust).
+//! The list carries neither the text nor the link (which contains the
+//! key): Swift asks for them separately, when the user copies the link or
+//! opens the edit screen. A file's content crosses the boundary only
+//! once, from Swift to Rust, on creation; an attachment's content doesn't
+//! cross it at all (decrypted then encrypted again in Rust).
 
 use verrou_core::SecretString;
 use verrou_vaultwarden::send::{SendDraft, SendInfo, SendKind};
@@ -18,8 +18,8 @@ pub enum SendContent {
     File,
 }
 
-/// Un envoi tel que la liste l'affiche. Aucun secret.
-// Les options d'un envoi Bitwarden sont des booléens : le modèle les garde tels quels.
+/// A Send as the list shows it. No secret.
+// A Bitwarden Send's options are booleans: the model keeps them as is.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SendSummary {
@@ -27,18 +27,18 @@ pub struct SendSummary {
     pub name: String,
     pub content: SendContent,
     pub file_name: Option<String>,
-    /// Taille du fichier chiffré, en octets (envoi de fichier).
+    /// Size of the encrypted file, in bytes (file Send).
     pub file_size: Option<u64>,
     pub has_password: bool,
     pub access_count: u32,
     pub max_access_count: Option<u32>,
     pub disabled: bool,
     pub hide_email: bool,
-    /// Horodatages Unix.
+    /// Unix timestamps.
     pub deletion_date: i64,
     pub expiration_date: Option<i64>,
     pub revision_date: i64,
-    /// Le lien mène encore au contenu (ni désactivé, ni expiré, ni épuisé).
+    /// The link still leads to the content (not disabled, expired or used up).
     pub available: bool,
 }
 
@@ -67,36 +67,36 @@ impl From<SendInfo> for SendSummary {
     }
 }
 
-/// L'écran de création ou de modification d'un envoi.
+/// The create or edit screen of a Send.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct SendFields {
     pub name: String,
     pub text: String,
     pub hidden: bool,
     pub notes: Option<String>,
-    /// Horodatages Unix.
+    /// Unix timestamps.
     pub deletion_date: i64,
     pub expiration_date: Option<i64>,
     pub max_access_count: Option<u32>,
-    /// Nouveau mot de passe ; vide ou absent : aucun (création) ou inchangé.
+    /// New password; empty or absent: none (creation) or unchanged.
     pub password: Option<String>,
     pub hide_email: bool,
     pub disabled: bool,
 }
 
-/// Un envoi créé : son identifiant et son lien de partage (qui porte la clé).
+/// A created Send: its identifier and its share link (which carries the key).
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct CreatedSend {
     pub id: String,
     pub link: String,
 }
 
-/// Un envoi de fichier prérempli pour une pièce jointe.
+/// A file Send prefilled for an attachment.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct AttachmentSendFields {
     pub fields: SendFields,
     pub file_name: String,
-    /// Taille de la pièce jointe chiffrée, en octets.
+    /// Size of the encrypted attachment, in bytes.
     pub size: u64,
 }
 
@@ -106,7 +106,7 @@ fn now() -> i64 {
 
 fn date(timestamp: i64) -> Result<chrono::DateTime<chrono::Utc>, VerrouError> {
     chrono::DateTime::from_timestamp(timestamp, 0).ok_or_else(|| VerrouError::Invalid {
-        message: "date invalide".to_owned(),
+        message: "invalid date".to_owned(),
     })
 }
 
@@ -151,29 +151,29 @@ impl From<SendDraft> for SendFields {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Les envois de la dernière synchronisation, du plus récent au plus ancien.
+    /// The Sends of the last sync, newest first.
     pub async fn sends(&self) -> Result<Vec<SendSummary>, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let sends = connection.lock().await.sends()?;
         Ok(sends.into_iter().map(Into::into).collect())
     }
 
-    /// ⚠️ Lien de partage d'un envoi : il porte la clé, donc le contenu.
+    /// ⚠️ Share link of a Send: it carries the key, hence the content.
     pub async fn send_link(&self, id: String) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let link = connection.lock().await.send_link(&id)?;
         Ok(link.expose().to_owned())
     }
 
-    /// ⚠️ Brouillon prérempli pour modifier un envoi, texte compris.
+    /// ⚠️ Prefilled draft to edit a Send, text included.
     pub async fn send_fields(&self, id: String) -> Result<SendFields, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let draft = connection.lock().await.send_draft(&id)?;
         Ok(draft.into())
     }
 
-    /// Crée un envoi de texte et resynchronise ; rend son identifiant et
-    /// son lien. Les positions de `summaries()` changent.
+    /// Creates a text Send and syncs again; returns its identifier and
+    /// its link. The positions of `summaries()` change.
     pub async fn create_send(&self, fields: SendFields) -> Result<CreatedSend, VerrouError> {
         let draft = SendDraft::try_from(fields)?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
@@ -185,8 +185,8 @@ impl VaultSession {
         })
     }
 
-    /// Crée un envoi de fichier (nom et contenu chiffrés dans Rust par la
-    /// clé de l'envoi) et resynchronise ; rend son identifiant et son lien.
+    /// Creates a file Send (name and content encrypted in Rust with the
+    /// Send's key) and syncs again; returns its identifier and its link.
     pub async fn create_file_send(
         &self,
         fields: SendFields,
@@ -208,10 +208,9 @@ impl VaultSession {
         })
     }
 
-    /// Un nouvel envoi de fichier prérempli pour une pièce jointe d'un
-    /// élément : nommé d'après l'élément et le fichier, réglages par
-    /// défaut. Rend aussi le nom du fichier. L'élément protégé demande
-    /// d'abord sa confirmation.
+    /// A new file Send prefilled for an item's attachment: named after the
+    /// item and the file, default settings. Also returns the file name.
+    /// A protected item asks for its confirmation first.
     pub async fn send_fields_for_attachment(
         &self,
         item_id: String,
@@ -240,9 +239,9 @@ impl VaultSession {
         })
     }
 
-    /// ⚠️ Crée un envoi de fichier avec une pièce jointe : téléchargée,
-    /// déchiffrée puis chiffrée de nouveau par la clé de l'envoi, sans
-    /// passer par Swift. L'élément protégé demande d'abord sa confirmation.
+    /// ⚠️ Creates a file Send with an attachment: downloaded, decrypted
+    /// then encrypted again with the Send's key, without going through
+    /// Swift. A protected item asks for its confirmation first.
     pub async fn create_send_from_attachment(
         &self,
         fields: SendFields,
@@ -286,10 +285,10 @@ impl VaultSession {
 
 #[uniffi::export]
 impl VaultSession {
-    /// ⚠️ Un nouvel envoi prérempli avec un champ d'un élément (le mot de
-    /// passe, par exemple) : nommé d'après l'élément, texte masqué chez le
-    /// destinataire, suppression dans 7 jours, un seul accès. L'élément
-    /// protégé demande d'abord sa confirmation.
+    /// ⚠️ A new Send prefilled with an item's field (the password, for
+    /// example): named after the item, text hidden for the recipient,
+    /// deletion in 7 days, a single access. A protected item asks for its
+    /// confirmation first.
     pub fn send_fields_for_field(
         &self,
         item_id: String,
@@ -305,8 +304,8 @@ impl VaultSession {
                 )
             } else {
                 let field = item.field(&field_id).ok_or(VerrouError::NotFound)?;
-                // Mot de passe masqué par l'organisation : il ne sort pas,
-                // pas plus par un envoi que par `reveal`.
+                // Password hidden by the organization: it doesn't leave,
+                // no more through a Send than through `reveal`.
                 if item.hides(field) {
                     return Err(crate::hidden_by_organization());
                 }
@@ -323,12 +322,12 @@ impl VaultSession {
         })
     }
 
-    /// Un nouvel envoi vide, avec les réglages par défaut.
+    /// A new empty Send, with the default settings.
     pub fn new_send_fields(&self) -> SendFields {
         SendDraft::text(String::new(), SecretString::default(), chrono::Utc::now()).into()
     }
 
-    /// Taille maximale d'un fichier envoyé, avant chiffrement.
+    /// Maximum size of a sent file, before encryption.
     pub fn max_send_file_size(&self) -> u64 {
         verrou_vaultwarden::send::MAX_SEND_FILE_SIZE
     }
@@ -347,7 +346,7 @@ mod tests {
         let shared = mock::vault_items(0, 42)
             .into_iter()
             .find(|i| i.shared.is_some() && i.field("password").is_some())
-            .expect("élément partagé du coffre fictif");
+            .expect("shared item of the mock vault");
         let fields = session
             .send_fields_for_field(shared.id.clone(), "password".to_owned())
             .unwrap();
@@ -359,7 +358,7 @@ mod tests {
         assert!(fields.hidden);
         assert_eq!(fields.max_access_count, Some(1));
 
-        // L'organisation masque les mots de passe : pas d'envoi non plus.
+        // The organization hides passwords: no Send either.
         let mut items = mock::vault_items(0, 42);
         for item in &mut items {
             if let Some(sharing) = item.shared.as_mut() {
@@ -373,8 +372,8 @@ mod tests {
         ));
     }
 
-    /// Une pièce jointe d'un élément protégé ne part pas sans confirmation,
-    /// ni pour préremplir l'envoi, ni pour le créer.
+    /// An attachment of a protected item doesn't leave without confirmation,
+    /// neither to prefill the Send nor to create it.
     #[tokio::test]
     async fn attachment_sends_need_the_item_confirmation() {
         let session = VaultSession::new();
@@ -384,7 +383,7 @@ mod tests {
             .unwrap()
             .into_iter()
             .find(|s| s.reprompt)
-            .expect("élément protégé du coffre fictif");
+            .expect("protected item of the mock vault");
         assert!(matches!(
             session
                 .send_fields_for_attachment(protected.id.clone(), "a1".to_owned())
@@ -398,7 +397,7 @@ mod tests {
                 .await,
             Err(VerrouError::RepromptRequired)
         ));
-        // Confirmé : la suite demande un compte Vaultwarden (pas de coffre fictif).
+        // Confirmed: the rest needs a Vaultwarden account (no mock vault).
         session.authorize_item(protected.id.clone());
         assert!(matches!(
             session

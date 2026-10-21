@@ -1,12 +1,12 @@
 import SwiftUI
 
-/// « Nouvelle clé SSH » : un titre, l'algorithme, le dossier. La clé est
-/// générée par le cœur Rust et rangée comme les apps Bitwarden le font
-/// (clé privée OpenSSH, clé publique, empreinte SHA256).
+/// "New SSH Key": a title, the algorithm, the folder. The key is generated
+/// by the Rust core and stored the way the Bitwarden apps do it (OpenSSH
+/// private key, public key, SHA256 fingerprint).
 struct NewSshKeyView: View {
     @Environment(AppModel.self) private var model
     let generator: SshKeyGenerator
-    @State private var name = "Clé SSH"
+    @State private var name = String(localized: "SSH key")
     @State private var type: SshKeyType = .ed25519
     @State private var folderID: String?
     @State private var busy = false
@@ -22,28 +22,28 @@ struct NewSshKeyView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Titre", text: $name, prompt: Text("GitHub, serveur maison…"))
+                    TextField("Title", text: $name, prompt: Text("GitHub, home server…"))
                         .focused($titleFocused)
                     Picker("Type", selection: $type) {
-                        Text("Ed25519 (recommandé)").tag(SshKeyType.ed25519)
+                        Text("Ed25519 (recommended)").tag(SshKeyType.ed25519)
                         Text("RSA 4096 bits").tag(SshKeyType.rsa4096)
                     }
-                    Picker("Dossier", selection: $folderID) {
-                        Text("Aucun").tag(String?.none)
+                    Picker("Folder", selection: $folderID) {
+                        Text("No folder").tag(String?.none)
                         ForEach(model.folders, id: \.id) { folder in
                             Text(folder.name).tag(Optional(folder.id))
                         }
                     }
                 } footer: {
                     Text(type == .ed25519
-                         ? "Courte et rapide, acceptée par GitHub, GitLab et tout serveur OpenSSH récent."
-                         : "Pour les serveurs anciens qui n'acceptent que RSA. La génération prend quelques secondes.")
+                         ? "Short and fast, accepted by GitHub, GitLab and any recent OpenSSH server."
+                         : "For old servers that only accept RSA. Generation takes a few seconds.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
 
                 Section {
-                    Label("La clé privée reste dans le coffre : l'agent SSH de Verrou signe pour ssh et git, après votre accord.",
+                    Label("The private key stays in the vault: Verrou's SSH agent signs for ssh and git, after your approval.",
                           systemImage: "lock.shield")
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -63,12 +63,12 @@ struct NewSshKeyView: View {
                 Spacer()
                 if busy {
                     ProgressView().controlSize(.small)
-                    Text("Génération…").font(.callout).foregroundStyle(.secondary)
+                    Text("Generating…").font(.callout).foregroundStyle(.secondary)
                 }
-                Button("Annuler") { model.sshKeyGenerator = nil }
+                Button("Cancel") { model.sshKeyGenerator = nil }
                     .keyboardShortcut(.cancelAction)
                     .disabled(busy)
-                Button("Générer") { create() }
+                Button("Generate") { create() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || busy)
@@ -76,7 +76,7 @@ struct NewSshKeyView: View {
             .padding(16)
         }
         .frame(width: 480)
-        .navigationTitle("Nouvelle clé SSH")
+        .navigationTitle("New SSH Key")
         .onAppear { titleFocused = true }
         .interactiveDismissDisabled(busy)
     }

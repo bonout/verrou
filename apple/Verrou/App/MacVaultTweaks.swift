@@ -1,28 +1,28 @@
 import AppKit
 import SwiftUI
 
-// Retrait du partage et règles de correspondance (voir
-// `Shared/Core/VaultTweaks.swift` pour les libellés communs).
+// Removal from sharing and match rules (see
+// `Shared/Core/VaultTweaks.swift` for the shared labels).
 
 extension AppModel {
-    // MARK: Retrait du partage
+    // MARK: Removal from sharing
 
-    /// Les éléments qui peuvent quitter leur organisation.
+    /// The items that can leave their organization.
     func unshareableIDs(_ ids: [String]) -> [String] {
         ids.filter { summary(id: $0)?.canUnshare == true }
     }
 
-    /// « Retirer du partage… » : demande confirmation (la copie de
-    /// l'organisation est supprimée définitivement).
+    /// "Remove from sharing…": asks for confirmation (the organization's
+    /// copy is permanently deleted).
     func requestUnshare(_ ids: [String]) {
         let candidates = unshareableIDs(ids)
         guard canEdit, !candidates.isEmpty else {
-            toast = Toast(message: "Rien à retirer du partage",
-                          detail: "Il faut pouvoir modifier l'élément et en voir le mot de passe", failure: true)
+            toast = Toast(message: String(localized: "Nothing to remove from sharing"),
+                          detail: String(localized: "You must be able to edit the item and see its password"), failure: true)
             return
         }
         let summaries = candidates.compactMap { summary(id: $0) }
-        let title = summaries.count == 1 ? summaries[0].title : "\(summaries.count) éléments"
+        let title = summaries.count == 1 ? summaries[0].title : String(localized: "\(summaries.count) items")
         var organizations: [String] = []
         for name in summaries.compactMap(\.sharing?.organization) where !organizations.contains(name) {
             organizations.append(name)
@@ -31,13 +31,13 @@ extension AppModel {
         unshareRequest = UnshareRequest(itemIDs: candidates, title: title, organizations: organizations)
     }
 
-    /// Ramène les éléments dans le coffre personnel (en ligne seulement).
+    /// Brings the items back into the personal vault (online only).
     func performUnshare(_ request: UnshareRequest) async {
         guard !unshareBusy else { return }
         let protected = request.itemIDs.filter { session.needsConfirmation(id: $0) }
         if let first = protected.first {
             let title = protected.count == 1 ? summary(id: first)?.title ?? request.title
-                                             : "\(protected.count) éléments protégés"
+                                             : String(localized: "\(protected.count) protected items")
             guard await confirmAccess(itemID: first, title: title) else { return }
             protected.forEach { session.authorizeItem(id: $0) }
         }
@@ -61,15 +61,15 @@ extension AppModel {
         }
     }
 
-    /// La liste montre le site et l'utilisateur des passkeys : filtre
-    /// « Passkeys », ou recherche `passkey:` / `has:passkey`.
+    /// The list shows the site and user of passkeys: "Passkeys" filter, or
+    /// `passkey:` / `has:passkey` search.
     var showsPasskeyLines: Bool {
         if filter == .passkeys { return true }
         let words = query.lowercased().split(separator: " ")
         return words.contains { $0.hasPrefix("passkey:") || $0.hasPrefix("passkeys:") || $0 == "has:passkey" }
     }
 
-    // MARK: Règles de correspondance
+    // MARK: Match rules
 
     func setDefaultMatchRule(_ rule: UriMatchRule) {
         try? session.setDefaultMatchRule(rule: rule)
@@ -82,7 +82,7 @@ extension AppModel {
     }
 }
 
-/// Avancement du retrait du partage, relayé sur le fil principal.
+/// Progress of the removal from sharing, relayed to the main thread.
 final class UnshareProgressRelay: BulkProgress, @unchecked Sendable {
     private weak var model: AppModel?
 

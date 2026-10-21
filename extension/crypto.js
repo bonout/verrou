@@ -1,11 +1,11 @@
-// Cryptographie du canal avec Verrou, en WebCrypto seulement.
+// Cryptography of the channel with Verrou, in WebCrypto only.
 //
-// Mêmes primitives et même dérivation que crates/verrou-bridge/src/crypto.rs :
-// ECDH P-256 → HKDF-SHA256 (sel : clé publique de l'extension puis celle de
-// Verrou, info « verrou-bridge v1 ») → clé AES-256-GCM. Données associées :
-// « <client>:q » pour une requête, « <client>:r » pour une réponse.
+// Same primitives and same derivation as crates/verrou-bridge/src/crypto.rs:
+// ECDH P-256 → HKDF-SHA256 (salt: public key of the extension then Verrou's,
+// info "verrou-bridge v1") → AES-256-GCM key. Associated data:
+// "<client>:q" for a request, "<client>:r" for a response.
 //
-// Fonctionne dans le service worker de l'extension comme dans Node (tests).
+// Works in the extension's service worker as well as in Node (tests).
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -32,7 +32,7 @@ function concat(...parts) {
   return out;
 }
 
-// Clé d'appairage de l'extension. La clé privée n'est pas exportable.
+// Pairing key of the extension. The private key is not exportable.
 export async function generateKeyPair() {
   return crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
 }
@@ -41,7 +41,7 @@ export async function publicKeyBase64(pair) {
   return toBase64(await crypto.subtle.exportKey("raw", pair.publicKey));
 }
 
-// Octets de la clé du canal (32), à partir de la clé publique de Verrou.
+// Bytes of the channel key (32), from Verrou's public key.
 export async function agree(pair, serverKeyBase64) {
   const serverRaw = fromBase64(serverKeyBase64);
   const serverKey = await crypto.subtle.importKey(
@@ -55,7 +55,7 @@ export async function agree(pair, serverKeyBase64) {
   return new Uint8Array(bits);
 }
 
-// Code affiché des deux côtés pendant l'appairage : « 482 913 ».
+// Code shown on both sides during pairing: "482 913".
 export async function pairingCode(keyBytes) {
   const digest = new DataView(await crypto.subtle.digest("SHA-256", concat(CODE_LABEL, keyBytes)));
   const n = digest.getUint32(0) % 1_000_000;
@@ -63,8 +63,8 @@ export async function pairingCode(keyBytes) {
   return `${text.slice(0, 3)} ${text.slice(3)}`;
 }
 
-// Clé AES-GCM non exportable : une fois importée, ses octets ne sont plus
-// lisibles, même par l'extension.
+// Non-exportable AES-GCM key: once imported, its bytes can no longer be
+// read, even by the extension.
 export async function importChannelKey(keyBytes) {
   return crypto.subtle.importKey("raw", keyBytes, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }

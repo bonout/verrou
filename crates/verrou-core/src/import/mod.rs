@@ -1,21 +1,19 @@
-//! Lecture des exports d'autres gestionnaires de mots de passe : Mots de
-//! passe d'Apple (CSV), 1Password (`.1pux` ou CSV) et Proton Pass (ZIP non
-//! chiffré ou CSV).
+//! Reading exports from other password managers: Apple Passwords (CSV),
+//! 1Password (`.1pux` or CSV) and Proton Pass (unencrypted ZIP or CSV).
 //!
-//! Comme le reste du crate, aucune entrée-sortie : on reçoit le contenu du
-//! fichier, on rend des éléments au format commun ([`ImportedItem`]) et la
-//! liste de ce qui a été laissé de côté, avec la raison. Les secrets passent
-//! aussitôt dans des `SecretString`. Limite connue : les lecteurs CSV et JSON
-//! gardent des copies intermédiaires qui ne sont pas mises à zéro ; elles
-//! sont libérées à la fin de la lecture.
+//! Like the rest of the crate, no I/O: we receive the file's content and
+//! return items in the common format ([`ImportedItem`]) plus the list of
+//! what was left out, with the reason. Secrets go straight into
+//! `SecretString`s. Known limit: the CSV and JSON readers keep intermediate
+//! copies that are not zeroed; they are freed at the end of the read.
 //!
-//! La comparaison avec le coffre (doublons, mots de passe différents) est
-//! dans [`crate::duplicates`].
+//! Comparison with the vault (duplicates, different passwords) is in
+//! [`crate::duplicates`].
 //!
-//! Pièces jointes : les archives de 1Password (`files/`) et de Proton Pass
-//! (`Proton Pass/files/`) portent les fichiers des éléments. Ils sont lus
-//! ici, dans des tampons effacés à la libération ([`ImportedFile`]), pour
-//! devenir des pièces jointes Bitwarden.
+//! Attachments: the 1Password (`files/`) and Proton Pass
+//! (`Proton Pass/files/`) archives carry the items' files. They are read
+//! here, into buffers wiped on drop ([`ImportedFile`]), to become Bitwarden
+//! attachments.
 
 mod csv_formats;
 mod onepassword;
@@ -27,31 +25,31 @@ use crate::matching::host_of;
 use crate::secret::SecretString;
 use crate::template::Template;
 
-/// Taille maximale d'un fichier d'export, et d'un fichier extrait d'une
-/// archive : de quoi contenir des dizaines de milliers d'éléments, pas une
-/// bombe de décompression.
+/// Maximum size of an export file, and of a file extracted from an
+/// archive: enough for tens of thousands of items, not a decompression
+/// bomb.
 pub const MAX_SIZE: u64 = 64 * 1024 * 1024;
 
-/// Taille maximale d'une archive d'export (ZIP de 1Password ou de Proton
-/// Pass), pièces jointes comprises.
+/// Maximum size of an export archive (1Password or Proton Pass ZIP),
+/// attachments included.
 pub const MAX_ARCHIVE_SIZE: u64 = 512 * 1024 * 1024;
 
-/// Taille maximale d'une pièce jointe, avant chiffrement : celle que Verrou
-/// applique aussi à l'ajout d'un fichier.
+/// Maximum size of an attachment, before encryption: the same one Verrou
+/// applies when a file is added.
 pub const MAX_ATTACHMENT_SIZE: u64 = 100 * 1024 * 1024;
 
-/// Format d'un fichier d'export.
+/// Format of an export file.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Format {
-    /// App Mots de passe de macOS : Fichier → Exporter tous les mots de passe.
+    /// macOS Passwords app: File → Export All Passwords.
     ApplePasswordsCsv,
-    /// 1Password : Fichier → Exporter → 1PUX.
+    /// 1Password: File → Export → 1PUX.
     OnePassword1pux,
-    /// 1Password : Fichier → Exporter → CSV.
+    /// 1Password: File → Export → CSV.
     OnePasswordCsv,
-    /// Proton Pass : Réglages → Exporter, ZIP non chiffré.
+    /// Proton Pass: Settings → Export, unencrypted ZIP.
     ProtonPassZip,
-    /// Proton Pass : Réglages → Exporter, CSV.
+    /// Proton Pass: Settings → Export, CSV.
     ProtonPassCsv,
 }
 
@@ -64,7 +62,7 @@ impl Format {
         Self::ProtonPassCsv,
     ];
 
-    /// Nom de l'application d'origine (et du dossier « Import … »).
+    /// Name of the source app (and of the "Import …" folder).
     pub fn source(self) -> &'static str {
         match self {
             Self::ApplePasswordsCsv => "Apple",
@@ -75,7 +73,7 @@ impl Format {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::ApplePasswordsCsv => "Mots de passe d'Apple (CSV)",
+            Self::ApplePasswordsCsv => "Apple Passwords (CSV)",
             Self::OnePassword1pux => "1Password (1PUX)",
             Self::OnePasswordCsv => "1Password (CSV)",
             Self::ProtonPassZip => "Proton Pass (ZIP)",
@@ -84,7 +82,7 @@ impl Format {
     }
 }
 
-/// Ce que devient un élément importé dans Vaultwarden.
+/// What an imported item becomes in Vaultwarden.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ImportKind {
     Login,
@@ -93,20 +91,20 @@ pub enum ImportKind {
     Identity,
 }
 
-/// Carte bancaire importée.
+/// Imported payment card.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CardData {
     pub cardholder: Option<String>,
     pub brand: Option<String>,
     pub number: Option<SecretString>,
-    /// Mois sur un ou deux chiffres (`9`, `09`).
+    /// Month as one or two digits (`9`, `09`).
     pub exp_month: Option<String>,
-    /// Année sur quatre chiffres.
+    /// Four-digit year.
     pub exp_year: Option<String>,
     pub code: Option<SecretString>,
 }
 
-/// Identité importée (type Identité de Bitwarden).
+/// Imported identity (Bitwarden's Identity type).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IdentityData {
     pub title: Option<String>,
@@ -129,7 +127,7 @@ pub struct IdentityData {
 }
 
 impl IdentityData {
-    /// Prénom et nom, pour comparer avec le coffre.
+    /// First and last name, to compare with the vault.
     pub fn full_name(&self) -> String {
         [&self.first_name, &self.middle_name, &self.last_name]
             .into_iter()
@@ -141,8 +139,8 @@ impl IdentityData {
     }
 }
 
-/// Champ supplémentaire d'un identifiant ou d'une carte (devient un champ
-/// personnalisé Bitwarden, masqué s'il est secret).
+/// Extra field of a login or a card (becomes a Bitwarden custom field,
+/// hidden if it is secret).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtraField {
     pub name: String,
@@ -150,13 +148,13 @@ pub struct ExtraField {
     pub hidden: bool,
 }
 
-/// Fichier joint à un élément importé. Son contenu est effacé de la
-/// mémoire à la libération ; `Debug` ne le montre pas.
+/// File attached to an imported item. Its content is wiped from memory on
+/// drop; `Debug` does not show it.
 #[derive(Clone, PartialEq, Eq)]
 pub struct ImportedFile {
     pub name: String,
     pub data: zeroize::Zeroizing<Vec<u8>>,
-    /// Où le trouver dans l'archive, le temps de la lecture.
+    /// Where to find it in the archive, while reading.
     reference: Option<String>,
 }
 
@@ -169,7 +167,7 @@ impl ImportedFile {
         }
     }
 
-    /// Fichier annoncé par l'export, à chercher dans l'archive.
+    /// File announced by the export, to look up in the archive.
     fn pending(name: &str, reference: String) -> Self {
         Self {
             name: name.trim().to_owned(),
@@ -188,7 +186,7 @@ impl std::fmt::Debug for ImportedFile {
     }
 }
 
-/// Un élément lu dans un export, au format commun.
+/// An item read from an export, in the common format.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportedItem {
     pub kind: ImportKind,
@@ -196,22 +194,22 @@ pub struct ImportedItem {
     pub username: Option<String>,
     pub password: Option<SecretString>,
     pub urls: Vec<String>,
-    /// Graine TOTP (`otpauth://…` ou base32).
+    /// TOTP seed (`otpauth://…` or base32).
     pub totp: Option<SecretString>,
     pub notes: Option<SecretString>,
-    /// Dossier (ou coffre) dans l'application d'origine.
+    /// Folder (or vault) in the source app.
     pub folder: Option<String>,
     pub favorite: bool,
     pub card: Option<CardData>,
     pub identity: Option<IdentityData>,
-    /// Modèle de Verrou (Wi-Fi, passeport…) : les champs prédéfinis sont
-    /// dans `fields`, le champ `verrou:type` est ajouté à l'écriture.
+    /// Verrou template (Wi-Fi, passport…): the predefined fields are in
+    /// `fields`, the `verrou:type` field is added on write.
     pub template: Option<Template>,
     pub fields: Vec<ExtraField>,
-    /// Dernière modification dans l'application d'origine (Unix, secondes),
-    /// quand l'export la donne.
+    /// Last modification in the source app (Unix, seconds), when the export
+    /// gives it.
     pub modified: Option<i64>,
-    /// Pièces jointes (archives de 1Password et de Proton Pass).
+    /// Attachments (1Password and Proton Pass archives).
     pub attachments: Vec<ImportedFile>,
 }
 
@@ -236,20 +234,20 @@ impl ImportedItem {
         }
     }
 
-    /// Hôte du premier site, sans `www.`.
+    /// Host of the first site, without `www.`.
     pub fn primary_host(&self) -> Option<String> {
         self.urls.iter().find_map(|u| host_of(u))
     }
 }
 
-/// Un élément laissé de côté, et pourquoi. Jamais de secret.
+/// An item left out, and why. Never a secret.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Skipped {
     pub title: String,
     pub reason: String,
 }
 
-/// Le contenu d'un export.
+/// The content of an export.
 #[derive(Debug)]
 pub struct Parsed {
     pub format: Format,
@@ -270,7 +268,7 @@ impl Parsed {
         let title = title.trim();
         self.skipped.push(Skipped {
             title: if title.is_empty() {
-                "(sans nom)".to_owned()
+                "(untitled)".to_owned()
             } else {
                 title.to_owned()
             },
@@ -278,8 +276,8 @@ impl Parsed {
         });
     }
 
-    /// Range un élément lu : titre de repli, identifiant vide changé en note,
-    /// élément vide ignoré.
+    /// Stores an item read: fallback title, empty login turned into a note,
+    /// empty item ignored.
     fn push(&mut self, mut item: ImportedItem) {
         item.urls.retain(|u| !u.trim().is_empty());
         for url in &mut item.urls {
@@ -302,7 +300,7 @@ impl Parsed {
             item.kind = ImportKind::SecureNote;
         }
         let empty = match item.kind {
-            // Un document (un fichier seul) reste une note sécurisée.
+            // A document (a file alone) stays a secure note.
             ImportKind::SecureNote => {
                 item.notes.is_none() && item.fields.is_empty() && item.attachments.is_empty()
             }
@@ -319,32 +317,32 @@ impl Parsed {
         };
         if empty {
             let title = item.title.clone();
-            self.skip(&title, "élément vide");
+            self.skip(&title, "empty item");
             return;
         }
         if item.title.is_empty() {
-            "(sans nom)".clone_into(&mut item.title);
+            "(untitled)".clone_into(&mut item.title);
         }
         self.items.push(item);
     }
 }
 
-/// Ce qui empêche de lire un fichier.
+/// What prevents a file from being read.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ImportError {
-    #[error("format non reconnu : choisissez l'application d'origine")]
+    #[error("unrecognized format: choose the app the file comes from")]
     UnknownFormat,
-    #[error("export chiffré : exportez de nouveau, sans chiffrement")]
+    #[error("encrypted export: export again, without encryption")]
     Encrypted,
-    #[error("fichier trop volumineux (64 Mo au plus, 512 Mo pour une archive)")]
+    #[error("file too large (64 MB at most, 512 MB for an archive)")]
     TooLarge,
-    #[error("fichier illisible : {0}")]
+    #[error("unreadable file: {0}")]
     Unreadable(String),
-    #[error("ce fichier n'est pas un export {0}")]
+    #[error("this file is not a {0} export")]
     WrongFormat(&'static str),
 }
 
-/// Reconnaît le format d'un export d'après son contenu.
+/// Recognizes an export's format from its content.
 pub fn detect(bytes: &[u8]) -> Option<Format> {
     if bytes.starts_with(b"PK") {
         let names = zip_names(bytes).ok()?;
@@ -370,7 +368,7 @@ pub fn detect(bytes: &[u8]) -> Option<Format> {
     csv_formats::detect(text)
 }
 
-/// Lit un export ; sans `format`, le reconnaît d'abord.
+/// Reads an export; without `format`, recognizes it first.
 pub fn parse(bytes: &[u8], format: Option<Format>) -> Result<Parsed, ImportError> {
     let limit = if bytes.starts_with(b"PK") {
         MAX_ARCHIVE_SIZE
@@ -406,9 +404,9 @@ pub fn parse(bytes: &[u8], format: Option<Format>) -> Result<Parsed, ImportError
     Ok(parsed)
 }
 
-/// Lit dans l'archive les fichiers annoncés par l'export ; `entry` dit si un
-/// nom de l'archive est celui d'une référence. Un fichier absent ou trop
-/// volumineux n'est pas importé, et les notes de l'élément le disent.
+/// Reads from the archive the files announced by the export; `entry` tells
+/// whether an archive name is the one of a reference. A missing or too
+/// large file is not imported, and the item's notes say so.
 fn attach_files(
     bytes: &[u8],
     parsed: &mut Parsed,
@@ -421,7 +419,7 @@ fn attach_files(
     if !wanted {
         return Ok(());
     }
-    // `export.data` seul, sans son archive : les fichiers manquent.
+    // `export.data` alone, without its archive: the files are missing.
     let mut archive = if bytes.starts_with(b"PK") {
         Some(
             zip::ZipArchive::new(Cursor::new(bytes))
@@ -446,7 +444,7 @@ fn attach_files(
             let name = names.iter().find(|n| entry(n, &reference));
             let read = match (name, archive.as_mut()) {
                 (Some(name), Some(archive)) => read_entry(archive, name),
-                _ => Err("absente de l'export"),
+                _ => Err("missing from the export"),
             };
             match read {
                 Ok(data) => {
@@ -454,8 +452,8 @@ fn attach_files(
                     kept.push(file);
                 }
                 Err(reason) => missing.push((
-                    format!("Pièce jointe « {} »", file.name),
-                    format!("non importée ({reason})"),
+                    format!("Attachment \"{}\"", file.name),
+                    format!("not imported ({reason})"),
                 )),
             }
         }
@@ -469,24 +467,24 @@ fn read_entry(
     archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
     name: &str,
 ) -> Result<zeroize::Zeroizing<Vec<u8>>, &'static str> {
-    let file = archive.by_name(name).map_err(|_| "illisible")?;
+    let file = archive.by_name(name).map_err(|_| "unreadable")?;
     if file.encrypted() {
-        return Err("chiffrée");
+        return Err("encrypted");
     }
     if file.size() > MAX_ATTACHMENT_SIZE {
-        return Err("plus de 100 Mo");
+        return Err("over 100 MB");
     }
     let mut data = zeroize::Zeroizing::new(Vec::new());
     file.take(MAX_ATTACHMENT_SIZE + 1)
         .read_to_end(&mut data)
-        .map_err(|_| "illisible")?;
+        .map_err(|_| "unreadable")?;
     if data.len() as u64 > MAX_ATTACHMENT_SIZE {
-        return Err("plus de 100 Mo");
+        return Err("over 100 MB");
     }
     Ok(data)
 }
 
-/// Export chiffré (PGP de Proton Pass, archive protégée) : rien à lire.
+/// Encrypted export (Proton Pass PGP, protected archive): nothing to read.
 fn looks_encrypted(bytes: &[u8]) -> bool {
     if bytes.starts_with(b"-----BEGIN PGP") {
         return true;
@@ -519,8 +517,8 @@ fn zip_names(bytes: &[u8]) -> Result<Vec<String>, ImportError> {
         .collect())
 }
 
-/// Le document JSON d'un export : dans une archive ZIP (le fichier dont le
-/// nom convient), ou le fichier lui-même.
+/// The JSON document of an export: inside a ZIP archive (the file whose
+/// name matches), or the file itself.
 fn json_document(
     bytes: &[u8],
     wanted: impl Fn(&str) -> bool,
@@ -552,7 +550,7 @@ fn json_document(
     serde_json::from_slice(strip_bom(&content)).map_err(|_| wrong())
 }
 
-/// Texte non vide, sans espaces autour.
+/// Non-empty text, without surrounding whitespace.
 fn text(value: Option<&str>) -> Option<String> {
     value
         .map(str::trim)
@@ -561,15 +559,15 @@ fn text(value: Option<&str>) -> Option<String> {
 }
 
 fn secret(value: Option<&str>) -> Option<SecretString> {
-    // Un mot de passe garde ses espaces : seuls les champs vides disparaissent.
+    // A password keeps its spaces: only empty fields disappear.
     value
         .filter(|v| !v.trim().is_empty())
         .map(SecretString::new)
 }
 
-/// Champs d'un élément importé selon un modèle : les valeurs trouvées, sous
-/// les libellés du modèle et dans son ordre (masquées comme il le dit), puis
-/// les autres champs de l'export.
+/// Fields of an item imported with a template: the values found, under the
+/// template's labels and in its order (hidden as it says), then the
+/// export's other fields.
 fn template_fields(
     template: Template,
     found: &[(&'static str, String)],
@@ -593,13 +591,13 @@ fn template_fields(
         found
             .iter()
             .all(|(label, _)| template.fields().iter().any(|d| d.label == *label)),
-        "libellé hors du modèle {template:?}"
+        "label outside template {template:?}"
     );
     fields.extend(others);
     fields
 }
 
-/// Lignes « Libellé : valeur », ajoutées aux notes d'un élément.
+/// "Label: value" lines, appended to an item's notes.
 fn append_lines(notes: &mut Option<SecretString>, lines: &[(String, String)]) {
     if lines.is_empty() {
         return;
@@ -612,7 +610,7 @@ fn append_lines(notes: &mut Option<SecretString>, lines: &[(String, String)]) {
         if !text.is_empty() {
             text.push('\n');
         }
-        let separator = if value.contains('\n') { " :\n" } else { " : " };
+        let separator = if value.contains('\n') { ":\n" } else { ": " };
         text.push_str(label);
         text.push_str(separator);
         text.push_str(value);
@@ -620,10 +618,10 @@ fn append_lines(notes: &mut Option<SecretString>, lines: &[(String, String)]) {
     *notes = Some(SecretString::new(text));
 }
 
-/// Date civile d'un horodatage Unix (`AAAA-MM-JJ`), sans dépendance.
+/// Calendar date of a Unix timestamp (`YYYY-MM-DD`), without a dependency.
 fn date_of(timestamp: i64) -> String {
     let days = timestamp.div_euclid(86_400);
-    // Algorithme de Howard Hinnant (« civil_from_days »).
+    // Howard Hinnant's algorithm ("civil_from_days").
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -636,8 +634,8 @@ fn date_of(timestamp: i64) -> String {
     format!("{year:04}-{month:02}-{day:02}")
 }
 
-/// Horodatage Unix d'une date `AAAA-MM-JJ[THH:MM:SS…]`, ou d'un nombre
-/// (secondes ou millisecondes).
+/// Unix timestamp of a `YYYY-MM-DD[THH:MM:SS…]` date, or of a number
+/// (seconds or milliseconds).
 fn timestamp_of(value: &str) -> Option<i64> {
     let value = value.trim();
     if let Ok(n) = value.parse::<i64>() {
@@ -649,7 +647,7 @@ fn timestamp_of(value: &str) -> Option<i64> {
     if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return None;
     }
-    // Inverse de `date_of` (« days_from_civil »).
+    // Inverse of `date_of` ("days_from_civil").
     let y = if month <= 2 { year - 1 } else { year };
     let era = y.div_euclid(400);
     let yoe = y - era * 400;
@@ -669,7 +667,7 @@ fn timestamp_of(value: &str) -> Option<i64> {
     Some(days * 86_400 + seconds)
 }
 
-/// Expiration d'une carte : `2027-05`, `05/27`, `052027`, `202705` →
+/// Card expiry: `2027-05`, `05/27`, `052027`, `202705` →
 /// (`05`, `2027`).
 fn expiry(value: &str) -> Option<(String, String)> {
     let digits: String = value.chars().filter(char::is_ascii_digit).collect();

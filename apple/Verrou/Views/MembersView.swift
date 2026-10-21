@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Entrée « Membres » d'une organisation, sous ses collections dans la
-/// barre latérale « Coffres partagés ».
+/// "Members" entry of an organization, under its collections in the
+/// "Shared Vaults" sidebar.
 struct MembersSidebarRow: View {
     @Environment(AppModel.self) private var model
     let organization: OrganizationView
@@ -10,7 +10,7 @@ struct MembersSidebarRow: View {
         model.pane == .members && model.members.organizationID == organization.id
     }
 
-    /// Membres à confirmer : la liste ouverte, sinon le dernier décompte.
+    /// Members to confirm: the open list, otherwise the last count.
     private var pending: Int {
         active && model.members.loaded ? model.members.pendingConfirmation
                                        : model.organizationAdmin.toConfirm[organization.id] ?? 0
@@ -22,12 +22,12 @@ struct MembersSidebarRow: View {
         } label: {
             Label {
                 HStack {
-                    Text("Membres").lineLimit(1)
+                    Text("Members").lineLimit(1)
                     Spacer()
                     if pending > 0 {
                         Text("\(pending)")
                             .monospacedDigit().foregroundStyle(.orange).font(.callout)
-                            .help("Membres à confirmer")
+                            .help("Members to confirm")
                     }
                 }
             } icon: {
@@ -42,13 +42,13 @@ struct MembersSidebarRow: View {
         .buttonStyle(.plain)
         .padding(.leading, 14)
         .help(organization.canManageMembers
-              ? "Inviter, confirmer et gérer les membres de \(organization.name)"
-              : "Membres de \(organization.name)")
+              ? "Invite, confirm and manage the members of \(organization.name)"
+              : "Members of \(organization.name)")
     }
 }
 
-/// Volet « Membres », dans la colonne centrale : les membres d'une
-/// organisation, groupés par état. Le membre sélectionné s'affiche à droite.
+/// "Members" pane, in the middle column: the members of an organization,
+/// grouped by state. The selected member shows on the right.
 struct MembersListView: View {
     @Environment(AppModel.self) private var model
 
@@ -56,28 +56,28 @@ struct MembersListView: View {
         @Bindable var members = model.members
         let organization = model.membersOrganization
         VStack(spacing: 0) {
-            PaneHeader(title: "Membres · \(organization?.name ?? "")",
+            PaneHeader(title: String(localized: "Members · \(organization?.name ?? "")"),
                        caption: organization?.canManageMembers == true
-                           ? "Invitez une adresse : la personne crée son compte (Verrou ou coffre web), accepte, puis vous la confirmez en vérifiant son empreinte."
-                           : "Votre rôle permet de voir les membres, pas de les gérer.",
+                           ? String(localized: "Invite an address: the person creates their account (Verrou or web vault), accepts, then you confirm them by checking their fingerprint.")
+                           : String(localized: "Your role lets you see the members, not manage them."),
                        busy: members.busy, notice: members.notice, error: members.error) {
                 if organization?.canManageMembers == true {
-                    Button("Inviter", systemImage: "plus") { model.inviteMembers() }
+                    Button("Invite", systemImage: "plus") { model.inviteMembers() }
                         .buttonStyle(.borderless)
                         .font(.caption)
-                        .help("Inviter des personnes dans \(organization?.name ?? "l'organisation")")
+                        .help("Invite people to \(organization?.name ?? String(localized: "the organization"))")
                 }
             }
             Divider()
             List(selection: $members.selection) {
                 if members.members.isEmpty {
-                    Text(members.loaded ? "Aucun membre." : "Chargement…")
+                    Text(members.loaded ? "No members." : "Loading…")
                         .foregroundStyle(.secondary)
                 }
-                section("À confirmer", .accepted)
-                section("Invitations en attente", .invited)
-                section("Membres", .confirmed)
-                section("Révoqués", .revoked)
+                section("To confirm", .accepted)
+                section("Pending invitations", .invited)
+                section("Members", .confirmed)
+                section("Revoked members", .revoked)
             }
             .listStyle(.inset)
             .contextMenu(forSelectionType: String.self) { ids in
@@ -92,7 +92,7 @@ struct MembersListView: View {
     }
 
     @ViewBuilder
-    private func section(_ title: String, _ status: OrganizationMemberStatus) -> some View {
+    private func section(_ title: LocalizedStringKey, _ status: OrganizationMemberStatus) -> some View {
         let rows = model.members.members.filter { $0.status == status }
         if !rows.isEmpty {
             Section(title) {
@@ -120,7 +120,7 @@ private struct MemberRow: View {
             Spacer()
             if member.status == .accepted {
                 Circle().fill(.orange).frame(width: 7, height: 7)
-                    .help("À confirmer : vérifiez son empreinte")
+                    .help("To confirm: check their fingerprint")
             }
         }
         .padding(.vertical, 4)
@@ -129,12 +129,12 @@ private struct MemberRow: View {
     private var subtitle: String {
         var parts = [member.role.label]
         if member.name != nil { parts.insert(member.email, at: 0) }
-        if member.status == .invited, !member.hasAccount { parts.append("pas encore de compte") }
+        if member.status == .invited, !member.hasAccount { parts.append(String(localized: "no account yet")) }
         return parts.joined(separator: " · ")
     }
 }
 
-/// Actions possibles sur un membre selon son état (menu contextuel).
+/// Possible actions on a member depending on their state (context menu).
 private struct MemberActionsMenu: View {
     @Environment(AppModel.self) private var model
     let member: OrganizationMember
@@ -142,25 +142,25 @@ private struct MemberActionsMenu: View {
     var body: some View {
         switch member.status {
         case .accepted:
-            Button("Confirmer…") { Task { await model.prepareMemberConfirmation(member) } }
+            Button("Confirm…") { Task { await model.prepareMemberConfirmation(member) } }
         case .invited:
-            Button("Renvoyer l'invitation") { Task { await model.reinviteMember(member) } }
+            Button("Resend Invitation") { Task { await model.reinviteMember(member) } }
         case .revoked:
-            Button("Restaurer l'accès") { Task { await model.restoreMember(member) } }
+            Button("Restore Access") { Task { await model.restoreMember(member) } }
         case .confirmed:
             EmptyView()
         }
-        Button("Modifier le rôle et les collections…") { model.editMember(member) }
+        Button("Edit Role and Collections…") { model.editMember(member) }
         Divider()
         if member.status != .revoked {
-            Button("Révoquer l'accès…") { model.members.confirmRevoke = member }
+            Button("Revoke Access…") { model.members.confirmRevoke = member }
         }
-        Button("Retirer de l'organisation…", role: .destructive) { model.members.confirmRemove = member }
+        Button("Remove from Organization…", role: .destructive) { model.members.confirmRemove = member }
     }
 }
 
-/// Colonne de droite du volet « Membres » : le membre sélectionné, ses
-/// accès, et ce qu'on peut en faire selon son état.
+/// Right column of the "Members" pane: the selected member, their access,
+/// and what can be done with them depending on their state.
 struct MemberDetailView: View {
     @Environment(AppModel.self) private var model
     let member: OrganizationMember
@@ -185,31 +185,31 @@ struct MemberDetailView: View {
                 if canManage {
                     HStack(spacing: 10) {
                         primaryAction
-                        Button("Modifier…", systemImage: "pencil") { model.editMember(member) }
+                        Button("Edit…", systemImage: "pencil") { model.editMember(member) }
                         Spacer()
                         if member.status == .revoked {
-                            Button("Restaurer", systemImage: "arrow.uturn.backward") {
+                            Button("Restore", systemImage: "arrow.uturn.backward") {
                                 Task { await model.restoreMember(member) }
                             }
                         } else {
-                            Button("Révoquer…", systemImage: "hand.raised") { model.members.confirmRevoke = member }
-                                .help("Retirer son accès sans le supprimer (restaurable)")
+                            Button("Revoke…", systemImage: "hand.raised") { model.members.confirmRevoke = member }
+                                .help("Remove their access without deleting them (restorable)")
                         }
-                        Button("Retirer…", systemImage: "person.badge.minus", role: .destructive) {
+                        Button("Remove…", systemImage: "person.badge.minus", role: .destructive) {
                             model.members.confirmRemove = member
                         }
                     }
                     .disabled(model.members.busy)
                 }
 
-                SectionTitle("Accès")
+                SectionTitle(String(localized: "Access"))
                 FieldCard {
-                    line("Rôle", member.role.label)
+                    line(String(localized: "Role"), member.role.label)
                     Divider().padding(.leading, 14)
                     if member.accessAll {
-                        line("Collections", "Toutes")
+                        line(String(localized: "Collections"), String(localized: "All"))
                     } else if member.collections.isEmpty {
-                        line("Collections", "Aucune")
+                        line(String(localized: "Collections"), String(localized: "None"))
                     } else {
                         ForEach(Array(member.collections.enumerated()), id: \.element.collectionId) { index, access in
                             if index > 0 { Divider().padding(.leading, 14) }
@@ -221,13 +221,15 @@ struct MemberDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                SectionTitle("Compte")
+                SectionTitle(String(localized: "Account"))
                 FieldCard {
-                    line("E-mail", member.email)
+                    line(String(localized: "Email"), member.email)
                     Divider().padding(.leading, 14)
-                    line("Compte sur le serveur", member.hasAccount ? "Créé" : "Pas encore créé")
+                    line(String(localized: "Account on the server"),
+                         member.hasAccount ? String(localized: "Created") : String(localized: "Not created yet"))
                     Divider().padding(.leading, 14)
-                    line("Double authentification", member.twoFactorEnabled ? "Activée" : "Désactivée")
+                    line(String(localized: "Two-factor authentication"),
+                         member.twoFactorEnabled ? String(localized: "On") : String(localized: "Off"))
                 }
             }
             .padding(.horizontal, 28)
@@ -241,11 +243,11 @@ struct MemberDetailView: View {
     private var primaryAction: some View {
         switch member.status {
         case .accepted:
-            Button("Confirmer…") { Task { await model.prepareMemberConfirmation(member) } }
+            Button("Confirm…") { Task { await model.prepareMemberConfirmation(member) } }
                 .buttonStyle(.borderedProminent)
-                .help("Vérifier son empreinte, puis lui confier la clé de l'organisation")
+                .help("Check their fingerprint, then entrust them with the organization's key")
         case .invited:
-            Button("Renvoyer l'invitation") { Task { await model.reinviteMember(member) } }
+            Button("Resend Invitation") { Task { await model.reinviteMember(member) } }
         case .confirmed, .revoked:
             EmptyView()
         }
@@ -268,7 +270,7 @@ struct MemberDetailView: View {
                     Chip(text: member.status.label, symbol: "circle.fill", tint: member.status.tint)
                     if member.twoFactorEnabled {
                         Chip(text: "2FA", symbol: "lock.shield", tint: .secondary)
-                            .help("Double authentification activée")
+                            .help("Two-factor authentication on")
                     }
                 }
             }
@@ -277,23 +279,23 @@ struct MemberDetailView: View {
         .padding(.bottom, 4)
     }
 
-    private var statusText: String {
+    private var statusText: LocalizedStringKey {
         switch member.status {
         case .invited:
             member.hasAccount
-                ? "Invitation envoyée : en attente de son acceptation."
-                : "Invitation envoyée. La personne crée son compte avec le lien reçu par e-mail (dans Verrou : « Créer un compte » sur l'écran de connexion), puis l'accepte."
+                ? "Invitation sent: waiting for their acceptance."
+                : "Invitation sent. The person creates their account with the link received by email (in Verrou: “Create an Account” on the login screen), then accepts it."
         case .accepted:
-            "Invitation acceptée. Confirmez-la après avoir comparé l'empreinte de sa clé avec la phrase que la personne lit dans son compte : la clé de l'organisation sera chiffrée pour elle."
+            "Invitation accepted. Confirm it after comparing their key's fingerprint with the phrase the person reads in their account: the organization's key will be encrypted for them."
         case .confirmed:
-            "Membre confirmé : il accède aux collections ci-dessous."
+            "Member confirmed: they access the collections below."
         case .revoked:
-            "Accès révoqué : il ne voit plus rien de l'organisation. Restaurer lui rend son accès d'avant."
+            "Access revoked: they no longer see anything of the organization. Restore gives them back their previous access."
         }
     }
 
     private func collectionName(_ id: String) -> String {
-        organization?.collections.first { $0.id == id }?.name ?? "Collection"
+        organization?.collections.first { $0.id == id }?.name ?? String(localized: "Collection")
     }
 
     private func line(_ label: String, _ value: String) -> some View {
@@ -308,8 +310,8 @@ struct MemberDetailView: View {
     }
 }
 
-/// Feuilles et confirmations du volet « Membres », posées sur la fenêtre
-/// principale.
+/// Sheets and confirmations of the "Members" pane, attached to the main
+/// window.
 struct MembersPresentations: ViewModifier {
     @Environment(AppModel.self) private var model
 
@@ -319,36 +321,35 @@ struct MembersPresentations: ViewModifier {
             .sheet(item: $members.draft) { draft in
                 MemberEditorView(draft: draft).environment(model)
             }
-            .alert("Vérifier l'empreinte de \(members.confirmation?.member.displayName ?? "")",
+            .alert("Check the fingerprint of \(members.confirmation?.member.displayName ?? "")",
                    isPresented: Binding(get: { members.confirmation != nil },
                                         set: { if !$0 { members.confirmation = nil } }),
                    presenting: members.confirmation) { confirmation in
-                Button("Confirmer") { Task { await model.confirmMember(confirmation) } }
-                Button("Annuler", role: .cancel) { members.confirmation = nil }
+                Button("Confirm") { Task { await model.confirmMember(confirmation) } }
+                Button("Cancel", role: .cancel) { members.confirmation = nil }
             } message: { confirmation in
-                Text("« \(confirmation.fingerprint) »\n\nDemandez à \(confirmation.member.displayName) la phrase d'empreinte de son compte (Verrou : Réglages → Compte ; coffre web : Paramètres → Mon compte). Confirmez seulement si elle est identique : la clé de l'organisation sera chiffrée pour cette personne.")
+                Text("“\(confirmation.fingerprint)”\n\nAsk \(confirmation.member.displayName) for their account's fingerprint phrase (Verrou: Settings → Account; web vault: Settings → My account). Only confirm if it is identical: the organization's key will be encrypted for this person.")
             }
-            .confirmationDialog("Révoquer l'accès de \(members.confirmRevoke?.displayName ?? "") ?",
+            .confirmationDialog("Revoke the access of \(members.confirmRevoke?.displayName ?? "")?",
                                 isPresented: Binding(get: { members.confirmRevoke != nil },
                                                      set: { if !$0 { members.confirmRevoke = nil } }),
                                 presenting: members.confirmRevoke) { member in
-                Button("Révoquer", role: .destructive) { Task { await model.revokeMember(member) } }
+                Button("Revoke", role: .destructive) { Task { await model.revokeMember(member) } }
             } message: { _ in
-                Text("Il ne verra plus les éléments de l'organisation. Vous pourrez restaurer son accès.")
+                Text("They will no longer see the organization's items. You can restore their access.")
             }
-            .confirmationDialog("Retirer \(members.confirmRemove?.displayName ?? "") de l'organisation ?",
+            .confirmationDialog("Remove \(members.confirmRemove?.displayName ?? "") from the organization?",
                                 isPresented: Binding(get: { members.confirmRemove != nil },
                                                      set: { if !$0 { members.confirmRemove = nil } }),
                                 presenting: members.confirmRemove) { member in
-                Button("Retirer", role: .destructive) { Task { await model.removeMember(member) } }
+                Button("Remove", role: .destructive) { Task { await model.removeMember(member) } }
             } message: { _ in
-                Text("Son compte reste sur le serveur ; pour le faire revenir, il faudra l'inviter de nouveau.")
+                Text("Their account stays on the server; to bring them back, you will need to invite them again.")
             }
     }
 }
 
-/// Invitation de nouvelles adresses, ou modification du rôle et des
-/// collections d'un membre.
+/// Invitation of new addresses, or edit of a member's role and collections.
 struct MemberEditorView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: MemberDraft
@@ -359,8 +360,7 @@ struct MemberEditorView: View {
 
     private var organization: OrganizationView? { model.membersOrganization }
 
-    /// Rôles proposés : au-dessus d'« utilisateur », seulement par un
-    /// propriétaire (règle de Vaultwarden).
+    /// Roles offered: above "user", only by an owner (Vaultwarden's rule).
     private var roles: [OrganizationMemberRole] {
         organization?.isOwner == true ? [.user, .manager, .admin, .owner] : [.user]
     }
@@ -372,12 +372,12 @@ struct MemberEditorView: View {
                     .font(.system(size: 22))
                     .foregroundStyle(.indigo)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(draft.isNew ? "Inviter dans \(organization?.name ?? "l'organisation")"
-                                     : "Accès de \(draft.member?.displayName ?? "")")
+                    Text(draft.isNew ? "Invite to \(organization?.name ?? String(localized: "the organization"))"
+                                     : "Access of \(draft.member?.displayName ?? "")")
                         .font(.headline)
                         .layoutMark("sheet-title")
-                    Text(draft.isNew ? "Le serveur envoie un lien d'invitation à chaque adresse."
-                                     : "Le rôle et les collections remplacent les précédents.")
+                    Text(draft.isNew ? "The server sends an invitation link to each address."
+                                     : "The role and collections replace the previous ones.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -387,13 +387,13 @@ struct MemberEditorView: View {
             Form {
                 Section {
                     if draft.isNew {
-                        TextField("Adresses e-mail", text: $draft.emails,
-                                  prompt: Text("lea@exemple.fr, tom@exemple.fr"), axis: .vertical)
+                        TextField("Email addresses", text: $draft.emails,
+                                  prompt: Text("lea@example.com, tom@example.com"), axis: .vertical)
                             .lineLimit(1...4)
                     } else {
-                        LabeledContent("E-mail", value: draft.emails)
+                        LabeledContent("Email", value: draft.emails)
                     }
-                    Picker("Rôle", selection: $draft.role) {
+                    Picker("Role", selection: $draft.role) {
                         ForEach(roles, id: \.self) { role in
                             Text(role.label).tag(role)
                         }
@@ -403,26 +403,26 @@ struct MemberEditorView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(draft.role.explanation)
                         if organization?.isOwner != true {
-                            Text("Seul un propriétaire peut donner les rôles de gestionnaire, d'administrateur ou de propriétaire.")
+                            Text("Only an owner can give the manager, administrator or owner roles.")
                         }
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
                 Section("Collections") {
                     if draft.seesAll {
-                        Text("Toutes les collections, avec tous les droits.")
+                        Text("All collections, with all rights.")
                             .foregroundStyle(.secondary)
                     } else if let collections = organization?.collections, !collections.isEmpty {
                         ForEach(collections, id: \.id) { collection in
                             collectionRow(collection)
                         }
                     } else {
-                        Text("Aucune collection dans cette organisation.").foregroundStyle(.secondary)
+                        Text("No collections in this organization.").foregroundStyle(.secondary)
                     }
                 }
                 if draft.isNew {
                     Section {
-                        Text("Sans compte sur le serveur, la personne le crée avec le lien reçu (dans Verrou : « Créer un compte » sur l'écran de connexion, en collant le lien). Une fois l'invitation acceptée, vous la confirmerez en vérifiant l'empreinte de sa clé.")
+                        Text("Without an account on the server, the person creates it with the link received (in Verrou: “Create an Account” on the login screen, pasting the link). Once the invitation is accepted, you will confirm it by checking their key's fingerprint.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -437,9 +437,9 @@ struct MemberEditorView: View {
             HStack {
                 Spacer()
                 if model.members.busy { ProgressView().controlSize(.small) }
-                Button("Annuler") { model.members.draft = nil }
+                Button("Cancel") { model.members.draft = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(draft.isNew ? "Inviter" : "Enregistrer") { Task { await model.saveMemberDraft(draft) } }
+                Button(draft.isNew ? "Invite" : "Save") { Task { await model.saveMemberDraft(draft) } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!draft.emails.contains("@") || model.members.busy)
                     .layoutMark("sheet-primary")
@@ -463,7 +463,7 @@ struct MemberEditorView: View {
             Toggle(collection.name, isOn: granted)
                 .toggleStyle(.checkbox)
             Spacer()
-            Picker("Droits", selection: permission) {
+            Picker("Rights", selection: permission) {
                 ForEach(CollectionPermission.allCases) { level in
                     Text(level.label).tag(level)
                 }
@@ -475,27 +475,27 @@ struct MemberEditorView: View {
     }
 }
 
-/// Réglages → Compte : la phrase d'empreinte de ma clé publique, à lire à
-/// l'administrateur qui me confirme dans une organisation (ou à un contact
-/// d'urgence).
+/// Settings → Account: the fingerprint phrase of my public key, to read to
+/// the administrator who confirms me in an organization (or to an emergency
+/// contact).
 struct OwnFingerprintRow: View {
     @Environment(AppModel.self) private var model
     @State private var phrase: String?
     @State private var failed = false
 
     var body: some View {
-        LabeledContent("Phrase d'empreinte") {
+        LabeledContent("Fingerprint phrase") {
             if let phrase {
                 FingerprintText(phrase: phrase, font: .body.monospaced(), alignment: .trailing)
             } else if model.lockState != .unlocked {
-                Text("coffre verrouillé").foregroundStyle(.secondary)
+                Text("vault locked").foregroundStyle(.secondary)
             } else if failed {
-                Text("indisponible").foregroundStyle(.secondary)
+                Text("unavailable").foregroundStyle(.secondary)
             } else {
                 ProgressView().controlSize(.small)
             }
         }
-        .help("À comparer avec celle que voit la personne qui vous confirme (organisation ou accès d'urgence)")
+        .help("To compare with the one seen by the person who confirms you (organization or emergency access)")
         .task(id: model.lockState) {
             phrase = nil
             failed = false

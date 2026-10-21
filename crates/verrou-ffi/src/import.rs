@@ -1,10 +1,10 @@
-//! Import depuis un autre gestionnaire (Apple, 1Password, Proton Pass) et
-//! nettoyage des doublons du coffre.
+//! Import from another password manager (Apple, 1Password, Proton Pass) and
+//! cleanup of the vault's duplicates.
 //!
-//! Même principe que le reste de l'interface : le fichier est lu ici, ses
-//! secrets restent dans Rust jusqu'à l'import (ou l'abandon, ou le
-//! verrouillage). Swift ne reçoit que titres, identifiants et sites, et le
-//! verdict de la comparaison des mots de passe.
+//! Same principle as the rest of the interface: the file is read here, its
+//! secrets stay in Rust until the import (or it is abandoned, or the vault
+//! is locked). Swift only receives titles, usernames and sites, and the
+//! verdict of the password comparison.
 
 use std::io::Read;
 use std::sync::PoisonError;
@@ -21,7 +21,7 @@ use zeroize::Zeroizing;
 use crate::{ItemCategory, ItemSummary, VaultSession, VerrouError, summary};
 use verrou_core::Item;
 
-/// Un export lu, en attente de confirmation.
+/// An export that was read, awaiting confirmation.
 pub(crate) struct PendingImport {
     parsed: Parsed,
     classes: Vec<Classification>,
@@ -60,40 +60,40 @@ impl From<Format> for ImportFormat {
     }
 }
 
-/// Libellé d'un format, pour le choisir à la main.
+/// Label of a format, to pick it by hand.
 #[uniffi::export]
 pub fn import_format_label(format: ImportFormat) -> String {
     Format::from(format).label().to_owned()
 }
 
-/// Un élément importé par rapport au coffre.
+/// An imported item compared to the vault.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ImportStatus {
     New,
-    /// Même site, identifiant et mot de passe qu'un élément du coffre.
+    /// Same site, username and password as a vault item.
     AlreadyPresent,
-    /// Le même élément figure plus haut dans le fichier.
+    /// The same item appears earlier in the file.
     RepeatedInFile,
-    /// Déjà dans le coffre, mais l'import apporte un code à usage unique.
+    /// Already in the vault, but the import brings a one-time code.
     AddsCode,
-    /// Même site et identifiant qu'un élément du coffre, autre mot de passe.
+    /// Same site and username as a vault item, different password.
     NewPassword,
-    /// Même site et identifiant qu'un élément plus haut dans le fichier,
-    /// autre mot de passe.
+    /// Same site and username as an item earlier in the file,
+    /// different password.
     ConflictInFile,
-    /// Ressemble à un élément du coffre, même mot de passe (un identifiant
-    /// manquant, un titre sans site) : à compléter plutôt qu'à créer.
+    /// Looks like a vault item, same password (a missing username,
+    /// a title without a site): to complete rather than create.
     Similar,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ImportChoice {
-    /// Ne pas importer (garder l'existant).
+    /// Don't import (keep the existing one).
     Skip,
-    /// Créer l'élément (à côté de l'existant s'il y en a un).
+    /// Create the item (next to the existing one if there is one).
     Create,
-    /// Compléter l'élément du coffre : nouveau mot de passe (l'ancien
-    /// rejoint son historique), code à usage unique.
+    /// Complete the vault item: new password (the old one
+    /// joins its history), one-time code.
     Update,
 }
 
@@ -107,28 +107,28 @@ impl From<Decision> for ImportChoice {
     }
 }
 
-/// Une ligne de la revue d'import. Aucun secret.
+/// One row of the import review. No secret.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ImportEntry {
     pub category: ItemCategory,
     pub title: String,
     pub username: String,
     pub host: Option<String>,
-    /// Dossier (ou coffre) dans l'application d'origine.
+    /// Folder (or vault) in the source application.
     pub folder: Option<String>,
     pub has_totp: bool,
     pub status: ImportStatus,
-    /// Titre de l'élément déjà connu (dans le coffre, ou plus haut dans le
-    /// fichier).
+    /// Title of the already known item (in the vault, or earlier in the
+    /// file).
     pub existing_title: Option<String>,
-    /// Pourquoi il lui ressemble (« même site (maif.fr), même identifiant,
-    /// autre mot de passe ») ; vide pour un nouvel élément.
+    /// Why it looks like it ("same site (maif.fr), same username,
+    /// different password"); empty for a new item.
     pub reason: String,
-    /// Choix proposé.
+    /// Suggested choice.
     pub choice: ImportChoice,
 }
 
-/// Un élément laissé de côté (ou non écrit), et pourquoi.
+/// An item left aside (or not written), and why.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct ImportSkipped {
     pub title: String,
@@ -139,22 +139,22 @@ pub struct ImportSkipped {
 pub struct ImportReview {
     pub format: ImportFormat,
     pub format_label: String,
-    /// Application d'origine (« 1Password »…).
+    /// Source application ("1Password"...).
     pub source: String,
     pub entries: Vec<ImportEntry>,
     pub skipped: Vec<ImportSkipped>,
-    /// L'export range ses éléments dans des dossiers (ou coffres).
+    /// The export stores its items in folders (or vaults).
     pub has_folders: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ImportDestination {
     NoFolder,
-    /// Ce dossier, créé s'il n'existe pas.
+    /// This folder, created if it doesn't exist.
     Folder {
         name: String,
     },
-    /// Les dossiers (ou coffres) de l'application d'origine.
+    /// The folders (or vaults) of the source application.
     OriginalFolders,
 }
 
@@ -165,14 +165,14 @@ pub struct ImportOutcome {
     pub failures: Vec<ImportSkipped>,
 }
 
-/// Degré de certitude d'un doublon.
+/// Degree of certainty of a duplicate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, uniffi::Enum)]
 pub enum DuplicateConfidence {
-    /// Même site, même identifiant, même mot de passe : coché d'office.
+    /// Same site, same username, same password: checked by default.
     Certain,
-    /// Suggéré, pas coché.
+    /// Suggested, not checked.
     Probable,
-    /// À vérifier : jamais coché.
+    /// To check: never checked.
     Review,
 }
 
@@ -186,55 +186,55 @@ impl From<Confidence> for DuplicateConfidence {
     }
 }
 
-/// Un élément d'un groupe de doublons. Aucun secret.
+/// An item of a duplicate group. No secret.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct DuplicateMemberView {
     pub item: ItemSummary,
-    /// Ressemblance avec l'élément gardé ; `None` pour l'élément gardé.
+    /// Resemblance to the kept item; `None` for the kept item.
     pub confidence: Option<DuplicateConfidence>,
-    /// Pourquoi, en clair ; vide pour l'élément gardé.
+    /// Why, in plain words; empty for the kept item.
     pub reason: String,
-    /// Coché d'office pour la corbeille (doublon certain).
+    /// Checked by default for the trash (certain duplicate).
     pub preselected: bool,
 }
 
-/// Des éléments du coffre qui désignent le même compte. Le premier est celui
-/// qu'il est suggéré de garder.
+/// Vault items that designate the same account. The first one is the one
+/// it is suggested to keep.
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct DuplicateGroupView {
-    /// Empreinte de l'ensemble des éléments : pour ignorer le groupe.
+    /// Fingerprint of the set of items: to ignore the group.
     pub key: String,
     pub label: String,
     pub username: String,
     pub confidence: DuplicateConfidence,
-    /// La raison de ce degré (« même site (maif.fr), même identifiant, même
-    /// mot de passe »).
+    /// The reason for this degree ("same site (maif.fr), same username, same
+    /// password").
     pub reason: String,
-    /// Tous ont le même mot de passe : supprimer les autres ne perd rien.
+    /// All have the same password: deleting the others loses nothing.
     pub same_password: bool,
-    /// Des identifiants : « Fusionner » est possible.
+    /// Logins: "Merge" is possible.
     pub mergeable: bool,
     pub members: Vec<DuplicateMemberView>,
 }
 
-/// Bilan d'une fusion.
+/// Result of a merge.
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct MergeReport {
-    /// Sites ajoutés à l'élément gardé.
+    /// Sites added to the kept item.
     pub sites: u32,
     pub username: bool,
     pub totp: bool,
     pub notes: u32,
     pub fields: u32,
-    /// Mots de passe ajoutés à son historique.
+    /// Passwords added to its history.
     pub history: u32,
-    /// Le mot de passe actuel vient d'un autre élément, plus récent.
+    /// The current password comes from another, more recent item.
     pub newer_password: bool,
-    /// Éléments mis à la corbeille.
+    /// Items moved to the trash.
     pub trashed: u32,
 }
 
-/// La vue d'un groupe, avec le résumé de chaque élément.
+/// The view of a group, with the summary of each item.
 fn group_view(
     group: DuplicateGroup,
     describe: impl Fn(&str) -> Option<ItemSummary>,
@@ -263,8 +263,8 @@ fn group_view(
     })
 }
 
-/// Doublons fictifs (imports d'Apple, de 1Password et de Proton Pass), pour
-/// la revue visuelle de la feuille des doublons. Hors de tout coffre.
+/// Mock duplicates (imports from Apple, 1Password and Proton Pass), for
+/// the visual review of the duplicates sheet. Outside any vault.
 #[uniffi::export]
 pub fn demo_duplicates() -> Vec<DuplicateGroupView> {
     let items = verrou_core::mock::duplicate_items();
@@ -290,14 +290,13 @@ fn invalid(message: impl Into<String>) -> VerrouError {
     }
 }
 
-/// Le fichier d'export, lu une fois, effacé de la mémoire après usage.
+/// The export file, read once, wiped from memory after use.
 fn read_export(path: &str) -> Result<Zeroizing<Vec<u8>>, VerrouError> {
-    let file =
-        std::fs::File::open(path).map_err(|e| invalid(format!("fichier illisible ({e})")))?;
+    let file = std::fs::File::open(path).map_err(|e| invalid(format!("unreadable file ({e})")))?;
     let mut bytes = Zeroizing::new(Vec::new());
     file.take(import::MAX_ARCHIVE_SIZE + 1)
         .read_to_end(&mut bytes)
-        .map_err(|e| invalid(format!("fichier illisible ({e})")))?;
+        .map_err(|e| invalid(format!("unreadable file ({e})")))?;
     if bytes.len() as u64 > import::MAX_ARCHIVE_SIZE {
         return Err(invalid(import::ImportError::TooLarge.to_string()));
     }
@@ -373,7 +372,7 @@ impl VaultSession {
         })
     }
 
-    /// Le plan d'import : les choix de l'utilisateur, ligne par ligne.
+    /// The import plan: the user's choices, row by row.
     fn plan(
         &self,
         choices: &[ImportChoice],
@@ -383,11 +382,9 @@ impl VaultSession {
             .pending_import
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        let pending = guard
-            .as_ref()
-            .ok_or_else(|| invalid("aucun import en attente"))?;
+        let pending = guard.as_ref().ok_or_else(|| invalid("no pending import"))?;
         if choices.len() != pending.parsed.items.len() {
-            return Err(invalid("les choix ne correspondent plus au fichier"));
+            return Err(invalid("the choices no longer match the file"));
         }
         let mut plan = ImportPlan {
             create: Vec::new(),
@@ -413,7 +410,7 @@ impl VaultSession {
                     | Status::NewPassword(Existing::Vault(id))
                     | Status::Similar(Existing::Vault(id)),
                 ) => plan.update.push((id.clone(), item.clone())),
-                // Rien à compléter dans le coffre : ignoré.
+                // Nothing to complete in the vault: ignored.
                 (ImportChoice::Update | ImportChoice::Skip, _) => {}
             }
         }
@@ -423,15 +420,15 @@ impl VaultSession {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Lit un export choisi par l'utilisateur (`format` absent : reconnu
-    /// d'après le contenu) et le compare au coffre. Rien n'est écrit : la
-    /// revue attend `commit_import` ou `cancel_import`.
+    /// Reads an export chosen by the user (`format` absent: detected
+    /// from the content) and compares it to the vault. Nothing is written: the
+    /// review waits for `commit_import` or `cancel_import`.
     pub async fn prepare_import(
         &self,
         path: String,
         format: Option<ImportFormat>,
     ) -> Result<ImportReview, VerrouError> {
-        // Lecture et décompression : hors des fils de l'exécuteur.
+        // Reading and decompression: off the executor threads.
         let parsed = tokio::task::spawn_blocking(move || {
             let bytes = read_export(&path)?;
             import::parse(&bytes, format.map(Into::into)).map_err(|e| invalid(e.to_string()))
@@ -448,8 +445,8 @@ impl VaultSession {
         Ok(review)
     }
 
-    /// Importe selon les choix (un par ligne de la revue), en une requête,
-    /// puis resynchronise. Les positions de `summaries()` changent.
+    /// Imports according to the choices (one per review row), in one request,
+    /// then resyncs. The positions in `summaries()` change.
     pub async fn commit_import(
         &self,
         choices: Vec<ImportChoice>,
@@ -457,7 +454,7 @@ impl VaultSession {
     ) -> Result<ImportOutcome, VerrouError> {
         let plan = self.plan(&choices, destination)?;
         let Some(connection) = self.current_connection() else {
-            return Err(invalid("coffre fictif : lecture seule"));
+            return Err(invalid("mock vault: read-only"));
         };
         let report = connection.lock().await.import(plan).await?;
         self.cancel_import();
@@ -474,9 +471,9 @@ impl VaultSession {
         Ok(outcome)
     }
 
-    /// Les groupes de doublons du coffre, les plus certains d'abord. Les
-    /// passkeys et les pièces jointes (comptées dans le cache, sans réseau)
-    /// décident de l'élément à garder.
+    /// The vault's duplicate groups, most certain first. Passkeys and
+    /// attachments (counted in the cache, without network)
+    /// decide which item to keep.
     pub async fn duplicates(&self) -> Result<Vec<DuplicateGroupView>, VerrouError> {
         let attachments = match self.current_connection() {
             Some(connection) => connection.lock().await.attachment_counts()?,
@@ -503,16 +500,16 @@ impl VaultSession {
         })
     }
 
-    /// Fusionne `others` dans `keep` (sites, code, notes, champs, anciens
-    /// mots de passe), puis les met à la corbeille ; resynchronise. Hors
-    /// ligne, tout attend dans la file.
+    /// Merges `others` into `keep` (sites, code, notes, fields, old
+    /// passwords), then moves them to the trash; resyncs. Offline,
+    /// everything waits in the queue.
     pub async fn merge_duplicates(
         &self,
         keep: String,
         others: Vec<String>,
     ) -> Result<MergeReport, VerrouError> {
         let Some(connection) = self.current_connection() else {
-            return Err(invalid("coffre fictif : lecture seule"));
+            return Err(invalid("mock vault: read-only"));
         };
         let outcome = connection
             .lock()
@@ -535,8 +532,8 @@ impl VaultSession {
         Ok(report)
     }
 
-    /// Met ces éléments à la corbeille du serveur en une requête
-    /// (restaurables depuis le coffre web), puis resynchronise.
+    /// Moves these items to the server's trash in one request
+    /// (restorable from the web vault), then resyncs.
     pub async fn trash_items(&self, ids: Vec<String>) -> Result<(), VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.trash_many(&ids).await?;
@@ -546,7 +543,7 @@ impl VaultSession {
 
 #[uniffi::export]
 impl VaultSession {
-    /// Oublie l'export en attente (et ses secrets).
+    /// Forgets the pending export (and its secrets).
     pub fn cancel_import(&self) {
         self.pending_import
             .lock()
@@ -595,7 +592,7 @@ mod tests {
         assert!(!debug.contains("secret-tres-long-1234"));
         assert!(!debug.contains(&password));
 
-        // Coffre fictif : rien ne s'écrit, et l'import reste en attente.
+        // Mock vault: nothing is written, and the import stays pending.
         let choices = review.entries.iter().map(|e| e.choice).collect();
         assert!(matches!(
             tokio::runtime::Runtime::new()
@@ -610,8 +607,8 @@ mod tests {
 
     #[test]
     fn self_hosted_services_are_not_duplicates() {
-        // Nextcloud, Vaultwarden et Jellyfin du coffre fictif : même domaine,
-        // même identifiant, mais trois services.
+        // Nextcloud, Vaultwarden and Jellyfin in the mock vault: same domain,
+        // same username, but three services.
         let groups = tokio::runtime::Runtime::new()
             .unwrap()
             .block_on(session().duplicates())

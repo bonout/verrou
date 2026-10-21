@@ -1,28 +1,27 @@
-//! Remplissage dans les applications du Mac (⌘\).
+//! Filling in Mac applications (⌘\).
 //!
-//! Un identifiant se relie à une application par une adresse
-//! `macapp://<identifiant de paquet>` rangée parmi ses sites : elle se
-//! synchronise avec le reste de l'élément, comme les `androidapp://` et
-//! `iosapp://` des apps Bitwarden. Ces adresses ne désignent jamais un site
-//! web : `matching::host_of` les ignore.
+//! A login is linked to an application by a `macapp://<bundle identifier>`
+//! address stored among its sites: it syncs with the rest of the item, like
+//! the `androidapp://` and `iosapp://` of the Bitwarden apps. These addresses
+//! never designate a website: `matching::host_of` ignores them.
 //!
-//! Le remplissage lui-même est une suite de frappes (identifiant, Tab, mot
-//! de passe, Retour en option) que l'app joue au clavier ; elle se calcule
-//! ici pour être testée.
+//! The fill itself is a sequence of keystrokes (username, Tab, password,
+//! optional Return) that the app plays on the keyboard; it is computed here
+//! so it can be tested.
 
 use crate::model::{FieldKind, Item, ItemKind};
 use crate::secret::SecretString;
 
-/// Schéma des adresses d'application macOS.
+/// Scheme of macOS application addresses.
 pub const MAC_APP_SCHEME: &str = "macapp";
 
-/// Schémas d'application connus (Bitwarden et Verrou) : jamais un site web.
+/// Known application schemes (Bitwarden and Verrou): never a website.
 const APP_SCHEMES: [&str; 3] = [MAC_APP_SCHEME, "iosapp", "androidapp"];
 
-/// Longueur maximale d'un identifiant de paquet (`CFBundleIdentifier`).
+/// Maximum length of a bundle identifier (`CFBundleIdentifier`).
 const MAX_BUNDLE_ID: usize = 255;
 
-/// Schéma d'une adresse (`macapp` dans `macapp://…`), en minuscules.
+/// Scheme of an address (`macapp` in `macapp://…`), lowercased.
 fn scheme(uri: &str) -> Option<String> {
     let (scheme, _) = uri.trim().split_once("://")?;
     let valid = !scheme.is_empty()
@@ -32,13 +31,13 @@ fn scheme(uri: &str) -> Option<String> {
     valid.then(|| scheme.to_ascii_lowercase())
 }
 
-/// L'adresse désigne une application (macOS, iOS ou Android), pas un site.
+/// The address designates an application (macOS, iOS or Android), not a site.
 pub fn is_app_uri(uri: &str) -> bool {
     scheme(uri).is_some_and(|s| APP_SCHEMES.contains(&s.as_str()))
 }
 
-/// Identifiant de paquet valide : lettres ASCII, chiffres, `.` et `-`
-/// (règle d'Apple pour `CFBundleIdentifier`), sans point au bord ni vide.
+/// Valid bundle identifier: ASCII letters, digits, `.` and `-`
+/// (Apple's rule for `CFBundleIdentifier`), no dot at the edges, not empty.
 fn valid_bundle_id(bundle_id: &str) -> bool {
     !bundle_id.is_empty()
         && bundle_id.len() <= MAX_BUNDLE_ID
@@ -50,16 +49,16 @@ fn valid_bundle_id(bundle_id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
 }
 
-/// `com.apple.Terminal` → `macapp://com.apple.Terminal`. `None` pour un
-/// identifiant de paquet invalide.
+/// `com.apple.Terminal` → `macapp://com.apple.Terminal`. `None` for an
+/// invalid bundle identifier.
 pub fn mac_app_uri(bundle_id: &str) -> Option<String> {
     let bundle_id = bundle_id.trim();
     valid_bundle_id(bundle_id).then(|| format!("{MAC_APP_SCHEME}://{bundle_id}"))
 }
 
-/// `macapp://com.apple.Terminal` → `com.apple.Terminal` (casse d'origine).
-/// Une barre finale est tolérée ; tout autre chemin, une requête ou un
-/// identifiant invalide rendent `None`.
+/// `macapp://com.apple.Terminal` → `com.apple.Terminal` (original case).
+/// A trailing slash is tolerated; any other path, a query or an invalid
+/// identifier return `None`.
 pub fn mac_app_bundle_id(uri: &str) -> Option<&str> {
     let uri = uri.trim();
     let (scheme_part, rest) = uri.split_once("://")?;
@@ -70,8 +69,8 @@ pub fn mac_app_bundle_id(uri: &str) -> Option<&str> {
     valid_bundle_id(bundle_id).then_some(bundle_id)
 }
 
-/// L'élément est relié à cette application. Les identifiants de paquet se
-/// comparent sans tenir compte de la casse, comme le fait macOS.
+/// The item is linked to this application. Bundle identifiers are
+/// compared case-insensitively, as macOS does.
 pub fn matches_app(item_urls: &[String], bundle_id: &str) -> bool {
     let bundle_id = bundle_id.trim();
     !bundle_id.is_empty()
@@ -81,8 +80,8 @@ pub fn matches_app(item_urls: &[String], bundle_id: &str) -> bool {
             .any(|id| id.eq_ignore_ascii_case(bundle_id))
 }
 
-/// Une frappe du remplissage. Le texte se tape en caractères Unicode, pas en
-/// codes de touches : la disposition du clavier n'y change rien.
+/// One keystroke of the fill. Text is typed as Unicode characters, not as
+/// key codes: the keyboard layout makes no difference.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Keystroke {
     Text(SecretString),
@@ -90,10 +89,10 @@ pub enum Keystroke {
     Return,
 }
 
-/// Frappes qui remplissent un identifiant : l'identifiant, Tab, le mot de
-/// passe, puis Retour si `submit`. Sans identifiant, seulement le mot de
-/// passe (le curseur est déjà dans son champ) ; sans mot de passe, seulement
-/// l'identifiant. Rien à taper : aucune frappe, pas même Retour.
+/// Keystrokes that fill a login: the username, Tab, the password, then
+/// Return if `submit`. Without a username, only the password (the cursor is
+/// already in its field); without a password, only the username. Nothing to
+/// type: no keystroke, not even Return.
 pub fn keystrokes(username: Option<&str>, password: Option<&str>, submit: bool) -> Vec<Keystroke> {
     let username = username.filter(|u| !u.is_empty());
     let password = password.filter(|p| !p.is_empty());
@@ -113,8 +112,8 @@ pub fn keystrokes(username: Option<&str>, password: Option<&str>, submit: bool) 
     keys
 }
 
-/// Frappes d'un élément : seulement un identifiant (le reste n'a pas de
-/// sens dans un champ d'application).
+/// Keystrokes for an item: only a login (the rest makes no sense in an
+/// application field).
 pub fn item_keystrokes(item: &Item, submit: bool) -> Option<Vec<Keystroke>> {
     if item.kind != ItemKind::Login {
         return None;
@@ -188,7 +187,7 @@ mod tests {
         assert!(!matches_app(&item, "com.tinyspeck"));
         assert!(!matches_app(&item, "com.tinyspeck.slackmacgap.helper"));
         assert!(!matches_app(&item, ""));
-        // Un site ou une app d'une autre plateforme ne relie pas une app du Mac.
+        // A site or an app from another platform does not link a Mac app.
         assert!(!matches_app(&urls(&["https://slack.com"]), "slack.com"));
         assert!(!matches_app(
             &urls(&["iosapp://com.tinyspeck.slackmacgap"]),
@@ -228,7 +227,7 @@ mod tests {
 
     #[test]
     fn unicode_text_is_kept_whole() {
-        // Le texte n'est pas traduit en touches : accents et emoji passent tels quels.
+        // Text is not translated into keys: accents and emoji pass through as is.
         let keys = keystrokes(Some("élodie"), Some("ñ€🔒ß"), false);
         assert_eq!(keys[2], text("ñ€🔒ß"));
     }

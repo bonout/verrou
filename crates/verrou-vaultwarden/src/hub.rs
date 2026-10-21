@@ -1,26 +1,26 @@
-//! Mises à jour en direct : le canal de notifications de Vaultwarden
-//! (`/notifications/hub`), celui des apps Bitwarden.
+//! Live updates: Vaultwarden's notification channel
+//! (`/notifications/hub`), the one the Bitwarden apps use.
 //!
-//! C'est du `SignalR` sur `WebSocket` : le client s'annonce
-//! (`{"protocol":"messagepack","version":1}` suivi du séparateur 0x1E), le
-//! serveur répond `{}` puis pousse des messages binaires, chacun précédé de
-//! sa longueur (entier variable, 7 bits par octet) et codé en
-//! `MessagePack` : `[1, {}, nil, "ReceiveMessage", [{ContextId, Type,
-//! Payload}]]`. `Type` est le genre de changement (élément créé, clés des
-//! organisations, réglages, déconnexion…), `ContextId` l'appareil qui l'a
-//! fait. Aucun contenu du coffre ne passe par là : le client resynchronise.
+//! It is `SignalR` over `WebSocket`: the client announces itself
+//! (`{"protocol":"messagepack","version":1}` followed by the 0x1E
+//! separator), the server answers `{}` then pushes binary messages, each
+//! preceded by its length (varint, 7 bits per byte) and encoded in
+//! `MessagePack`: `[1, {}, nil, "ReceiveMessage", [{ContextId, Type,
+//! Payload}]]`. `Type` is the kind of change (item created, organization
+//! keys, settings, logout…), `ContextId` the device that made it. No vault
+//! content goes through it: the client resyncs.
 //!
-//! Le jeton d'accès n'est vérifié qu'à l'ouverture (il expire ensuite
-//! sans fermer le canal). Le serveur envoie un ping toutes les 15 s : sans
-//! nouvelles pendant `SILENCE`, le canal est tenu pour mort.
+//! The access token is only checked at opening (it then expires without
+//! closing the channel). The server sends a ping every 15 s: without news
+//! for `SILENCE`, the channel is considered dead.
 //!
-//! Ce que Vaultwarden 1.37.4 pousse (src/api/notifications.rs) : éléments,
-//! dossiers, envois, `SyncVault`, `SyncOrgKeys` (adhésion confirmée,
-//! retirée), `SyncSettings`, `LogOut`, demandes de connexion. Rien quand
-//! un membre accepte une invitation, ni pour l'accès d'urgence : ceux-là
-//! restent à la synchronisation périodique. Le relais de notifications
-//! poussées vers iOS (`PUSH_ENABLED`) ne sert qu'aux apps officielles de
-//! Bitwarden : Verrou ne l'utilise pas.
+//! What Vaultwarden 1.37.4 pushes (src/api/notifications.rs): items,
+//! folders, Sends, `SyncVault`, `SyncOrgKeys` (membership confirmed,
+//! removed), `SyncSettings`, `LogOut`, login requests. Nothing when a
+//! member accepts an invitation, nor for emergency access: those are left
+//! to the periodic sync. The push notification relay to iOS
+//! (`PUSH_ENABLED`) only serves the official Bitwarden apps: Verrou doesn't
+//! use it.
 
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -34,26 +34,26 @@ use tokio_tungstenite::{Connector, MaybeTlsStream, WebSocketStream};
 
 use crate::{Connection, Error};
 
-/// Sans aucun message (le serveur pingue toutes les 15 s) : canal mort.
+/// Without any message (the server pings every 15 s): dead channel.
 pub(crate) const SILENCE: Duration = Duration::from_secs(50);
 const HANDSHAKE: &str = "{\"protocol\":\"messagepack\",\"version\":1}\u{1e}";
 
-/// Le genre d'un changement annoncé.
+/// The kind of an announced change.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UpdateKind {
-    /// Éléments créés, modifiés, supprimés.
+    /// Items created, edited, deleted.
     Items,
     Folders,
-    /// Tout le coffre (import, rotation…).
+    /// The whole vault (import, rotation…).
     Vault,
-    /// Clés des organisations : adhésion confirmée, retirée.
+    /// Organization keys: membership confirmed, removed.
     Organizations,
-    /// Réglages du compte (domaines équivalents…).
+    /// Account settings (equivalent domains…).
     Settings,
-    /// Le serveur ferme les sessions (mot de passe principal changé…).
+    /// The server closes the sessions (master password changed…).
     LogOut,
     Sends,
-    /// Demande de connexion d'un autre appareil.
+    /// Login request from another device.
     AuthRequest,
     Other,
 }
@@ -74,17 +74,17 @@ impl UpdateKind {
     }
 }
 
-/// Un changement annoncé par le serveur.
+/// A change announced by the server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct HubUpdate {
     pub kind: UpdateKind,
-    /// Fait par cet appareil (écriture de Verrou) : rien à relire.
+    /// Made by this device (a Verrou write): nothing to reload.
     pub from_this_device: bool,
 }
 
 pub(crate) type Socket = WebSocketStream<MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// Un canal ouvert.
+/// An open channel.
 pub struct Hub {
     socket: Socket,
     device_id: String,
@@ -92,8 +92,8 @@ pub struct Hub {
 }
 
 impl Connection {
-    /// Ouvre le canal des mises à jour (jeton d'accès neuf). Un serveur
-    /// qui ne l'a pas (`ENABLE_WEBSOCKET=false`) répond `NotFound`.
+    /// Opens the updates channel (fresh access token). A server that doesn't
+    /// have it (`ENABLE_WEBSOCKET=false`) answers `NotFound`.
     pub async fn open_hub(&mut self) -> Result<Hub, Error> {
         let access = self.access_token().await?;
         let device_id = self.store.device_id()?;
@@ -103,8 +103,8 @@ impl Connection {
 
 impl Hub {
     async fn open(server: &str, access: &str, device_id: String) -> Result<Self, Error> {
-        // Le jeton dans l'en-tête `Authorization` (Vaultwarden l'accepte
-        // aussi dans l'adresse, qu'un mandataire peut journaliser).
+        // The token in the `Authorization` header (Vaultwarden also accepts
+        // it in the address, which a proxy may log).
         let mut request = hub_url(server)?
             .into_client_request()
             .map_err(socket_error)?;
@@ -112,7 +112,7 @@ impl Hub {
             "Authorization",
             format!("Bearer {access}")
                 .parse()
-                .map_err(|_| Error::Invalid("jeton d'accès illisible".to_owned()))?,
+                .map_err(|_| Error::Invalid("unreadable access token".to_owned()))?,
         );
         let socket = connect(request).await?;
         Ok(Self {
@@ -122,9 +122,9 @@ impl Hub {
         })
     }
 
-    /// Attend le prochain changement. Une erreur : le canal est perdu, il
-    /// faut en ouvrir un autre (et resynchroniser : des changements ont pu
-    /// passer entre-temps).
+    /// Waits for the next change. An error: the channel is lost, another one
+    /// must be opened (and a resync done: changes may have gone by in the
+    /// meantime).
     pub async fn next(&mut self) -> Result<HubUpdate, Error> {
         loop {
             if let Some(update) = self.queue.pop_front() {
@@ -132,7 +132,7 @@ impl Hub {
             }
             let message = tokio::time::timeout(SILENCE, self.socket.next())
                 .await
-                .map_err(|_| Error::Network("canal des mises à jour : silence".to_owned()))?
+                .map_err(|_| Error::Network("updates channel: silence".to_owned()))?
                 .ok_or_else(closed)?
                 .map_err(socket_error)?;
             match message {
@@ -144,20 +144,20 @@ impl Hub {
                     }
                 }
                 Message::Close(_) => return Err(closed()),
-                // Pings (la réponse part toute seule), texte du protocole.
+                // Pings (the answer goes out by itself), protocol text.
                 _ => {}
             }
         }
     }
 
-    /// Ferme le canal poliment.
+    /// Closes the channel politely.
     pub async fn close(mut self) {
         let _ = self.socket.close(None).await;
     }
 }
 
-/// Ouvre une connexion `SignalR` (`MessagePack`) : `WebSocket`, puis
-/// annonce du protocole et sa réponse `{}`.
+/// Opens a `SignalR` (`MessagePack`) connection: `WebSocket`, then the
+/// protocol announcement and its `{}` answer.
 async fn connect(
     request: tokio_tungstenite::tungstenite::handshake::client::Request,
 ) -> Result<Socket, Error> {
@@ -166,17 +166,17 @@ async fn connect(
         tokio_tungstenite::connect_async_tls_with_config(request, None, false, Some(connector()?)),
     )
     .await
-    .map_err(|_| Error::Network("canal des mises à jour : délai dépassé".to_owned()))?
+    .map_err(|_| Error::Network("updates channel: timed out".to_owned()))?
     .map_err(socket_error)?;
     socket
         .send(Message::text(HANDSHAKE))
         .await
         .map_err(socket_error)?;
-    // Le serveur accepte le protocole par `{}` + séparateur.
+    // The server accepts the protocol with `{}` + separator.
     loop {
         let message = tokio::time::timeout(Duration::from_secs(10), socket.next())
             .await
-            .map_err(|_| Error::Network("canal des mises à jour : pas de réponse".to_owned()))?
+            .map_err(|_| Error::Network("updates channel: no answer".to_owned()))?
             .ok_or_else(closed)?
             .map_err(socket_error)?;
         match message {
@@ -186,7 +186,7 @@ async fn connect(
             Message::Close(_) => return Err(closed()),
             _ => {
                 return Err(Error::Server(
-                    "canal des mises à jour : protocole refusé".to_owned(),
+                    "updates channel: protocol refused".to_owned(),
                 ));
             }
         }
@@ -194,9 +194,9 @@ async fn connect(
     Ok(socket)
 }
 
-/// Canal anonyme (`/notifications/anonymous-hub?Token=<id>`) : attend que
-/// la demande de connexion `id` reçoive une réponse, jusqu'à `deadline`.
-/// Sans canal sur le serveur : `NotFound`.
+/// Anonymous channel (`/notifications/anonymous-hub?Token=<id>`): waits for
+/// the login request `id` to get an answer, until `deadline`. Without a
+/// channel on the server: `NotFound`.
 pub(crate) async fn wait_for_auth_response(
     server: &str,
     id: &str,
@@ -215,7 +215,7 @@ pub(crate) async fn wait_for_auth_response(
 }
 
 /// `[1, {}, nil, "AuthRequestResponseRecieved", [{Type: 16, Payload: {Id}}]]`
-/// (sic : l'orthographe de Bitwarden) pour la demande `id`.
+/// (sic: Bitwarden's spelling) for the request `id`.
 pub(crate) fn is_auth_response(frame: &[u8], id: &str) -> bool {
     let Ok(value) = rmpv::decode::read_value(&mut &frame[..]) else {
         return false;
@@ -247,7 +247,7 @@ pub(crate) fn is_auth_response(frame: &[u8], id: &str) -> bool {
     payload_id.is_some_and(|p| p.eq_ignore_ascii_case(id))
 }
 
-/// `https://hôte/chemin` → `wss://hôte/chemin/notifications/hub`.
+/// `https://host/path` → `wss://host/path/notifications/hub`.
 fn hub_url(server: &str) -> Result<String, Error> {
     let ws = if let Some(rest) = server.strip_prefix("https://") {
         format!("wss://{rest}")
@@ -273,7 +273,7 @@ fn connector() -> Result<Connector, Error> {
 }
 
 fn closed() -> Error {
-    Error::Network("canal des mises à jour fermé".to_owned())
+    Error::Network("updates channel closed".to_owned())
 }
 
 fn socket_error(error: tokio_tungstenite::tungstenite::Error) -> Error {
@@ -282,13 +282,13 @@ fn socket_error(error: tokio_tungstenite::tungstenite::Error) -> Error {
         E::Http(response) => match response.status().as_u16() {
             401 | 403 => Error::SessionExpired,
             404 => Error::NotFound,
-            status => Error::Server(format!("canal des mises à jour : {status}")),
+            status => Error::Server(format!("updates channel: {status}")),
         },
-        other => Error::Network(format!("canal des mises à jour : {other}")),
+        other => Error::Network(format!("updates channel: {other}")),
     }
 }
 
-/// Découpe un message binaire en trames (longueur en entier variable).
+/// Splits a binary message into frames (varint length).
 pub(crate) fn frames(mut data: &[u8]) -> Vec<&[u8]> {
     let mut frames = Vec::new();
     while !data.is_empty() {
@@ -344,8 +344,8 @@ fn parse_update(frame: &[u8], device_id: &str) -> Option<HubUpdate> {
 mod tests {
     use super::*;
 
-    /// Un message comme Vaultwarden le code (`create_update`, puis la
-    /// longueur en tête, `serialize`).
+    /// A message as Vaultwarden encodes it (`create_update`, then the
+    /// leading length, `serialize`).
     fn message(kind: i64, context: Option<&str>) -> Vec<u8> {
         let value = Value::Array(vec![
             1.into(),
@@ -401,7 +401,7 @@ mod tests {
                 }
             ]
         );
-        // La réponse du protocole et un ping ne sont pas des changements.
+        // The protocol answer and a ping are not changes.
         assert!(
             frames(b"{}\x1e")
                 .into_iter()
@@ -420,7 +420,7 @@ mod tests {
         let mut data = vec![(body.len() & 0x7f) as u8 | 0x80, (body.len() >> 7) as u8];
         data.extend(&body);
         assert_eq!(frames(&data), [body.as_slice()]);
-        // Tronqué : rien.
+        // Truncated: nothing.
         assert_eq!(frames(&data[..10]), [] as [&[u8]; 0]);
     }
 

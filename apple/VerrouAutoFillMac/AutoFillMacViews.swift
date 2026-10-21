@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// L'interface de l'extension sur le Mac : la feuille que macOS ouvre
-/// au-dessus de Safari ou de l'app (440 × 540). Même modèle que l'iPhone
-/// (`AutoFillModel`) : déverrouillage (Touch ID, sinon mot de passe
-/// principal), puis la liste ou la création de passkey.
+/// The extension's interface on the Mac: the sheet macOS opens above Safari
+/// or the app (440 × 540). Same model as the iPhone (`AutoFillModel`):
+/// unlock (Touch ID, otherwise master password), then the list or the
+/// passkey creation.
 struct AutoFillRootView: View {
     @Environment(AutoFillModel.self) private var model
 
@@ -47,7 +47,7 @@ struct AutoFillRootView: View {
                 }
             }
             Spacer()
-            Button("Annuler") { model.cancel() }
+            Button("Cancel") { model.cancel() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(.horizontal, 16)
@@ -59,17 +59,17 @@ struct AutoFillRootView: View {
         case .register:
             MacPasskeyRegistrationView()
         case .provide:
-            MacWorkingView(label: "Remplissage…")
+            MacWorkingView(label: "Filling…")
         case .list, .oneTimeCodes:
             if model.phase == .working {
-                MacWorkingView(label: "Signature…")
+                MacWorkingView(label: "Signing…")
             } else {
                 MacCredentialListView()
             }
         case .none:
             VStack(spacing: 12) {
                 AppMark(size: 56, glow: false)
-                Text("Verrou remplit vos identifiants, codes et passkeys dans Safari et les apps du Mac.")
+                Text("Verrou fills your logins, codes and passkeys in Safari and the Mac's apps.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
             }
@@ -79,7 +79,7 @@ struct AutoFillRootView: View {
 }
 
 private struct MacWorkingView: View {
-    let label: String
+    let label: LocalizedStringKey
 
     var body: some View {
         VStack(spacing: 12) {
@@ -93,9 +93,9 @@ private struct MacNoAccountView: View {
     var body: some View {
         VStack(spacing: 14) {
             AppMark(size: 56)
-            Text("Aucun coffre partagé sur ce Mac")
+            Text("No shared vault on this Mac")
                 .font(.title3.weight(.semibold))
-            Text("Ouvrez Verrou et connectez-vous à votre serveur Vaultwarden : vos identifiants seront alors proposés ici. L'app doit être un build signé par votre équipe de développeur (voir le guide).")
+            Text("Open Verrou and sign in to your Vaultwarden server: your logins will then be offered here. The app must be a build signed by your developer team (see the guide).")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -104,7 +104,7 @@ private struct MacNoAccountView: View {
     }
 }
 
-// MARK: Déverrouillage
+// MARK: Unlocking
 
 private struct MacLockView: View {
     @Environment(AutoFillModel.self) private var model
@@ -117,7 +117,7 @@ private struct MacLockView: View {
             VStack(spacing: 18) {
                 AppMark(size: 64)
                 VStack(spacing: 4) {
-                    Text("Déverrouiller Verrou")
+                    Text("Unlock Verrou")
                         .font(.system(.title3, design: .rounded, weight: .bold))
                     if let account = model.account {
                         Text(account.email).font(.callout).foregroundStyle(.secondary)
@@ -127,7 +127,7 @@ private struct MacLockView: View {
                     Button {
                         Task { await model.unlockWithBiometrics() }
                     } label: {
-                        Label("Déverrouiller avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
+                        Label("Unlock with \(Biometrics.name)", systemImage: Biometrics.symbolName)
                             .frame(maxWidth: 260)
                     }
                     .controlSize(.large)
@@ -135,7 +135,7 @@ private struct MacLockView: View {
                     .disabled(model.phase == .unlocking)
                 }
                 HStack(spacing: 8) {
-                    SecureField("Mot de passe principal", text: $password)
+                    SecureField("Master password", text: $password)
                         .textFieldStyle(.roundedBorder)
                         .focused($focused)
                         .onSubmit(submit)
@@ -168,7 +168,7 @@ private struct MacLockView: View {
     }
 }
 
-// MARK: Liste
+// MARK: List
 
 private struct MacCredentialListView: View {
     @Environment(AutoFillModel.self) private var model
@@ -177,7 +177,7 @@ private struct MacCredentialListView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            TextField("Rechercher dans le coffre", text: $model.query)
+            TextField("Search the vault", text: $model.query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searching)
                 .padding(.horizontal, 16)
@@ -195,21 +195,21 @@ private struct MacCredentialListView: View {
                             }
                         }
                     }
-                    Section(model.site.map { "Pour \($0)" } ?? "Suggestions") {
+                    Section(model.site.map { String(localized: "For \($0)") } ?? String(localized: "Suggestions")) {
                         if model.matches.isEmpty {
-                            Text("Aucun identifiant pour ce site : cherchez dans le coffre.")
+                            Text("No login for this site: search the vault.")
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(model.matches, id: \.id) { item in itemButton(item) }
                     }
-                    Section("Tout le coffre") {
+                    Section("Entire vault") {
                         ForEach(model.everything.prefix(100), id: \.id) { item in itemButton(item) }
                     }
                 } else {
-                    Section("Résultats") {
+                    Section("Results") {
                         let results = model.searchResults
                         if results.isEmpty {
-                            Text("Aucun résultat").foregroundStyle(.secondary)
+                            Text("No results").foregroundStyle(.secondary)
                         }
                         ForEach(results, id: \.id) { item in itemButton(item) }
                     }
@@ -259,7 +259,7 @@ private struct MacSymbolRow: View {
     }
 }
 
-// MARK: Création de passkey
+// MARK: Passkey creation
 
 private struct MacPasskeyRegistrationView: View {
     @Environment(AutoFillModel.self) private var model
@@ -275,9 +275,9 @@ private struct MacPasskeyRegistrationView: View {
                     .background((model.passkeyCreated ? Color.green : Theme.accent).gradient,
                                 in: RoundedRectangle(cornerRadius: 15, style: .continuous))
                     .animation(.snappy(duration: 0.3), value: model.passkeyCreated)
-                Text(model.passkeyCreated ? "Passkey enregistrée" : "Nouvelle passkey pour \(model.site ?? "ce site")")
+                Text(model.passkeyCreated ? "Passkey saved" : "New passkey for \(model.site ?? String(localized: "this site"))")
                     .font(.headline)
-                Text("Elle est enregistrée dans votre coffre Vaultwarden, au format de Bitwarden : vos autres appareils la retrouvent.")
+                Text("It is saved in your Vaultwarden vault, in Bitwarden's format: your other devices find it.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -288,7 +288,7 @@ private struct MacPasskeyRegistrationView: View {
             List {
                 Section {
                     Button { model.register(into: nil) } label: {
-                        Label("Nouvel identifiant", systemImage: "plus.circle.fill")
+                        Label("New login", systemImage: "plus.circle.fill")
                     }
                     .buttonStyle(.plain)
                     .disabled(model.phase == .working)
@@ -306,9 +306,9 @@ private struct MacPasskeyRegistrationView: View {
                             .disabled(model.phase == .working)
                         }
                     } header: {
-                        Text("Ajouter à un identifiant")
+                        Text("Add to a login")
                     } footer: {
-                        Text("Un identifiant porte une passkey : celle qu'il avait est remplacée.")
+                        Text("A login holds one passkey: the one it had is replaced.")
                     }
                 }
             }
@@ -316,7 +316,7 @@ private struct MacPasskeyRegistrationView: View {
             if model.phase == .working, !model.passkeyCreated {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text("Enregistrement sur le serveur…").foregroundStyle(.secondary)
+                    Text("Saving to the server…").foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 12)
             }
@@ -324,7 +324,7 @@ private struct MacPasskeyRegistrationView: View {
     }
 }
 
-// MARK: Élément protégé
+// MARK: Protected item
 
 private struct MacConfirmationSheet: View {
     @Environment(AutoFillModel.self) private var model
@@ -335,10 +335,10 @@ private struct MacConfirmationSheet: View {
             Image(systemName: "lock.shield.fill")
                 .font(.system(size: 30))
                 .foregroundStyle(.orange)
-            Text("« \(model.confirmation?.title ?? "") » est protégé")
+            Text("“\(model.confirmation?.title ?? "")” is protected")
                 .font(.headline)
                 .multilineTextAlignment(.center)
-            Text("Confirmez avec \(Biometrics.name) ou votre mot de passe principal.")
+            Text("Confirm with \(Biometrics.name) or your master password.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -346,18 +346,18 @@ private struct MacConfirmationSheet: View {
                 Button {
                     Task { await model.confirmWithBiometrics() }
                 } label: {
-                    Label("Confirmer avec \(Biometrics.name)", systemImage: Biometrics.symbolName)
+                    Label("Confirm with \(Biometrics.name)", systemImage: Biometrics.symbolName)
                 }
                 .buttonStyle(.borderedProminent)
             }
-            SecureField("Mot de passe principal", text: $password)
+            SecureField("Master password", text: $password)
                 .textFieldStyle(.roundedBorder)
                 .onSubmit {
                     let typed = password
                     password = ""
                     Task { await model.confirm(masterPassword: typed) }
                 }
-            Button("Annuler", role: .cancel) { model.confirmation = nil }
+            Button("Cancel", role: .cancel) { model.confirmation = nil }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(24)

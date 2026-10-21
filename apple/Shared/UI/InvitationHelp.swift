@@ -1,53 +1,51 @@
 import SwiftUI
 
-/// Ce qu'il faut savoir des invitations de Vaultwarden, pour l'invité et
-/// pour celui qui invite (Mac et iPhone).
+/// What to know about Vaultwarden invitations, for the invitee and for the
+/// inviter (Mac and iPhone).
 ///
-/// Vaultwarden 1.37 ne montre une invitation à l'invité qu'une fois
-/// acceptée : tant qu'elle est « envoyée », seul l'e-mail la porte (sujet
-/// « Join <organisation> », lien après « Click here to join »). Le serveur
-/// ne rend le lien à personne d'autre : pas de « Copier le lien ».
+/// Vaultwarden 1.37 only shows an invitation to the invitee once accepted:
+/// while it is "sent", only the email carries it (subject "Join
+/// <organization>", link after "Click here to join"). The server gives the
+/// link to no one else: no "Copy link".
 enum InvitationHelp {
-    /// L'hôte du serveur (« vault.exemple.fr »), pour dire d'où vient l'e-mail.
+    /// The server's host ("vault.exemple.fr"), to say where the email comes from.
     static func host(_ server: String?) -> String? {
         guard let server, let host = URL(string: server)?.host() else { return nil }
         return host
     }
 
-    /// Feuille « Rejoindre » : où trouver le lien.
+    /// "Join" sheet: where to find the link.
     static func join(server: String?) -> String {
-        let from = host(server).map { "l'e-mail de Vaultwarden (serveur \($0))" } ?? "l'e-mail de Vaultwarden"
-        return "Ouvrez \(from), sujet « Join … », copiez le lien qui suit « Click here to join » puis collez-le ici. "
-            + "Rien reçu ? Regardez dans les indésirables, ou demandez de renvoyer l'invitation."
+        let from = host(server).map { String(localized: "the Vaultwarden email (server \($0))") } ?? String(localized: "the Vaultwarden email")
+        return String(localized: "Open \(from), subject “Join …”, copy the link that follows “Click here to join” then paste it here. Nothing received? Look in spam, or ask for the invitation to be sent again.")
     }
 
-    /// Sous la feuille « Rejoindre » : pourquoi Verrou ne la montre pas.
-    static let notListed = "Une invitation n'apparaît dans Verrou qu'une fois acceptée : avant, le serveur ne la montre qu'à l'e-mail. "
-        + "Sur un serveur sans e-mail, l'invitation d'un compte existant est acceptée d'office : rien à coller."
+    /// Under the "Join" sheet: why Verrou doesn't show it.
+    static let notListed = String(localized: "An invitation only appears in Verrou once accepted: before that, the server only shows it to the email. On a server without email, the invitation of an existing account is accepted automatically: nothing to paste.")
 
-    /// « Et ensuite ? », pour celui qui vient d'inviter.
-    /// `email` absent : plusieurs invitations ; `hasAccount` absent : on ne
-    /// sait pas si la personne a déjà un compte.
+    /// "What's next?", for the person who just invited.
+    /// `email` missing: several invitations; `hasAccount` missing: we don't
+    /// know whether the person already has an account.
     static func nextSteps(email: String?, server: String?, hasAccount: Bool?) -> [String] {
         let where_ = host(server).map { " (\($0))" } ?? ""
         let accept = switch hasAccount {
-        case true?: "La personne accepte : dans Verrou, « Rejoindre une organisation » en collant le lien, ou dans le coffre web."
-        case false?: "La personne crée son compte avec ce lien (dans Verrou : « Créer un compte »), ce qui accepte l'invitation."
-        case nil: "La personne accepte avec ce lien : « Rejoindre une organisation » si elle a un compte, sinon « Créer un compte »."
+        case true?: String(localized: "The person accepts: in Verrou, “Join an organization” by pasting the link, or in the web vault.")
+        case false?: String(localized: "The person creates their account with this link (in Verrou: “Create an account”), which accepts the invitation.")
+        case nil: String(localized: "The person accepts with this link: “Join an organization” if they have an account, otherwise “Create an account”.")
         }
         return [
-            "Le serveur\(where_) envoie un e-mail à \(email ?? "chaque adresse"), sujet « Join … ». S'il n'arrive pas : indésirables, puis « Renvoyer l'invitation ».",
-            "Le lien ne s'ouvre que là où le serveur est joignable : sur son réseau, ou par son VPN s'il n'est pas public.",
+            String(localized: "The server\(where_) sends an email to \(email ?? String(localized: "each address")), subject “Join …”. If it doesn't arrive: spam, then “Resend invitation”."),
+            String(localized: "The link only opens where the server is reachable: on its network, or through its VPN if it isn't public."),
             accept,
-            "Vous êtes prévenu quand elle a accepté : comparez sa phrase d'empreinte, puis confirmez-la ici.",
+            String(localized: "You are notified when they have accepted: compare their fingerprint phrase, then confirm them here."),
         ]
     }
 
-    /// Pourquoi il n'y a pas de bouton « Copier le lien ».
-    static let noLink = "Verrou ne peut pas copier le lien : Vaultwarden ne le donne qu'à l'e-mail de la personne invitée."
+    /// Why there is no "Copy link" button.
+    static let noLink = String(localized: "Verrou can't copy the link: Vaultwarden only gives it to the invited person's email.")
 }
 
-/// « Et ensuite ? » : les étapes d'une invitation envoyée.
+/// "What's next?": the steps of a sent invitation.
 struct InvitationNextSteps: View {
     let email: String?
     let server: String?
@@ -55,7 +53,7 @@ struct InvitationNextSteps: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Label("Et ensuite ?", systemImage: "envelope.badge")
+            Label("What's next?", systemImage: "envelope.badge")
                 .font(.headline)
             ForEach(Array(InvitationHelp.nextSteps(email: email, server: server, hasAccount: hasAccount).enumerated()),
                     id: \.offset) { index, step in

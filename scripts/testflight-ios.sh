@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
-# Archive l'app iPhone en Release, signée pour la distribution avec votre
-# équipe, et l'envoie sur App Store Connect pour TestFlight (tests internes).
+# Archives the iPhone app in Release, signed for distribution with your
+# team, and uploads it to App Store Connect for TestFlight (internal testing).
 #
 #   VERROU_TEAM=ABCDE12345 scripts/testflight-ios.sh
 #
-# Prérequis, en plus de ceux de scripts/install-ios.sh (compte payant,
-# groupe d'apps créé) :
-# - la fiche de l'app dans App Store Connect (iOS, bundle app.verrou.ios) ;
-# - l'envoi : le compte connecté dans Xcode suffit, ou une clé API App Store
-#   Connect (rôle App Manager) passée par ASC_KEY_PATH (fichier .p8, gardé
-#   hors du dépôt), ASC_KEY_ID et ASC_ISSUER_ID.
+# Prerequisites, in addition to those of scripts/install-ios.sh (paid
+# account, app group created):
+# - the app's record in App Store Connect (iOS, bundle app.verrou.ios);
+# - the upload: the account signed in to Xcode is enough, or an App Store
+#   Connect API key (App Manager role) passed through ASC_KEY_PATH (.p8 file,
+#   kept out of the repository), ASC_KEY_ID and ASC_ISSUER_ID.
 #
-# Le numéro de build est l'horodatage (AAAAMMJJHHMM) : chaque envoi le
-# dépasse, comme l'exige App Store Connect. VERROU_BUILD le remplace.
+# The build number is the timestamp (YYYYMMDDHHMM): each upload exceeds the
+# previous one, as App Store Connect requires. VERROU_BUILD overrides it.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-TEAM="${VERROU_TEAM:?VERROU_TEAM=<identifiant de votre équipe Apple> est requis}"
+TEAM="${VERROU_TEAM:?VERROU_TEAM=<your Apple team identifier> is required}"
 GROUP="${VERROU_APP_GROUP:-group.app.verrou.$(tr '[:upper:]' '[:lower:]' <<<"$TEAM")}"
 BUILD="${VERROU_BUILD:-$(date -u +%Y%m%d%H%M)}"
 OUT="target/testflight"
@@ -59,4 +59,4 @@ EOF
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$OUT/export" \
   -exportOptionsPlist "$OUT/ExportOptions.plist" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"}
 
-echo "Envoyé sur App Store Connect : version $(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$ARCHIVE/Info.plist"), build $BUILD (équipe $TEAM)"
+echo "Uploaded to App Store Connect: version $(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:CFBundleShortVersionString' "$ARCHIVE/Info.plist"), build $BUILD (team $TEAM)"

@@ -1,23 +1,23 @@
-//! Partage de bout en bout, tout par le code de Verrou, contre un vrai
-//! Vaultwarden jetable : une propriétaire crée l'organisation et ses
-//! collections, partage des éléments (un par un et en lot, pièce jointe
-//! comprise), invite un membre existant et une nouvelle personne, les
-//! confirme après vérification de l'empreinte, règle les droits de chaque
-//! collection, révoque, restaure, retire ; le membre quitte l'organisation.
-//! Le format reste celui de Bitwarden : un client du SDK monté à part (comme
-//! le coffre web) relit l'organisation créée par Verrou et ses éléments.
+//! Sharing end to end, all through Verrou's code, against a real
+//! throwaway Vaultwarden: an owner creates the organization and its
+//! collections, shares items (one by one and in bulk, attachment
+//! included), invites an existing member and a new person, confirms them
+//! after checking the fingerprint, sets each collection's permissions,
+//! revokes, restores, removes; the member leaves the organization.
+//! The format stays Bitwarden's: an SDK client set up separately (like
+//! the web vault) reads back the organization created by Verrou and its items.
 //!
-//! Le serveur des tests d'intégration suffit (inscriptions ouvertes, sans
-//! courriel : Vaultwarden accepte alors d'office l'invitation d'un compte
-//! existant) :
+//! The integration test server is enough (sign-ups open, no email:
+//! Vaultwarden then automatically accepts the invitation of an existing
+//! account):
 //!
 //! ```sh
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test sharing
 //! ```
 //!
-//! Avec courriel, l'invitation part avec un lien à jeton que l'invité colle
-//! dans « Rejoindre une organisation » ; un Mailpit la reçoit et le test y
-//! lit le lien. Les groupes se testent si le serveur les active :
+//! With email, the invitation goes out with a token link that the invitee
+//! pastes into "Join an organization"; a Mailpit receives it and the test
+//! reads the link there. Groups are tested if the server enables them:
 //!
 //! ```sh
 //! docker network create verrou-net
@@ -66,7 +66,7 @@ impl Server {
         let url = std::env::var("VERROU_TEST_SHARING_SERVER")
             .or_else(|_| std::env::var("VERROU_TEST_SERVER"));
         let Ok(url) = url else {
-            eprintln!("VERROU_TEST_SHARING_SERVER et VERROU_TEST_SERVER absents : test ignoré");
+            eprintln!("VERROU_TEST_SHARING_SERVER and VERROU_TEST_SERVER not set: test skipped");
             return None;
         };
         Some(Self {
@@ -76,8 +76,8 @@ impl Server {
         })
     }
 
-    /// Crée un compte avec le code d'inscription de Verrou (« Créer un
-    /// compte »), avec le lien d'invitation s'il y en a un.
+    /// Creates an account with Verrou's sign-up code ("Create an
+    /// account"), with the invitation link if there is one.
     async fn register(&self, email: &str, link: Option<&str>) {
         register::register(&NewAccount {
             server: self.url.clone(),
@@ -101,11 +101,11 @@ impl Server {
             .unwrap()
         {
             LoginStep::Unlocked(unlocked) => (unlocked.connection, unlocked.vault),
-            LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+            LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
         }
     }
 
-    /// Le nombre de courriels reçus par cette adresse.
+    /// The number of emails received by this address.
     async fn mails_for(&self, email: &str) -> usize {
         let Some(mailpit) = &self.mailpit else {
             return 0;
@@ -123,8 +123,8 @@ impl Server {
         found["messages"].as_array().map_or(0, Vec::len)
     }
 
-    /// Le lien « Rejoindre » du courriel d'invitation le plus récent (après
-    /// les `after` premiers), si le serveur envoie des courriels.
+    /// The "Join" link of the most recent invitation email (after the
+    /// first `after`), if the server sends emails.
     async fn invite_link(&self, email: &str, after: usize) -> Option<String> {
         let mailpit = self.mailpit.as_ref()?;
         for _ in 0..50 {
@@ -159,11 +159,11 @@ impl Server {
             }
             tokio::time::sleep(Duration::from_millis(200)).await;
         }
-        panic!("aucun courriel d'invitation pour {email}");
+        panic!("no invitation email for {email}");
     }
 
-    /// Un client du SDK monté hors de Verrou, comme le coffre web :
-    /// jeton, profil, clés du compte puis des organisations.
+    /// An SDK client set up outside Verrou, like the web vault: token,
+    /// profile, account keys then organization keys.
     async fn official_client(&self, email: &str) -> (Client, Value) {
         let kdf = Kdf::PBKDF2 {
             iterations: NonZeroU32::new(register::PBKDF2_ITERATIONS).unwrap(),
@@ -268,7 +268,7 @@ fn find<'v>(vault: &'v Decrypted, title: &str) -> &'v verrou_core::Item {
         .items
         .iter()
         .find(|i| i.title == title)
-        .unwrap_or_else(|| panic!("« {title} » absent"))
+        .unwrap_or_else(|| panic!("\"{title}\" missing"))
 }
 
 fn login_draft(name: &str, password: &str) -> Draft {
@@ -294,9 +294,9 @@ fn access(id: &str, read_only: bool, hide_passwords: bool) -> CollectionAccess {
     }
 }
 
-/// Invite `email` (rôle utilisateur) ; avec courriel, l'invité accepte avec
-/// le lien reçu, sans courriel le serveur l'a déjà accepté. Rend
-/// l'identifiant d'adhésion.
+/// Invites `email` (user role); with email, the invitee accepts with the
+/// received link, without email the server has already accepted it.
+/// Returns the membership id.
 async fn invite_and_accept(
     server: &Server,
     owner: &mut Connection,
@@ -311,7 +311,7 @@ async fn invite_and_accept(
         .await
         .unwrap();
     if let Some(link) = server.invite_link(email, before).await {
-        // L'invitation attend son jeton.
+        // The invitation waits for its token.
         assert_eq!(status_of(owner, org, email).await, MemberStatus::Invited);
         let (name, _) = invitee.join_organization(&link).await.unwrap();
         assert_eq!(name, "Famille Martin");
@@ -343,13 +343,13 @@ async fn member_id(connection: &mut Connection, org: &str, email: &str) -> Strin
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a full walkthrough, readable in one go
 async fn share_invite_confirm_permissions_and_leave() {
     let Some(server) = Server::from_env() else {
         return;
     };
 
-    // La propriétaire crée son compte et son organisation dans Verrou.
+    // The owner creates her account and her organization in Verrou.
     let owner_email = unique_email("proprietaire");
     server.register(&owner_email, None).await;
     let (mut owner, _) = server.verrou(&owner_email).await;
@@ -367,14 +367,14 @@ async fn share_invite_confirm_permissions_and_leave() {
     assert_eq!(famille.collections.len(), 1);
     assert_eq!(famille.collections[0].name, "Comptes communs");
     let communs = famille.collections[0].id.clone();
-    // Renommer (propriétaire).
+    // Rename (owner).
     let vault = owner
         .rename_organization(&org, "Famille Martin")
         .await
         .unwrap();
     assert_eq!(vault.organizations[0].name, "Famille Martin");
 
-    // Une deuxième collection, puis renommée.
+    // A second collection, then renamed.
     let (archives, _) = owner
         .create_collection(&org, "Archives", &CollectionMembers::default())
         .await
@@ -395,7 +395,7 @@ async fn share_invite_confirm_permissions_and_leave() {
         .collect();
     assert_eq!(names, ["Archives familiales", "Comptes communs"]);
 
-    // Des éléments personnels, dont un avec pièce jointe.
+    // Personal items, one of them with an attachment.
     let mut personal = Vec::new();
     for (name, password) in [
         ("Netflix", "netflix-partagé"),
@@ -416,8 +416,8 @@ async fn share_invite_confirm_permissions_and_leave() {
     owner.sync().await.unwrap();
     let cadenas = owner.resolve(&cadenas);
 
-    // Partage groupé : Netflix (pièce jointe), Wi-Fi, Banque ; doublon et
-    // inconnu écartés ; aucune collection, refusé.
+    // Bulk sharing: Netflix (attachment), Wi-Fi, Banque; duplicate and
+    // unknown skipped; no collection, refused.
     assert!(matches!(
         owner.share_many(&personal, &org, &[], &|_, _| {}).await,
         Err(Error::Invalid(_))
@@ -456,7 +456,7 @@ async fn share_invite_confirm_permissions_and_leave() {
             [(communs.clone(), "Comptes communs".to_owned())]
         );
     }
-    // La pièce jointe suit, lisible avec la clé de l'organisation.
+    // The attachment follows, readable with the organization key.
     let files = owner.attachments(&personal[0]).await.unwrap();
     assert_eq!(files.len(), 1);
     let attachment_id = files[0].id.clone();
@@ -465,7 +465,7 @@ async fn share_invite_confirm_permissions_and_leave() {
         .await
         .unwrap();
     assert_eq!(bytes.as_slice(), contrat.as_slice());
-    // Déjà partagés : écartés, sans envoi.
+    // Already shared: skipped, nothing sent.
     let again = owner
         .share_many(&personal, &org, std::slice::from_ref(&communs), &|_, _| {})
         .await
@@ -477,14 +477,14 @@ async fn share_invite_confirm_permissions_and_leave() {
             .iter()
             .all(|(_, reason)| *reason == Skipped::AlreadyShared)
     );
-    // Un par un, dans les archives.
+    // One by one, into the archives.
     owner
         .share(&cadenas, &org, std::slice::from_ref(&archives))
         .await
         .unwrap();
 
-    // Le format de Bitwarden : un client du SDK hors de Verrou relit
-    // l'organisation créée par Verrou et ce qui y a été partagé.
+    // Bitwarden's format: an SDK client outside Verrou reads back the
+    // organization created by Verrou and what was shared in it.
     let (official, sync) = server.official_client(&owner_email).await;
     let netflix_model = sync["ciphers"]
         .as_array()
@@ -509,11 +509,11 @@ async fn share_invite_confirm_permissions_and_leave() {
     );
     assert!(
         view.attachments.unwrap().iter().all(|a| a.key.is_some()),
-        "clé de pièce jointe rechiffrée pour l'organisation"
+        "attachment key re-encrypted for the organization"
     );
 
-    // Un membre existant : invité, il accepte (lien ou d'office), attend la
-    // confirmation, puis la reçoit après vérification de l'empreinte.
+    // An existing member: invited, they accept (link or automatically), wait
+    // for confirmation, then get it after the fingerprint is checked.
     let member_email = unique_email("camille");
     server.register(&member_email, None).await;
     let (mut member, _) = server.verrou(&member_email).await;
@@ -537,10 +537,10 @@ async fn share_invite_confirm_permissions_and_leave() {
     .await;
     member.sync().await.unwrap();
     let pending = member.pending_memberships();
-    assert_eq!(pending.len(), 1, "en attente de confirmation");
+    assert_eq!(pending.len(), 1, "awaiting confirmation");
     assert_eq!(pending[0].organization_id, org);
     assert_eq!(pending[0].name, "Famille Martin");
-    // Sans clé, pas d'organisation à afficher.
+    // Without a key, no organization to show.
     let vault = member.sync().await.unwrap();
     assert!(vault.is_none_or(|v| v.organizations.is_empty()));
     let fingerprint = owner.member_fingerprint(&org, &camille).await.unwrap();
@@ -556,7 +556,7 @@ async fn share_invite_confirm_permissions_and_leave() {
     assert_eq!(
         shared.field("password").unwrap().value.expose(),
         "netflix-partagé",
-        "le membre déchiffre avec la clé de l'organisation"
+        "the member decrypts with the organization key"
     );
     let (_, bytes) = member
         .download_attachment(&personal[0], &attachment_id)
@@ -564,8 +564,8 @@ async fn share_invite_confirm_permissions_and_leave() {
         .unwrap();
     assert_eq!(bytes.as_slice(), contrat.as_slice());
 
-    // Droits par collection : lecture seule et mots de passe masqués dans
-    // les archives, écriture dans « Comptes communs ».
+    // Per-collection permissions: read-only and passwords hidden in the
+    // archives, write access in "Comptes communs".
     let cadenas_item = find(&vault, "Cadenas");
     let sharing = cadenas_item.shared.as_ref().unwrap();
     assert!(sharing.read_only && sharing.hide_passwords);
@@ -578,8 +578,8 @@ async fn share_invite_confirm_permissions_and_leave() {
             .await,
         Err(Error::Invalid(_))
     ));
-    // Partager dans une collection en lecture seule : refusé ; dans
-    // l'autre, permis.
+    // Sharing into a read-only collection: refused; into the other one,
+    // allowed.
     assert!(matches!(
         member
             .share_many(
@@ -609,10 +609,10 @@ async fn share_invite_confirm_permissions_and_leave() {
             .value
             .expose(),
         "disney-perso",
-        "la propriétaire lit ce que le membre a partagé"
+        "the owner reads what the member shared"
     );
-    // Les accès de la collection, vus et changés par la propriétaire :
-    // les archives deviennent accessibles en écriture au membre.
+    // The collection's access, seen and changed by the owner: the archives
+    // become writable for the member.
     let members = owner.collection_members(&org, &archives).await.unwrap();
     assert!(
         members
@@ -640,7 +640,7 @@ async fn share_invite_confirm_permissions_and_leave() {
     let vault = member.sync().await.unwrap().unwrap();
     let sharing = find(&vault, "Cadenas").shared.clone().unwrap();
     assert!(!sharing.read_only && !sharing.hide_passwords);
-    // Changer les collections d'un élément partagé.
+    // Change the collections of a shared item.
     let vault = member
         .set_collections(&cadenas, &[archives.clone(), communs.clone()])
         .await
@@ -655,8 +655,8 @@ async fn share_invite_confirm_permissions_and_leave() {
         2
     );
 
-    // Une nouvelle personne : invitée avant d'avoir un compte, elle le crée
-    // (avec le lien, s'il y a des courriels), accepte, puis est confirmée.
+    // A new person: invited before having an account, she creates it (with
+    // the link, if there are emails), accepts, then is confirmed.
     let newcomer_email = unique_email("lea");
     owner
         .invite_members(
@@ -682,7 +682,7 @@ async fn share_invite_confirm_permissions_and_leave() {
         status_of(&mut owner, &org, &newcomer_email).await,
         MemberStatus::Accepted
     );
-    // Une empreinte qui ne correspond pas : rien n'est envoyé.
+    // A fingerprint that does not match: nothing is sent.
     assert!(matches!(
         owner
             .confirm_member(&org, &lea_id, "turban-deftly-anime-chatroom-unselfish")
@@ -698,18 +698,18 @@ async fn share_invite_confirm_permissions_and_leave() {
     let vault = lea.sync().await.unwrap().unwrap();
     let netflix = find(&vault, "Netflix");
     assert!(netflix.shared.as_ref().unwrap().read_only);
-    // Rangé dans les deux collections : elle ne voit que celle qui lui est
-    // ouverte, en lecture seule.
+    // Filed in both collections: she only sees the one open to her,
+    // read-only.
     let cadenas_seen = find(&vault, "Cadenas").shared.clone().unwrap();
     assert_eq!(
         cadenas_seen.collections,
         [(communs.clone(), "Comptes communs".to_owned())],
-        "pas d'accès aux archives"
+        "no access to the archives"
     );
     assert!(cadenas_seen.read_only);
     assert!(matches!(lea.draft(&cadenas).await, Err(Error::ReadOnly)));
 
-    // Révoquer, restaurer, retirer.
+    // Revoke, restore, remove.
     owner.revoke_member(&org, &lea_id).await.unwrap();
     let vault = lea.sync().await.unwrap().unwrap();
     assert!(!vault.items.iter().any(|i| i.title == "Netflix"));
@@ -720,9 +720,9 @@ async fn share_invite_confirm_permissions_and_leave() {
     let vault = lea.sync().await.unwrap().unwrap();
     assert_eq!(vault.organizations.len(), 0);
 
-    // Groupes, si le serveur les active.
+    // Groups, if the server enables them.
     if famille_uses_groups(&owner, &org) {
-        eprintln!("groupes activés sur le serveur : testés");
+        eprintln!("groups enabled on the server: tested");
         let group = owner
             .save_group(
                 &org,
@@ -750,7 +750,7 @@ async fn share_invite_confirm_permissions_and_leave() {
         assert_eq!(owner.organization_groups(&org).await.unwrap().len(), 0);
     }
 
-    // Supprimer une collection : ses éléments restent dans l'organisation.
+    // Deleting a collection: its items stay in the organization.
     let vault = owner.delete_collection(&org, &archives).await.unwrap();
     assert_eq!(vault.organizations[0].collections.len(), 1);
     let cadenas_item = find(&vault, "Cadenas");
@@ -759,13 +759,13 @@ async fn share_invite_confirm_permissions_and_leave() {
         [(communs.clone(), "Comptes communs".to_owned())]
     );
 
-    // Le membre quitte l'organisation ; la dernière propriétaire, non.
+    // The member leaves the organization; the last owner cannot.
     let vault = member.leave_organization(&org).await.unwrap();
     assert_eq!(vault.organizations.len(), 0);
     assert!(!vault.items.iter().any(|i| i.title == "Netflix"));
     let refused = owner.leave_organization(&org).await;
     assert!(
-        matches!(&refused, Err(Error::Invalid(m)) if m.contains("dernier propriétaire")),
+        matches!(&refused, Err(Error::Invalid(m)) if m.contains("last owner")),
         "{:?}",
         refused.err()
     );

@@ -1,5 +1,5 @@
-//! Actions groupées à travers l'interface de l'app, contre un vrai
-//! Vaultwarden. Sans `VERROU_TEST_SERVER`, le test ne fait rien.
+//! Bulk actions through the app interface, against a real Vaultwarden.
+//! Without `VERROU_TEST_SERVER`, the test does nothing.
 
 use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
@@ -52,7 +52,7 @@ async fn register(server: &str) -> String {
         .send()
         .await
         .unwrap();
-    assert!(response.status().is_success(), "inscription refusée");
+    assert!(response.status().is_success(), "registration refused");
     email
 }
 
@@ -89,7 +89,7 @@ fn draft(name: &str) -> ItemDraft {
 #[tokio::test]
 async fn bulk_actions_through_the_app_interface() {
     let Ok(server) = std::env::var("VERROU_TEST_SERVER") else {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
         return;
     };
     let email = register(&server).await;
@@ -104,14 +104,14 @@ async fn bulk_actions_through_the_app_interface() {
     for name in ["Banque", "GitHub", "Impôts"] {
         ids.push(session.create_item(draft(name)).await.unwrap());
     }
-    // Ce que fait l'app après une écriture : l'envoi, en arrière-plan.
+    // What the app does after a write: the upload, in the background.
     assert!(session.push_changes().await.unwrap().changed);
     let ids: Vec<String> = ids
         .into_iter()
         .map(|id| session.resolve_item_id(id))
         .collect();
 
-    // Favoris : appliqués tout de suite, avancement signalé à chacun.
+    // Favorites: applied right away, progress reported for each.
     let steps = Arc::new(Steps::default());
     let outcome = session
         .bulk_action(
@@ -148,7 +148,7 @@ async fn bulk_actions_through_the_app_interface() {
         .bulk_action(vec![ids[0].clone()], BulkItemAction::Trash, recorder())
         .await
         .unwrap();
-    // L'élément à la corbeille est écarté et compté.
+    // The item in the trash is skipped and counted.
     let outcome = session
         .bulk_action(ids.clone(), BulkItemAction::Archive, recorder())
         .await

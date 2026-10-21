@@ -1,15 +1,15 @@
-//! L'hôte Native Messaging, lancé comme le ferait chaque navigateur : Brave
-//! (origine de l'extension) ou Firefox (manifeste de l'hôte, identifiant de
-//! l'extension). Sans Verrou à l'écoute, l'hôte accepté répond
-//! `app_unavailable` ; lancé pour une autre extension, `unknown_extension`.
+//! The Native Messaging host, launched as each browser would: Brave
+//! (the extension's origin) or Firefox (the host manifest, the extension's
+//! identifier). With no Verrou listening, the accepted host answers
+//! `app_unavailable`; launched for another extension, `unknown_extension`.
 
 use std::io::Read as _;
 use std::net::TcpListener;
 use std::process::{Command, Stdio};
 
-/// La première trame écrite par l'hôte (longueur u32 LE + JSON).
+/// The first frame written by the host (u32 LE length + JSON).
 fn first_frame(args: &[&str]) -> serde_json::Value {
-    // Un port libre, sans personne à l'écoute ; Verrou n'est jamais ouvert.
+    // A free port, with nobody listening; Verrou is never opened.
     let port = TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
@@ -27,7 +27,7 @@ fn first_frame(args: &[&str]) -> serde_json::Value {
     let mut out = Vec::new();
     child.stdout.take().unwrap().read_to_end(&mut out).unwrap();
     child.wait().unwrap();
-    assert!(out.len() >= 4, "aucune trame : {out:?}");
+    assert!(out.len() >= 4, "no frame: {out:?}");
     let length = u32::from_le_bytes(out[..4].try_into().unwrap()) as usize;
     serde_json::from_slice(&out[4..4 + length]).unwrap()
 }
@@ -54,7 +54,7 @@ fn firefox_and_brave_launch_the_host() {
         )]),
         "app_unavailable"
     );
-    // Lancé à la main (tests de l'extension) : accepté aussi.
+    // Launched by hand (extension tests): accepted too.
     assert_eq!(code(&[]), "app_unavailable");
 }
 

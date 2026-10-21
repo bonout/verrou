@@ -1,16 +1,17 @@
-// Fenêtre de l'extension : état de la liaison avec Verrou, appairage,
-// identifiants de l'onglet en cours, et ajout d'un code de vérification.
+// The extension's popup: state of the link with Verrou, pairing, logins of
+// the current tab, and adding a verification code.
 
-import { ext, firefox } from "./browser.js";
+import { ext, firefox, t } from "./browser.js";
 import { canReadQrCodes, otpauthFrom } from "./qr.js";
 
 const main = document.getElementById("main");
 const stateLabel = document.getElementById("state");
 const send = (message) => ext.runtime.sendMessage(message);
+document.documentElement.lang = ext.i18n.getUILanguage();
 
-// Ouverte par « Remplir avec un autre identifiant… » de la pastille dans la
-// page (background.js, `openLinkSite`) : l'onglet et le cadre à relier,
-// pris une seule fois, s'ils sont tout frais.
+// Opened by "Fill with another login…" in the pill in the page
+// (background.js, `openLinkSite`): the tab and frame to link, taken only
+// once, if they are fresh.
 const linkIntent = (async () => {
   try {
     const { linkIntent: intent } = await ext.storage.session.get("linkIntent");
@@ -35,35 +36,35 @@ function show(...nodes) {
 
 function renderPairing(pairing) {
   if (pairing?.state === "waiting") {
-    stateLabel.textContent = "Appairage…";
+    stateLabel.textContent = t("popupPairing");
     show(
-      element("p", { textContent: "Vérifiez que Verrou affiche le même code, puis acceptez :" }),
+      element("p", { textContent: t("popupCheckCode") }),
       element("div", { className: "code", textContent: pairing.code }),
-      element("p", { textContent: "Si les codes diffèrent, refusez dans Verrou." }),
+      element("p", { textContent: t("popupCodesDiffer") }),
     );
     return true;
   }
   if (pairing?.state === "connecting") {
-    stateLabel.textContent = "Connexion…";
-    show(element("p", { textContent: "Connexion à Verrou…" }));
+    stateLabel.textContent = t("popupConnecting");
+    show(element("p", { textContent: t("popupConnectingToVerrou") }));
     return true;
   }
   return false;
 }
 
 async function renderUnpaired(error) {
-  stateLabel.textContent = "Non relié";
-  const button = element("button", { textContent: "Relier à Verrou" });
+  stateLabel.textContent = t("popupUnpaired");
+  const button = element("button", { textContent: t("popupPair") });
   button.addEventListener("click", async () => renderPairing(await send({ kind: "pair" })));
   show(
-    element("p", { textContent: "Reliez l'extension à l'app Verrou de ce Mac pour remplir vos identifiants." }),
+    element("p", { textContent: t("popupPairIntro") }),
     ...(error ? [element("p", { className: "error", textContent: error })] : []),
     button,
   );
 }
 
 async function renderUnlocked() {
-  stateLabel.textContent = "Déverrouillé";
+  stateLabel.textContent = t("popupUnlocked");
   const reply = await send({ kind: "suggestTab" });
   const items = reply.items ?? [];
   const list = element("ul");
@@ -75,46 +76,46 @@ async function renderUnlocked() {
         element("div", { className: "sub", textContent: item.username })));
     row.addEventListener("click", async () => {
       let result = await send({ kind: "fillTab", item: item.id });
-      // Élément protégé : confirmation dans Verrou, puis nouvel essai.
+      // Protected item: confirmation in Verrou, then a new attempt.
       for (let tries = 0; result?.state === "confirm" && tries < 60; tries += 1) {
-        stateLabel.textContent = "Confirmez dans Verrou…";
+        stateLabel.textContent = t("confirmInVerrouWait");
         await new Promise((resolve) => setTimeout(resolve, 1000));
         result = await send({ kind: "fillTab", item: item.id });
       }
       if (result?.ok) window.close();
-      else stateLabel.textContent = "Déverrouillé";
+      else stateLabel.textContent = t("popupUnlocked");
     });
     list.append(row);
   }
-  const other = element("button", { className: "link", textContent: "Remplir avec un autre identifiant…" });
+  const other = element("button", { className: "link", textContent: t("otherLogin") });
   other.addEventListener("click", () => renderOtherLogin());
-  const scan = element("button", { className: "secondary", textContent: "Ajouter le QR code affiché" });
+  const scan = element("button", { className: "secondary", textContent: t("popupScanQr") });
   scan.addEventListener("click", () => scanQrCode(items));
-  const manual = element("button", { className: "link", textContent: "ou saisir la clé à la main" });
+  const manual = element("button", { className: "link", textContent: t("popupEnterKeyLink") });
   manual.addEventListener("click", () => enterKey(items));
   show(
-    items.length ? list : element("p", { textContent: "Aucun identifiant pour ce site." }),
+    items.length ? list : element("p", { textContent: t("popupNoLogins") }),
     other,
     element("div", { className: "section" },
-      element("div", { className: "section-title", textContent: "Double authentification" }),
-      element("p", { textContent: "Le site affiche un QR code pour une app d'authentification : Verrou peut le garder et générer les codes." }),
+      element("div", { className: "section-title", textContent: t("popupTwoFactor") }),
+      element("p", { textContent: t("popupTwoFactorIntro") }),
       scan, manual),
     await autoSubmitSetting(),
     unpairLink(),
   );
 }
 
-// MARK: Réglages
+// MARK: Settings
 
-// « Envoyer le formulaire après le remplissage » (actif par défaut) : lu par
-// content.js après un remplissage choisi par l'utilisateur. Jamais pour une
-// carte, une adresse ou un mot de passe généré.
+// "Submit the form after filling" (on by default): read by content.js after
+// a fill chosen by the user. Never for a card, an address or a generated
+// password.
 async function autoSubmitSetting() {
   let enabled = true;
   try {
     enabled = (await ext.storage.local.get("autoSubmit")).autoSubmit !== false;
   } catch {
-    // Réglage illisible : la valeur par défaut.
+    // Unreadable setting: the default value.
   }
   const box = element("input", { type: "checkbox", id: "auto-submit", checked: enabled });
   box.setAttribute("aria-describedby", "auto-submit-hint");
@@ -123,26 +124,26 @@ async function autoSubmitSetting() {
   });
   return element("div", { className: "section" },
     element("label", { className: "toggle", htmlFor: "auto-submit" }, box,
-      element("span", { textContent: "Envoyer le formulaire après le remplissage" })),
+      element("span", { textContent: t("popupAutoSubmit") })),
     element("p", { className: "sub", id: "auto-submit-hint",
-      textContent: "Seulement pour une connexion, quand plus rien n'est à saisir et sans captcha visible." }));
+      textContent: t("popupAutoSubmitHint") }));
 }
 
-// MARK: Autre identifiant
+// MARK: Another login
 
-// Un site que Verrou ne relie à aucun identifiant (nouveau domaine, site de
-// connexion unique…) : on en choisit un, Verrou lui ajoute ce site, puis
-// remplit comme d'habitude. Le site reste ensuite associé.
-// `target` : l'onglet et le cadre de la pastille ; sinon l'onglet actif.
+// A site that Verrou links to no login (new domain, single sign-on site…):
+// one is chosen, Verrou adds this site to it, then fills as usual. The site
+// then stays associated.
+// `target`: the tab and frame of the pill; otherwise the active tab.
 async function renderOtherLogin(target = null) {
   const url = target?.url ?? (await ext.tabs.query({ active: true, currentWindow: true }))[0]?.url;
   let host = "";
   try {
     host = new URL(url ?? "").hostname;
   } catch {
-    // Page sans adresse (onglet système) : rien à relier.
+    // Page without an address (system tab): nothing to link.
   }
-  const input = element("input", { type: "text", placeholder: "Rechercher un identifiant", autocomplete: "off", spellcheck: false });
+  const input = element("input", { type: "text", placeholder: t("popupSearchLogin"), autocomplete: "off", spellcheck: false });
   const results = element("ul");
   const search = async () => {
     const reply = await send({ kind: "searchLogins", query: input.value });
@@ -162,7 +163,7 @@ async function renderOtherLogin(target = null) {
     debounce = setTimeout(search, 150);
   });
   show(
-    element("p", { textContent: `Choisissez l'identifiant à utiliser sur ${host || "ce site"}.` }),
+    element("p", { textContent: t("popupChooseLogin", host || t("popupThisSite")) }),
     input, results, backLink(),
   );
   input.focus();
@@ -170,35 +171,35 @@ async function renderOtherLogin(target = null) {
 }
 
 function confirmLink(item, host, target) {
-  const go = element("button", { textContent: "Ajouter et remplir" });
+  const go = element("button", { textContent: t("popupAddAndFill") });
   go.addEventListener("click", async () => {
     go.disabled = true;
     const result = await send({ kind: "linkSiteTab", item: item.id, target });
     if (result?.ok) window.close();
-    else show(element("p", { className: "error", textContent: `Impossible : ${result?.reason ?? "Verrou ne répond pas"}` }), backLink());
+    else show(element("p", { className: "error", textContent: t("popupFailed", result?.reason ?? t("verrouNotResponding")) }), backLink());
   });
   show(
-    element("p", { textContent: `Ajouter ${host} à « ${item.title} » ? Verrou le proposera ensuite sur ce site. Vérifiez bien l'adresse : un site d'hameçonnage imite souvent celui qu'il vise.` }),
+    element("p", { textContent: t("popupConfirmLink", host, item.title) }),
     go, backLink(),
   );
 }
 
-// MARK: Code de vérification
+// MARK: Verification code
 
-// L'URI `otpauth://totp/…` du QR code visible dans l'onglet, s'il y en a un.
+// The `otpauth://totp/…` URI of the QR code visible in the tab, if there is one.
 async function readQrCode() {
-  if (!canReadQrCodes()) throw new Error("ce navigateur ne sait pas lire les QR codes : saisissez la clé à la main");
+  if (!canReadQrCodes()) throw new Error(t("popupQrUnsupported"));
   const capture = await send({ kind: "captureTab" });
-  if (!capture?.ok) throw new Error(`capture de l'onglet impossible (${capture?.reason ?? "?"})`);
+  if (!capture?.ok) throw new Error(t("popupCaptureFailed", capture?.reason ?? "?"));
   return otpauthFrom(await (await fetch(capture.image)).blob());
 }
 
 async function scanQrCode(items) {
-  stateLabel.textContent = "Lecture…";
+  stateLabel.textContent = t("popupReading");
   try {
     const uri = await readQrCode();
     if (!uri) {
-      return renderTotpError(items, "Aucun QR code de double authentification visible : faites-le apparaître à l'écran, ou saisissez la clé.");
+      return renderTotpError(items, t("popupNoQr"));
     }
     renderTotpChoice(items, uri);
   } catch (error) {
@@ -207,46 +208,46 @@ async function scanQrCode(items) {
 }
 
 function renderTotpError(items, message) {
-  stateLabel.textContent = "Déverrouillé";
-  const retry = element("button", { textContent: "Réessayer" });
+  stateLabel.textContent = t("popupUnlocked");
+  const retry = element("button", { textContent: t("popupRetry") });
   retry.addEventListener("click", () => scanQrCode(items));
-  const manual = element("button", { className: "link", textContent: "Saisir la clé à la main" });
+  const manual = element("button", { className: "link", textContent: t("popupEnterKey") });
   manual.addEventListener("click", () => enterKey(items));
   show(element("p", { className: "error", textContent: message }), retry, manual, backLink());
 }
 
 function enterKey(items) {
   const input = element("input", { type: "text", placeholder: "JBSW Y3DP EHPK 3PXP…", autocomplete: "off", spellcheck: false });
-  const next = element("button", { textContent: "Continuer" });
+  const next = element("button", { textContent: t("popupContinue") });
   const submit = () => {
     const key = input.value.replace(/\s+/g, "");
     if (key) renderTotpChoice(items, key);
   };
   next.addEventListener("click", submit);
   input.addEventListener("keydown", (event) => event.key === "Enter" && submit());
-  show(element("p", { textContent: "La clé secrète affichée par le site (« clé de configuration ») :" }), input, next, backLink());
+  show(element("p", { textContent: t("popupSecretKey") }), input, next, backLink());
   input.focus();
 }
 
-// Description lisible d'une URI otpauth : « Émetteur · compte ».
+// Readable description of an otpauth URI: "Issuer · account".
 function describeTotp(value) {
   try {
     const url = new URL(value);
     const label = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
     const issuer = url.searchParams.get("issuer");
-    return [issuer, label.split(":").pop()].filter(Boolean).join(" · ") || "Code de vérification";
+    return [issuer, label.split(":").pop()].filter(Boolean).join(" · ") || t("popupVerificationCode");
   } catch {
-    return "Clé saisie";
+    return t("popupEnteredKey");
   }
 }
 
 function renderTotpChoice(items, totp) {
-  stateLabel.textContent = "Déverrouillé";
+  stateLabel.textContent = t("popupUnlocked");
   const choices = [
-    ...items.map((item) => ({ id: item.id, title: item.title, sub: item.has_totp ? `${item.username} · remplace le code actuel` : item.username })),
-    { id: null, title: "Nouvel identifiant", sub: "pour ce site" },
+    ...items.map((item) => ({ id: item.id, title: item.title, sub: item.has_totp ? t("popupReplacesCode", item.username) : item.username })),
+    { id: null, title: t("newLogin"), sub: t("popupForThisSite") },
   ];
-  // Par défaut : un identifiant sans code, sinon le premier.
+  // By default: a login without a code, otherwise the first one.
   let chosen = (items.find((item) => !item.has_totp) ?? items[0])?.id ?? null;
   const list = element("ul", { className: "choices" });
   const draw = () => {
@@ -264,20 +265,20 @@ function renderTotpChoice(items, totp) {
     }));
   };
   draw();
-  const add = element("button", { textContent: "Ajouter à Verrou" });
+  const add = element("button", { textContent: t("popupAddToVerrou") });
   add.addEventListener("click", async () => {
     add.disabled = true;
     const result = await send({ kind: "setTotpTab", totp, item: chosen });
     if (result?.ok) {
-      show(element("p", { className: "done", textContent: "Code ajouté. Verrou génère maintenant les codes de ce site : saisissez le code actuel pour terminer l'activation sur le site." }), backLink());
+      show(element("p", { className: "done", textContent: t("popupCodeAdded") }), backLink());
     } else {
       add.disabled = false;
-      show(element("p", { className: "error", textContent: `Ajout impossible : ${result?.reason ?? "Verrou ne répond pas"}` }), backLink());
+      show(element("p", { className: "error", textContent: t("popupAddFailed", result?.reason ?? t("verrouNotResponding")) }), backLink());
     }
   });
   show(
     element("div", { className: "code-found", textContent: describeTotp(totp) }),
-    element("p", { textContent: "Ajouter ce code de vérification à :" }),
+    element("p", { textContent: t("popupAddCodeTo") }),
     list,
     add,
     backLink(),
@@ -285,13 +286,13 @@ function renderTotpChoice(items, totp) {
 }
 
 function backLink() {
-  const link = element("button", { className: "link", textContent: "Retour" });
+  const link = element("button", { className: "link", textContent: t("popupBack") });
   link.addEventListener("click", scheduleRender);
   return link;
 }
 
 function unpairLink() {
-  const link = element("button", { className: "link", textContent: "Délier cette extension" });
+  const link = element("button", { className: "link", textContent: t("popupUnpair") });
   link.addEventListener("click", async () => {
     await send({ kind: "unpair" });
     renderUnpaired();
@@ -299,33 +300,27 @@ function unpairLink() {
   return link;
 }
 
-// Avertissement en tête de la fenêtre.
+// Warning at the top of the popup.
 function warning(title, text) {
   return element("div", { className: "warning", role: "alert" },
     element("strong", { textContent: title }), element("span", { textContent: text }));
 }
 
-// L'extension qui tourne n'est pas celle que livre Verrou : elle s'est
-// rechargée sans changer (chargée depuis un autre dossier), ou va le faire.
-// Firefox ne la recharge pas pour une version annoncée par Verrou (voir
-// update.js) : on dit comment charger la bonne.
+// The running extension is not the one Verrou ships: it reloaded without
+// changing (loaded from another folder), or is about to. Firefox doesn't
+// reload it for a version announced by Verrou (see update.js): we say how
+// to load the right one.
 function versionWarning(extension) {
   if (!extension?.mismatch) return null;
-  const how = firefox
-    ? "Dans about:debugging › Ce Firefox, rechargez-la, ou chargez le manifest.json du dossier "
-      + "« extension-firefox » de Verrou.app (Réglages de Verrou › Navigateurs et terminal › "
-      + "Extension Firefox › Copier le chemin). Module installé (.xpi) : installez celui de la nouvelle version."
-    : "Dans brave://extensions, chargez le dossier « extension » de Verrou.app "
-      + "(Réglages de Verrou › Navigateurs et terminal › Copier le chemin), ou rechargez-la.";
-  return warning("L'extension n'est pas celle de Verrou",
-    `Elle est en version ${extension.running}, Verrou livre la ${extension.bundled}. ${how}`);
+  const how = firefox ? t("popupVersionHowFirefox") : t("popupVersionHowBrave");
+  return warning(t("popupVersionTitle"), t("popupVersionText", extension.running, extension.bundled, how));
 }
 
-// MARK: Accès aux sites (Firefox)
+// MARK: Site access (Firefox)
 //
-// Firefox laisse l'utilisateur accorder ou retirer l'accès aux sites d'une
-// extension Manifest V3 (`host_permissions`) : sans lui, ni pastille dans
-// les pages, ni passkeys. Brave l'accorde à l'installation : rien à demander.
+// Firefox lets the user grant or withdraw a Manifest V3 extension's access
+// to sites (`host_permissions`): without it, no pill in the pages, and no
+// passkeys. Brave grants it at install time: nothing to ask.
 
 function siteOrigins() {
   return ext.runtime.getManifest().host_permissions ?? [];
@@ -343,25 +338,25 @@ async function missingSiteAccess() {
 }
 
 function siteAccessRequest() {
-  const button = element("button", { textContent: "Autoriser Verrou sur les sites" });
+  const button = element("button", { textContent: t("popupAllowSites") });
   const note = element("p", { className: "hint" });
   button.addEventListener("click", () => {
-    // Appel direct dans le clic : Firefox n'accepte la demande que pendant
-    // le geste de l'utilisateur.
+    // Direct call in the click: Firefox only accepts the request during the
+    // user's gesture.
     ext.permissions.request({ origins: siteOrigins() })
       .then((granted) => {
         if (granted) {
-          note.textContent = "Accès accordé : rechargez les pages déjà ouvertes.";
+          note.textContent = t("popupAccessGranted");
           scheduleRender();
         } else {
-          note.textContent = "Accès refusé : Verrou ne pourra rien remplir.";
+          note.textContent = t("popupAccessDenied");
         }
       })
-      .catch((error) => { note.textContent = `Demande impossible : ${error.message}`; });
+      .catch((error) => { note.textContent = t("popupRequestFailed", error.message); });
   });
   return element("div", { className: "warning", role: "alert" },
-    element("strong", { textContent: "Verrou n'a pas accès aux sites" }),
-    element("span", { textContent: "Firefox demande votre accord pour que l'extension remplisse vos identifiants et propose vos passkeys sur les pages." }),
+    element("strong", { textContent: t("popupNoSiteAccess") }),
+    element("span", { textContent: t("popupSiteAccessText") }),
     button, note);
 }
 
@@ -376,19 +371,17 @@ async function render() {
       await renderUnpaired(pairing?.state === "failed" ? pairing.error : null);
       break;
     case "offline":
-      stateLabel.textContent = "Hors ligne";
+      stateLabel.textContent = t("popupOffline");
       show(
-        warning("Verrou n'est pas joignable",
-          "Ouvrez l'app et activez « Brave, Firefox et le terminal » dans ses réglages. "
-          + "D'ici là, ni remplissage ni passkeys : le navigateur reprend la main."),
+        warning(t("verrouUnreachable"), t("popupOfflineText", t("settingBridge"))),
         unpairLink(),
       );
       break;
     case "locked": {
-      stateLabel.textContent = "Verrouillé";
-      const button = element("button", { textContent: "Déverrouiller Verrou" });
+      stateLabel.textContent = t("popupLocked");
+      const button = element("button", { textContent: t("popupUnlockVerrou") });
       button.addEventListener("click", () => send({ kind: "unlock" }));
-      show(element("p", { textContent: "Verrou est verrouillé." }), button);
+      show(element("p", { textContent: t("popupVerrouLocked") }), button);
       break;
     }
     default: {
@@ -405,7 +398,7 @@ async function render() {
   if (accessNote) main.prepend(accessNote);
 }
 
-// Un rendu à la fois : les étapes d'appairage arrivent en rafale.
+// One render at a time: the pairing steps arrive in bursts.
 let rendering = Promise.resolve();
 function scheduleRender() {
   rendering = rendering.then(render, render);

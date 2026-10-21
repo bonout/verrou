@@ -1,18 +1,20 @@
-// Le navigateur qui fait tourner l'extension : Brave (et Chrome) ou Firefox.
+// The browser running the extension: Brave (and Chrome) or Firefox.
 //
-// Les API d'extension : `browser` quand il existe (Firefox, Chromium 148 et
-// suivants ; promesses partout), sinon `chrome`. Les scripts de contenu
-// (classiques, pas des modules) refont ce choix dans leur fonction, sur le
-// même modèle : `browser` pourrait y désigner un élément de la page
-// (`id="browser"`), d'où le test sur `runtime.id`.
+// The extension APIs: `browser` when it exists (Firefox, Chromium 148 and
+// later; promises everywhere), otherwise `chrome`. The content scripts
+// (classic scripts, not modules) make the same choice in their function, the
+// same way: `browser` could there be an element of the page
+// (`id="browser"`), hence the test on `runtime.id`.
 //
-// Firefox se reconnaît à son manifeste (`browser_specific_settings.gecko`,
-// ajouté par scripts/firefox-extension.sh) : pas de détection par
-// l'agent utilisateur.
+// Firefox is recognized by its manifest (`browser_specific_settings.gecko`,
+// added by scripts/firefox-extension.sh): no user agent sniffing.
 
 export const ext = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
 
 export const firefox = Boolean(ext.runtime.getManifest().browser_specific_settings?.gecko);
 
-// Le nom annoncé à Verrou à l'appairage, affiché dans ses réglages.
+// The name announced to Verrou when pairing, shown in its settings.
 export const browserName = firefox ? "Firefox" : "Brave";
+
+// Text of the interface in the browser's language (extension/_locales).
+export const t = (name, ...substitutions) => ext.i18n.getMessage(name, substitutions.map(String));

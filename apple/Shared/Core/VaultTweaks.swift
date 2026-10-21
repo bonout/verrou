@@ -1,27 +1,27 @@
 import Foundation
 import SwiftUI
 
-// Retrait du partage, tri, filtre par défaut et règles de correspondance :
-// libellés et réglages communs aux apps Mac et iPhone. Le travail (copie
-// rechiffrée, correspondance, registre d'utilisation) est dans le cœur Rust.
+// Removal from sharing, sorting, default filter and match rules: labels
+// and settings shared by the Mac and iPhone apps. The work (re-encrypted
+// copy, matching, usage log) is in the Rust core.
 
-// MARK: Tri
+// MARK: Sorting
 
 extension ResultOrder {
-    /// Ordres proposés, dans l'ordre du menu.
+    /// Orders offered, in menu order.
     static let menu: [ResultOrder] = [.relevance, .title, .recentlyModified, .created, .lastUsed]
 
     var label: String {
         switch self {
-        case .relevance: "Pertinence"
-        case .title: "Titre"
-        case .recentlyModified: "Modifiés récemment"
-        case .created: "Date de création"
-        case .lastUsed: "Dernière utilisation"
+        case .relevance: String(localized: "Relevance")
+        case .title: String(localized: "Title")
+        case .recentlyModified: String(localized: "Recently modified")
+        case .created: String(localized: "Date created")
+        case .lastUsed: String(localized: "Last used")
         }
     }
 
-    /// Clé enregistrée dans les préférences de l'appareil.
+    /// Key saved in the device's preferences.
     var storageKey: String {
         switch self {
         case .relevance: "relevance"
@@ -38,8 +38,8 @@ extension ResultOrder {
     }
 }
 
-/// Préférences de l'appareil (jamais synchronisées) : tri choisi et filtre
-/// ouvert au déverrouillage.
+/// Device preferences (never synced): chosen sort and filter opened on
+/// unlock.
 enum DevicePreferences {
     private static let sortKey = "verrou.sort"
     private static let defaultFilterKey = "verrou.defaultFilter"
@@ -55,7 +55,7 @@ enum DevicePreferences {
     }
 }
 
-/// Le filtre ouvert au déverrouillage (réglage de l'appareil).
+/// The filter opened on unlock (device setting).
 enum DefaultFilter: String, CaseIterable, Identifiable {
     case all, favorites, withTotp, passkeys
 
@@ -63,10 +63,10 @@ enum DefaultFilter: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .all: "Tous les éléments"
-        case .favorites: "Favoris"
-        case .withTotp: "Codes à usage unique"
-        case .passkeys: "Passkeys"
+        case .all: String(localized: "All items")
+        case .favorites: String(localized: "Favorites")
+        case .withTotp: String(localized: "One-time codes")
+        case .passkeys: String(localized: "Passkeys")
         }
     }
 
@@ -83,94 +83,92 @@ enum DefaultFilter: String, CaseIterable, Identifiable {
 // MARK: Passkeys
 
 extension ItemSummary {
-    /// « github.com · camille » : le site et l'utilisateur de la passkey.
+    /// "github.com · camille": the passkey's site and user.
     var passkeyLine: String? {
         guard let rpId = passkeyRpId else { return nil }
         guard let user = passkeyUserName, !user.isEmpty else { return rpId }
         return "\(rpId) · \(user)"
     }
 
-    /// Dernière utilisation sur cet appareil, en clair (« il y a 3 jours »).
+    /// Last use on this device, in words ("3 days ago").
     var lastUsedLabel: String? {
         guard let lastUsed else { return nil }
         let formatter = RelativeDateTimeFormatter()
-        formatter.locale = Locale(identifier: "fr_FR")
         formatter.unitsStyle = .full
         return formatter.localizedString(for: Date(timeIntervalSince1970: TimeInterval(lastUsed)), relativeTo: .now)
     }
 }
 
-// MARK: Retrait du partage
+// MARK: Removal from sharing
 
 extension ItemSummary {
-    /// Peut quitter son organisation : partagé, modifiable, mots de passe
-    /// visibles, hors de la corbeille (le serveur vérifie aussi).
+    /// Can leave its organization: shared, editable, passwords visible, not
+    /// in the trash (the server checks too).
     var canUnshare: Bool {
         guard let sharing else { return false }
         return !sharing.readOnly && !sharing.hidePasswords && state != .trashed
     }
 }
 
-/// Demande de retrait du partage, en attente de confirmation.
+/// Request to remove from sharing, awaiting confirmation.
 struct UnshareRequest: Identifiable {
     let id = UUID()
     let itemIDs: [String]
-    /// Titre de l'élément, ou « 3 éléments ».
+    /// The item's title, or "3 items".
     let title: String
-    /// Organisations concernées, pour le message.
+    /// Organizations concerned, for the message.
     let organizations: [String]
 
     var question: String {
-        itemIDs.count == 1 ? "Retirer « \(title) » du partage ?" : "Retirer \(title) du partage ?"
+        itemIDs.count == 1 ? String(localized: "Remove “\(title)” from sharing?") : String(localized: "Remove \(title) from sharing?")
     }
 
     var message: String {
-        let from = organizations.count == 1 ? "de « \(organizations[0]) »" : "de leurs organisations"
-        let what = itemIDs.count == 1 ? "Une copie personnelle est créée (historique, passkeys, codes, champs et pièces jointes compris), puis l'élément est supprimé définitivement \(from) : ses membres ne le verront plus."
-            : "Des copies personnelles sont créées (historique, passkeys, codes, champs et pièces jointes compris), puis les éléments sont supprimés définitivement \(from) : leurs membres ne les verront plus."
-        return what + " Demande une connexion au serveur."
+        let from = organizations.count == 1 ? String(localized: "from “\(organizations[0])”") : String(localized: "from their organizations")
+        let what = itemIDs.count == 1 ? String(localized: "A personal copy is created (history, passkeys, codes, fields and attachments included), then the item is permanently deleted \(from): its members will no longer see it.")
+            : String(localized: "Personal copies are created (history, passkeys, codes, fields and attachments included), then the items are permanently deleted \(from): their members will no longer see them.")
+        return what + " " + String(localized: "Requires a connection to the server.")
     }
 }
 
 extension UnshareResult {
-    /// « 2 éléments ramenés dans votre coffre, 1 ignoré (lecture seule) ».
+    /// "2 items moved back to your vault, 1 skipped (read-only)".
     var toast: Toast {
         let n = moved.count
-        var message = n == 1 ? "Élément ramené dans votre coffre" : "\(n) éléments ramenés dans votre coffre"
-        if n == 0 { message = "Aucun élément retiré du partage" }
+        var message = n == 1 ? String(localized: "Item moved back to your vault") : String(localized: "\(n) items moved back to your vault")
+        if n == 0 { message = String(localized: "No item removed from sharing") }
         var ignored: [String] = []
-        let plural = { (count: UInt32) in count > 1 ? "s" : "" }
-        if notShared > 0 { ignored.append("\(notShared) ignoré\(plural(notShared)) (déjà personnel\(plural(notShared)))") }
-        if readOnly > 0 { ignored.append("\(readOnly) ignoré\(plural(readOnly)) (droit de modifier requis)") }
-        if passwordsHidden > 0 { ignored.append("\(passwordsHidden) ignoré\(plural(passwordsHidden)) (mots de passe masqués)") }
-        if inTrash > 0 { ignored.append("\(inTrash) ignoré\(plural(inTrash)) (dans la corbeille)") }
-        if notFound > 0 { ignored.append("\(notFound) introuvable\(plural(notFound))") }
+        if notShared > 0 { ignored.append(notShared > 1 ? String(localized: "\(notShared) skipped items (already personal)") : String(localized: "\(notShared) skipped item (already personal)")) }
+        if readOnly > 0 { ignored.append(readOnly > 1 ? String(localized: "\(readOnly) skipped items (edit permission required)") : String(localized: "\(readOnly) skipped item (edit permission required)")) }
+        if passwordsHidden > 0 { ignored.append(passwordsHidden > 1 ? String(localized: "\(passwordsHidden) skipped items (passwords hidden)") : String(localized: "\(passwordsHidden) skipped item (passwords hidden)")) }
+        if inTrash > 0 { ignored.append(inTrash > 1 ? String(localized: "\(inTrash) skipped items (in the trash)") : String(localized: "\(inTrash) skipped item (in the trash)")) }
+        if notFound > 0 { ignored.append(notFound > 1 ? String(localized: "\(notFound) items not found") : String(localized: "\(notFound) item not found")) }
         if !ignored.isEmpty { message += ", " + ignored.joined(separator: ", ") }
         if !failures.isEmpty {
-            return Toast(message: message + ", \(failures.count) refusé\(failures.count > 1 ? "s" : "")",
+            return Toast(message: message + ", " + (failures.count > 1 ? String(localized: "\(failures.count) refused items") : String(localized: "\(failures.count) refused item")),
                          detail: failures.joined(separator: "\n"), failure: true, seconds: 6)
         }
         return Toast(message: message, detail: nil, failure: n == 0, seconds: ignored.isEmpty ? 2.5 : 4)
     }
 }
 
-// MARK: Règles de correspondance
+// MARK: Match rules
 
 extension UriMatchRule: Identifiable {
-    public var id: String { label }
+    public var id: String { uriMatchLabel(rule: self) }
 
-    /// « Domaine de base », « Hôte »… (libellés du cœur Rust).
-    var label: String { uriMatchLabel(rule: self) }
+    /// "Base domain", "Host"… (labels from the Rust core, translated).
+    var label: String { CoreText.localized(uriMatchLabel(rule: self)) }
 
-    /// Ce que fait la règle, en une phrase.
+    /// What the rule does, in one sentence.
     var explanation: String {
         switch self {
-        case .domain: "Le site et tous ses sous-domaines (et les domaines équivalents)."
-        case .host: "Le même hôte, port compris : pas les sous-domaines."
-        case .startsWith: "Les adresses qui commencent par celle du site."
-        case .exact: "Seulement cette adresse exacte."
-        case .regularExpression: "Les adresses qui vérifient l'expression régulière."
-        case .never: "Jamais proposé au remplissage."
+        case .domain: String(localized: "The site and all its subdomains (and equivalent domains).")
+        case .host: String(localized: "The same host, port included: not the subdomains.")
+        case .startsWith: String(localized: "Addresses that start with the site's.")
+        case .exact: String(localized: "Only this exact address.")
+        case .regularExpression: String(localized: "Addresses that match the regular expression.")
+        case .never: String(localized: "Never offered for filling.")
         }
     }
 
@@ -178,7 +176,7 @@ extension UriMatchRule: Identifiable {
 }
 
 extension LoginFields {
-    /// Règles alignées sur `urls` (une par site, `nil` : par défaut).
+    /// Rules aligned with `urls` (one per site, `nil`: default).
     private var alignedMatches: [UriMatchRule?] {
         let current = urlMatches ?? []
         return urls.indices.map { current.indices.contains($0) ? current[$0] : nil }
@@ -210,7 +208,7 @@ extension LoginFields {
         urlMatches = list
     }
 
-    /// Retire les sites laissés vides, avec leur règle.
+    /// Removes the sites left empty, with their rule.
     mutating func dropEmptyURLs() {
         let kept = zip(urls, alignedMatches).filter { !$0.0.trimmingCharacters(in: .whitespaces).isEmpty }
         urls = kept.map(\.0)
@@ -219,7 +217,7 @@ extension LoginFields {
 }
 
 extension MatchSettingsView {
-    /// Règle qui s'applique aux sites sans règle d'un élément du dossier.
+    /// Rule that applies to sites without a rule of an item in the folder.
     func fallback(folderID: String?) -> UriMatchRule {
         folderRules.first { $0.folderId == folderID }?.rule ?? defaultRule
     }

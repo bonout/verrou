@@ -40,7 +40,7 @@ struct LockView: View {
         }
         .frame(minWidth: 520, minHeight: 460)
         .onAppear {
-            Perf.log.notice("écran verrouillé affiché à +\(Perf.msSinceLaunch) ms du lancement")
+            Perf.log.notice("lock screen shown at +\(Perf.msSinceLaunch) ms after launch")
             model.activatedAt = .now
             if model.canUseTouchID {
                 Task { await model.promptTouchIDIfPossible() }
@@ -55,14 +55,14 @@ struct LockView: View {
         }
     }
 
-    /// Touch ID, clé de sécurité, mot de passe principal.
+    /// Touch ID, security key, master password.
     @ViewBuilder
     private var unlockMethods: some View {
         if model.canUseTouchID {
             Button {
                 Task { await model.unlockWithBiometrics() }
             } label: {
-                Label("Déverrouiller avec Touch ID", systemImage: Biometrics.symbolName)
+                Label("Unlock with Touch ID", systemImage: Biometrics.symbolName)
                     .font(.body.weight(.semibold))
                     .frame(width: 280, height: 30)
             }
@@ -77,7 +77,7 @@ struct LockView: View {
         }
 
         HStack(spacing: 8) {
-            SecureField("Mot de passe principal", text: $password)
+            SecureField("Master password", text: $password)
                 .disabled(model.lockState == .unlocking)
                 .textFieldStyle(.plain)
                 .font(.body)
@@ -94,7 +94,7 @@ struct LockView: View {
             }
             .buttonStyle(.plain)
             .disabled(password.isEmpty)
-            .accessibilityLabel("Déverrouiller")
+            .accessibilityLabel("Unlock")
         }
         .padding(.horizontal, 12)
         .frame(width: 280, height: 38)
@@ -102,13 +102,13 @@ struct LockView: View {
         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.accent : Color.secondary.opacity(0.25)))
     }
 
-    /// Mis en avant quand Touch ID n'est pas proposé.
+    /// Highlighted when Touch ID is not offered.
     @ViewBuilder
     private var securityKeyButton: some View {
         let button = Button {
             Task { await model.unlockWithSecurityKey() }
         } label: {
-            Label("Déverrouiller avec la clé de sécurité", systemImage: "key.horizontal.fill")
+            Label("Unlock with the Security Key", systemImage: "key.horizontal.fill")
                 .font(.body.weight(.semibold))
                 .frame(width: 280, height: 30)
         }
@@ -123,7 +123,7 @@ struct LockView: View {
 
     private var subtitle: String {
         guard model.mode == .vaultwarden, let account = model.account else {
-            return "Coffre fictif · données de démonstration"
+            return String(localized: "Mock vault · demo data")
         }
         let host = URL(string: account.server)?.host() ?? account.server
         return "\(account.email) · \(host)"

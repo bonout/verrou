@@ -1,27 +1,27 @@
 #if DEBUG
 import SwiftUI
 
-/// Mesures de l'app iPhone sur un coffre fictif (builds Debug,
-/// `VERROU_BENCH=1` avec `VERROU_MOCK=1` et `VERROU_MOCK_SIZE`) :
+/// Measurements of the iPhone app on a demo vault (Debug builds,
+/// `VERROU_BENCH=1` with `VERROU_MOCK=1` and `VERROU_MOCK_SIZE`):
 ///
-/// - lancement à froid jusqu'à l'accueil du coffre ouvert (le coffre fictif
-///   est ouvert dès le démarrage, sans attendre de saisie) ;
-/// - ouverture de la liste de tous les éléments ;
-/// - chaque frappe d'une recherche, jusqu'à l'image suivante ;
-/// - déverrouillage : du succès au coffre affiché et utilisable, puis
-///   jusqu'au retrait de l'écran verrouillé (fin de l'animation).
+/// - cold launch until the open vault's home screen (the demo vault is
+///   opened at startup, without waiting for input);
+/// - opening the list of all items;
+/// - each keystroke of a search, until the next frame;
+/// - unlock: from the success to the vault shown and usable, then until
+///   the lock screen is removed (end of the animation).
 ///
-/// Annonce `BENCH …` sur sa sortie standard (lue par `scripts/ios-bench.sh`),
-/// puis `BENCH_DONE`.
+/// Announces `BENCH …` on its standard output (read by
+/// `scripts/ios-bench.sh`), then `BENCH_DONE`.
 @MainActor
 final class PhoneBenchDriver {
-    /// Lignes d'éléments construites par SwiftUI depuis la dernière remise à zéro.
+    /// Item rows built by SwiftUI since the last reset.
     static var rowsBuilt = 0
-    /// L'accueil du coffre a été affiché.
+    /// The vault home screen was shown.
     static var homeShown = false
-    /// La liste filtrée a été affichée.
+    /// The filtered list was shown.
     static var listShown = false
-    /// L'écran verrouillé est dans la hiérarchie des vues.
+    /// The lock screen is in the view hierarchy.
     static var lockShown = false
 
     private let model: PhoneModel
@@ -44,8 +44,8 @@ final class PhoneBenchDriver {
         fflush(stdout)
     }
 
-    /// Le prochain tour de la boucle principale : SwiftUI a recalculé, mis en
-    /// page et validé l'image de ce que `change` a invalidé.
+    /// The next turn of the main run loop: SwiftUI has recomputed, laid out
+    /// and committed the frame of what `change` invalidated.
     private func nextTurn() async {
         await withCheckedContinuation { continuation in
             DispatchQueue.main.async { continuation.resume() }
@@ -61,7 +61,7 @@ final class PhoneBenchDriver {
         return true
     }
 
-    /// Durée de `change` jusqu'à l'image suivante, temps CPU du fil principal compris.
+    /// Duration of `change` until the next frame, main thread CPU time included.
     @discardableResult
     private func timed(_ label: String, _ change: () -> Void) async -> Double {
         Self.rowsBuilt = 0
@@ -72,30 +72,30 @@ final class PhoneBenchDriver {
         let elapsed = ContinuousClock.now - start
         let ms = Double(elapsed.components.attoseconds) / 1e15 + Double(elapsed.components.seconds) * 1000
         let busy = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - cpu) / 1e6
-        report(String(format: "%@ : %.2f ms (CPU %.2f ms), %d lignes construites", label, ms, busy, Self.rowsBuilt))
+        report(String(format: "%@: %.2f ms (CPU %.2f ms), %d rows built", label, ms, busy, Self.rowsBuilt))
         return ms
     }
 
     private func run() async {
-        // Lancement à froid : coffre fictif ouvert d'emblée, puis l'accueil.
+        // Cold launch: demo vault open right away, then the home screen.
         model.openMockVault()
-        guard await wait(20, until: { Self.homeShown }) else { return report("ÉCHEC accueil jamais affiché") }
+        guard await wait(20, until: { Self.homeShown }) else { return report("FAILED home screen never shown") }
         await nextTurn()
         let processCPU = clock_gettime_nsec_np(CLOCK_PROCESS_CPUTIME_ID) / 1_000_000
-        report("LAUNCH accueil du coffre ouvert à +\(Perf.msSinceLaunch) ms du lancement, CPU du processus \(processCPU) ms (\(model.summaries.count) éléments)")
+        report("LAUNCH open vault home at +\(Perf.msSinceLaunch) ms from launch, process CPU \(processCPU) ms (\(model.summaries.count) items)")
         try? await Task.sleep(for: .seconds(1))
 
-        // Liste de tous les éléments.
+        // List of all items.
         Self.listShown = false
         let opening = ContinuousClock.now
-        await timed("LIST ouverture de « Tous les éléments »") { model.vaultPath = [.list(.all)] }
+        await timed("LIST opening “All items”") { model.vaultPath = [.list(.all)] }
         _ = await wait(10, until: { Self.listShown })
-        report("LIST affichée en \(Perf.ms(since: opening)) ms")
+        report("LIST shown in \(Perf.ms(since: opening)) ms")
         try? await Task.sleep(for: .seconds(1))
         model.vaultPath = []
         try? await Task.sleep(for: .seconds(1))
 
-        // Recherche tapée lettre à lettre, puis effacée, trois fois.
+        // Search typed letter by letter, then erased, three times.
         prepareSearch()
         try? await Task.sleep(for: .seconds(1))
         var samples: [Double] = []
@@ -105,14 +105,14 @@ final class PhoneBenchDriver {
                 for letter in word {
                     typed.append(letter)
                     let query = typed
-                    let ms = await timed("KEY tour \(round) « \(query) »") { model.searchQuery = query }
+                    let ms = await timed("KEY round \(round) “\(query)”") { model.searchQuery = query }
                     samples.append(ms)
                     try? await Task.sleep(for: .milliseconds(60))
                 }
                 while !typed.isEmpty {
                     typed.removeLast()
                     let query = typed
-                    let ms = await timed("KEY tour \(round) « \(query) »") { model.searchQuery = query }
+                    let ms = await timed("KEY round \(round) “\(query)”") { model.searchQuery = query }
                     samples.append(ms)
                     try? await Task.sleep(for: .milliseconds(60))
                 }
@@ -121,16 +121,16 @@ final class PhoneBenchDriver {
         let sorted = samples.sorted()
         let median = sorted[sorted.count / 2]
         let p95 = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.95))]
-        report(String(format: "SEARCH %d frappes : médiane %.2f ms, p95 %.2f ms, max %.2f ms",
+        report(String(format: "SEARCH %d keystrokes: median %.2f ms, p95 %.2f ms, max %.2f ms",
                       sorted.count, median, p95, sorted.last ?? 0))
-        // Déverrouillage, trois fois : du succès au coffre affiché (les vues du
-        // coffre reçoivent les touchers dès cet instant), puis au retrait de
-        // l'écran verrouillé.
+        // Unlock, three times: from the success to the vault shown (the vault's
+        // views receive touches from that moment), then to the removal of the
+        // lock screen.
         model.tab = .vault
         try? await Task.sleep(for: .seconds(1))
         for round in 0..<3 {
             model.lock()
-            guard await wait(10, until: { Self.lockShown }) else { return report("ÉCHEC écran verrouillé jamais affiché") }
+            guard await wait(10, until: { Self.lockShown }) else { return report("FAILED lock screen never shown") }
             try? await Task.sleep(for: .seconds(1))
             Self.homeShown = false
             let start = ContinuousClock.now
@@ -139,17 +139,17 @@ final class PhoneBenchDriver {
             await nextTurn()
             let usable = Perf.ms(since: start)
             _ = await wait(10, until: { !Self.lockShown })
-            report("UNLOCK tour \(round) : coffre utilisable en \(usable) ms, écran verrouillé retiré en \(Perf.ms(since: start)) ms")
+            report("UNLOCK round \(round): vault usable in \(usable) ms, lock screen removed in \(Perf.ms(since: start)) ms")
             try? await Task.sleep(for: .seconds(1))
         }
         report("DONE")
         print("BENCH_DONE")
         fflush(stdout)
-        // Le script relance l'app à froid pour la mesure suivante.
+        // The script relaunches the app cold for the next measurement.
         exit(0)
     }
 
-    /// Le champ de recherche de tout le coffre à l'écran (onglet Rechercher).
+    /// The whole vault's search field on screen (Search tab).
     private func prepareSearch() {
         model.tab = .search
         model.searchPath = []

@@ -1,17 +1,17 @@
-//! Nouvelles clés SSH : générées ici, rangées dans le coffre comme les apps
-//! Bitwarden les créent. La clé privée ne passe jamais par Swift ; l'app ne
-//! reçoit que l'identifiant de l'élément créé.
+//! New SSH keys: generated here, stored in the vault the way the Bitwarden
+//! apps create them. The private key never goes through Swift; the app only
+//! receives the id of the created item.
 
 use verrou_vaultwarden::ssh_key::{self, SshKeyAlgorithm};
 
 use crate::{VaultSession, VerrouError};
 
-/// Algorithme d'une nouvelle clé SSH.
+/// Algorithm of a new SSH key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum SshKeyType {
-    /// Par défaut.
+    /// Default.
     Ed25519,
-    /// Pour les serveurs qui n'acceptent que RSA.
+    /// For servers that only accept RSA.
     Rsa4096,
 }
 
@@ -26,9 +26,9 @@ impl From<SshKeyType> for SshKeyAlgorithm {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Génère une clé SSH et la range dans le coffre personnel (dossier
-    /// `folder_id`, s'il y en a un), puis resynchronise ; rend l'identifiant
-    /// de l'élément.
+    /// Generates an SSH key and stores it in the personal vault (folder
+    /// `folder_id`, if any), then resyncs; returns the id
+    /// of the item.
     pub async fn create_ssh_key(
         &self,
         name: String,
@@ -36,11 +36,11 @@ impl VaultSession {
         key_type: SshKeyType,
     ) -> Result<String, VerrouError> {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
-        // RSA 4096 prend jusqu'à quelques secondes : hors des fils asynchrones.
+        // RSA 4096 takes up to a few seconds: off the async threads.
         let key = tokio::task::spawn_blocking(move || ssh_key::generate(key_type.into()))
             .await
             .map_err(|e| VerrouError::Invalid {
-                message: format!("génération de la clé impossible ({e})"),
+                message: format!("could not generate the key ({e})"),
             })??;
         let (id, decrypted) = connection
             .lock()

@@ -2,9 +2,9 @@ import AppKit
 import Observation
 import SwiftUI
 
-/// Accès d'urgence : mes contacts de confiance, ceux qui m'ont choisi, et le
-/// coffre d'un concédant ouvert en lecture seule (objet Rust à part, vidé au
-/// verrouillage).
+/// Emergency access: my trusted contacts, those who chose me, and a
+/// grantor's vault opened read-only (separate Rust object, emptied on
+/// lock).
 @MainActor
 @Observable
 final class EmergencyModel {
@@ -14,23 +14,23 @@ final class EmergencyModel {
     var busy = false
     var error: String?
     var notice: String?
-    /// Invitation (ou modification d'un contact) en cours.
+    /// Invitation (or edit of a contact) in progress.
     var invite: InviteDraft?
-    /// Confirmation d'un contact : l'empreinte de sa clé, à vérifier avec lui.
+    /// Confirmation of a contact: their key's fingerprint, to check with them.
     var confirmation: Confirmation?
-    /// Coffre d'un concédant ouvert.
+    /// A grantor's vault open.
     var grantorVault: GrantorVault?
-    /// Accès affiché dans la colonne de droite (un de mes contacts, ou un
-    /// concédant qui m'a choisi).
+    /// Access displayed in the right column (one of my contacts, or a grantor
+    /// who chose me).
     var selection: String?
-    /// Demande d'accès à confirmer.
+    /// Access request to confirm.
     var confirmRequest: EmergencyContact?
-    /// Suppression (ou renoncement) à confirmer.
+    /// Deletion (or giving up) to confirm.
     var confirmDelete: EmergencyContact?
 
     struct InviteDraft: Identifiable {
         let id = UUID()
-        /// `nil` : nouvelle invitation.
+        /// `nil`: new invitation.
         let contactID: String?
         var email: String
         var type: EmergencyType
@@ -44,7 +44,7 @@ final class EmergencyModel {
         let fingerprint: String
     }
 
-    /// L'accès sélectionné, et s'il s'agit d'un de mes contacts (`trusted`).
+    /// The selected access, and whether it is one of my contacts (`trusted`).
     var selected: (contact: EmergencyContact, trusted: Bool)? {
         guard let selection else { return nil }
         if let contact = trusted.first(where: { $0.id == selection }) { return (contact, true) }
@@ -70,7 +70,7 @@ final class EmergencyModel {
                        type: contact.accessType, waitDays: Int(contact.waitTimeDays))
     }
 
-    /// Au verrouillage : listes, brouillons et coffre du concédant oubliés.
+    /// On lock: lists, drafts and the grantor's vault forgotten.
     func clear() {
         trusted = []
         granted = []
@@ -92,8 +92,8 @@ final class EmergencyModel {
     }
 }
 
-/// Le coffre d'un concédant, en lecture seule : résumés, champs révélés à la
-/// demande (et oubliés à la fermeture).
+/// A grantor's vault, read-only: summaries, fields revealed on request (and
+/// forgotten when closed).
 @MainActor
 @Observable
 final class GrantorVault: Identifiable {
@@ -128,8 +128,7 @@ final class GrantorVault: Identifiable {
 extension AppModel {
     var emergencyAvailable: Bool { mode == .vaultwarden && lockState == .unlocked }
 
-    /// Barre latérale ou menu Coffre : le volet des accès d'urgence dans la
-    /// fenêtre principale.
+    /// Sidebar or Vault menu: the emergency access pane in the main window.
     func openEmergency() {
         guard emergencyAvailable else { return }
         showMainWindow()
@@ -147,7 +146,8 @@ extension AppModel {
     }
 
     func saveInvite(_ draft: EmergencyModel.InviteDraft) async {
-        await emergencyAction(draft.contactID == nil ? "Invitation envoyée à \(draft.email)." : "Contact modifié.") {
+        await emergencyAction(draft.contactID == nil ? String(localized: "Invitation sent to \(draft.email).")
+                                                      : String(localized: "Contact updated.")) {
             if let id = draft.contactID {
                 try await self.session.updateEmergencyContact(id: id, accessType: draft.type, waitTimeDays: UInt32(draft.waitDays))
             } else {
@@ -158,7 +158,7 @@ extension AppModel {
         }
     }
 
-    /// Avant de confirmer : l'empreinte de la clé publique du contact.
+    /// Before confirming: the fingerprint of the contact's public key.
     func prepareConfirmation(_ contact: EmergencyContact) async {
         guard let granteeID = contact.userId else { return }
         do {
@@ -171,32 +171,32 @@ extension AppModel {
 
     func confirmContact(_ confirmation: EmergencyModel.Confirmation) async {
         emergency.confirmation = nil
-        await emergencyAction("\(confirmation.contact.displayName) est confirmé comme contact d'urgence.") {
+        await emergencyAction(String(localized: "\(confirmation.contact.displayName) is confirmed as an emergency contact.")) {
             try await self.session.confirmEmergencyContact(id: confirmation.contact.id, granteeId: confirmation.granteeID,
                                                            fingerprint: confirmation.fingerprint)
         }
     }
 
     func deleteEmergency(_ contact: EmergencyContact) async {
-        await emergencyAction("Accès d'urgence supprimé.") {
+        await emergencyAction(String(localized: "Emergency access deleted.")) {
             try await self.session.deleteEmergencyAccess(id: contact.id)
         }
     }
 
     func requestEmergency(_ contact: EmergencyContact) async {
-        await emergencyAction("Demande envoyée à \(contact.displayName).") {
+        await emergencyAction(String(localized: "Request sent to \(contact.displayName).")) {
             try await self.session.requestEmergencyAccess(id: contact.id)
         }
     }
 
     func approveEmergency(_ contact: EmergencyContact) async {
-        await emergencyAction("Accès accordé à \(contact.displayName).") {
+        await emergencyAction(String(localized: "Access granted to \(contact.displayName).")) {
             try await self.session.approveEmergencyAccess(id: contact.id)
         }
     }
 
     func rejectEmergency(_ contact: EmergencyContact) async {
-        await emergencyAction("Accès refusé à \(contact.displayName).") {
+        await emergencyAction(String(localized: "Access denied to \(contact.displayName).")) {
             try await self.session.rejectEmergencyAccess(id: contact.id)
         }
     }
@@ -210,14 +210,14 @@ extension AppModel {
             guard lockState == .unlocked else { vault.close(); return }
             emergency.grantorVault = GrantorVault(vault: vault, grantor: contact.displayName)
             if vault.failures() > 0 {
-                emergency.notice = "\(vault.failures()) élément(s) du coffre de \(contact.displayName) n'ont pas pu être déchiffrés."
+                emergency.notice = String(localized: "\(Int(vault.failures())) item(s) of \(contact.displayName)'s vault could not be decrypted.")
             }
         } catch {
             emergency.error = Self.describe(error)
         }
     }
 
-    /// Copie un champ du coffre du concédant (presse-papiers masqué, 90 s).
+    /// Copies a field of the grantor's vault (concealed clipboard, 90 s).
     func copyGrantorField(_ field: FieldView, itemID: String, in vault: GrantorVault) {
         let value: String?
         if field.fieldType == .totp {
@@ -229,7 +229,8 @@ extension AppModel {
         }
         guard let value else { return }
         copy(value, label: field.label, secret: field.secret)
-        emergency.notice = "\(field.label) copié" + (field.secret ? " (effacé du presse-papiers dans 90 s)." : ".")
+        emergency.notice = field.secret ? String(localized: "\(field.label) copied (cleared from the clipboard in 90 s).")
+                                         : String(localized: "\(field.label) copied.")
     }
 
     private func emergencyAction(_ done: String, _ action: @escaping () async throws -> Void) async {
@@ -249,15 +250,15 @@ extension AppModel {
 
 extension EmergencyContact {
     var displayName: String {
-        name ?? email ?? "Contact"
+        name ?? email ?? String(localized: "Contact")
     }
 }
 
 extension EmergencyType {
     var label: String {
         switch self {
-        case .view: "Lecture seule"
-        case .takeover: "Prise de contrôle"
+        case .view: String(localized: "View only")
+        case .takeover: String(localized: "Takeover")
         }
     }
 }

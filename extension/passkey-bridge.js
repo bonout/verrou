@@ -1,21 +1,21 @@
-// Passkeys : demandes de passkeys.js → commandes pour Verrou, et réponses de
-// Verrou → réponses pour passkeys.js. Utilisé par le service worker (et par
-// les tests, avec le vrai pont).
+// Passkeys: requests from passkeys.js → commands for Verrou, and replies
+// from Verrou → answers for passkeys.js. Used by the service worker (and by
+// the tests, with the real bridge).
 //
-// Les options viennent de la page : Verrou les vérifie (site, longueurs) ;
-// ici, seulement leur forme. L'adresse `url` est celle que le navigateur
-// attribue à l'onglet, jamais une adresse fournie par la page.
+// The options come from the page: Verrou checks them (site, lengths); here,
+// only their shape. The `url` address is the one the browser assigns to the
+// tab, never an address provided by the page.
 
 const str = (value, max = 4096) => (typeof value === "string" && value ? value.slice(0, max) : null);
 const strings = (list) => (Array.isArray(list) ? list.filter((v) => typeof v === "string").slice(0, 64) : []);
 
-// Entrées de l'extension PRF (base64url), ou null.
+// Inputs of the PRF extension (base64url), or null.
 function prfValues(values) {
   const first = str(values?.first, 2048);
   return first ? { first, second: str(values?.second, 2048) } : null;
 }
 
-// `extensions.prf` de la page (passkey-codec.js), réduit à sa forme.
+// The page's `extensions.prf` (passkey-codec.js), reduced to its shape.
 export function prfRequest(prf) {
   if (!prf || typeof prf !== "object") return null;
   const byCredential = {};
@@ -28,7 +28,7 @@ export function prfRequest(prf) {
   return { eval: prfValues(prf.eval), eval_by_credential: byCredential };
 }
 
-// La commande pour Verrou, ou null pour une demande inconnue.
+// The command for Verrou, or null for an unknown request.
 export function passkeyCommand(message, url) {
   const rp_id = str(message.rp_id, 253);
   switch (message.kind) {
@@ -55,7 +55,7 @@ export function passkeyCommand(message, url) {
   }
 }
 
-// La réponse déchiffrée de Verrou → ce qu'attend passkeys.js.
+// The decrypted reply of Verrou → what passkeys.js expects.
 export function passkeyResult(reply) {
   const { id, result, ...data } = reply;
   switch (result) {
@@ -73,7 +73,7 @@ export function passkeyResult(reply) {
     default:
       return {
         ok: false,
-        state: data.reason === "cette passkey est déjà dans Verrou" ? "exists" : (result ?? "denied"),
+        state: data.reason === "this passkey is already in Verrou" ? "exists" : (result ?? "denied"),
         reason: data.reason,
       };
   }

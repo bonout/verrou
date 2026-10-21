@@ -1,16 +1,16 @@
-//! Serveur du pont, dans l'app : écoute sur `127.0.0.1` seulement.
+//! The bridge server, in the app: listens on `127.0.0.1` only.
 //!
-//! Le sandbox de macOS refuse à l'app les sockets Unix hors de son conteneur ;
-//! le port local est joignable par tout programme de la machine, d'où
-//! l'appairage et le chiffrement de chaque message : sans clé de client, on ne
-//! peut que demander un appairage, que l'utilisateur doit accepter dans
-//! Verrou après avoir comparé le code.
+//! The macOS sandbox denies the app Unix sockets outside its container;
+//! the local port is reachable by any program on the machine, hence
+//! pairing and the encryption of every message: without a client key, one
+//! can only ask for a pairing, which the user must accept in
+//! Verrou after comparing the code.
 //!
-//! Deux natures de clients : l'extension de navigateur et le terminal
-//! (`verrou`). Chacune n'a que ses commandes ([`crate::access::allowed`]).
-//! Pour le terminal, un secret ou une signature SSH attend l'accord de
-//! l'utilisateur ([`Backend::confirm`]), gardé [`APPROVAL_TTL`] pour ce
-//! client et cet élément.
+//! Two kinds of clients: the browser extension and the terminal
+//! (`verrou`). Each only has its own commands ([`crate::access::allowed`]).
+//! For the terminal, a secret or an SSH signature awaits the user's
+//! approval ([`Backend::confirm`]), kept [`APPROVAL_TTL`] for this
+//! client and this item.
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -42,36 +42,36 @@ use crate::ssh;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// Demande d'écriture de l'extension, à vérifier sur le coffre déverrouillé.
+/// A write request from the extension, to check against the unlocked vault.
 pub type WritePlan = Box<dyn FnOnce(&verrou_core::Vault) -> Result<Write, String> + Send>;
 
-/// Le temps laissé à l'utilisateur pour accepter un appairage.
+/// The time given to the user to accept a pairing.
 const PAIRING_TIMEOUT: Duration = Duration::from_secs(120);
-/// Écart minimal entre deux demandes d'appairage : un programme ne peut pas
-/// noyer l'utilisateur sous les fenêtres.
+/// Minimum gap between two pairing requests: a program cannot
+/// flood the user with windows.
 const PAIRING_INTERVAL: Duration = Duration::from_secs(3);
-/// Durée pendant laquelle l'accord de l'utilisateur vaut pour un client et
-/// un élément : `verrou get` puis `verrou totp`, ou plusieurs connexions SSH
-/// de suite, sans redemander Touch ID.
+/// How long the user's approval holds for a client and
+/// an item: `verrou get` then `verrou totp`, or several SSH connections
+/// in a row, without asking for Touch ID again.
 pub const APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
-/// Le temps laissé à l'utilisateur pour répondre à une demande d'accord.
+/// The time given to the user to answer an approval request.
 const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(90);
-/// Extension : au-delà de `BULK_ITEMS` éléments différents livrés à un
-/// client en `BULK_WINDOW`, chaque élément de plus demande l'accord de
-/// l'utilisateur ([`Purpose::Bulk`]). Le client affirme lui-même l'adresse de
-/// la page : une clé d'appairage volée pourrait réclamer chaque identifiant
-/// pour son propre site, et vider le coffre en silence sans cette limite.
+/// Extension: beyond `BULK_ITEMS` different items released to a
+/// client within `BULK_WINDOW`, each further item requires the user's
+/// approval ([`Purpose::Bulk`]). The client itself asserts the page's
+/// address: a stolen pairing key could claim each login
+/// for its own site, and silently empty the vault without this limit.
 const BULK_ITEMS: usize = 8;
 const BULK_WINDOW: Duration = Duration::from_secs(10 * 60);
 
-/// Ce que l'app fournit au pont.
+/// What the app provides to the bridge.
 pub trait Backend: Send + Sync + 'static {
     fn is_unlocked(&self) -> bool;
-    /// `None` : coffre verrouillé.
+    /// `None`: vault locked.
     fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>>;
-    /// `None` : coffre verrouillé ; `Err` : refus, avec sa raison.
+    /// `None`: vault locked; `Err`: refusal, with its reason.
     fn credentials(&self, item: &str, page_url: &str) -> Option<Result<Credentials, String>>;
-    /// `None` : coffre verrouillé ; `Err` : refus. Voir [`crate::access::check_save`].
+    /// `None`: vault locked; `Err`: refusal. See [`crate::access::check_save`].
     fn check_save(
         &self,
         page_url: &str,
@@ -79,24 +79,24 @@ pub trait Backend: Send + Sync + 'static {
         password: &str,
         current: Option<&str>,
     ) -> Option<Result<(SaveAction, Option<Suggestion>), String>>;
-    /// Vérifie la demande d'écriture sur le coffre ([`crate::access::plan_save`],
-    /// [`crate::access::plan_totp`]), puis l'exécute. `None` : coffre
-    /// verrouillé ; `Ok` : l'identifiant de l'élément écrit.
+    /// Checks the write request against the vault ([`crate::access::plan_save`],
+    /// [`crate::access::plan_totp`]), then carries it out. `None`: vault
+    /// locked; `Ok`: the identifier of the written item.
     fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>>;
-    /// L'extension demande à déverrouiller : amener Verrou au premier plan.
+    /// The extension asks to unlock: bring Verrou to the foreground.
     fn request_unlock(&self);
-    /// Demande d'appairage : afficher `code` et demander l'accord, puis
-    /// répondre par [`Bridge::answer_pairing`].
+    /// Pairing request: show `code` and ask for approval, then
+    /// answer with [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
-    /// Lecture du coffre déverrouillé, pour le terminal : `reader` est
-    /// appelé une fois. `false` : coffre verrouillé.
+    /// Reads the unlocked vault, for the terminal: `reader` is
+    /// called once. `false`: vault locked.
     fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool;
-    /// Demander à l'utilisateur d'autoriser un accès du terminal (Touch ID,
-    /// ou le mot de passe de la session). `true` : accordé.
+    /// Ask the user to allow an access from the terminal (Touch ID,
+    /// or the session password). `true`: granted.
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool>;
-    /// Les secrets de `item` peuvent-ils sortir vers le navigateur ? Un
-    /// élément protégé (« redemander le mot de passe principal ») attend une
-    /// confirmation : l'app la demande, et la réponse est `false` d'ici là.
+    /// Can the secrets of `item` leave for the browser? A
+    /// protected item ("master password re-prompt") awaits a
+    /// confirmation: the app asks for it, and the answer is `false` until then.
     fn gate(&self, item: &verrou_core::Item) -> bool {
         !item.reprompt
     }
@@ -105,37 +105,37 @@ pub trait Backend: Send + Sync + 'static {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PairingRequest {
     pub id: String,
-    /// Nom annoncé par le client (« Brave »). Déclaratif : seul le code
-    /// prouve quelque chose.
+    /// Name announced by the client ("Brave"). Declarative: only the code
+    /// proves anything.
     pub name: String,
     pub code: String,
-    /// Ce que le client pourra faire une fois relié.
+    /// What the client will be able to do once linked.
     pub kind: ClientKind,
 }
 
-/// Ce que le terminal demande, à faire confirmer.
+/// What the terminal asks for, to be confirmed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Purpose {
-    /// Lire un secret de l'élément (champ masqué, notes, code à usage unique).
+    /// Read a secret of the item (concealed field, notes, one-time code).
     Reveal,
-    /// Signer avec la clé SSH de l'élément.
+    /// Sign with the item's SSH key.
     Ssh,
-    /// Extension : utiliser ou créer une passkey quand le site demande la
-    /// vérification de l'utilisateur (l'élément, ou `passkey:<site>` pour un
-    /// nouvel identifiant).
+    /// Extension: use or create a passkey when the site asks for
+    /// user verification (the item, or `passkey:<site>` for a
+    /// new login).
     Passkey,
-    /// Signer un commit ou une étiquette git avec la clé SSH de l'élément
-    /// (`ssh-keygen -Y sign -n git`). Accord distinct de [`Purpose::Ssh`] :
-    /// accepter une connexion ne vaut pas accord pour signer, ni l'inverse.
+    /// Sign a git commit or tag with the item's SSH key
+    /// (`ssh-keygen -Y sign -n git`). Approval separate from [`Purpose::Ssh`]:
+    /// accepting a connection is not approval to sign, nor the reverse.
     GitSign,
-    /// Extension : associer le site de la page à un identifiant (écrit dans
-    /// le coffre et synchronisé). `item` porte aussi le site : l'accord ne
-    /// vaut que pour ce site-là.
+    /// Extension: link the page's site to a login (written to
+    /// the vault and synced). `item` also carries the site: the approval only
+    /// holds for that site.
     LinkSite,
-    /// Extension : remplir un formulaire avec une carte bancaire.
+    /// Extension: fill a form with a payment card.
     Card,
-    /// Extension : livrer un élément de plus, au-delà de `BULK_ITEMS` en peu
-    /// de temps.
+    /// Extension: release one more item, beyond `BULK_ITEMS` in a short
+    /// time.
     Bulk,
 }
 
@@ -145,11 +145,14 @@ pub struct Confirmation {
     pub client_name: String,
     pub purpose: Purpose,
     pub item: String,
-    /// Titre de l'élément, à montrer.
+    /// The item's title, to show.
     pub title: String,
+    /// [`Purpose::LinkSite`]: the host of the site to link to the item
+    /// (empty otherwise). The app words the request itself.
+    pub site: String,
 }
 
-/// Accords en cours de validité : (client, objet, élément) → date de l'accord.
+/// Approvals still valid: (client, purpose, item) → time of the approval.
 type Approvals = HashMap<(String, Purpose, String), Instant>;
 
 struct Shared {
@@ -158,14 +161,14 @@ struct Shared {
     pending: Mutex<Option<(String, oneshot::Sender<bool>)>>,
     last_pairing: Mutex<Option<Instant>>,
     approvals: Mutex<Approvals>,
-    /// Extension : éléments livrés récemment, par client ([`within_limits`]).
+    /// Extension: items released recently, per client ([`within_limits`]).
     releases: Mutex<HashMap<String, Vec<(String, Instant)>>>,
-    /// `manifest.json` de l'extension livrée avec l'app : relu à chaque
-    /// `status`, pour annoncer sa version à l'extension.
+    /// `manifest.json` of the extension shipped with the app: read again on every
+    /// `status`, to announce its version to the extension.
     extension_manifest: Mutex<Option<PathBuf>>,
 }
 
-/// Le pont en marche. Le libérer l'arrête.
+/// The running bridge. Dropping it stops it.
 pub struct Bridge {
     shared: Arc<Shared>,
     port: u16,
@@ -174,7 +177,7 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    /// Écoute sur `127.0.0.1:port` (`0` : un port libre, pour les tests).
+    /// Listens on `127.0.0.1:port` (`0`: a free port, for tests).
     pub fn start(port: u16, clients_file: PathBuf, backend: Arc<dyn Backend>) -> io::Result<Self> {
         let listener = std::net::TcpListener::bind(("127.0.0.1", port))?;
         listener.set_nonblocking(true)?;
@@ -230,7 +233,7 @@ impl Bridge {
         self.port
     }
 
-    /// Réponse de l'utilisateur à une demande d'appairage.
+    /// The user's answer to a pairing request.
     pub fn answer_pairing(&self, id: &str, approved: bool) {
         let mut pending = lock(&self.shared.pending);
         if pending
@@ -251,15 +254,15 @@ impl Bridge {
         lock(&self.shared.approvals).retain(|(client, _, _), _| client != id);
     }
 
-    /// Le `manifest.json` de l'extension livrée avec l'app (voir
-    /// [`crate::bundled_extension_manifest`]) : sa version est annoncée dans
-    /// la réponse à `status`, pour que l'extension se recharge quand l'app a
-    /// été mise à jour.
+    /// The `manifest.json` of the extension shipped with the app (see
+    /// [`crate::bundled_extension_manifest`]): its version is announced in
+    /// the response to `status`, so the extension reloads when the app has
+    /// been updated.
     pub fn set_extension_manifest(&self, path: Option<PathBuf>) {
         *lock(&self.shared.extension_manifest) = path;
     }
 
-    /// Oublie les accords donnés au terminal (au verrouillage du coffre).
+    /// Forgets the approvals given to the terminal (when the vault locks).
     pub fn forget_approvals(&self) {
         lock(&self.shared.approvals).clear();
     }
@@ -286,8 +289,8 @@ fn now_ms() -> i64 {
         .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
 }
 
-/// Trame Native Messaging : longueur sur 4 octets (ordre de la machine,
-/// petit-boutiste sur Mac), puis le JSON. L'hôte relaie les octets tels quels.
+/// Native Messaging frame: length on 4 bytes (native byte order,
+/// little-endian on Mac), then the JSON. The host relays the bytes as is.
 async fn read_frame(reader: &mut OwnedReadHalf) -> Option<Vec<u8>> {
     let mut length = [0u8; 4];
     reader.read_exact(&mut length).await.ok()?;
@@ -430,7 +433,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     let backend = &shared.backend;
     let result = match request.command {
         command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
-            reason: "commande refusée à ce client".to_owned(),
+            reason: "command not allowed for this client".to_owned(),
         },
         Command::Status => ReplyResult::Status {
             unlocked: backend.is_unlocked(),
@@ -497,7 +500,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     Outgoing::Response { iv, data }
 }
 
-/// Lit le coffre déverrouillé ; `None` : verrouillé.
+/// Reads the unlocked vault; `None`: locked.
 fn read<T>(backend: &dyn Backend, f: impl FnOnce(&Vault) -> T) -> Option<T> {
     let mut f = Some(f);
     let mut out = None;
@@ -509,14 +512,26 @@ fn read<T>(backend: &dyn Backend, f: impl FnOnce(&Vault) -> T) -> Option<T> {
     if unlocked { out } else { None }
 }
 
-/// L'utilisateur autorise-t-il ce client à cet usage de l'élément ? Un
-/// accord récent pour le même trio suffit.
+/// Does the user allow this client this use of the item? A
+/// recent approval for the same triple is enough.
 async fn approved(
     shared: &Shared,
     client: &ClientInfo,
     purpose: Purpose,
     item: &str,
     title: &str,
+) -> bool {
+    approved_for_site(shared, client, purpose, item, title, "").await
+}
+
+/// [`approved`], with the site the request is about (`LinkSite`).
+async fn approved_for_site(
+    shared: &Shared,
+    client: &ClientInfo,
+    purpose: Purpose,
+    item: &str,
+    title: &str,
+    site: &str,
 ) -> bool {
     let entry = (client.id.clone(), purpose, item.to_owned());
     {
@@ -532,6 +547,7 @@ async fn approved(
         purpose,
         item: item.to_owned(),
         title: title.to_owned(),
+        site: site.to_owned(),
     };
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
@@ -542,8 +558,8 @@ async fn approved(
     granted
 }
 
-/// L'identifiant `item` pour la page `url` (l'extension), dans la limite
-/// des éléments livrés en peu de temps ([`within_limits`]).
+/// The login `item` for the page `url` (the extension), within the limit
+/// of items released in a short time ([`within_limits`]).
 async fn fill(shared: &Shared, client: &ClientInfo, url: &str, item: &str) -> ReplyResult {
     let backend = &*shared.backend;
     match backend.credentials(item, url) {
@@ -560,16 +576,16 @@ async fn fill(shared: &Shared, client: &ClientInfo, url: &str, item: &str) -> Re
     }
 }
 
-/// Titre de l'élément, pour une demande d'accord (vide s'il a disparu).
+/// The item's title, for an approval request (empty if it is gone).
 fn title_of(backend: &dyn Backend, item: &str) -> String {
     read(backend, |v| v.get(item).map(|i| i.title.clone()))
         .flatten()
         .unwrap_or_default()
 }
 
-/// L'extension peut-elle recevoir `item` ? Oui s'il fait partie des éléments
-/// livrés à ce client depuis `BULK_WINDOW`, ou s'il en reste de la place ;
-/// au-delà, l'utilisateur doit l'accorder dans Verrou ([`Purpose::Bulk`]).
+/// Can the extension receive `item`? Yes if it is among the items
+/// released to this client within `BULK_WINDOW`, or if there is room left;
+/// beyond that, the user must approve it in Verrou ([`Purpose::Bulk`]).
 async fn within_limits(shared: &Shared, client: &ClientInfo, item: &str, title: &str) -> bool {
     let room = {
         let mut releases = lock(&shared.releases);
@@ -587,7 +603,7 @@ async fn within_limits(shared: &Shared, client: &ClientInfo, item: &str, title: 
     true
 }
 
-/// Note l'élément parmi ceux livrés à ce client ([`within_limits`]).
+/// Records the item among those released to this client ([`within_limits`]).
 fn released(shared: &Shared, client: &ClientInfo, item: &str) {
     lock(&shared.releases)
         .entry(client.id.clone())
@@ -597,12 +613,12 @@ fn released(shared: &Shared, client: &ClientInfo, item: &str) {
 
 fn refused() -> ReplyResult {
     ReplyResult::Denied {
-        reason: "refusé dans Verrou".to_owned(),
+        reason: "refused in Verrou".to_owned(),
     }
 }
 
-/// Commandes du terminal (déjà filtrées par [`access::allowed`]).
-#[allow(clippy::too_many_lines)] // une branche par commande, lisible d'un trait
+/// Terminal commands (already filtered by [`access::allowed`]).
+#[allow(clippy::too_many_lines)] // one branch per command, readable in one go
 async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
     let backend = &*shared.backend;
     let denied = |reason: String| ReplyResult::Denied { reason };
@@ -655,9 +671,9 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
             });
             let title = match found {
                 None => return ReplyResult::Locked,
-                Some(None) => return denied("élément introuvable".to_owned()),
+                Some(None) => return denied("item not found".to_owned()),
                 Some(Some((title, false))) => {
-                    return denied(format!("« {title} » n'a pas de code à usage unique"));
+                    return denied(format!("\"{title}\" has no one-time code"));
                 }
                 Some(Some((title, true))) => title,
             };
@@ -693,18 +709,18 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
                 BASE64.decode(public_key.as_bytes()),
                 BASE64.decode(data.as_bytes()),
             ) else {
-                return denied("requête SSH illisible".to_owned());
+                return denied("unreadable SSH request".to_owned());
             };
             let found = read(backend, |v| {
                 ssh::key_item(v, &blob).map(|i| (i.id.clone(), i.title.clone()))
             });
             let (item, title) = match found {
                 None => return ReplyResult::Locked,
-                Some(None) => return denied("clé SSH inconnue".to_owned()),
+                Some(None) => return denied("unknown SSH key".to_owned()),
                 Some(Some(found)) => found,
             };
-            // `ssh-keygen -Y sign -n git` (git en `gpg.format=ssh`) : la
-            // demande d'accord le dit.
+            // `ssh-keygen -Y sign -n git` (git with `gpg.format=ssh`): the
+            // approval request says so.
             let purpose = if ssh::is_git_signature(&data) {
                 Purpose::GitSign
             } else {
@@ -723,8 +739,8 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
                 Some(Err(reason)) => denied(reason),
             }
         }
-        // Commandes de l'extension : déjà traitées, ou refusées par `allowed`.
-        _ => denied("commande refusée à ce client".to_owned()),
+        // Extension commands: already handled, or refused by `allowed`.
+        _ => denied("command not allowed for this client".to_owned()),
     }
 }
 
@@ -736,10 +752,10 @@ fn written(outcome: Option<Result<String, String>>) -> ReplyResult {
     }
 }
 
-/// Cartes, identités et rattachement d'un site (navigateur).
-/// Cartes, identités et rattachement d'un site (l'extension). Une carte, ou
-/// un site ajouté à un identifiant, demande toujours l'accord de
-/// l'utilisateur dans Verrou.
+/// Cards, identities and linking a site (browser).
+/// Cards, identities and linking a site (the extension). A card, or
+/// a site added to a login, always requires the user's approval
+/// in Verrou.
 async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
     let backend = &*shared.backend;
     match command {
@@ -764,8 +780,8 @@ async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyR
                 Some(Err(reason)) => return ReplyResult::Denied { reason },
                 Some(Ok(found)) => found,
             };
-            // L'accord d'une carte confirme aussi un élément protégé (l'app
-            // l'autorise) : une seule demande.
+            // Approval for a card also confirms a protected item (the app
+            // allows it): a single request.
             let allowed = if card {
                 let ok = approved(shared, client, Purpose::Card, &item, &title).await;
                 if ok {
@@ -785,8 +801,8 @@ async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyR
             }
         }
         Command::LinkSite { url, item } => {
-            // Vérifié d'abord : pas de demande d'accord pour une écriture
-            // qui serait refusée.
+            // Checked first: no approval request for a write
+            // that would be refused.
             let checked = read(backend, |v| {
                 access::plan_link_site(v, &url, &item)
                     .map(|_| v.get(&item).map(|i| i.title.clone()).unwrap_or_default())
@@ -800,13 +816,13 @@ async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyR
                 .ok()
                 .and_then(|u| u.host_str().map(str::to_owned))
                 .unwrap_or_default();
-            let what = format!("le site {host} à « {title} »");
-            if !approved(
+            if !approved_for_site(
                 shared,
                 client,
                 Purpose::LinkSite,
                 &format!("{item} {host}"),
-                &what,
+                &title,
+                &host,
             )
             .await
             {
@@ -827,17 +843,17 @@ async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyR
             }
         }
         _ => ReplyResult::Denied {
-            reason: "commande inattendue".to_owned(),
+            reason: "unexpected command".to_owned(),
         },
     }
 }
 
 // MARK: Passkeys
 
-/// Passkeys de la page ([`crate::passkeys`]). La vérification de
-/// l'utilisateur demandée par le site passe par l'accord de Verrou (Touch
-/// ID) ; sinon, un élément protégé attend sa confirmation, comme au
-/// remplissage.
+/// The page's passkeys ([`crate::passkeys`]). User verification
+/// requested by the site goes through Verrou's approval (Touch
+/// ID); otherwise, a protected item awaits its confirmation, as when
+/// filling.
 async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
     let backend = &*shared.backend;
     let denied = |reason: String| ReplyResult::Denied { reason };
@@ -862,7 +878,7 @@ async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> Repl
                 Some(Ok(found)) => found,
             };
             if request.uv {
-                // L'accord de Verrou couvre aussi un élément protégé.
+                // Verrou's approval also covers a protected item.
                 if !approved(shared, client, Purpose::Passkey, &item, &title).await {
                     return refused();
                 }
@@ -890,7 +906,7 @@ async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> Repl
             let assertion = lock(&slot).take();
             match (written(outcome), assertion) {
                 (ReplyResult::Saved { .. }, Some(assertion)) => ReplyResult::Assertion(assertion),
-                (ReplyResult::Saved { .. }, None) => denied("passkey indisponible".to_owned()),
+                (ReplyResult::Saved { .. }, None) => denied("passkey unavailable".to_owned()),
                 (other, _) => other,
             }
         }
@@ -920,10 +936,10 @@ async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> Repl
                     registration.item = item;
                     ReplyResult::Registration(registration)
                 }
-                (ReplyResult::Saved { .. }, None) => denied("passkey indisponible".to_owned()),
+                (ReplyResult::Saved { .. }, None) => denied("passkey unavailable".to_owned()),
                 (other, _) => other,
             }
         }
-        _ => denied("commande inattendue".to_owned()),
+        _ => denied("unexpected command".to_owned()),
     }
 }

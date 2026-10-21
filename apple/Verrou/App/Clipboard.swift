@@ -1,11 +1,11 @@
 import AppKit
 
-/// Presse-papiers des secrets.
+/// Clipboard for secrets.
 ///
-/// - Marqué « dissimulé » et « transitoire » (conventions nspasteboard.org) :
-///   les gestionnaires d'historique du presse-papiers ne l'enregistrent pas.
-/// - Effacé après 90 s, mais seulement s'il contient encore ce que Verrou y a
-///   mis : on ne détruit pas ce que l'utilisateur a copié entre-temps.
+/// - Marked "concealed" and "transient" (nspasteboard.org conventions):
+///   clipboard history managers don't record it.
+/// - Cleared after 90 s, but only if it still holds what Verrou put there:
+///   we don't destroy what the user copied in the meantime.
 @MainActor
 final class Clipboard {
     static let clearDelay: TimeInterval = 90

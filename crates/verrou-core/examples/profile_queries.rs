@@ -1,4 +1,4 @@
-//! Temps de recherche par requête sur 10 000 éléments fictifs :
+//! Search time per query over 10,000 mock items:
 //! `cargo run --release -p verrou-core --example profile_queries`.
 use std::time::Instant;
 use verrou_core::{Filter, Sort, Vault, mock};
@@ -25,6 +25,6 @@ fn main() {
             n = vault.search(q, &Filter::All, Sort::Relevance).len();
             best = best.min(t.elapsed());
         }
-        println!("{q:>12} : {best:>10.2?}  ({n} résultats)");
+        println!("{q:>12}: {best:>10.2?}  ({n} results)");
     }
 }

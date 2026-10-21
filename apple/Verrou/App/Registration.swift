@@ -1,10 +1,10 @@
 import Observation
 import SwiftUI
 
-/// « Créer un compte » sur l'écran de connexion, pour une personne invitée
-/// sur un serveur aux inscriptions fermées. Le cœur Rust génère les clés
-/// (SDK de Bitwarden) et crée le compte, puis Verrou s'y connecte et
-/// accepte l'invitation de l'organisation si un lien a été collé.
+/// "Create an account" on the login screen, for a person invited to a
+/// server with closed sign-ups. The Rust core generates the keys (Bitwarden
+/// SDK) and creates the account, then Verrou logs in and accepts the
+/// organization's invitation if a link was pasted.
 @MainActor
 @Observable
 final class RegistrationFlow {
@@ -15,7 +15,7 @@ final class RegistrationFlow {
     var confirmation = ""
     var hint = ""
     var kdf: NewAccountKdfChoice = .pbkdf2
-    /// Lien « Rejoindre » du courriel d'invitation (ou de vérification).
+    /// "Join" link from the invitation (or verification) email.
     var link = "" { didSet { readLink() } }
     private(set) var linkInfo: SignupLinkInfo?
     private(set) var linkError: String?
@@ -27,7 +27,7 @@ final class RegistrationFlow {
         self.email = email
     }
 
-    /// Préremplit le serveur et l'adresse d'après le lien collé.
+    /// Prefills the server and the address from the pasted link.
     private func readLink() {
         let text = link.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
@@ -47,7 +47,7 @@ final class RegistrationFlow {
         }
     }
 
-    /// Robustesse de 0 à 4 (zxcvbn, comme les apps Bitwarden).
+    /// Strength from 0 to 4 (zxcvbn, like the Bitwarden apps).
     var strength: UInt8? {
         password.isEmpty ? nil : masterPasswordStrength(password: password, email: email,
                                                          name: name.isEmpty ? nil : name)
@@ -58,13 +58,13 @@ final class RegistrationFlow {
     var problems: [String] {
         var list: [String] = []
         if !password.isEmpty && password.count < Self.minimumLength {
-            list.append("Au moins \(Self.minimumLength) caractères.")
+            list.append(String(localized: "At least \(Self.minimumLength) characters."))
         }
         if !confirmation.isEmpty && confirmation != password {
-            list.append("Les deux mots de passe diffèrent.")
+            list.append(String(localized: "The two passwords differ."))
         }
         if !hint.isEmpty && hint == password {
-            list.append("L'indice ne doit pas être le mot de passe.")
+            list.append(String(localized: "The hint must not be the password."))
         }
         return list
     }
@@ -74,7 +74,7 @@ final class RegistrationFlow {
             && confirmation == password && hint != password && linkError == nil
     }
 
-    /// Oublie ce qui a été saisi (mot de passe compris).
+    /// Forgets what was entered (password included).
     func reset() {
         password = ""
         confirmation = ""
@@ -82,8 +82,8 @@ final class RegistrationFlow {
 }
 
 extension AppModel {
-    /// Crée le compte, s'y connecte, puis accepte l'invitation (voir
-    /// `acceptPendingInvitation`, appelée une fois le coffre ouvert).
+    /// Creates the account, logs in, then accepts the invitation (see
+    /// `acceptPendingInvitation`, called once the vault is open).
     func register(_ flow: RegistrationFlow) async -> Bool {
         guard flow.canSubmit, !loginBusy else { return false }
         flow.busy = true

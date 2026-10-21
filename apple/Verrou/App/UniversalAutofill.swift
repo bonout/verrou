@@ -3,33 +3,33 @@ import ApplicationServices
 import Carbon.HIToolbox
 import SwiftUI
 
-/// Remplissage dans n'importe quelle app du Mac (⌘\ par défaut).
+/// Filling in any Mac app (⌘\ by default).
 ///
-/// Le raccourci retient l'app au premier plan, ouvre l'accès rapide avec les
-/// identifiants reliés à cette app (`macapp://<identifiant de paquet>` parmi
-/// les sites de l'élément, synchronisé), puis, une fois l'identifiant choisi,
-/// rend la main à l'app et tape l'identifiant, Tab et le mot de passe en
-/// caractères Unicode (indépendant de la disposition du clavier).
+/// The shortcut remembers the frontmost app, opens quick access with the
+/// logins linked to that app (`macapp://<bundle identifier>` among the
+/// item's sites, synced), then, once the login is chosen, hands back to the
+/// app and types the username, Tab and the password as Unicode characters
+/// (independent of the keyboard layout).
 ///
-/// Taper au clavier pour une autre app demande l'accès « Accessibilité ».
+/// Typing on the keyboard for another app requires "Accessibility" access.
 @MainActor
 @Observable
 final class UniversalAutofill {
-    /// Réglages (onglet Général).
+    /// Settings (General tab).
     static let enabledKey = "appAutofillEnabled"
     static let shortcutKey = "appAutofillShortcut"
     static let submitKey = "appAutofillSubmit"
     static let copyTotpKey = "appAutofillCopyTotp"
 
-    /// L'instance de l'app, pour les réglages.
+    /// The app's instance, for the settings.
     private(set) static weak var current: UniversalAutofill?
 
-    /// App où remplir, retenue au moment du raccourci. `nil` : l'accès rapide
-    /// sert normalement.
+    /// App to fill in, remembered when the shortcut is pressed. `nil`: quick
+    /// access works normally.
     var target: AutofillTarget?
-    /// Identifiants reliés à l'app visée.
+    /// Logins linked to the target app.
     private(set) var suggestions: [ItemSummary] = []
-    /// La combinaison choisie est déjà prise par une autre app.
+    /// The chosen combination is already taken by another app.
     private(set) var shortcutUnavailable = false
     private(set) var filling = false
 
@@ -66,7 +66,7 @@ final class UniversalAutofill {
         UserDefaults.standard.object(forKey: copyTotpKey) as? Bool ?? true
     }
 
-    /// (Ré)enregistre le raccourci selon les réglages.
+    /// (Re)registers the shortcut according to the settings.
     func apply() {
         let wanted = (enabled: Self.isEnabled, shortcut: Self.shortcut)
         if let registered, registered == wanted { return }
@@ -83,12 +83,12 @@ final class UniversalAutofill {
         hotKey = key
     }
 
-    /// Le raccourci : retenir l'app au premier plan, puis ouvrir l'accès rapide.
+    /// The shortcut: remember the frontmost app, then open quick access.
     func trigger() {
         guard let quickAccess else { return }
         let front = NSWorkspace.shared.frontmostApplication
-        // Verrou lui-même au premier plan (ou rien d'identifiable) : il n'y a
-        // pas d'autre app où taper, l'accès rapide sert normalement.
+        // Verrou itself in the foreground (or nothing identifiable): there is
+        // no other app to type in, quick access works normally.
         guard let front, front.processIdentifier != ProcessInfo.processInfo.processIdentifier,
               let bundleID = front.bundleIdentifier else {
             quickAccess.toggle()
@@ -117,23 +117,24 @@ final class UniversalAutofill {
         model.session.isLinkedToApp(id: itemID, bundleId: target.bundleID)
     }
 
-    /// Relie l'identifiant à l'app visée, sans remplir.
+    /// Links the login to the target app, without filling.
     func link(itemID: String, to target: AutofillTarget) async {
         guard model.canEdit else { return }
         do {
             if try await model.session.linkToApp(id: itemID, bundleId: target.bundleID) {
                 model.afterWrite(select: model.selection)
                 if self.target?.bundleID == target.bundleID { refreshSuggestions() }
-                AutofillHUD.show("Associé à « \(target.name) »", detail: "Proposé en premier au prochain ⌘\\")
+                AutofillHUD.show(String(localized: "Linked to “\(target.name)”"),
+                                 detail: String(localized: "Suggested first on the next ⌘\\"))
             }
         } catch {
-            AutofillHUD.show("Association impossible", detail: AppModel.describe(error), failure: true)
+            AutofillHUD.show(String(localized: "Couldn't link"), detail: AppModel.describe(error), failure: true)
         }
     }
 
-    /// Remplit l'identifiant choisi dans l'app visée : confirmation d'un
-    /// élément protégé, retour à l'app, frappes, puis code à usage unique
-    /// copié et association demandée.
+    /// Fills the chosen login in the target app: confirmation of a protected
+    /// item, back to the app, keystrokes, then one-time code copied and link
+    /// requested.
     func fill(itemID: String, link: Bool) {
         guard let target, !filling else { return }
         let summary = model.summaries.first { $0.id == itemID }
@@ -146,15 +147,15 @@ final class UniversalAutofill {
     }
 
     private func perform(itemID: String, summary: ItemSummary?, target: AutofillTarget, link: Bool) async {
-        let title = summary?.title ?? "cet élément"
+        let title = summary?.title ?? String(localized: "this item")
         guard model.lockState == .unlocked else { return }
-        // Élément protégé : Touch ID ou mot de passe principal, comme pour le copier.
+        // Protected item: Touch ID or master password, as for copying it.
         if model.session.needsConfirmation(id: itemID) {
             guard await model.confirmAccess(itemID: itemID, title: title) else { return }
         }
         guard AccessibilityPermission.isGranted else {
-            AutofillHUD.show("Accès « Accessibilité » requis",
-                             detail: "Réglages Système → Confidentialité et sécurité → Accessibilité", failure: true)
+            AutofillHUD.show(String(localized: "“Accessibility” access required"),
+                             detail: String(localized: "System Settings → Privacy & Security → Accessibility"), failure: true)
             AccessibilityPermission.request()
             return
         }
@@ -162,40 +163,42 @@ final class UniversalAutofill {
         do {
             keys = try model.session.autofillKeystrokes(id: itemID, submit: Self.submits)
         } catch {
-            AutofillHUD.show("Remplissage impossible", detail: AppModel.describe(error), failure: true)
+            AutofillHUD.show(String(localized: "Couldn't fill"), detail: AppModel.describe(error), failure: true)
             return
         }
         quickAccess?.close()
         guard await activate(target) else {
-            AutofillHUD.show("Impossible de revenir à « \(target.name) »", detail: "Rien n'a été tapé", failure: true)
+            AutofillHUD.show(String(localized: "Couldn't go back to “\(target.name)”"),
+                             detail: String(localized: "Nothing was typed"), failure: true)
             return
         }
-        // Une autre app a activé la saisie sécurisée (Terminal, par exemple) :
-        // les frappes risquent de ne pas arriver, ou ailleurs. On s'abstient.
+        // Another app turned on secure input (Terminal, for example): the
+        // keystrokes may not arrive, or arrive elsewhere. Hold off.
         if let owner = SecureInput.foreignOwner(besides: target.pid) {
-            AutofillHUD.show("Saisie sécurisée activée par « \(owner) »",
-                             detail: "Rien n'a été tapé : désactivez-la, ou copiez le mot de passe depuis l'accès rapide (⌘⇧Espace).",
+            AutofillHUD.show(String(localized: "Secure input turned on by “\(owner)”"),
+                             detail: String(localized: "Nothing was typed: turn it off, or copy the password from quick access (⌘⇧Space)."),
                              failure: true)
             return
         }
         await KeystrokePlayer(sink: sink).play(keys)
         if Self.copiesTotp, summary?.hasTotp == true, let code = model.totpCode(of: itemID) {
-            model.copy(code.code, label: "Code", secret: true)
-            AutofillHUD.show("Code à usage unique copié", detail: "Effacé du presse-papiers dans 90 s")
+            model.copy(code.code, label: String(localized: "Code"), secret: true)
+            AutofillHUD.show(String(localized: "One-time code copied"),
+                             detail: String(localized: "Cleared from the clipboard in 90 s"))
         }
         if link, model.canEdit {
             await self.link(itemID: itemID, to: target)
         }
     }
 
-    /// Rend le premier plan à l'app visée et attend qu'elle l'ait.
+    /// Hands the foreground back to the target app and waits until it has it.
     private func activate(_ target: AutofillTarget) async -> Bool {
         guard let app = NSRunningApplication(processIdentifier: target.pid), !app.isTerminated else { return false }
         NSApp.yieldActivation(to: app)
         app.activate()
         for _ in 0..<75 {
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == target.pid {
-                // Le temps que sa fenêtre redevienne clé et rende le focus au champ.
+                // Time for its window to become key again and give focus back to the field.
                 try? await Task.sleep(for: .milliseconds(150))
                 return true
             }
@@ -205,19 +208,19 @@ final class UniversalAutofill {
     }
 }
 
-/// L'app où remplir, retenue au moment du raccourci.
+/// The app to fill in, remembered when the shortcut is pressed.
 struct AutofillTarget: Equatable {
     let pid: pid_t
     let bundleID: String
     let name: String
     let icon: NSImage?
-    /// App (autre que la cible) qui avait activé la saisie sécurisée.
+    /// App (other than the target) that had turned on secure input.
     let secureInputOwner: String?
 }
 
-/// Combinaisons proposées. La touche est celle de `\` sur un clavier
-/// américain (à gauche de Retour) : sa position, quelle que soit la
-/// disposition ; le libellé montre le caractère de la disposition active.
+/// Offered combinations. The key is the one of `\` on a US keyboard (left
+/// of Return): its position, whatever the layout; the label shows the
+/// character of the active layout.
 enum AutofillShortcut: String, CaseIterable, Identifiable {
     case command
     case optionCommand
@@ -244,8 +247,8 @@ enum AutofillShortcut: String, CaseIterable, Identifiable {
 }
 
 enum KeyboardLayout {
-    /// Caractère que produit une touche dans la disposition active (sans
-    /// modificateur ni touche morte).
+    /// Character a key produces in the active layout (without modifier or
+    /// dead key).
     static func character(for keyCode: UInt16) -> String? {
         guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
               let raw = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else { return nil }
@@ -264,17 +267,17 @@ enum KeyboardLayout {
     }
 }
 
-/// Autorisation de taper pour les autres apps (« Accessibilité »).
+/// Permission to type for other apps ("Accessibility").
 enum AccessibilityPermission {
     static var isGranted: Bool {
         AXIsProcessTrustedWithOptions(nil) || CGPreflightPostEventAccess()
     }
 
-    /// Demande à macOS d'ajouter Verrou à la liste (et ouvre les réglages).
+    /// Asks macOS to add Verrou to the list (and opens the settings).
     static func request() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if AXIsProcessTrustedWithOptions(options) { return }
-        // App sandboxée : c'est cette demande qui inscrit Verrou dans la liste.
+        // Sandboxed app: this request is what adds Verrou to the list.
         if CGRequestPostEventAccess() { return }
         openSettings()
     }
@@ -286,44 +289,44 @@ enum AccessibilityPermission {
     }
 }
 
-/// Saisie sécurisée (« Secure Keyboard Entry ») : tant qu'une app la tient,
-/// les frappes simulées peuvent être bloquées.
+/// Secure input ("Secure Keyboard Entry"): while an app holds it, simulated
+/// keystrokes can be blocked.
 enum SecureInput {
-    /// Nom de l'app qui tient la saisie sécurisée, si ce n'est ni `pid` ni
-    /// Verrou. Un champ de mot de passe de l'app visée l'active aussi : c'est
-    /// normal, et le remplissage y fonctionne.
+    /// Name of the app holding secure input, if it is neither `pid` nor
+    /// Verrou. A password field of the target app turns it on too: that's
+    /// normal, and filling works there.
     static func foreignOwner(besides pid: pid_t) -> String? {
         guard IsSecureEventInputEnabled() else { return nil }
         let session = CGSessionCopyCurrentDictionary() as? [String: Any]
         guard let owner = (session?["kCGSSessionSecureInputPID"] as? NSNumber)?.int32Value else {
-            // Propriétaire inconnu : on ne sait pas, on ne bloque pas.
+            // Unknown owner: we don't know, we don't block.
             return nil
         }
         if owner == pid || owner == ProcessInfo.processInfo.processIdentifier { return nil }
-        return NSRunningApplication(processIdentifier: owner)?.localizedName ?? "une autre app"
+        return NSRunningApplication(processIdentifier: owner)?.localizedName ?? String(localized: "another app")
     }
 }
 
-// MARK: Frappes
+// MARK: Keystrokes
 
-/// Une touche simulée : un caractère (texte Unicode, pas un code de touche),
-/// Tab ou Retour.
+/// A simulated key: a character (Unicode text, not a key code), Tab or
+/// Return.
 enum SyntheticKey: Equatable {
     case character(String)
     case tab
     case returnKey
 }
 
-/// Où partent les frappes : le clavier du système, ou un enregistreur en test.
+/// Where the keystrokes go: the system keyboard, or a recorder in tests.
 protocol KeystrokeSink {
     func post(_ key: SyntheticKey)
 }
 
-/// Joue les frappes calculées par le cœur Rust, un caractère à la fois.
+/// Plays the keystrokes computed by the Rust core, one character at a time.
 struct KeystrokePlayer {
     let sink: KeystrokeSink
-    /// Pause entre deux frappes : certaines apps perdent des caractères tapés
-    /// trop vite ; un peu plus après Tab, le temps que le champ suivant prenne le focus.
+    /// Pause between two keystrokes: some apps lose characters typed too
+    /// fast; a bit more after Tab, for the next field to take focus.
     var characterDelay: Duration = .milliseconds(6)
     var fieldDelay: Duration = .milliseconds(60)
 
@@ -349,10 +352,10 @@ struct KeystrokePlayer {
     }
 }
 
-/// Frappes envoyées au système par `CGEvent`. Le texte passe par
-/// `keyboardSetUnicodeString` : la disposition du clavier n'intervient pas.
-/// Les modificateurs sont effacés (⌘ encore enfoncé ne doit pas transformer
-/// un caractère en raccourci).
+/// Keystrokes sent to the system through `CGEvent`. The text goes through
+/// `keyboardSetUnicodeString`: the keyboard layout plays no part. Modifiers
+/// are cleared (⌘ still held down must not turn a character into a
+/// shortcut).
 struct CGEventKeystrokeSink: KeystrokeSink {
     private let source = CGEventSource(stateID: .privateState)
 
@@ -384,9 +387,9 @@ struct CGEventKeystrokeSink: KeystrokeSink {
     }
 }
 
-// MARK: Vues
+// MARK: Views
 
-/// Bandeau de l'accès rapide en mode remplissage : l'app visée.
+/// Quick access banner in fill mode: the target app.
 struct AutofillTargetBar: View {
     let target: AutofillTarget
 
@@ -395,15 +398,15 @@ struct AutofillTargetBar: View {
             if let icon = target.icon {
                 Image(nsImage: icon).resizable().frame(width: 18, height: 18)
             }
-            Text("Remplir dans « \(target.name) »")
+            Text("Fill in “\(target.name)”")
                 .font(.callout.weight(.medium))
             Spacer()
             if let owner = target.secureInputOwner {
-                Label("Saisie sécurisée activée par « \(owner) »", systemImage: "exclamationmark.triangle.fill")
+                Label("Secure input turned on by “\(owner)”", systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .lineLimit(1)
-                    .help("Tant qu'elle est active, macOS peut bloquer les frappes de Verrou.")
+                    .help("While it is on, macOS can block Verrou's keystrokes.")
             }
         }
         .padding(.horizontal, 20)
@@ -411,7 +414,7 @@ struct AutofillTargetBar: View {
     }
 }
 
-/// Association de l'identifiant affiché à l'app visée.
+/// Linking the displayed login to the target app.
 struct AutofillLinkRow: View {
     @Environment(AppModel.self) private var model
     let autofill: UniversalAutofill
@@ -423,14 +426,14 @@ struct AutofillLinkRow: View {
             if item.category != .login {
                 EmptyView()
             } else if autofill.isLinked(item.id, to: target) {
-                Label("Associé à « \(target.name) »", systemImage: "link")
+                Label("Linked to “\(target.name)”", systemImage: "link")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else if model.canEdit {
                 Button {
                     Task { await autofill.link(itemID: item.id, to: target) }
                 } label: {
-                    Label("Associer à « \(target.name) »", systemImage: "link.badge.plus")
+                    Label("Link to “\(target.name)”", systemImage: "link.badge.plus")
                         .lineLimit(1)
                 }
                 .buttonStyle(.link)
@@ -443,21 +446,21 @@ struct AutofillLinkRow: View {
     }
 }
 
-/// Autorisation manquante : explication et bouton vers les réglages.
+/// Missing permission: explanation and button to the settings.
 struct AccessibilityRequestView: View {
     var body: some View {
-        // Revérifié chaque seconde : l'autorisation se donne dans une autre app.
+        // Checked again every second: the permission is given in another app.
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             VStack(spacing: 12) {
                 Image(systemName: "keyboard.badge.ellipsis").font(.largeTitle).foregroundStyle(.secondary)
-                Text("Verrou doit pouvoir taper pour vous").font(.headline)
-                Text("Pour remplir l'identifiant et le mot de passe dans une autre app, autorisez Verrou dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis refaites le raccourci.")
+                Text("Verrou needs to be able to type for you").font(.headline)
+                Text("To fill the username and password in another app, allow Verrou in System Settings → Privacy & Security → Accessibility, then press the shortcut again.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 440)
-                Button("Ouvrir Réglages Système") { AccessibilityPermission.request() }
+                Button("Open System Settings") { AccessibilityPermission.request() }
                     .buttonStyle(.borderedProminent)
-                Text("Verrou étant signé sur ce Mac, macOS peut oublier cette autorisation après une mise à jour : retirez-le de la liste et ajoutez-le à nouveau.")
+                Text("Since Verrou is signed on this Mac, macOS may forget this permission after an update: remove it from the list and add it again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -468,7 +471,7 @@ struct AccessibilityRequestView: View {
     }
 }
 
-/// Réglages du remplissage dans les apps (onglet Général).
+/// Settings of filling in apps (General tab).
 struct AppAutofillSection: View {
     @AppStorage(UniversalAutofill.enabledKey) private var enabled = true
     @AppStorage(UniversalAutofill.shortcutKey) private var shortcut = AutofillShortcut.command
@@ -477,42 +480,42 @@ struct AppAutofillSection: View {
 
     var body: some View {
         Section {
-            Toggle("Remplir les identifiants dans les apps", isOn: $enabled)
+            Toggle("Fill logins in apps", isOn: $enabled)
             if enabled {
-                Picker("Raccourci", selection: $shortcut) {
+                Picker("Shortcut", selection: $shortcut) {
                     ForEach(AutofillShortcut.allCases) { Text($0.label).tag($0) }
                 }
-                Toggle("Valider avec Retour après le mot de passe", isOn: $submit)
-                Toggle("Copier le code à usage unique après le remplissage", isOn: $copyTotp)
-                LabeledContent("Accessibilité") {
+                Toggle("Press Return after the password", isOn: $submit)
+                Toggle("Copy the one-time code after filling", isOn: $copyTotp)
+                LabeledContent("Accessibility") {
                     TimelineView(.periodic(from: .now, by: 2)) { _ in
                         if AccessibilityPermission.isGranted {
-                            Label("Autorisée", systemImage: "checkmark.circle.fill")
+                            Label("Allowed", systemImage: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                         } else {
-                            Button("Autoriser…") { AccessibilityPermission.request() }
+                            Button("Allow…") { AccessibilityPermission.request() }
                         }
                     }
                 }
             }
         } header: {
-            Text("Remplissage dans les apps")
+            Text("Filling in apps")
         } footer: {
             Text(footer)
                 .foregroundStyle(UniversalAutofill.current?.shortcutUnavailable == true ? Color.red : .secondary)
         }
     }
 
-    private var footer: String {
+    private var footer: LocalizedStringKey {
         if enabled, UniversalAutofill.current?.shortcutUnavailable == true {
-            return "\(shortcut.label) est déjà pris par une autre app : choisissez une autre combinaison."
+            return "\(shortcut.label) is already taken by another app: choose another combination."
         }
-        return "\(shortcut.label) dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape l'identifiant, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour. Verrou étant signé sur ce Mac, macOS peut oublier l'autorisation Accessibilité après une mise à jour : retirez-le de la liste et autorisez-le à nouveau."
+        return "\(shortcut.label) in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return. Since Verrou is signed on this Mac, macOS may forget the Accessibility permission after an update: remove it from the list and allow it again."
     }
 }
 
-/// Petit message passager en haut de l'écran : l'accès rapide est fermé
-/// et Verrou n'est plus au premier plan quand le remplissage se termine.
+/// Small passing message at the top of the screen: quick access is closed
+/// and Verrou is no longer in the foreground when filling finishes.
 @MainActor
 enum AutofillHUD {
     private static var panel: NSPanel?

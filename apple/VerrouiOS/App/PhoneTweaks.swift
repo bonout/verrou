@@ -1,25 +1,25 @@
 import SwiftUI
 
-// Retrait du partage et règles de correspondance sur l'iPhone (libellés
-// communs : `Shared/Core/VaultTweaks.swift`).
+// Removal from sharing and match rules on the iPhone (shared labels:
+// `Shared/Core/VaultTweaks.swift`).
 
 extension PhoneModel {
-    // MARK: Retrait du partage
+    // MARK: Removal from sharing
 
     func unshareableIDs(_ ids: [String]) -> [String] {
         ids.filter { summary(id: $0)?.canUnshare == true }
     }
 
-    /// « Retirer du partage… » : demande confirmation.
+    /// "Remove from sharing…": asks for confirmation.
     func requestUnshare(_ ids: [String]) {
         let candidates = unshareableIDs(ids)
         guard canEdit, !candidates.isEmpty else {
-            toast = Toast(message: "Rien à retirer du partage",
-                          detail: "Il faut pouvoir modifier l'élément et en voir le mot de passe", failure: true)
+            toast = Toast(message: String(localized: "Nothing to remove from sharing"),
+                          detail: String(localized: "You must be able to edit the item and see its password"), failure: true)
             return
         }
         let summaries = candidates.compactMap { summary(id: $0) }
-        let title = summaries.count == 1 ? summaries[0].title : "\(summaries.count) éléments"
+        let title = summaries.count == 1 ? summaries[0].title : String(localized: "\(summaries.count) items")
         var organizations: [String] = []
         for name in summaries.compactMap(\.sharing?.organization) where !organizations.contains(name) {
             organizations.append(name)
@@ -27,14 +27,14 @@ extension PhoneModel {
         unshareRequest = UnshareRequest(itemIDs: candidates, title: title, organizations: organizations)
     }
 
-    /// Ramène les éléments dans le coffre personnel (en ligne seulement).
+    /// Brings the items back into the personal vault (online only).
     func performUnshare(_ request: UnshareRequest) async {
         unshareRequest = nil
         guard canEdit, !unshareBusy else { return }
         let protected = request.itemIDs.filter { session.needsConfirmation(id: $0) }
         if let first = protected.first {
             let title = protected.count == 1 ? summary(id: first)?.title ?? request.title
-                                             : "\(protected.count) éléments protégés"
+                                             : String(localized: "\(protected.count) protected items")
             guard await confirmAccess(itemID: first, title: title) else { return }
             protected.forEach { session.authorizeItem(id: $0) }
         }
@@ -42,7 +42,7 @@ extension PhoneModel {
         defer { unshareBusy = false }
         do {
             let result = try await session.unshareItems(ids: request.itemIDs, progress: NoBulkProgress())
-            // La fiche ouverte suit l'élément vers sa copie personnelle.
+            // The open item page follows the item to its personal copy.
             let moved = Dictionary(result.moved.map { ($0.temporary, $0.server) }, uniquingKeysWith: { a, _ in a })
             let follow = { (path: [Route]) in
                 path.map { route -> Route in
@@ -55,12 +55,12 @@ extension PhoneModel {
             afterWrite()
             toast = result.toast
         } catch {
-            toast = Toast(message: "Retrait du partage impossible", detail: ErrorText.describe(error), failure: true,
+            toast = Toast(message: String(localized: "Could not remove from sharing"), detail: ErrorText.describe(error), failure: true,
                           seconds: 5)
         }
     }
 
-    // MARK: Règles de correspondance
+    // MARK: Match rules
 
     func setDefaultMatchRule(_ rule: UriMatchRule) {
         try? session.setDefaultMatchRule(rule: rule)
@@ -73,7 +73,7 @@ extension PhoneModel {
     }
 }
 
-/// Confirmation de « Retirer du partage… », posée sur les onglets.
+/// Confirmation of "Remove from sharing…", placed on the tabs.
 struct UnsharePresentation: ViewModifier {
     @Environment(PhoneModel.self) private var model
 
@@ -84,17 +84,17 @@ struct UnsharePresentation: ViewModifier {
                                                      set: { if !$0 { model.unshareRequest = nil } }),
                                 titleVisibility: .visible,
                                 presenting: model.unshareRequest) { request in
-                Button(request.itemIDs.count == 1 ? "Retirer du partage" : "Retirer \(request.itemIDs.count) éléments",
+                Button(request.itemIDs.count == 1 ? "Remove from sharing" : "Remove \(request.itemIDs.count) items",
                        role: .destructive) {
                     Task { await model.performUnshare(request) }
                 }
-                Button("Annuler", role: .cancel) { model.unshareRequest = nil }
+                Button("Cancel", role: .cancel) { model.unshareRequest = nil }
             } message: { request in
                 Text(request.message)
             }
             .overlay {
                 if model.unshareBusy {
-                    ProgressView("Retrait du partage…")
+                    ProgressView("Removing from sharing…")
                         .padding(20)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .accessibilityIdentifier("unshare-progress")

@@ -1,10 +1,9 @@
-//! « Retirer du partage » de bout en bout, contre un vrai Vaultwarden
-//! jetable : un élément d'organisation (historique des mots de passe,
-//! passkey, TOTP, champs, règles de correspondance, pièce jointe) revient
-//! dans le coffre personnel ; un client du SDK monté hors de Verrou (comme le
-//! coffre web) voit la copie personnelle, lisible avec la seule clé de
-//! l'utilisateur, et plus l'élément de l'organisation. Un membre en lecture
-//! seule, ou dont l'organisation masque les mots de passe, ne peut pas.
+//! "Unshare" end to end, against a real throwaway Vaultwarden: an
+//! organization item (password history, passkey, TOTP, fields, match
+//! rules, attachment) comes back to the personal vault; an SDK client set
+//! up outside Verrou (like the web vault) sees the personal copy, readable
+//! with the user's key alone, and no longer the organization item. A
+//! read-only member, or one whose organization hides passwords, cannot.
 //!
 //! ```sh
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test -p verrou-vaultwarden --test unshare
@@ -33,7 +32,7 @@ const PASSWORD: &str = "cheval correct pile agrafe";
 fn server() -> Option<String> {
     let url = std::env::var("VERROU_TEST_SERVER").ok();
     if url.is_none() {
-        eprintln!("VERROU_TEST_SERVER absent : test ignoré");
+        eprintln!("VERROU_TEST_SERVER not set: test skipped");
     }
     url
 }
@@ -64,7 +63,7 @@ async fn account(server: &str, email: &str) -> Connection {
         .unwrap()
     {
         LoginStep::Unlocked(unlocked) => unlocked.connection,
-        LoginStep::TwoFactor(_) => panic!("second facteur inattendu"),
+        LoginStep::TwoFactor(_) => panic!("unexpected second factor"),
     }
 }
 
@@ -73,12 +72,12 @@ fn find<'v>(vault: &'v Decrypted, title: &str) -> &'v verrou_core::Item {
         .items
         .iter()
         .find(|i| i.title == title)
-        .unwrap_or_else(|| panic!("« {title} » absent"))
+        .unwrap_or_else(|| panic!("\"{title}\" missing"))
 }
 
-/// Un client du SDK monté hors de Verrou, avec la seule clé de
-/// l'utilisateur (pas celles des organisations) : rend aussi la
-/// synchronisation brute et le jeton d'accès.
+/// An SDK client set up outside Verrou, with the user's key alone (not
+/// the organizations' keys): also returns the raw sync and the access
+/// token.
 async fn official_client(server: &str, email: &str) -> (Client, Value, String) {
     let http = reqwest::Client::new();
     let kdf = Kdf::PBKDF2 {
@@ -151,7 +150,7 @@ async fn official_client(server: &str, email: &str) -> (Client, Value, String) {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a full walkthrough, readable in one go
 async fn unshare_moves_an_item_back_to_the_personal_vault() {
     let Some(server) = server() else {
         return;
@@ -164,8 +163,8 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
         .unwrap();
     let communs = vault.organizations[0].collections[0].id.clone();
 
-    // Un identifiant complet : TOTP, deux sites avec leur règle, champs,
-    // notes, ancien mot de passe, passkey, pièce jointe.
+    // A complete login: TOTP, two sites with their rule, fields, notes,
+    // old password, passkey, attachment.
     let (id, _) = owner
         .create(Draft {
             name: "Banque".to_owned(),
@@ -237,7 +236,7 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
         .add_attachment(&id, "contrat.txt", &contrat)
         .await
         .unwrap();
-    // Un second élément partagé, et un personnel.
+    // A second shared item, and a personal one.
     let (other, _) = owner
         .create(Draft {
             name: "Netflix".to_owned(),
@@ -271,7 +270,7 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
     let shared = find(&outcome.vault, "Banque");
     assert!(shared.shared.is_some());
 
-    // Un membre en lecture seule, puis avec les mots de passe masqués : refusé.
+    // A read-only member, then with passwords hidden: refused.
     let member_email = unique_email("membre");
     let mut member = account(&server, &member_email).await;
     owner
@@ -332,8 +331,8 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
         .unwrap();
     assert_eq!(refused.skipped, [(id.clone(), Skipped::PasswordsHidden)]);
 
-    // La propriétaire retire « Banque » du partage ; doublon, élément
-    // personnel et inconnu sont écartés.
+    // The owner unshares "Banque"; duplicate, personal and unknown items
+    // are skipped.
     let unknown = "00000000-0000-0000-0000-000000000000".to_owned();
     let seen = std::sync::Mutex::new(Vec::new());
     let outcome = owner
@@ -357,11 +356,11 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
     );
     assert_eq!(seen.into_inner().unwrap().last(), Some(&(3, 3)));
 
-    // Dans Verrou : la copie personnelle, complète.
+    // In Verrou: the personal copy, complete.
     let vault = &outcome.vault;
     assert!(
         vault.items.iter().all(|i| i.id != id),
-        "copie d'organisation supprimée"
+        "organization copy deleted"
     );
     let banque = find(vault, "Banque");
     assert_eq!(banque.id, new_id);
@@ -404,11 +403,11 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
         (name.as_str(), bytes.as_slice()),
         ("contrat.txt", contrat.as_slice())
     );
-    // « Netflix » reste partagé.
+    // "Netflix" stays shared.
     assert!(find(vault, "Netflix").shared.is_some());
 
-    // Un client du SDK, avec la seule clé de l'utilisateur : la copie est
-    // personnelle et lisible, l'élément de l'organisation a disparu.
+    // An SDK client, with the user's key alone: the copy is personal and
+    // readable, the organization item is gone.
     let (official, sync, access) = official_client(&server, &owner_email).await;
     let ciphers = sync["ciphers"].as_array().unwrap();
     assert!(
@@ -419,7 +418,7 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
     let model = ciphers
         .iter()
         .find(|c| c["id"].as_str() == Some(new_id.as_str()))
-        .expect("copie personnelle vue par le client officiel")
+        .expect("personal copy seen by the official client")
         .clone();
     assert!(model["organizationId"].is_null());
     assert!(model["collectionIds"].as_array().is_none_or(Vec::is_empty));
@@ -445,7 +444,7 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
     assert_eq!(login.fido2_credentials.unwrap().len(), 1);
     assert_eq!(view.password_history.as_ref().unwrap().len(), 1);
     assert_eq!(view.fields.as_ref().unwrap().len(), 2);
-    // La pièce jointe, téléchargée et déchiffrée par le client officiel.
+    // The attachment, downloaded and decrypted by the official client.
     let attachment = view.attachments.clone().unwrap().remove(0);
     let http = reqwest::Client::new();
     let meta: Value = http
@@ -472,14 +471,14 @@ async fn unshare_moves_an_item_back_to_the_personal_vault() {
         .unwrap();
     assert_eq!(plain, contrat);
 
-    // Le membre ne voit plus l'élément (sorti de l'organisation).
+    // The member no longer sees the item (out of the organization).
     let vault = member.sync().await.unwrap().unwrap();
     assert!(vault.items.iter().all(|i| i.title != "Banque"));
 }
 
-/// Les domaines équivalents du compte (`/api/settings/domains`) : lus à la
-/// synchronisation, groupes exclus compris, et honorés par la règle
-/// « domaine ».
+/// The account's equivalent domains (`/api/settings/domains`): read at
+/// sync, excluded groups included, and honoured by the "domain"
+/// rule.
 #[tokio::test]
 async fn equivalent_domains_are_read_and_honoured() {
     let Some(server) = server() else {
@@ -531,23 +530,23 @@ async fn equivalent_domains_are_read_and_honoured() {
         })
         .await
         .unwrap();
-    // Lus à la connexion (groupes globaux), relus à la synchronisation.
+    // Read at login (global groups), read again at sync.
     assert!(
         vault
             .equivalent_domains
             .iter()
             .all(|g| !g.contains(&"exemple.fr".to_owned())),
-        "pas encore relus"
+        "not read again yet"
     );
-    assert!(!vault.equivalent_domains.is_empty(), "lus à la connexion");
-    let vault = connection.sync().await.unwrap().expect("domaines changés");
+    assert!(!vault.equivalent_domains.is_empty(), "read at login");
+    let vault = connection.sync().await.unwrap().expect("domains changed");
     let groups = &vault.equivalent_domains;
     assert_eq!(groups[0], ["exemple.fr", "exemple-banque.com"]);
     assert!(
         groups.iter().all(|g| !g.iter().any(|d| d == "youtube.com")),
-        "groupe global exclu"
+        "global group excluded"
     );
-    assert!(groups.len() > 10, "groupes globaux du serveur");
+    assert!(groups.len() > 10, "server global groups");
     let rules = verrou_core::MatchRules {
         equivalent_domains: vault.equivalent_domains.clone(),
         ..verrou_core::MatchRules::default()
@@ -560,6 +559,6 @@ async fn equivalent_domains_are_read_and_honoured() {
         .map(|i| i.title.as_str())
         .collect();
     assert_eq!(found, ["Exemple"]);
-    // Rien de neuf : la synchronisation suivante ne redéchiffre pas.
+    // Nothing new: the next sync does not decrypt again.
     assert!(connection.sync().await.unwrap().is_none());
 }

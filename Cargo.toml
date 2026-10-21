@@ -39,14 +39,14 @@ uniffi = "0.32"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 uuid = { version = "1", features = ["v4"] }
-# Lecture des exports d'autres gestionnaires (Apple, 1Password, Proton Pass) :
-# CSV, et archives ZIP en lecture seule (deflate, sans chiffrement).
+# Reading exports from other managers (Apple, 1Password, Proton Pass):
+# CSV, and read-only ZIP archives (deflate, no encryption).
 csv = "1.4"
 zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
-# SDK Rust de Bitwarden (GPL-3.0) : le code des apps officielles, épinglé sur
-# un commit. Il n'est pas publié sur crates.io ; chaque montée de version est
-# une PR à part, qui relance les tests contre un vrai Vaultwarden.
+# Bitwarden's Rust SDK (GPL-3.0): the code of the official apps, pinned to
+# a commit. It isn't published on crates.io; each version bump is a
+# separate PR, which reruns the tests against a real Vaultwarden.
 bitwarden-core = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6", features = ["internal"] }
 bitwarden-crypto = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
 bitwarden-vault = { git = "https://github.com/bitwarden/sdk-internal", rev = "229c5b9a897b670ca988b6c03ee8a3c5e90128a6" }
@@ -68,15 +68,15 @@ cast_possible_truncation = "allow"
 cast_precision_loss = "allow"
 cast_sign_loss = "allow"
 
-# Debug : les dépendances sans infos de débogage complètes (moins de disque,
-# édition de liens plus rapide), sauf les numéros de ligne des backtraces.
+# Debug: dependencies without full debug info (less disk, faster
+# linking), except the line numbers of backtraces.
 [profile.dev.package."*"]
 debug = "line-tables-only"
 
-# La cryptographie optimisée même en debug : PBKDF2 (600 000 itérations),
-# Argon2 et RSA y sont 10 à 50 fois plus lents sans optimisation, et chaque
-# test contre Vaultwarden crée et connecte des comptes. Seulement ces crates :
-# optimiser toutes les dépendances quadruple la compilation à froid.
+# Cryptography optimized even in debug: PBKDF2 (600,000 iterations),
+# Argon2 and RSA are 10 to 50 times slower without optimization, and each
+# test against Vaultwarden creates and signs in accounts. Only these crates:
+# optimizing all dependencies quadruples the cold build.
 [profile.dev.package.aes]
 opt-level = 3
 

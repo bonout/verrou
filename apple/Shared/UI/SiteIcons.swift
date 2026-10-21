@@ -3,7 +3,7 @@ import SwiftUI
 #if canImport(AppKit)
 import AppKit
 
-/// Image du système : `NSImage` sur le Mac, `UIImage` sur l'iPhone.
+/// System image: `NSImage` on the Mac, `UIImage` on the iPhone.
 typealias PlatformImage = NSImage
 
 extension Image {
@@ -12,7 +12,7 @@ extension Image {
 #else
 import UIKit
 
-/// Image du système : `NSImage` sur le Mac, `UIImage` sur l'iPhone.
+/// System image: `NSImage` on the Mac, `UIImage` on the iPhone.
 typealias PlatformImage = UIImage
 
 extension Image {
@@ -20,28 +20,28 @@ extension Image {
 }
 #endif
 
-/// Icônes des sites, servies par le Vaultwarden du compte (`/icons/<site>/icon.png`).
+/// Site icons, served by the account's Vaultwarden (`/icons/<site>/icon.png`).
 ///
-/// Seul le nom du site part, vers son propre serveur, qui les récupère pour
-/// nous ; rien ne touche le disque (session réseau éphémère, cache en
-/// mémoire vidé au verrouillage) : la liste des sites ne reste pas en clair
-/// sur l'appareil.
+/// Only the site's name goes out, to its own server, which fetches them for
+/// us; nothing touches the disk (ephemeral network session, in-memory cache
+/// emptied on lock): the list of sites doesn't stay in clear on the
+/// device.
 @MainActor
 @Observable
 final class SiteIcons {
-    /// L'icône d'un site : observée séparément, pour qu'une icône arrivée ne
-    /// redessine que les vues qui la montrent (pas toutes les lignes).
+    /// A site's icon: observed separately, so that an arrived icon only
+    /// redraws the views that show it (not all the rows).
     @MainActor
     @Observable
     final class Entry {
-        /// `nil` : téléchargement en cours, ou pas d'icône (on garde l'initiale).
+        /// `nil`: download in progress, or no icon (we keep the initial).
         fileprivate(set) var image: PlatformImage?
     }
 
-    /// Sites demandés. Hors observation : en ajouter un pendant le calcul
-    /// d'une vue n'invalide aucune autre vue.
+    /// Requested sites. Not observed: adding one while a view is being
+    /// computed invalidates no other view.
     @ObservationIgnored private var entries: [String: Entry] = [:]
-    /// L'image générique que Vaultwarden renvoie quand il ne trouve rien.
+    /// The generic image Vaultwarden returns when it finds nothing.
     @ObservationIgnored private var fallback: Task<Data?, Never>?
     @ObservationIgnored private let urlSession: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -50,17 +50,17 @@ final class SiteIcons {
         return URLSession(configuration: configuration)
     }()
 
-    /// Adresse du serveur ; `nil` (coffre fictif, réglage désactivé) : aucune icône.
+    /// Server address; `nil` (demo vault, setting turned off): no icon.
     var server: String? {
         didSet { if oldValue != server { clear() } }
     }
 
-    /// Icônes déjà arrivées, par site (mesures, tests).
+    /// Icons already arrived, per site (measurements, tests).
     var images: [String: PlatformImage] {
         entries.compactMapValues(\.image)
     }
 
-    /// L'icône si elle est déjà là ; sinon la demande, et la vue se mettra à jour.
+    /// The icon if it's already there; otherwise requests it, and the view will update.
     func image(for host: String) -> PlatformImage? {
         let site = Self.site(of: host)
         if let entry = entries[site] { return entry.image }
@@ -71,11 +71,11 @@ final class SiteIcons {
         return entry.image
     }
 
-    /// Sites déjà demandés (mesures).
+    /// Sites already requested (measurements).
     var requestedCount: Int { entries.count }
 
     func clear() {
-        // Les vues qui montrent une icône la perdent tout de suite.
+        // The views showing an icon lose it right away.
         for entry in entries.values { entry.image = nil }
         entries.removeAll()
         fallback?.cancel()
@@ -86,7 +86,7 @@ final class SiteIcons {
         guard let data = await fetch(server: server, site: site),
               data != (await fallbackIcon(server: server)),
               self.server == server else { return }
-        // Décodée hors du fil principal : le défilement n'a plus qu'à l'afficher.
+        // Decoded off the main thread: scrolling only has to display it.
         let image = await Task.detached(priority: .utility) { Self.decoded(data) }.value
         guard let image, self.server == server, entries[site] === entry else { return }
         entry.image = image
@@ -103,7 +103,7 @@ final class SiteIcons {
 
     private func fallbackIcon(server: String) async -> Data? {
         if let fallback { return await fallback.value }
-        let task = Task { await fetch(server: server, site: "verrou-sans-icone.invalid") }
+        let task = Task { await fetch(server: server, site: "verrou-no-icon.invalid") }
         fallback = task
         return await task.value
     }
@@ -115,7 +115,7 @@ final class SiteIcons {
         return data
     }
 
-    /// Le nom de domaine seul : ni port, ni majuscules.
+    /// The domain name alone: no port, no uppercase.
     static func site(of host: String) -> String {
         let name = host.split(separator: ":").first.map(String.init) ?? host
         return name.lowercased().filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" }

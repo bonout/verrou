@@ -13,9 +13,9 @@ struct VerrouPhoneApp: App {
     #endif
 
     init() {
-        // Le toucher d'une notification qui lance l'app passe par ici :
-        // installé avant la fin du lancement, gardé jusqu'à ce que l'app soit
-        // prête (`setHandler`).
+        // Tapping a notification that launches the app goes through here:
+        // installed before launch finishes, kept until the app is ready
+        // (`setHandler`).
         let environment = ProcessInfo.processInfo.environment
         ActivityNotifier.shared.silent = environment["VERROU_E2E_SERVER"] != nil || environment["VERROU_DEMO"] != nil
         ActivityNotifier.shared.install()
@@ -40,7 +40,7 @@ struct VerrouPhoneApp: App {
                         autoFillSetup = driver
                         driver.start()
                     }
-                    // Captures : `VERROU_OPEN_TAB=generator|vault` ouvre le coffre fictif sur cet onglet.
+                    // Screenshots: `VERROU_OPEN_TAB=generator|vault` opens the demo vault on that tab.
                     if let tab = ProcessInfo.processInfo.environment["VERROU_OPEN_TAB"], model.mode == .demo,
                        model.lockState == .locked {
                         model.openMockVault()
@@ -59,7 +59,7 @@ struct VerrouPhoneApp: App {
                     #endif
                 }
         }
-        // Réveil d'arrière-plan : nouveautés du partage (voir
+        // Background wake-up: sharing news (see
         // `PhoneModel.backgroundActivityCheck`).
         .backgroundTask(.appRefresh(PhoneModel.activityTaskID)) {
             await model.backgroundActivityCheck()
@@ -71,20 +71,20 @@ struct RootView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// L'écran verrouillé est affiché : au déverrouillage, il reste au-dessus
-    /// du coffre (déjà utilisable) le temps de s'effacer.
+    /// The lock screen is shown: on unlock, it stays above the vault
+    /// (already usable) while it fades out.
     @State private var lockOnScreen = false
-    /// Le coffre est construit sous l'écran verrouillé pendant que Face ID
-    /// (ou la dérivation du mot de passe) travaille : au succès, il n'y a
-    /// plus qu'à y verser les données, sans attendre la construction des
-    /// onglets, des listes et des barres.
+    /// The vault is built under the lock screen while Face ID (or the
+    /// password derivation) works: on success, only the data remains to be
+    /// poured in, without waiting for the tabs, lists and bars to be
+    /// built.
     @State private var vaultPrepared = false
 
-    /// Hors du premier plan (sélecteur d'apps, centre de contrôle) : le
-    /// contenu est flouté et recouvert, l'aperçu du sélecteur ne montre rien.
-    /// Pas pendant la demande de Face ID que l'app a faite elle-même : iOS
-    /// la laisse inactive jusqu'à deux secondes après la réussite, et
-    /// l'écran de confidentialité recouvrait alors le coffre déjà ouvert.
+    /// Out of the foreground (app switcher, Control Center): the content is
+    /// blurred and covered, the switcher's preview shows nothing. Not during
+    /// the Face ID prompt the app made itself: iOS leaves it inactive for up
+    /// to two seconds after the success, and the privacy screen then covered
+    /// the already open vault.
     private var shielded: Bool {
         scenePhase == .background || (scenePhase == .inactive && !model.biometricPrompt)
     }
@@ -98,16 +98,16 @@ struct RootView: View {
         ZStack {
             ZStack {
                 if model.lockState == .unlocked || (vaultPrepared && !model.needsLogin) {
-                    // Posé d'emblée, opaque, sous l'écran verrouillé qui
-                    // s'efface : aucun fondu croisé où les deux seraient à
-                    // moitié transparents. Coffre fermé, il est vide (aucun
-                    // élément chargé), caché par l'écran verrouillé opaque,
-                    // et ne reçoit ni toucher ni VoiceOver.
+                    // Placed right away, opaque, under the fading lock
+                    // screen: no cross-fade where both would be half
+                    // transparent. With the vault closed, it is empty (no
+                    // item loaded), hidden by the opaque lock screen, and
+                    // receives neither touches nor VoiceOver.
                     MainTabs()
                         .allowsHitTesting(model.lockState == .unlocked)
                         .accessibilityHidden(model.lockState != .unlocked)
-                        // Les données arrivent d'un coup, sans animer les
-                        // sections : seul l'écran verrouillé s'efface.
+                        // The data arrives all at once, without animating
+                        // the sections: only the lock screen fades out.
                         .animation(nil, value: model.lockState)
                         .transition(.asymmetric(insertion: .identity, removal: .opacity))
                         .zIndex(0)
@@ -120,7 +120,7 @@ struct RootView: View {
                     LockView(departing: model.lockState == .unlocked || model.opening) { lockOnScreen = false }
                         .onAppear { lockOnScreen = true }
                         .transition(.opacity)
-                        // Toujours au-dessus du coffre qui s'insère dessous.
+                        // Always above the vault inserted underneath.
                         .zIndex(1)
                 }
             }
@@ -139,24 +139,24 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.needsLogin)
-        // Flou progressif vers le sélecteur d'apps ; jamais en passant
-        // directement en arrière-plan, où l'aperçu est pris aussitôt.
+        // Progressive blur toward the app switcher; never when going
+        // straight to the background, where the preview is taken at once.
         .animation(scenePhase == .background ? nil : .easeOut(duration: 0.18), value: shielded)
-        // Chaque copie : un retour haptique de réussite.
+        // Each copy: a success haptic.
         .sensoryFeedback(.success, trigger: model.copies)
         .tint(Theme.accent)
-        // Coffre ouvert : au-dessus de la barre d'onglets ; sinon en haut, loin
-        // des champs de saisie.
+        // Vault open: above the tab bar; otherwise at the top, away from the
+        // input fields.
         .overlay(alignment: model.lockState == .unlocked ? .bottom : .top) { ToastHost() }
         .alert(repromptTitle, isPresented: repromptShown, presenting: model.reprompt) { _ in
             RepromptFields()
         } message: { _ in
-            Text("Saisissez votre mot de passe principal pour afficher ses secrets.")
+            Text("Enter your master password to show its secrets.")
         }
     }
 
     private var repromptTitle: String {
-        model.reprompt.map { "« \($0.title) » est protégé" } ?? ""
+        model.reprompt.map { String(localized: "“\($0.title)” is protected") } ?? ""
     }
 
     private var repromptShown: Binding<Bool> {
@@ -165,30 +165,30 @@ struct RootView: View {
     }
 }
 
-/// Champ et boutons de la demande du mot de passe principal.
+/// Field and buttons of the master password prompt.
 private struct RepromptFields: View {
     @Environment(PhoneModel.self) private var model
     @State private var password = ""
 
     var body: some View {
-        SecureField("Mot de passe principal", text: $password)
+        SecureField("Master password", text: $password)
             .textContentType(.password)
-        Button("Confirmer") {
+        Button("Confirm") {
             let typed = password
             password = ""
             Task { await model.answerReprompt(password: typed) }
         }
-        Button("Annuler", role: .cancel) {
+        Button("Cancel", role: .cancel) {
             password = ""
             Task { await model.answerReprompt(password: nil) }
         }
     }
 }
 
-/// Écran posé sur l'app quand elle quitte le premier plan.
+/// Screen placed over the app when it leaves the foreground.
 struct PrivacyCover: View {
-    /// En arrière-plan : un fond plein, posé sans animation, au cas où
-    /// l'aperçu du sélecteur serait pris avant la fin du flou.
+    /// In the background: a solid background, placed without animation, in
+    /// case the switcher's preview is taken before the blur finishes.
     var opaque = false
 
     var body: some View {
@@ -209,9 +209,9 @@ struct PrivacyCover: View {
     }
 }
 
-/// Les onglets du coffre ouvert : Coffre, Générateur, Réglages et
-/// Rechercher (iOS 18+ : onglet de recherche à part, dans la barre d'onglets
-/// de verre sur iOS 26, qui se replie au défilement).
+/// The open vault's tabs: Vault, Generator, Settings and Search (iOS 18+:
+/// separate search tab, in the glass tab bar on iOS 26, which collapses on
+/// scroll).
 struct MainTabs: View {
     @Environment(PhoneModel.self) private var model
 
@@ -245,8 +245,8 @@ struct MainTabs: View {
         .modifier(UnsharePresentation())
     }
 
-    /// Feuille du QR code ouverte depuis une fiche (l'écran de modification
-    /// présente la sienne).
+    /// QR code sheet opened from an item page (the edit screen presents its
+    /// own).
     private var itemScan: Binding<OTPScanFlow?> {
         Binding(get: { model.otpScan?.purpose.isEditor == false ? model.otpScan : nil },
                 set: { if $0 == nil { model.otpScan = nil } })
@@ -256,43 +256,43 @@ struct MainTabs: View {
     private var modernTabs: some View {
         @Bindable var model = model
         return TabView(selection: $model.tab) {
-            Tab("Coffre", systemImage: "lock.rectangle.stack.fill", value: PhoneModel.Tab.vault) {
+            Tab("Vault", systemImage: "lock.rectangle.stack.fill", value: PhoneModel.Tab.vault) {
                 VaultTab()
             }
-            Tab("Générateur", systemImage: "wand.and.stars", value: PhoneModel.Tab.generator) {
+            Tab("Generator", systemImage: "wand.and.stars", value: PhoneModel.Tab.generator) {
                 GeneratorTab()
             }
-            Tab("Réglages", systemImage: "gearshape.fill", value: PhoneModel.Tab.settings) {
+            Tab("Settings", systemImage: "gearshape.fill", value: PhoneModel.Tab.settings) {
                 SettingsTab()
             }
-            Tab("Rechercher", systemImage: "magnifyingglass", value: PhoneModel.Tab.search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: PhoneModel.Tab.search, role: .search) {
                 SearchTab()
             }
         }
         .modifier(MinimizingTabBar())
     }
 
-    /// iOS 17 : les mêmes onglets, la recherche en dernier.
+    /// iOS 17: the same tabs, search last.
     private var legacyTabs: some View {
         @Bindable var model = model
         return TabView(selection: $model.tab) {
             VaultTab()
-                .tabItem { Label("Coffre", systemImage: "lock.rectangle.stack.fill") }
+                .tabItem { Label("Vault", systemImage: "lock.rectangle.stack.fill") }
                 .tag(PhoneModel.Tab.vault)
             GeneratorTab()
-                .tabItem { Label("Générateur", systemImage: "wand.and.stars") }
+                .tabItem { Label("Generator", systemImage: "wand.and.stars") }
                 .tag(PhoneModel.Tab.generator)
             SettingsTab()
-                .tabItem { Label("Réglages", systemImage: "gearshape.fill") }
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(PhoneModel.Tab.settings)
             SearchTab()
-                .tabItem { Label("Rechercher", systemImage: "magnifyingglass") }
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .tag(PhoneModel.Tab.search)
         }
     }
 }
 
-/// iOS 26 : la barre d'onglets se replie quand on fait défiler vers le bas.
+/// iOS 26: the tab bar collapses when scrolling down.
 private struct MinimizingTabBar: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
@@ -307,7 +307,7 @@ private struct MinimizingTabBar: ViewModifier {
     }
 }
 
-/// Notification éphémère, au-dessus de la barre d'onglets.
+/// Transient notification, above the tab bar.
 private struct ToastHost: View {
     @Environment(PhoneModel.self) private var model
 
@@ -330,7 +330,7 @@ private struct ToastHost: View {
     }
 }
 
-/// La notification, en verre sur iOS 26 (matériau flou avant).
+/// The notification, in glass on iOS 26 (blurred material before).
 private struct PhoneToast: View {
     let toast: Toast
 

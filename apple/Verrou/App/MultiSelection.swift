@@ -1,22 +1,21 @@
 import AppKit
 import SwiftUI
 
-/// Sélection de plusieurs éléments (comme le Finder ou Mail) et actions
-/// groupées.
+/// Selection of several items (like the Finder or Mail) and bulk actions.
 ///
-/// La logique des gestes (clic, ⌘-clic, ⇧-clic, ⇧↑/⇧↓, ⌘A, Échap) est une
-/// fonction pure du cœur Rust (`select_items`, testée là-bas), linéaire en
-/// nombre de lignes. Ici, seulement l'état : `selection` reste l'élément
-/// actif (colonne de détail, actions d'un seul élément) ; `selectedIDs`,
-/// tous les éléments sélectionnés, dans l'ordre affiché.
+/// The gesture logic (click, ⌘-click, ⇧-click, ⇧↑/⇧↓, ⌘A, Esc) is a pure
+/// function of the Rust core (`select_items`, tested there), linear in the
+/// number of rows. Here, only the state: `selection` stays the active item
+/// (detail column, single-item actions); `selectedIDs`, all the selected
+/// items, in display order.
 extension AppModel {
-    /// Les résumés des éléments sélectionnés, dans l'ordre affiché.
+    /// The summaries of the selected items, in display order.
     var selectedSummaries: [ItemSummary] {
         selectedIDs.compactMap { summary(id: $0) }
     }
 
-    /// Applique un geste de sélection, sans animation : la surbrillance
-    /// suit la souris ou le clavier tout de suite.
+    /// Applies a selection gesture, without animation: the highlight follows
+    /// the mouse or the keyboard right away.
     func applySelection(_ gesture: SelectionGesture) {
         let current = ItemSelection(selected: selectedIDs, anchor: selectionAnchor, focus: selection)
         let next = selectItems(current: current, order: resultIDs, gesture: gesture)
@@ -29,7 +28,7 @@ extension AppModel {
         }
     }
 
-    /// Clic sur une ligne : ⌘ ajoute ou retire, ⇧ étend depuis l'ancre.
+    /// Click on a row: ⌘ adds or removes, ⇧ extends from the anchor.
     func click(_ id: String, modifiers: NSEvent.ModifierFlags) {
         if modifiers.contains(.command) {
             applySelection(.toggle(id: id))
@@ -40,7 +39,7 @@ extension AppModel {
         }
     }
 
-    /// Retour à une sélection simple (ou vide), sur l'élément actif.
+    /// Back to a simple (or empty) selection, on the active item.
     func collapseSelection() {
         setSelected(selection.map { [$0] } ?? [])
         if selectionAnchor != selection { selectionAnchor = selection }
@@ -54,9 +53,9 @@ extension AppModel {
         if isMultiSelection != multi { isMultiSelection = multi }
     }
 
-    /// Un élément créé a reçu son identifiant du serveur : la sélection (et
-    /// l'ancre) passent de l'identifiant provisoire à celui-ci, sans
-    /// changer d'élément.
+    /// A created item got its ID from the server: the selection (and the
+    /// anchor) move from the temporary ID to this one, without changing
+    /// item.
     func resolveTemporaryIDs() {
         let resolve = { (id: String) in self.session.resolveItemId(id: id) }
         let focus = selection.map(resolve)
@@ -71,8 +70,8 @@ extension AppModel {
         }
     }
 
-    /// Les résultats ont changé (recherche, filtre, écriture) : on oublie
-    /// les éléments qui ne sont plus affichés.
+    /// The results changed (search, filter, write): forget the items that
+    /// are no longer displayed.
     func pruneSelection() {
         guard isMultiSelection else { return }
         let shown = Set(resultIDs)
@@ -94,9 +93,9 @@ extension AppModel {
         }
     }
 
-    // MARK: Actions groupées
+    // MARK: Bulk actions
 
-    /// Ce que la sélection permet (boutons de la barre, du menu et du résumé).
+    /// What the selection allows (buttons of the toolbar, the menu and the summary).
     struct BulkAvailability {
         var count = 0
         var readOnly = 0
@@ -122,15 +121,15 @@ extension AppModel {
         return a
     }
 
-    /// Les éléments visés par une action lancée depuis la ligne `id` : la
-    /// sélection si la ligne en fait partie, sinon cette ligne seule
-    /// (comme le Finder).
+    /// The items targeted by an action started from the row `id`: the
+    /// selection if the row is part of it, otherwise this row alone (like
+    /// the Finder).
     func targets(forRow id: String) -> [String] {
         isMultiSelection && selectedSet.contains(id) ? selectedIDs : [id]
     }
 
-    /// Applique l'action à ces éléments, en une fois (voir `bulk.rs`) ; la
-    /// corbeille de plusieurs éléments demande confirmation.
+    /// Applies the action to these items, at once (see `bulk.rs`); moving
+    /// several items to the trash asks for confirmation.
     func performBulk(_ action: BulkItemAction, on ids: [String], folderName: String? = nil) async {
         guard canEdit, !editorBusy, !ids.isEmpty else { return }
         if case .trash = action, ids.count > 1, !confirmBulkTrash(count: ids.count) { return }
@@ -144,22 +143,22 @@ extension AppModel {
         do {
             let result = try await session.bulkAction(ids: ids, action: action,
                                                       progress: BulkProgressRelay(model: self))
-            Perf.log.notice("action groupée (\(ids.count) éléments) : \(Perf.ms(since: start)) ms")
+            Perf.log.notice("bulk action (\(ids.count) items): \(Perf.ms(since: start)) ms")
             afterWrite(select: nil)
             pushChanges()
-            // Les éléments archivés, mis à la corbeille ou restaurés
-            // quittent la liste : la sélection suit les résultats.
+            // Archived, trashed or restored items leave the list: the
+            // selection follows the results.
             pruneSelection()
             if let focus = selection, !resultIDs.contains(focus) {
                 withoutAnimation { selection = resultIDs.first }
             }
             toast = bulkToast(result, action: action, folderName: folderName)
         } catch {
-            toast = Toast(message: "Action impossible", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Action failed"), detail: Self.describe(error), failure: true)
         }
     }
 
-    /// Range ces éléments dans un nouveau dossier (créé sur le serveur).
+    /// Puts these items in a new folder (created on the server).
     func moveToNewFolder(_ name: String, ids: [String]) async {
         guard canEdit, !editorBusy else { return }
         do {
@@ -167,62 +166,84 @@ extension AppModel {
             await performBulk(.moveToFolder(folderId: folder), on: ids,
                               folderName: name.trimmingCharacters(in: .whitespaces))
         } catch {
-            toast = Toast(message: "Dossier impossible à créer", detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Couldn't create the folder"), detail: Self.describe(error), failure: true)
         }
     }
 
     private func confirmBulkTrash(count: Int) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Mettre \(count) éléments à la corbeille ?"
-        alert.informativeText = "Restaurables 30 jours depuis la corbeille."
-        alert.addButton(withTitle: "Mettre à la corbeille")
-        alert.addButton(withTitle: "Annuler")
+        alert.messageText = String(localized: "Move \(count) items to the trash?")
+        alert.informativeText = String(localized: "Restorable for 30 days from the trash.")
+        alert.addButton(withTitle: String(localized: "Move to Trash"))
+        alert.addButton(withTitle: String(localized: "Cancel"))
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    /// « 10 archivés, 2 ignorés (lecture seule) ».
+    /// "10 archived, 2 skipped (read-only)".
     private func bulkToast(_ result: BulkResult, action: BulkItemAction, folderName: String?) -> Toast {
         let n = Int(result.done)
-        let s = n > 1 ? "s" : ""
+        let many = n > 1
         var message: String
         switch action {
-        case .archive: message = "\(n) archivé\(s)"
-        case .unarchive: message = "\(n) sorti\(s) des archives"
-        case .trash: message = "\(n) mis à la corbeille"
-        case .restore: message = "\(n) restauré\(s)"
-        case .favorite(let favorite): message = favorite ? "\(n) ajouté\(s) aux favoris" : "\(n) retiré\(s) des favoris"
+        case .archive: message = many ? String(localized: "\(n) items archived") : String(localized: "\(n) item archived")
+        case .unarchive: message = many ? String(localized: "\(n) items unarchived") : String(localized: "\(n) item unarchived")
+        case .trash: message = String(localized: "\(n) moved to the trash")
+        case .restore: message = many ? String(localized: "\(n) items restored") : String(localized: "\(n) item restored")
+        case .favorite(let favorite):
+            message = favorite
+                ? (many ? String(localized: "\(n) items added to favorites") : String(localized: "\(n) item added to favorites"))
+                : (many ? String(localized: "\(n) items removed from favorites") : String(localized: "\(n) item removed from favorites"))
         case .moveToFolder(let folder):
-            message = folder == nil ? "\(n) retiré\(s) de leur dossier"
-                                    : "\(n) déplacé\(s) vers « \(folderName ?? folders.first { $0.id == folder }?.name ?? "dossier") »"
+            if folder == nil {
+                message = many ? String(localized: "\(n) items removed from their folder")
+                               : String(localized: "\(n) item removed from its folder")
+            } else {
+                let name = folderName ?? folders.first { $0.id == folder }?.name ?? String(localized: "folder")
+                message = many ? String(localized: "\(n) items moved to “\(name)”")
+                               : String(localized: "\(n) item moved to “\(name)”")
+            }
         }
         var ignored: [String] = []
-        if result.readOnly > 0 { ignored.append("\(result.readOnly) ignoré\(result.readOnly > 1 ? "s" : "") (lecture seule)") }
-        if result.inTrash > 0 { ignored.append("\(result.inTrash) ignoré\(result.inTrash > 1 ? "s" : "") (dans la corbeille)") }
-        if result.notFound > 0 { ignored.append("\(result.notFound) introuvable\(result.notFound > 1 ? "s" : "")") }
+        let readOnly = Int(result.readOnly), inTrash = Int(result.inTrash), notFound = Int(result.notFound)
+        if readOnly > 0 {
+            ignored.append(readOnly > 1 ? String(localized: "\(readOnly) items skipped (read-only)")
+                                        : String(localized: "\(readOnly) item skipped (read-only)"))
+        }
+        if inTrash > 0 {
+            ignored.append(inTrash > 1 ? String(localized: "\(inTrash) items skipped (in the trash)")
+                                       : String(localized: "\(inTrash) item skipped (in the trash)"))
+        }
+        if notFound > 0 {
+            ignored.append(notFound > 1 ? String(localized: "\(notFound) items not found")
+                                        : String(localized: "\(notFound) item not found"))
+        }
         if !ignored.isEmpty { message += ", " + ignored.joined(separator: ", ") }
         if !result.failures.isEmpty {
-            return Toast(message: message + ", \(result.failures.count) refusé\(result.failures.count > 1 ? "s" : "")",
+            let refused = result.failures.count
+            return Toast(message: message + ", " + (refused > 1 ? String(localized: "\(refused) items rejected")
+                                                                : String(localized: "\(refused) item rejected")),
                          detail: result.failures.joined(separator: "\n"), failure: true, seconds: 5)
         }
-        let detail = result.queued > 0 && syncState == .offline ? "Hors ligne : synchronisé dès que le serveur répondra" : nil
+        let detail = result.queued > 0 && syncState == .offline
+            ? String(localized: "Offline: synced as soon as the server responds") : nil
         return Toast(message: message, detail: detail, seconds: ignored.isEmpty ? 2.2 : 4)
     }
 }
 
-/// « Déplacer vers un dossier… » : les éléments concernés.
+/// "Move to Folder…": the items concerned.
 struct MoveRequest: Identifiable {
     let id = UUID()
     let itemIDs: [String]
 }
 
-/// Sans animation implicite : sélection et surbrillance changent tout de suite.
+/// Without implicit animation: selection and highlight change right away.
 func withoutAnimation(_ body: () -> Void) {
     var transaction = Transaction()
     transaction.disablesAnimations = true
     withTransaction(transaction, body)
 }
 
-/// Avancement envoyé par Rust depuis son fil : on passe au fil principal.
+/// Progress sent by Rust from its thread: move to the main thread.
 private final class BulkProgressRelay: BulkProgress, @unchecked Sendable {
     private weak var model: AppModel?
 

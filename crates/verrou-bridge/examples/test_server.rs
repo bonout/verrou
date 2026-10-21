@@ -1,19 +1,19 @@
-//! Serveur du pont sur un faux coffre, pour tester l'extension ou le
-//! terminal sans l'app :
+//! Bridge server over a fake vault, to test the extension or the
+//! terminal without the app:
 //!
 //! ```sh
 //! VERROU_BRIDGE_PORT=41739 cargo run -p verrou-bridge --example test_server
 //! VERROU_BRIDGE_PORT=41739 VERROU_CLI_CONFIG=/tmp/cli.json cargo run -p verrou-cli -- link
 //! ```
 //!
-//! Les appairages sont acceptés d'office ; leur code est affiché (`CODE …`)
-//! pour que le test le compare à celui de l'extension. Les demandes d'accord
-//! du terminal aussi (`CONFIRM …`). Le coffre contient une clé SSH ed25519,
-//! créée au démarrage, pour l'agent SSH.
+//! Pairings are accepted automatically; their code is printed (`CODE …`)
+//! so the test compares it with the extension's. The terminal's approval
+//! requests too (`CONFIRM …`). The vault holds an ed25519 SSH key,
+//! created at startup, for the SSH agent.
 //!
-//! `VERROU_EXTENSION_MANIFEST` : le `manifest.json` dont la version est
-//! annoncée en réponse à `status`, comme celui du paquet de l'app (relu à
-//! chaque fois : un test peut le changer pour simuler une mise à jour).
+//! `VERROU_EXTENSION_MANIFEST`: the `manifest.json` whose version is
+//! announced in response to `status`, like the one in the app bundle (read
+//! again each time: a test can change it to simulate an update).
 
 use std::io::Write as _;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -72,7 +72,7 @@ impl Backend for Fake {
         ))
     }
 
-    /// Écrit dans le faux coffre et l'annonce (`SAVED <élément>`).
+    /// Writes to the fake vault and announces it (`SAVED <item>`).
     fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
         let mut vault = self.vault.lock().unwrap();
         let outcome = plan(&vault).map(|write| {
@@ -95,7 +95,7 @@ impl Backend for Fake {
         true
     }
 
-    /// Accord d'office, annoncé (`CONFIRM reveal|ssh|passkey|git|link|card|bulk <titre>`).
+    /// Automatic approval, announced (`CONFIRM reveal|ssh|passkey|git|link|card|bulk <title>`).
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         let purpose = match request.purpose {
             Purpose::Reveal => "reveal",
@@ -114,8 +114,8 @@ impl Backend for Fake {
     fn pairing_requested(&self, request: PairingRequest) {
         println!("CODE {}", request.code);
         let _ = std::io::stdout().flush();
-        // Accord d'office, hors du fil du serveur, après le temps de lire
-        // le code (l'extension l'affiche en attendant).
+        // Automatic approval, off the server's thread, after time to read
+        // the code (the extension shows it meanwhile).
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_millis(1500));
             if let Some(bridge) = BRIDGE
@@ -130,7 +130,7 @@ impl Backend for Fake {
     }
 }
 
-/// Une carte et une identité, pour les formulaires de paiement et d'adresse.
+/// A card and an identity, for payment and address forms.
 fn card() -> Item {
     let mut item = login("visa", "Visa perso", "", "", "");
     item.kind = ItemKind::Card;
@@ -192,7 +192,7 @@ fn login(id: &str, title: &str, url: &str, username: &str, password: &str) -> It
     }
 }
 
-/// Une clé SSH ed25519 neuve, au format que Vaultwarden garde.
+/// A fresh ed25519 SSH key, in the format Vaultwarden keeps.
 fn ssh_key() -> Item {
     let key = PrivateKey::random(
         &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
@@ -248,7 +248,7 @@ fn main() {
             "camille@exemple.fr",
             "mot-de-passe-local",
         ),
-        // Règle « commence par » : seulement sous /connexion.
+        // "Starts with" rule: only under /connexion.
         {
             let mut sso = login(
                 "banque-sso",

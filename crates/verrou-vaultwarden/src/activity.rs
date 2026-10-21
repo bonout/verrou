@@ -1,28 +1,27 @@
-//! Ce qui est nouveau pour le compte depuis la dernière fois : de quoi
-//! poster une notification locale (jamais un service de notification à
-//! distance), sans secret.
+//! What is new for the account since last time: enough to post a local
+//! notification (never a remote notification service), without secrets.
 //!
-//! Sources, et ce qu'elles demandent :
-//! - **la réponse de synchronisation** (cache du coffre), sans clé : les
-//!   organisations confirmées et leur nom (le serveur les envoie en clair),
-//!   les adhésions acceptées en attente de confirmation
-//!   (`profile.organizationsNew`), les identifiants des éléments et leur
-//!   organisation. Rien n'y est déchiffré ;
-//! - **le serveur**, coffre ouvert (jeton d'accès) : les membres qui
-//!   attendent la confirmation d'un administrateur, les demandes et
-//!   accords d'accès d'urgence.
+//! Sources, and what they need:
+//! - **the sync response** (vault cache), without a key: the confirmed
+//!   organizations and their name (the server sends them in clear), the
+//!   accepted memberships waiting for confirmation
+//!   (`profile.organizationsNew`), the item ids and their organization.
+//!   Nothing in it is decrypted;
+//! - **the server**, vault unlocked (access token): the members waiting for
+//!   an administrator's confirmation, the emergency access requests and
+//!   grants.
 //!
-//! Ce que Vaultwarden 1.37 ne montre pas : une invitation pas encore
-//! acceptée (état « Invité »). La synchronisation de l'invité ne la liste
-//! nulle part (`organizations` : confirmées ; `organizationsNew` :
-//! acceptées et confirmées), et aucune route ne la rend à l'invité. Seul le
-//! courriel la porte.
+//! What Vaultwarden 1.37 doesn't show: an invitation not accepted yet
+//! ("Invited" state). The invitee's sync lists it nowhere
+//! (`organizations`: confirmed; `organizationsNew`: accepted and
+//! confirmed), and no route returns it to the invitee. Only the email
+//! carries it.
 //!
-//! Pour ne rien répéter, un ensemble de « déjà vus » par compte
-//! (`activity.json`, identifiants seulement, jamais de nom ni de secret)
-//! survit aux relances ; il est effacé à la déconnexion. La première
-//! observation d'un compte ne signale rien : elle sert de point de départ
-//! (les bandeaux de l'app montrent déjà l'état du moment).
+//! So as not to repeat anything, a per-account set of "already seen"
+//! (`activity.json`, ids only, never a name or a secret) survives
+//! relaunches; it is erased at logout. The first observation of an account
+//! reports nothing: it serves as a starting point (the app's banners
+//! already show the current state).
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::hash::BuildHasher;
@@ -36,70 +35,69 @@ use crate::{Error, Store};
 const ACTIVITY_FILE: &str = "activity.json";
 const ACTIVITY_VERSION: u32 = 1;
 
-/// Lecture-modification-écriture du fichier : une à la fois dans le
-/// processus (synchronisation au premier plan et tâche d'arrière-plan).
+/// Read-modify-write of the file: one at a time in the process
+/// (foreground sync and background task).
 static FILE_LOCK: Mutex<()> = Mutex::new(());
 
-/// Ce qui mérite une notification.
+/// What deserves a notification.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum NoticeKind {
-    /// Invitation acceptée : un administrateur doit encore confirmer le
-    /// compte (sur un serveur sans courriel, c'est l'invitation elle-même).
+    /// Invitation accepted: an administrator still has to confirm the
+    /// account (on a server without email, it is the invitation itself).
     MembershipPending,
-    /// Le compte a été confirmé : les éléments de l'organisation sont lisibles.
+    /// The account was confirmed: the organization's items are readable.
     MembershipConfirmed,
-    /// Des membres attendent la confirmation de ce compte (administrateur).
+    /// Members wait for this account's confirmation (administrator).
     MembersToConfirm,
-    /// De nouveaux éléments dans une organisation (pas créés par cet appareil).
+    /// New items in an organization (not created by this device).
     ItemsShared,
-    /// Un contact d'urgence demande l'accès au coffre de ce compte.
+    /// An emergency contact requests access to this account's vault.
     EmergencyRequested,
-    /// Un proche a accordé l'accès à son coffre (demande approuvée, ou
-    /// délai écoulé).
+    /// Someone granted access to their vault (request approved, or wait
+    /// time elapsed).
     EmergencyApproved,
 }
 
-/// Une notification à poster : des noms d'organisation, une adresse, des
-/// nombres. Jamais un secret, un identifiant de connexion ni un titre
-/// d'élément (ils sont chiffrés de toute façon).
+/// A notification to post: organization names, an address, numbers. Never
+/// a secret, a username or an item title (they are encrypted anyway).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
-    /// Clé stable (identifiant de la notification : une nouvelle du même
-    /// sujet remplace l'ancienne).
+    /// Stable key (the notification's id: a new one on the same subject
+    /// replaces the old one).
     pub key: String,
     pub kind: NoticeKind,
     pub organization_id: Option<String>,
     pub organization: Option<String>,
-    /// Éléments nouveaux, ou membres à confirmer (au total).
+    /// New items, or members to confirm (in total).
     pub count: u32,
-    /// L'autre personne, pour l'accès d'urgence.
+    /// The other person, for emergency access.
     pub email: Option<String>,
 }
 
-/// Une organisation vue dans la synchronisation.
+/// An organization seen in the sync.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OrganizationRef {
     pub id: String,
     pub name: String,
-    /// Propriétaire : il l'a sans doute créée lui-même.
+    /// Owner: they most likely created it themselves.
     pub owner: bool,
 }
 
-/// Ce que dit une réponse de synchronisation, sans clé.
+/// What a sync response says, without a key.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Snapshot {
     pub user_id: String,
-    /// Organisations confirmées (clé reçue).
+    /// Confirmed organizations (key received).
     pub confirmed: Vec<OrganizationRef>,
-    /// Invitations acceptées, en attente de confirmation.
+    /// Accepted invitations, waiting for confirmation.
     pub pending: Vec<OrganizationRef>,
-    /// Éléments : identifiant, organisation, dans la corbeille.
+    /// Items: id, organization, in the trash.
     pub items: Vec<(String, Option<String>, bool)>,
 }
 
 impl Snapshot {
-    /// Lit la réponse brute de `/api/sync`. Les champs chiffrés ne sont pas
-    /// lus ; un document illisible donne `None`.
+    /// Reads the raw `/api/sync` response. Encrypted fields are not read; an
+    /// unreadable document gives `None`.
     pub fn from_sync(json: &str) -> Option<Self> {
         #[derive(Deserialize)]
         struct Sync {
@@ -136,7 +134,7 @@ impl Snapshot {
         let organization = |m: Membership| {
             Some(OrganizationRef {
                 id: m.id?,
-                name: m.name.unwrap_or_else(|| "Organisation".to_owned()),
+                name: m.name.unwrap_or_else(|| "Organization".to_owned()),
                 owner: m.role == Some(0),
             })
         };
@@ -165,17 +163,17 @@ impl Snapshot {
     }
 }
 
-/// Ce que seul le serveur sait (coffre ouvert). `None` : pas demandé, ou
-/// pas joignable ; ce qui avait déjà été vu de cette catégorie est gardé.
+/// What only the server knows (vault unlocked). `None`: not asked, or not
+/// reachable; what had already been seen of this category is kept.
 #[derive(Clone, Debug, Default)]
 pub struct Remote {
-    /// Membres à confirmer : (organisation, nom, identifiant d'adhésion).
+    /// Members to confirm: (organization, name, membership id).
     pub to_confirm: Option<Vec<(String, String, String)>>,
-    /// Accès d'urgence (les deux côtés).
+    /// Emergency access (both sides).
     pub emergency: Option<EmergencyOverview>,
 }
 
-/// Le fichier des déjà-vus.
+/// The already-seen file.
 #[derive(Serialize, Deserialize)]
 struct SeenFile {
     version: u32,
@@ -190,13 +188,13 @@ const CONFIRM: &str = "confirm:";
 const EMERGENCY_REQUEST: &str = "ea-request:";
 const EMERGENCY_APPROVED: &str = "ea-approved:";
 
-/// Compare l'état observé aux déjà-vus du compte, enregistre le nouvel
-/// état, et rend ce qui est nouveau. `own` : éléments créés par cet
-/// appareil (pas une nouvelle pour lui). `notify` faux : tout est marqué vu
-/// sans rien signaler (juste après une écriture locale, par exemple).
+/// Compares the observed state with the account's already-seen set, saves
+/// the new state, and returns what is new. `own`: items created by this
+/// device (not news to it). `notify` false: everything is marked seen
+/// without reporting anything (right after a local write, for example).
 ///
-/// Ne fait rien pour une session invitée (extension de remplissage) : seul
-/// l'app tient ce fichier.
+/// Does nothing for a guest session (autofill extension): only the app
+/// keeps this file.
 pub fn observe<S: BuildHasher>(
     store: &Store,
     snapshot: &Snapshot,
@@ -229,8 +227,8 @@ pub fn observe<S: BuildHasher>(
     })
 }
 
-/// Le cœur de `observe`, sans fichier : les nouvelles, et le nouvel
-/// ensemble des déjà-vus.
+/// The core of `observe`, without the file: the news, and the new
+/// already-seen set.
 fn diff<S: BuildHasher>(
     seen: &BTreeSet<String>,
     snapshot: &Snapshot,
@@ -264,7 +262,7 @@ struct Diff<'a> {
 }
 
 impl Diff<'_> {
-    /// Retient la clé ; rend vrai si elle n'avait jamais été vue.
+    /// Records the key; returns true if it had never been seen.
     fn note(&mut self, key: String) -> bool {
         let new = !self.seen.contains(&key);
         self.current.insert(key);
@@ -282,18 +280,18 @@ impl Diff<'_> {
         });
     }
 
-    /// Garde les déjà-vus d'une catégorie qui n'a pas été observée cette fois.
+    /// Keeps the already-seen of a category that was not observed this time.
     fn carry(&mut self, prefix: &str) {
         self.current
             .extend(self.seen.iter().filter(|k| k.starts_with(prefix)).cloned());
     }
 
-    /// Adhésions confirmées et en attente ; rend les organisations tout
-    /// juste confirmées (leurs éléments ne font pas une seconde nouvelle).
+    /// Confirmed and pending memberships; returns the organizations just
+    /// confirmed (their items don't make a second piece of news).
     fn memberships(&mut self, snapshot: &Snapshot) -> HashSet<String> {
         let mut just_confirmed = HashSet::new();
         for org in &snapshot.confirmed {
-            // Une organisation dont le compte est propriétaire : il l'a créée.
+            // An organization the account owns: it created it.
             if self.note(format!("{ORG}{}", org.id)) && !org.owner {
                 just_confirmed.insert(org.id.clone());
                 let key = format!("confirmed-{}", org.id);
@@ -309,7 +307,7 @@ impl Diff<'_> {
         just_confirmed
     }
 
-    /// Nouveaux éléments des organisations, comptés par organisation.
+    /// New organization items, counted per organization.
     fn items<S: BuildHasher>(
         &mut self,
         snapshot: &Snapshot,
@@ -345,8 +343,8 @@ impl Diff<'_> {
         }
     }
 
-    /// Membres à confirmer : une nouvelle par organisation où il en arrive,
-    /// avec le total qui attend.
+    /// Members to confirm: one piece of news per organization where some
+    /// arrive, with the total waiting.
     fn confirmations(&mut self, members: &[(String, String, String)]) {
         let mut fresh: BTreeMap<&str, &str> = BTreeMap::new();
         let mut totals: BTreeMap<&str, u32> = BTreeMap::new();
@@ -373,8 +371,8 @@ impl Diff<'_> {
         }
     }
 
-    /// Demandes d'accès d'urgence (je suis le concédant) et accès accordés
-    /// (je suis le contact).
+    /// Emergency access requests (I am the grantor) and granted accesses (I
+    /// am the contact).
     fn emergency(&mut self, overview: &EmergencyOverview) {
         let wanted = [
             (
@@ -412,7 +410,7 @@ fn load(store: &Store) -> Result<Option<SeenFile>, Error> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => return Err(Error::storage(e)),
     };
-    // Un fichier illisible ou d'un autre format repart de zéro.
+    // An unreadable file or one of another format starts from scratch.
     Ok(serde_json::from_slice::<SeenFile>(&data)
         .ok()
         .filter(|f| f.version == ACTIVITY_VERSION))
@@ -423,8 +421,8 @@ fn save(store: &Store, file: &SeenFile) -> Result<(), Error> {
     store.write_private(ACTIVITY_FILE, &data)
 }
 
-/// Marque comme vus des éléments que cet appareil vient de créer dans une
-/// organisation : ils ne seront pas annoncés comme partagés par un autre.
+/// Marks as seen items this device just created in an organization: they
+/// won't be announced as shared by someone else.
 pub fn acknowledge_items(store: &Store, user_id: &str, ids: &[String]) -> Result<(), Error> {
     if store.is_guest() || ids.is_empty() {
         return Ok(());
@@ -432,7 +430,7 @@ pub fn acknowledge_items(store: &Store, user_id: &str, ids: &[String]) -> Result
     let _guard = FILE_LOCK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    // Pas encore de point de départ : la première observation les absorbera.
+    // No starting point yet: the first observation will absorb them.
     let Some(mut file) = load(store)?.filter(|f| f.user_id == user_id) else {
         return Ok(());
     };
@@ -440,7 +438,7 @@ pub fn acknowledge_items(store: &Store, user_id: &str, ids: &[String]) -> Result
     save(store, &file)
 }
 
-/// Efface les déjà-vus (déconnexion).
+/// Erases the already-seen set (logout).
 pub fn forget(store: &Store) -> Result<(), Error> {
     if store.is_guest() {
         return Ok(());
@@ -452,10 +450,10 @@ pub fn forget(store: &Store) -> Result<(), Error> {
     }
 }
 
-/// Coffre verrouillé : ce que le cache seul permet de dire, sans clé ni
-/// réseau (le jeton de renouvellement est chiffré par la clé de
-/// l'utilisateur). Utile quand le cache a été rafraîchi sans que l'app
-/// l'examine (extension de remplissage, app interrompue).
+/// Vault locked: what the cache alone can tell, without key or network
+/// (the refresh token is encrypted by the user key). Useful when the cache
+/// was refreshed without the app examining it (autofill extension, app
+/// interrupted).
 pub fn observe_cache(store: &Store) -> Result<Vec<Notice>, Error> {
     let Some(account) = store.load_account()? else {
         return Ok(Vec::new());
@@ -509,7 +507,7 @@ mod tests {
         let empty = BTreeSet::new();
         let own = HashSet::new();
         let remote = Remote::default();
-        // Invitation acceptée.
+        // Invitation accepted.
         let pending = sync(
             "",
             r#"{"id":"o1","name":"Famille","status":1,"type":2}"#,
@@ -518,10 +516,10 @@ mod tests {
         let (notices, seen) = diff(&empty, &pending, &remote, &own);
         assert_eq!(kinds(&notices), [NoticeKind::MembershipPending]);
         assert_eq!(notices[0].organization.as_deref(), Some("Famille"));
-        // Rien de neuf : rien à dire.
+        // Nothing new: nothing to say.
         let (again, seen) = diff(&seen, &pending, &remote, &own);
         assert_eq!(again, [] as [Notice; 0]);
-        // Confirmée, avec deux éléments : une seule nouvelle.
+        // Confirmed, with two items: a single piece of news.
         let confirmed = sync(
             r#"{"id":"o1","name":"Famille","status":2,"type":2}"#,
             r#"{"id":"o1","name":"Famille","status":2,"type":2}"#,
@@ -529,7 +527,7 @@ mod tests {
         );
         let (notices, seen) = diff(&seen, &confirmed, &remote, &own);
         assert_eq!(kinds(&notices), [NoticeKind::MembershipConfirmed]);
-        // Deux nouveaux éléments, dont un créé ici, et un dans la corbeille.
+        // Two new items, plus one created here, and one in the trash.
         let more = sync(
             r#"{"id":"o1","name":"Famille","status":2,"type":2}"#,
             "",
@@ -541,7 +539,7 @@ mod tests {
         let own: HashSet<String> = ["c5".to_owned()].into();
         let (notices, _) = diff(&seen, &more, &remote, &own);
         assert_eq!(kinds(&notices), [NoticeKind::ItemsShared]);
-        assert_eq!(notices[0].count, 2, "c3 et c4");
+        assert_eq!(notices[0].count, 2, "c3 and c4");
     }
 
     #[test]
@@ -570,11 +568,11 @@ mod tests {
         let (notices, seen) = diff(&BTreeSet::new(), &snapshot, &one, &HashSet::new());
         assert_eq!(kinds(&notices), [NoticeKind::MembersToConfirm]);
         assert_eq!(notices[0].count, 1);
-        // Hors ligne : le déjà-vu reste, rien n'est répété au retour.
+        // Offline: the already-seen stays, nothing is repeated on return.
         let (_, seen) = diff(&seen, &snapshot, &Remote::default(), &HashSet::new());
         let (notices, seen) = diff(&seen, &snapshot, &one, &HashSet::new());
         assert_eq!(notices, [] as [Notice; 0]);
-        // Un second membre : la nouvelle dit le total.
+        // A second member: the news gives the total.
         let two = Remote {
             to_confirm: Some(vec![
                 ("o1".into(), "Famille".into(), "m1".into()),
@@ -656,10 +654,10 @@ mod tests {
             observe(&Store::new(&dir), &pending, &Remote::default(), &none, true).unwrap(),
             [] as [Notice; 0]
         );
-        // Le fichier ne contient que des identifiants.
+        // The file only contains ids.
         let text = std::fs::read_to_string(dir.join(ACTIVITY_FILE)).unwrap();
         assert!(!text.contains("Famille"));
-        // L'extension (invitée) n'y touche pas.
+        // The (guest) extension doesn't touch it.
         assert_eq!(
             observe(
                 &Store::new(&dir).guest(),

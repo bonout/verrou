@@ -1,23 +1,23 @@
-//! Déverrouillage par clé de sécurité (`YubiKey` en `FIDO2`, extension
-//! `hmac-secret`).
+//! Unlocking with a security key (`YubiKey` over `FIDO2`, `hmac-secret`
+//! extension).
 //!
-//! Principe : la clé de sécurité garde, pour chaque accréditation créée par
-//! Verrou, un secret qui ne la quitte jamais. Interrogée avec un sel de 32
-//! octets (après un contact, et son code PIN), elle rend
-//! `HMAC-SHA-256(secret, sel)` : toujours la même valeur pour le même sel,
-//! impossible à calculer sans la clé.
+//! Principle: the security key keeps, for each credential created by
+//! Verrou, a secret that never leaves it. Queried with a 32-byte salt
+//! (after a touch, and its PIN), it returns `HMAC-SHA-256(secret, salt)`:
+//! always the same value for the same salt, impossible to compute without
+//! the key.
 //!
-//! - **Enrôlement** : un sel tiré au hasard ; la valeur rendue par la clé
-//!   passe par HKDF-SHA256 et donne une clé AES-256-GCM, qui scelle la clé de
-//!   l'utilisateur. Le fichier garde l'identifiant de l'accréditation, le sel
-//!   et la clé scellée : rien d'utile sans la clé physique.
-//! - **Déverrouillage** : même question à la clé, même valeur, la clé de
-//!   l'utilisateur se descelle.
+//! - **Enrolment**: a random salt; the value returned by the key goes
+//!   through HKDF-SHA256 and gives an AES-256-GCM key, which seals the
+//!   user's key. The file keeps the credential id, the salt and the sealed
+//!   key: nothing useful without the physical key.
+//! - **Unlocking**: same question to the key, same value, the user's key is
+//!   unsealed.
 //!
-//! Plusieurs clés peuvent être enrôlées (une principale, une de secours) :
-//! chacune a son accréditation, son sel et sa copie scellée. Le dialogue USB
-//! est dans `security_key` ; ce module ne fait que la cryptographie et le
-//! fichier, et se teste sans matériel.
+//! Several keys can be enrolled (a main one, a backup one): each has its
+//! credential, its salt and its sealed copy. The USB dialogue is in
+//! `security_key`; this module only does the cryptography and the file,
+//! and is tested without hardware.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -33,18 +33,17 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 use crate::error::Error;
 use crate::store::Store;
 
-/// Identifiant de « site » (`rpId`) des accréditations de déverrouillage. Pas
-/// un nom de domaine, comme le `ssh:` d'`OpenSSH` : aucune page web ne peut
-/// demander à un navigateur de s'en servir.
+/// "Site" id (`rpId`) of the unlock credentials. Not a domain name, like
+/// `OpenSSH`'s `ssh:`: no web page can ask a browser to use it.
 pub const RP_ID: &str = "verrou:";
 
-/// Séparation des usages : ces octets entrent dans la dérivation et dans les
-/// données associées du chiffrement. Les changer rend les clés enrôlées
-/// illisibles : c'est la version du format.
+/// Domain separation: these bytes go into the derivation and into the
+/// encryption's associated data. Changing them makes the enrolled keys
+/// unreadable: it is the format version.
 const LABEL: &[u8] = b"verrou.security-key.v1";
 const NONCE_LEN: usize = 12;
 
-/// La valeur rendue par la clé (`hmac-secret`), effacée à la libération.
+/// The value returned by the key (`hmac-secret`), wiped when freed.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct HmacSecret([u8; 32]);
 
@@ -53,11 +52,11 @@ impl HmacSecret {
         Self(bytes)
     }
 
-    /// La clé ne rend jamais autre chose que 32 octets ; on le vérifie.
+    /// The key never returns anything but 32 bytes; this checks it.
     pub fn from_slice(bytes: &[u8]) -> Result<Self, Error> {
         let array: [u8; 32] = bytes
             .try_into()
-            .map_err(|_| Error::SecurityKey("la clé a rendu un secret illisible".to_owned()))?;
+            .map_err(|_| Error::SecurityKey("the key returned an unreadable secret".to_owned()))?;
         Ok(Self(array))
     }
 }
@@ -68,18 +67,18 @@ impl std::fmt::Debug for HmacSecret {
     }
 }
 
-/// Une clé de sécurité enrôlée, telle qu'elle est écrite sur le disque.
+/// An enrolled security key, as written on disk.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EnrolledKey {
-    /// Identifiant de l'accréditation créée sur la clé (base64url).
+    /// Id of the credential created on the key (base64url).
     pub id: String,
-    /// Sel demandé à la clé (base64), tiré au hasard à l'enrôlement.
+    /// Salt asked of the key (base64), drawn at random at enrolment.
     pub salt: String,
-    /// Nonce, puis clé de l'utilisateur chiffrée et son étiquette (base64).
+    /// Nonce, then the encrypted user key and its tag (base64).
     pub sealed_user_key: String,
-    /// Nom donné par l'utilisateur (« `YubiKey` principale »).
+    /// Name given by the user ("main `YubiKey`").
     pub label: String,
-    /// Horodatage Unix de l'enrôlement.
+    /// Unix timestamp of the enrolment.
     pub created: i64,
 }
 
@@ -87,7 +86,7 @@ impl EnrolledKey {
     pub fn credential_id(&self) -> Result<Vec<u8>, Error> {
         BASE64URL_NOPAD
             .decode(self.id.as_bytes())
-            .map_err(|_| Error::Storage("identifiant de clé de sécurité illisible".to_owned()))
+            .map_err(|_| Error::Storage("unreadable security key id".to_owned()))
     }
 
     pub fn salt(&self) -> Result<[u8; 32], Error> {
@@ -95,20 +94,20 @@ impl EnrolledKey {
             .decode(self.salt.as_bytes())
             .ok()
             .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| Error::Storage("sel de clé de sécurité illisible".to_owned()))
+            .ok_or_else(|| Error::Storage("unreadable security key salt".to_owned()))
     }
 
-    /// Descelle la clé de l'utilisateur avec la valeur rendue par la clé de
-    /// sécurité. Échoue (sans rien révéler) si la valeur ne vient pas de la
-    /// bonne clé, ou si le fichier a été modifié.
+    /// Unseals the user's key with the value returned by the security key.
+    /// Fails (without revealing anything) if the value doesn't come from the
+    /// right key, or if the file was modified.
     pub fn open(&self, secret: &HmacSecret) -> Result<SecretString, Error> {
         let credential_id = self.credential_id()?;
         let salt = self.salt()?;
         let sealed = BASE64
             .decode(self.sealed_user_key.as_bytes())
-            .map_err(|_| Error::Storage("clé scellée illisible".to_owned()))?;
+            .map_err(|_| Error::Storage("unreadable sealed key".to_owned()))?;
         if sealed.len() <= NONCE_LEN {
-            return Err(Error::Storage("clé scellée illisible".to_owned()));
+            return Err(Error::Storage("unreadable sealed key".to_owned()));
         }
         let (nonce, data) = sealed.split_at(NONCE_LEN);
         let plain = Zeroizing::new(
@@ -121,30 +120,30 @@ impl EnrolledKey {
                     },
                 )
                 .map_err(|_| {
-                    Error::SecurityKey("cette clé ne déverrouille pas ce coffre".to_owned())
+                    Error::SecurityKey("this key does not unlock this vault".to_owned())
                 })?,
         );
         let text = std::str::from_utf8(&plain)
-            .map_err(|_| Error::Storage("clé scellée illisible".to_owned()))?;
+            .map_err(|_| Error::Storage("unreadable sealed key".to_owned()))?;
         Ok(SecretString::new(text))
     }
 }
 
-/// Ce qu'il faut demander à la clé pour l'une des clés enrôlées.
+/// What to ask the key for one of the enrolled keys.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnlockCredential {
     pub credential_id: Vec<u8>,
     pub salt: [u8; 32],
 }
 
-/// Un sel neuf, pour un enrôlement.
+/// A fresh salt, for an enrolment.
 pub fn new_salt() -> [u8; 32] {
     let mut salt = [0u8; 32];
     OsRng.fill_bytes(&mut salt);
     salt
 }
 
-/// Scelle la clé de l'utilisateur pour une accréditation.
+/// Seals the user's key for a credential.
 pub fn seal(
     user_key: &SecretString,
     secret: &HmacSecret,
@@ -163,7 +162,7 @@ pub fn seal(
                 aad: &aad(credential_id, salt),
             },
         )
-        .map_err(|_| Error::Crypto("scellement impossible".to_owned()))?;
+        .map_err(|_| Error::Crypto("sealing failed".to_owned()))?;
     let mut sealed = nonce.to_vec();
     sealed.extend_from_slice(&data);
     Ok(EnrolledKey {
@@ -175,8 +174,8 @@ pub fn seal(
     })
 }
 
-/// Les accréditations à présenter à la clé : toutes celles enrôlées. La clé
-/// branchée ne répond que pour la sienne.
+/// The credentials to present to the key: all the enrolled ones. The
+/// plugged-in key only answers for its own.
 pub fn credentials(keys: &[EnrolledKey]) -> Result<Vec<UnlockCredential>, Error> {
     keys.iter()
         .map(|key| {
@@ -188,16 +187,16 @@ pub fn credentials(keys: &[EnrolledKey]) -> Result<Vec<UnlockCredential>, Error>
         .collect()
 }
 
-/// Descelle la clé de l'utilisateur avec la réponse de la clé de sécurité.
-/// `credential_id` : l'accréditation qui a répondu, si la clé l'a dit ; sinon
-/// on essaie chaque clé enrôlée (AES-GCM refuse toutes les autres).
+/// Unseals the user's key with the security key's answer. `credential_id`:
+/// the credential that answered, if the key said so; otherwise each
+/// enrolled key is tried (AES-GCM refuses all the others).
 pub fn unseal(
     keys: &[EnrolledKey],
     credential_id: Option<&[u8]>,
     secret: &HmacSecret,
 ) -> Result<SecretString, Error> {
     let not_enrolled =
-        || Error::SecurityKey("cette clé n'est pas enregistrée pour ce coffre".to_owned());
+        || Error::SecurityKey("this key is not registered for this vault".to_owned());
     if let Some(id) = credential_id {
         let id = BASE64URL_NOPAD.encode(id);
         let key = keys.iter().find(|k| k.id == id).ok_or_else(not_enrolled)?;
@@ -208,7 +207,7 @@ pub fn unseal(
         .ok_or_else(not_enrolled)
 }
 
-/// Ajoute (ou remplace, pour la même accréditation) une clé enrôlée.
+/// Adds (or replaces, for the same credential) an enrolled key.
 pub fn add(store: &Store, key: EnrolledKey) -> Result<(), Error> {
     let mut keys = store.load_security_keys()?;
     keys.retain(|k| k.id != key.id);
@@ -216,7 +215,7 @@ pub fn add(store: &Store, key: EnrolledKey) -> Result<(), Error> {
     store.save_security_keys(&keys)
 }
 
-/// Retire une clé enrôlée (par l'identifiant de son accréditation).
+/// Removes an enrolled key (by its credential id).
 pub fn remove(store: &Store, id: &str) -> Result<(), Error> {
     let mut keys = store.load_security_keys()?;
     keys.retain(|k| k.id != id);
@@ -227,12 +226,12 @@ fn cipher(secret: &HmacSecret, credential_id: &[u8]) -> Aes256Gcm {
     let mut key = Zeroizing::new([0u8; 32]);
     Hkdf::<Sha256>::new(Some(LABEL), &secret.0)
         .expand(credential_id, key.as_mut())
-        .expect("32 octets : longueur valide pour HKDF-SHA256");
-    Aes256Gcm::new_from_slice(key.as_ref()).expect("clé de 32 octets")
+        .expect("32 bytes: a valid length for HKDF-SHA256");
+    Aes256Gcm::new_from_slice(key.as_ref()).expect("32-byte key")
 }
 
-/// Données associées : la version du format, l'accréditation et le sel. Une
-/// copie scellée déplacée vers une autre entrée du fichier ne s'ouvre pas.
+/// Associated data: the format version, the credential and the salt. A
+/// sealed copy moved to another entry of the file doesn't open.
 fn aad(credential_id: &[u8], salt: &[u8; 32]) -> Vec<u8> {
     let mut aad = LABEL.to_vec();
     aad.extend_from_slice(&(credential_id.len() as u32).to_be_bytes());
@@ -287,8 +286,9 @@ mod tests {
         let secret = fake_secret(7);
         let first = enrolled(&[1, 2, 3], &secret);
         let second = enrolled(&[4, 5, 6], &secret);
-        // Même secret (impossible en vrai, mais le pire cas) : l'accréditation
-        // et le sel font partie de la dérivation et des données associées.
+        // Same secret (impossible in reality, but the worst case): the
+        // credential and the salt are part of the derivation and of the
+        // associated data.
         let swapped = EnrolledKey {
             sealed_user_key: first.sealed_user_key.clone(),
             ..second.clone()
@@ -337,7 +337,7 @@ mod tests {
             unseal(&keys, Some(&[2]), &backup).unwrap().expose(),
             USER_KEY
         );
-        // La clé n'a pas dit quelle accréditation a répondu : on essaie tout.
+        // The key didn't say which credential answered: everything is tried.
         assert_eq!(unseal(&keys, None, &backup).unwrap().expose(), USER_KEY);
         assert_eq!(unseal(&keys, None, &main).unwrap().expose(), USER_KEY);
         assert!(unseal(&keys, Some(&[3]), &main).is_err());
@@ -362,7 +362,7 @@ mod tests {
         let backup = enrolled(&[2], &fake_secret(2));
         add(&store, main.clone()).unwrap();
         add(&store, backup.clone()).unwrap();
-        // Réenrôler la même accréditation la remplace.
+        // Re-enrolling the same credential replaces it.
         let again = enrolled(&[1], &fake_secret(1));
         add(&store, again.clone()).unwrap();
         assert_eq!(store.load_security_keys().unwrap(), [backup.clone(), again]);
@@ -380,7 +380,7 @@ mod tests {
 
         remove(&store, &backup.id).unwrap();
         remove(&store, &main.id).unwrap();
-        // Plus aucune clé : plus de fichier.
+        // No key left: no file left.
         assert!(!path.exists());
         assert_eq!(store.load_security_keys().unwrap(), []);
 

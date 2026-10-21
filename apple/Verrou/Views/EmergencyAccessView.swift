@@ -1,44 +1,45 @@
 import SwiftUI
 
-/// Entrée de la barre latérale : le volet des accès d'urgence remplace la liste.
+/// Sidebar entry: the emergency access pane replaces the list.
 struct EmergencySidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SidebarPaneButton(title: "Accès d'urgence", symbol: "person.2.badge.key", active: model.pane == .emergency,
+        SidebarPaneButton(title: String(localized: "Emergency Access"), symbol: "person.2.badge.key",
+                          active: model.pane == .emergency,
                           badge: pending > 0 ? pending : nil, badgeTint: .orange,
-                          help: "Confier son coffre à un proche, ou ouvrir celui qu'un proche vous a confié") {
+                          help: String(localized: "Entrust your vault to someone close, or open the one someone close entrusted to you")) {
             model.openEmergency()
         }
     }
 
-    /// Ce qui attend une action de ma part : contact à confirmer, demande à traiter.
+    /// What is waiting for an action from me: contact to confirm, request to handle.
     private var pending: Int {
         model.emergency.trusted.filter { $0.state == .accepted || $0.state == .recoveryInitiated }.count
     }
 }
 
-/// Volet « Accès d'urgence », dans la colonne centrale : mes contacts de
-/// confiance et ceux qui m'ont choisi. L'accès sélectionné s'affiche à droite.
+/// "Emergency Access" pane, in the middle column: my trusted contacts and
+/// those who chose me. The selected access shows on the right.
 struct EmergencyListView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         @Bindable var emergency = model.emergency
         VStack(spacing: 0) {
-            PaneHeader(title: "Accès d'urgence",
-                       caption: "Un proche de confiance peut demander l'accès à votre coffre ; sans refus de votre part, il l'obtient après le délai choisi.",
+            PaneHeader(title: String(localized: "Emergency Access"),
+                       caption: String(localized: "A trusted person close to you can request access to your vault; unless you decline, they get it after the chosen wait period."),
                        busy: emergency.busy, notice: emergency.notice, error: emergency.error) {
-                Button("Inviter un contact", systemImage: "plus") { emergency.inviteNew() }
+                Button("Invite a Contact", systemImage: "plus") { emergency.inviteNew() }
                     .buttonStyle(.borderless)
                     .font(.caption)
-                    .help("Désigner un proche comme contact d'urgence")
+                    .help("Choose someone close as an emergency contact")
             }
             Divider()
             List(selection: $emergency.selection) {
-                Section("Mes contacts de confiance") {
+                Section("My trusted contacts") {
                     if emergency.trusted.isEmpty {
-                        Text(emergency.loaded ? "Aucun contact pour l'instant." : "Chargement…")
+                        Text(emergency.loaded ? "No contacts yet." : "Loading…")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(emergency.trusted, id: \.id) { contact in
@@ -46,9 +47,9 @@ struct EmergencyListView: View {
                             .tag(contact.id)
                     }
                 }
-                Section("Ils vous ont choisi") {
+                Section("They chose you") {
                     if emergency.granted.isEmpty {
-                        Text(emergency.loaded ? "Personne ne vous a désigné comme contact d'urgence." : "Chargement…")
+                        Text(emergency.loaded ? "Nobody has chosen you as an emergency contact." : "Loading…")
                             .foregroundStyle(.secondary)
                     }
                     ForEach(emergency.granted, id: \.id) { contact in
@@ -61,11 +62,11 @@ struct EmergencyListView: View {
             .contextMenu(forSelectionType: String.self) { ids in
                 if let id = ids.first {
                     if let contact = emergency.trusted.first(where: { $0.id == id }) {
-                        Button("Modifier…") { emergency.edit(contact) }
+                        Button("Edit…") { emergency.edit(contact) }
                         Divider()
-                        Button("Supprimer…", role: .destructive) { emergency.confirmDelete = contact }
+                        Button("Delete…", role: .destructive) { emergency.confirmDelete = contact }
                     } else if let contact = emergency.granted.first(where: { $0.id == id }) {
-                        Button("Renoncer à cet accès…", role: .destructive) { emergency.confirmDelete = contact }
+                        Button("Give Up This Access…", role: .destructive) { emergency.confirmDelete = contact }
                     }
                 }
             }
@@ -92,19 +93,19 @@ private struct ContactRow: View {
             Spacer()
             if trusted, contact.state == .accepted || contact.state == .recoveryInitiated {
                 Circle().fill(.orange).frame(width: 7, height: 7)
-                    .help("En attente de votre réponse")
+                    .help("Waiting for your answer")
             }
         }
         .padding(.vertical, 4)
     }
 }
 
-/// Colonne de droite du volet « Accès d'urgence » : l'accès sélectionné et
-/// ce qu'on peut en faire selon son état.
+/// Right column of the "Emergency Access" pane: the selected access and what
+/// can be done with it depending on its state.
 struct EmergencyDetailView: View {
     @Environment(AppModel.self) private var model
     let contact: EmergencyContact
-    /// Un de mes contacts (je suis le concédant) ; sinon, quelqu'un qui m'a choisi.
+    /// One of my contacts (I am the grantor); otherwise, someone who chose me.
     let trusted: Bool
 
     var body: some View {
@@ -118,34 +119,34 @@ struct EmergencyDetailView: View {
                     if trusted { trustedActions } else { grantedActions }
                     Spacer()
                     if trusted {
-                        Button("Modifier…", systemImage: "pencil") { model.emergency.edit(contact) }
-                        Button("Supprimer…", systemImage: "trash", role: .destructive) {
+                        Button("Edit…", systemImage: "pencil") { model.emergency.edit(contact) }
+                        Button("Delete…", systemImage: "trash", role: .destructive) {
                             model.emergency.confirmDelete = contact
                         }
                     } else {
-                        Button("Renoncer…", systemImage: "trash", role: .destructive) {
+                        Button("Give Up…", systemImage: "trash", role: .destructive) {
                             model.emergency.confirmDelete = contact
                         }
-                        .help("Renoncer à cet accès d'urgence")
+                        .help("Give up this emergency access")
                     }
                 }
                 .disabled(model.emergency.busy)
 
-                SectionTitle(trusted ? "Ce que ce contact peut faire" : "Ce qui vous est confié")
+                SectionTitle(trusted ? String(localized: "What this contact can do") : String(localized: "What is entrusted to you"))
                 FieldCard {
-                    line("Accès", contact.accessType.label)
+                    line("Access", contact.accessType.label)
                     Divider().padding(.leading, 14)
-                    line("Délai d'attente", days(contact.waitTimeDays))
+                    line("Wait period", days(contact.waitTimeDays))
                     if let email = contact.email {
                         Divider().padding(.leading, 14)
-                        line("E-mail", email)
+                        line("Email", email)
                     }
                 }
                 Text(contact.accessType == .view
-                     ? (trusted ? "Il pourra voir les éléments de votre coffre, sans les modifier."
-                                : "Vous pourrez voir les éléments de son coffre, sans les modifier.")
-                     : (trusted ? "Il pourra choisir un nouveau mot de passe principal pour votre compte (depuis le coffre web)."
-                                : "Vous pourrez choisir un nouveau mot de passe principal pour son compte (depuis le coffre web)."))
+                     ? (trusted ? "They will be able to see the items of your vault, without changing them."
+                                : "You will be able to see the items of their vault, without changing them.")
+                     : (trusted ? "They will be able to choose a new master password for your account (from the web vault)."
+                                : "You will be able to choose a new master password for their account (from the web vault)."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -170,7 +171,7 @@ struct EmergencyDetailView: View {
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 HStack(spacing: 8) {
-                    Chip(text: trusted ? "Mon contact" : "M'a choisi", symbol: "person.2.badge.key", tint: Theme.accent)
+                    Chip(text: trusted ? String(localized: "My contact") : String(localized: "Chose me"), symbol: "person.2.badge.key", tint: Theme.accent)
                     Chip(text: contact.accessType.label, symbol: contact.accessType == .view ? "eye" : "key",
                          tint: .secondary)
                 }
@@ -180,50 +181,50 @@ struct EmergencyDetailView: View {
         .padding(.bottom, 4)
     }
 
-    // MARK: Mes contacts (je suis le concédant)
+    // MARK: My contacts (I am the grantor)
 
     @ViewBuilder
     private var trustedActions: some View {
         switch contact.state {
         case .accepted:
-            Button("Confirmer…") { Task { await model.prepareConfirmation(contact) } }
+            Button("Confirm…") { Task { await model.prepareConfirmation(contact) } }
                 .buttonStyle(.borderedProminent)
                 .disabled(contact.userId == nil)
         case .recoveryInitiated:
-            Button("Approuver") { Task { await model.approveEmergency(contact) } }
+            Button("Approve") { Task { await model.approveEmergency(contact) } }
                 .buttonStyle(.borderedProminent)
-            Button("Refuser") { Task { await model.rejectEmergency(contact) } }
+            Button("Decline") { Task { await model.rejectEmergency(contact) } }
         case .recoveryApproved:
-            Button("Retirer l'accès") { Task { await model.rejectEmergency(contact) } }
+            Button("Remove Access") { Task { await model.rejectEmergency(contact) } }
         case .invited, .confirmed:
             EmptyView()
         }
     }
 
-    // MARK: Ceux qui m'ont choisi (je suis le contact)
+    // MARK: Those who chose me (I am the contact)
 
     @ViewBuilder
     private var grantedActions: some View {
         switch contact.state {
         case .confirmed:
-            Button("Demander l'accès…") { model.emergency.confirmRequest = contact }
+            Button("Request Access…") { model.emergency.confirmRequest = contact }
                 .buttonStyle(.borderedProminent)
         case .recoveryApproved where contact.accessType == .view:
-            Button("Ouvrir le coffre") { Task { await model.openGrantorVault(contact) } }
+            Button("Open the Vault") { Task { await model.openGrantorVault(contact) } }
                 .buttonStyle(.borderedProminent)
         case .recoveryApproved:
             if let server = model.account?.server, let url = URL(string: server) {
-                Button("Ouvrir le coffre web") { NSWorkspace.shared.open(url) }
-                    .help("La prise de contrôle (nouveau mot de passe principal) est à faire depuis le coffre web")
+                Button("Open the Web Vault") { NSWorkspace.shared.open(url) }
+                    .help("The takeover (new master password) is done from the web vault")
             }
         case .invited, .accepted, .recoveryInitiated:
             EmptyView()
         }
     }
 
-    private func line(_ label: String, _ value: String) -> some View {
-        // Libellé à gauche, valeur à droite : hors d'un `Form`, `LabeledContent`
-        // les collait l'un à l'autre au milieu de la carte.
+    private func line(_ label: LocalizedStringKey, _ value: String) -> some View {
+        // Label on the left, value on the right: outside a `Form`, `LabeledContent`
+        // stuck them to each other in the middle of the card.
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundStyle(.secondary)
             Spacer(minLength: 12)
@@ -235,8 +236,8 @@ struct EmergencyDetailView: View {
     }
 }
 
-/// Feuilles, alertes et confirmations des accès d'urgence, posées sur la
-/// fenêtre principale. Le coffre d'un concédant reste une feuille.
+/// Sheets, alerts and confirmations of emergency access, attached to the
+/// main window. A grantor's vault stays a sheet.
 struct EmergencyPresentations: ViewModifier {
     @Environment(AppModel.self) private var model
 
@@ -250,65 +251,65 @@ struct EmergencyPresentations: ViewModifier {
                                  set: { if $0 == nil { emergency.closeGrantorVault() } })) { vault in
                 GrantorVaultView(vault: vault).environment(model)
             }
-            .alert("Vérifier l'empreinte de \(emergency.confirmation?.contact.displayName ?? "")",
+            .alert("Check the fingerprint of \(emergency.confirmation?.contact.displayName ?? "")",
                    isPresented: Binding(get: { emergency.confirmation != nil },
                                         set: { if !$0 { emergency.confirmation = nil } }),
                    presenting: emergency.confirmation) { confirmation in
-                Button("Confirmer") { Task { await model.confirmContact(confirmation) } }
-                Button("Annuler", role: .cancel) { emergency.confirmation = nil }
+                Button("Confirm") { Task { await model.confirmContact(confirmation) } }
+                Button("Cancel", role: .cancel) { emergency.confirmation = nil }
             } message: { confirmation in
-                Text("« \(confirmation.fingerprint) »\n\nDemandez à \(confirmation.contact.displayName) la phrase d'empreinte de son compte (coffre web : Réglages → Mon compte). Confirmez seulement si elle est identique : la clé de votre coffre sera chiffrée pour lui.")
+                Text("“\(confirmation.fingerprint)”\n\nAsk \(confirmation.contact.displayName) for their account's fingerprint phrase (web vault: Settings → My account). Only confirm if it is identical: your vault's key will be encrypted for them.")
             }
-            .confirmationDialog("Demander l'accès au coffre de \(emergency.confirmRequest?.displayName ?? "") ?",
+            .confirmationDialog("Request access to the vault of \(emergency.confirmRequest?.displayName ?? "")?",
                                 isPresented: Binding(get: { emergency.confirmRequest != nil },
                                                      set: { if !$0 { emergency.confirmRequest = nil } }),
                                 presenting: emergency.confirmRequest) { contact in
-                Button("Demander l'accès") { Task { await model.requestEmergency(contact) } }
+                Button("Request Access") { Task { await model.requestEmergency(contact) } }
             } message: { contact in
-                Text("\(contact.displayName) sera prévenu. Sans refus de sa part, l'accès vous sera accordé dans \(days(contact.waitTimeDays)).")
+                Text("\(contact.displayName) will be notified. Unless they decline, access will be granted to you in \(days(contact.waitTimeDays)).")
             }
-            .confirmationDialog("Supprimer cet accès d'urgence ?",
+            .confirmationDialog("Delete this emergency access?",
                                 isPresented: Binding(get: { emergency.confirmDelete != nil },
                                                      set: { if !$0 { emergency.confirmDelete = nil } }),
                                 presenting: emergency.confirmDelete) { contact in
-                Button("Supprimer", role: .destructive) { Task { await model.deleteEmergency(contact) } }
+                Button("Delete", role: .destructive) { Task { await model.deleteEmergency(contact) } }
             } message: { contact in
-                Text("L'accès entre vous et \(contact.displayName) sera retiré.")
+                Text("The access between you and \(contact.displayName) will be removed.")
             }
     }
 }
 
 private func days(_ count: UInt32) -> String {
-    count > 1 ? "\(count) jours" : "\(count) jour"
+    count > 1 ? String(localized: "\(Int(count)) days") : String(localized: "\(Int(count)) day")
 }
 
 private extension EmergencyContact {
-    /// État de l'accès, vu de mon côté : concédant (`trusted`) ou contact.
+    /// State of the access, seen from my side: grantor (`trusted`) or contact.
     func status(trusted: Bool) -> String {
-        let base = "\(accessType.label) · délai \(days(waitTimeDays))"
+        let base = String(localized: "\(accessType.label) · wait \(days(waitTimeDays))") + " · "
         if trusted {
             switch state {
-            case .invited: return base + " · invitation envoyée, en attente d'acceptation"
-            case .accepted: return base + " · invitation acceptée : à confirmer"
-            case .confirmed: return base + " · confirmé"
-            case .recoveryInitiated: return base + " · demande d'accès en cours"
-            case .recoveryApproved: return base + " · accès accordé"
+            case .invited: return base + String(localized: "invitation sent, waiting for acceptance")
+            case .accepted: return base + String(localized: "invitation accepted: to confirm")
+            case .confirmed: return base + String(localized: "confirmed")
+            case .recoveryInitiated: return base + String(localized: "access request in progress")
+            case .recoveryApproved: return base + String(localized: "access granted")
             }
         }
         switch state {
-        case .invited: return base + " · acceptez l'invitation depuis le lien reçu par e-mail"
-        case .accepted: return base + " · en attente de sa confirmation"
-        case .confirmed: return base + " · vous pouvez demander l'accès"
-        case .recoveryInitiated: return base + " · demande envoyée, accès à la fin du délai sauf refus"
+        case .invited: return base + String(localized: "accept the invitation from the link received by email")
+        case .accepted: return base + String(localized: "waiting for their confirmation")
+        case .confirmed: return base + String(localized: "you can request access")
+        case .recoveryInitiated: return base + String(localized: "request sent, access at the end of the wait period unless declined")
         case .recoveryApproved:
             return accessType == .takeover
-                ? base + " · accès accordé : la prise de contrôle se fait depuis le coffre web"
-                : base + " · accès accordé"
+                ? base + String(localized: "access granted: the takeover is done from the web vault")
+                : base + String(localized: "access granted")
         }
     }
 }
 
-/// Invitation d'un contact, ou modification de son type d'accès et de son délai.
+/// Invitation of a contact, or edit of their access type and wait period.
 struct InviteContactView: View {
     @Environment(AppModel.self) private var model
     @State private var draft: EmergencyModel.InviteDraft
@@ -323,24 +324,24 @@ struct InviteContactView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Adresse e-mail", text: $draft.email, prompt: Text("proche@exemple.fr"))
+                    TextField("Email address", text: $draft.email, prompt: Text("someone@example.com"))
                         .disabled(!isNew)
-                    Picker("Accès", selection: $draft.type) {
-                        Text("Lecture seule").tag(EmergencyType.view)
-                        Text("Prise de contrôle").tag(EmergencyType.takeover)
+                    Picker("Access", selection: $draft.type) {
+                        Text("View only").tag(EmergencyType.view)
+                        Text("Takeover").tag(EmergencyType.takeover)
                     }
                     Stepper(value: $draft.waitDays, in: 1...90) {
-                        Text("Délai d'attente : \(draft.waitDays) jour\(draft.waitDays > 1 ? "s" : "")")
+                        Text(draft.waitDays > 1 ? "Wait period: \(draft.waitDays) days" : "Wait period: \(draft.waitDays) day")
                     }
                 } footer: {
                     Text(draft.type == .view
-                         ? "Le contact pourra voir les éléments de votre coffre, sans les modifier."
-                         : "Le contact pourra choisir un nouveau mot de passe principal pour votre compte (depuis le coffre web).")
+                         ? "The contact will be able to see the items of your vault, without changing them."
+                         : "The contact will be able to choose a new master password for your account (from the web vault).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if isNew {
                     Section {
-                        Text("Le contact doit avoir un compte sur ce serveur. Une fois l'invitation acceptée, vous la confirmerez en vérifiant l'empreinte de sa clé.")
+                        Text("The contact must have an account on this server. Once the invitation is accepted, you will confirm it by checking their key's fingerprint.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
@@ -355,9 +356,9 @@ struct InviteContactView: View {
             HStack {
                 Spacer()
                 if model.emergency.busy { ProgressView().controlSize(.small) }
-                Button("Annuler") { model.emergency.invite = nil }
+                Button("Cancel") { model.emergency.invite = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(isNew ? "Inviter" : "Enregistrer") { Task { await model.saveInvite(draft) } }
+                Button(isNew ? "Invite" : "Save") { Task { await model.saveInvite(draft) } }
                     .keyboardShortcut(.defaultAction)
                     .disabled(!draft.email.contains("@") || model.emergency.busy)
             }
@@ -368,7 +369,7 @@ struct InviteContactView: View {
     }
 }
 
-/// Coffre d'un concédant, en lecture seule.
+/// A grantor's vault, read-only.
 struct GrantorVaultView: View {
     @Environment(AppModel.self) private var model
     @Bindable var vault: GrantorVault
@@ -377,17 +378,17 @@ struct GrantorVaultView: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "eye").foregroundStyle(Theme.accent)
-                Text("Coffre de \(vault.grantor)").font(.headline)
-                Text("lecture seule").font(.caption).foregroundStyle(.secondary)
+                Text("Vault of \(vault.grantor)").font(.headline)
+                Text("read-only").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Fermer") { model.emergency.closeGrantorVault() }
+                Button("Close") { model.emergency.closeGrantorVault() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(12)
             Divider()
             HStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    TextField("Rechercher", text: $vault.query)
+                    TextField("Search", text: $vault.query)
                         .textFieldStyle(.roundedBorder)
                         .padding(8)
                     List(vault.rows, id: \.id, selection: $vault.selection) { summary in
@@ -395,7 +396,7 @@ struct GrantorVaultView: View {
                             ItemIcon(summary: summary, size: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(summary.title).lineLimit(1)
-                                Text(summary.subtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(summary.displaySubtitle).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                         }
                         .tag(summary.id)
@@ -409,7 +410,7 @@ struct GrantorVaultView: View {
                         GrantorItemView(vault: vault, detail: detail)
                             .id(detail.summary.id)
                     } else {
-                        ContentUnavailableView("Aucun élément", systemImage: "tray")
+                        ContentUnavailableView("No items", systemImage: "tray")
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -432,21 +433,21 @@ private struct GrantorItemView: View {
                     ItemIcon(summary: detail.summary, size: 40)
                     VStack(alignment: .leading) {
                         Text(detail.summary.title).font(.title3.weight(.semibold))
-                        Text(detail.summary.subtitle).foregroundStyle(.secondary)
+                        Text(detail.summary.displaySubtitle).foregroundStyle(.secondary)
                     }
                 }
-                ForEach(detail.fields, id: \.id) { field in
+                ForEach(detail.displayFields, id: \.id) { field in
                     row(field)
                 }
                 ForEach(detail.urls, id: \.self) { url in
-                    LabeledContent("Site") { Text(url).textSelection(.enabled) }
+                    LabeledContent("Website") { Text(url).textSelection(.enabled) }
                 }
                 if detail.hasNotes {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text("Notes").font(.caption).foregroundStyle(.secondary)
                             Spacer()
-                            Button(vault.revealed["notes"] == nil ? "Afficher" : "Masquer") { toggle("notes") }
+                            Button(vault.revealed["notes"] == nil ? "Show" : "Hide") { toggle("notes") }
                                 .buttonStyle(.borderless)
                         }
                         if let notes = vault.revealed["notes"] {
@@ -479,7 +480,7 @@ private struct GrantorItemView: View {
             }
             Spacer()
             if field.secret, field.fieldType != .totp {
-                Button(vault.revealed[field.id] == nil ? "Afficher" : "Masquer") { toggle(field.id) }
+                Button(vault.revealed[field.id] == nil ? "Show" : "Hide") { toggle(field.id) }
                     .buttonStyle(.borderless)
             }
             Button {
@@ -488,7 +489,7 @@ private struct GrantorItemView: View {
                 Image(systemName: "doc.on.doc")
             }
             .buttonStyle(.borderless)
-            .help("Copier")
+            .help("Copy")
         }
     }
 

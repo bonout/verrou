@@ -1,24 +1,24 @@
 import Foundation
 
-/// Extension PRF de WebAuthn demandée par le site, telle que le système la
-/// transmet au fournisseur (iOS 18, macOS 15) : des entrées **brutes**, que
-/// le cœur Rust hache puis évalue (`VaultSession.passkeyPrf`, voir
+/// WebAuthn PRF extension requested by the site, as the system passes it to
+/// the provider (iOS 18, macOS 15): **raw** inputs, which the Rust core
+/// hashes then evaluates (`VaultSession.passkeyPrf`, see
 /// `crates/verrou-core/src/passkey_prf.rs`).
 ///
-/// Sans dépendance au système : la sélection des entrées est testée seule
+/// No dependency on the system: input selection is tested on its own
 /// (`VerrouMacTests`).
 struct PrfInputs: Equatable {
     let first: Data
     let second: Data?
 }
 
-/// Connexion : `eval`, et `evalByCredential` (identifiant brut → entrées),
-/// prioritaire pour la passkey choisie.
+/// Sign-in: `eval`, and `evalByCredential` (raw ID → inputs), which takes
+/// precedence for the chosen passkey.
 struct PasskeyPrfAssertion: Equatable {
     let eval: PrfInputs?
     let perCredential: [Data: PrfInputs]
 
-    /// Les entrées pour cette passkey, ou `nil` : pas de PRF pour elle.
+    /// The inputs for this passkey, or `nil`: no PRF for it.
     func inputs(for credentialID: Data) -> PrfInputs? {
         perCredential[credentialID] ?? eval
     }
@@ -26,8 +26,8 @@ struct PasskeyPrfAssertion: Equatable {
     var isEmpty: Bool { eval == nil && perCredential.isEmpty }
 }
 
-/// Création : le site demande si la PRF est possible (`checkForSupport`),
-/// et peut déjà donner des entrées (`eval`).
+/// Creation: the site asks whether PRF is possible (`checkForSupport`), and
+/// may already give inputs (`eval`).
 struct PasskeyPrfRegistration: Equatable {
     let eval: PrfInputs?
 }

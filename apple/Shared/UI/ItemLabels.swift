@@ -2,13 +2,13 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import SwiftUI
 
-// MARK: Modèles
+// MARK: Templates
 
-/// Modèles d'éléments à la 1Password : des notes sécurisées (ou des
-/// identifiants) avec des champs prédéfinis, reconnus grâce au champ réservé
-/// `verrou:type` (voir `verrou_core::template`).
+/// 1Password-style item templates: secure notes (or logins) with predefined
+/// fields, recognized thanks to the reserved `verrou:type` field (see
+/// `verrou_core::template`).
 extension ItemTemplate {
-    /// Ordre du menu « Nouvel élément » et de la barre latérale.
+    /// Order of the "New item" menu and of the sidebar.
     static let menuOrder: [ItemTemplate] = [
         .softwareLicense, .wifi, .bankAccount, .passport, .driversLicense,
         .idCard, .server, .database, .apiKey, .membership,
@@ -16,37 +16,37 @@ extension ItemTemplate {
 
     var label: String {
         switch self {
-        case .softwareLicense: "Licences logicielles"
-        case .wifi: "Réseaux Wi-Fi"
-        case .bankAccount: "Comptes bancaires"
-        case .passport: "Passeports"
-        case .driversLicense: "Permis de conduire"
-        case .idCard: "Cartes d'identité"
-        case .server: "Serveurs"
-        case .database: "Bases de données"
-        case .apiKey: "Clés API"
-        case .membership: "Adhésions et abonnements"
+        case .softwareLicense: String(localized: "Software licenses")
+        case .wifi: String(localized: "Wi-Fi networks")
+        case .bankAccount: String(localized: "Bank accounts")
+        case .passport: String(localized: "Passports")
+        case .driversLicense: String(localized: "Driver's licenses")
+        case .idCard: String(localized: "ID cards")
+        case .server: String(localized: "Servers")
+        case .database: String(localized: "Databases")
+        case .apiKey: String(localized: "API keys")
+        case .membership: String(localized: "Memberships and subscriptions")
         }
     }
 
     var singular: String {
         switch self {
-        case .softwareLicense: "Licence logicielle"
-        case .wifi: "Réseau Wi-Fi"
-        case .bankAccount: "Compte bancaire"
-        case .passport: "Passeport"
-        case .driversLicense: "Permis de conduire"
-        case .idCard: "Carte d'identité"
-        case .server: "Serveur"
-        case .database: "Base de données"
-        case .apiKey: "Clé API"
-        case .membership: "Adhésion ou abonnement"
+        case .softwareLicense: String(localized: "Software license")
+        case .wifi: String(localized: "Wi-Fi network")
+        case .bankAccount: String(localized: "Bank account")
+        case .passport: String(localized: "Passport")
+        case .driversLicense: String(localized: "Driver's license")
+        case .idCard: String(localized: "ID card")
+        case .server: String(localized: "Server")
+        case .database: String(localized: "Database")
+        case .apiKey: String(localized: "API key")
+        case .membership: String(localized: "Membership or subscription")
         }
     }
 
-    /// Libellé du menu « Nouvel élément ».
+    /// Label in the "New item" menu.
     var menuTitle: String {
-        self == .membership ? "Adhésion/abonnement" : singular
+        self == .membership ? String(localized: "Membership/subscription") : singular
     }
 
     var symbol: String {
@@ -79,32 +79,32 @@ extension ItemTemplate {
         }
     }
 
-    /// Exemple de titre à la création.
+    /// Sample title on creation.
     var titlePrompt: String {
         switch self {
-        case .softwareLicense: "Logiciel"
-        case .wifi: "Wi-Fi maison"
-        case .bankAccount: "Compte courant"
-        case .passport: "Passeport"
-        case .driversLicense: "Permis de conduire"
-        case .idCard: "Carte d'identité"
-        case .server: "Serveur web"
-        case .database: "Base de production"
-        case .apiKey: "Clé API"
-        case .membership: "Abonnement"
+        case .softwareLicense: String(localized: "Software")
+        case .wifi: String(localized: "Home Wi-Fi")
+        case .bankAccount: String(localized: "Checking account")
+        case .passport: String(localized: "Passport")
+        case .driversLicense: String(localized: "Driver's license")
+        case .idCard: String(localized: "ID card")
+        case .server: String(localized: "Web server")
+        case .database: String(localized: "Production database")
+        case .apiKey: String(localized: "API key")
+        case .membership: String(localized: "Subscription")
         }
     }
 }
 
 extension ItemSummary {
-    /// Symbole et teinte de l'icône : ceux du modèle, sinon ceux du type.
+    /// Icon symbol and tint: the template's, otherwise the type's.
     var symbol: String { template?.symbol ?? category.symbol }
     var tint: Color { template?.tint ?? category.tint }
     var kindLabel: String { template?.singular ?? category.singular }
 }
 
 extension ItemSharing {
-    /// « Organisation › Collection, Collection ».
+    /// "Organization › Collection, Collection".
     var label: String {
         collections.isEmpty ? organization : "\(organization) › \(collections.joined(separator: ", "))"
     }
@@ -113,8 +113,8 @@ extension ItemSharing {
 // MARK: QR code
 
 enum QRCode {
-    /// QR code net (sans lissage, 10 pixels par module), correction d'erreur
-    /// moyenne. Le contenu n'est gardé nulle part : seule l'image reste.
+    /// Sharp QR code (no smoothing, 10 pixels per module), medium error
+    /// correction. The content is kept nowhere: only the image remains.
     static func cgImage(_ payload: String) -> CGImage? {
         let filter = CIFilter.qrCodeGenerator()
         filter.message = Data(payload.utf8)

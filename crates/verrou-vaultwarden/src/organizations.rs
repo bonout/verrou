@@ -1,18 +1,18 @@
-//! Organisations de Vaultwarden : les coffres partagés.
+//! Vaultwarden organizations: the shared vaults.
 //!
-//! Lecture : la clé de chaque organisation arrive dans le profil, chiffrée
-//! (RSA-OAEP) avec la clé publique du compte ; le SDK la déchiffre avec la
-//! clé privée (`initialize_org_crypto`), puis déchiffre avec elle les noms
-//! des collections et les éléments de l'organisation.
+//! Reading: each organization's key arrives in the profile, encrypted
+//! (RSA-OAEP) with the account's public key; the SDK decrypts it with the
+//! private key (`initialize_org_crypto`), then decrypts with it the names
+//! of the collections and the organization's items.
 //!
-//! Écriture : un élément partagé se chiffre avec la clé de l'organisation
-//! (le SDK la choisit d'après `organization_id`). Créer dans une collection
-//! passe par `POST /api/ciphers/create`, partager un élément personnel par
-//! `PUT /api/ciphers/{id}/share` (rechiffré sous la clé de l'organisation,
-//! clés des pièces jointes comprises), changer ses collections par
-//! `PUT /api/ciphers/{id}/collections_v2`. Les droits (lecture seule,
-//! mots de passe masqués) sont ceux que le serveur annonce ; il les vérifie
-//! de toute façon à chaque écriture.
+//! Writing: a shared item is encrypted with the organization's key
+//! (the SDK picks it from `organization_id`). Creating in a collection
+//! goes through `POST /api/ciphers/create`, sharing a personal item through
+//! `PUT /api/ciphers/{id}/share` (re-encrypted under the organization's key,
+//! attachment keys included), changing its collections through
+//! `PUT /api/ciphers/{id}/collections_v2`. The rights (read-only,
+//! hidden passwords) are those the server announces; it checks them
+//! anyway on every write.
 
 use std::collections::HashMap;
 
@@ -33,36 +33,36 @@ use crate::edit::new_view;
 use crate::members::MemberRole;
 use crate::{Connection, Decrypted, Draft, Error};
 
-/// Une organisation dont le compte est membre confirmé.
+/// An organization the account is a confirmed member of.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Organization {
     pub id: String,
     pub name: String,
-    /// Propriétaire, administrateur ou gestionnaire : gère les collections
-    /// dans le coffre web.
+    /// Owner, admin or manager: manages the collections
+    /// in the web vault.
     pub admin: bool,
-    /// Rôle du compte dans l'organisation (`None` : inconnu du serveur).
+    /// The account's role in the organization (`None`: unknown to the server).
     pub role: Option<MemberRole>,
-    /// Collections visibles par le compte, triées par nom.
+    /// Collections visible to the account, sorted by name.
     pub collections: Vec<Collection>,
-    /// Groupes activés sur le serveur (`ORG_GROUPS_ENABLED`).
+    /// Groups enabled on the server (`ORG_GROUPS_ENABLED`).
     pub use_groups: bool,
-    /// Créer des collections : propriétaire, administrateur, gestionnaire
-    /// avec accès à toutes les collections.
+    /// Create collections: owner, admin, manager
+    /// with access to all collections.
     pub can_create_collections: bool,
 }
 
 impl Organization {
-    /// Le compte peut-il y ranger un élément (au moins une collection où il
-    /// a le droit d'écrire) ?
+    /// Can the account put an item in it (at least one collection where it
+    /// may write)?
     pub fn is_writable(&self) -> bool {
         self.collections.iter().any(|c| !c.read_only)
     }
 
-    /// Le compte gère-t-il cette collection (renommer, supprimer, choisir
-    /// qui y accède) ? Les règles de Vaultwarden : propriétaire et
-    /// administrateur partout ; gestionnaire avec accès complet partout,
-    /// sinon là où il a le droit « gérer » ; un simple utilisateur jamais.
+    /// Does the account manage this collection (rename, delete, choose
+    /// who accesses it)? Vaultwarden's rules: owner and
+    /// admin everywhere; manager with full access everywhere,
+    /// otherwise where they have the "manage" right; a plain user never.
     pub fn can_manage_collection(&self, collection: &Collection) -> bool {
         match self.role {
             Some(MemberRole::Owner | MemberRole::Admin) => true,
@@ -71,8 +71,8 @@ impl Organization {
         }
     }
 
-    /// Une collection au moins à gérer, ou le droit d'en créer : l'écran
-    /// des collections a quelque chose à proposer.
+    /// At least one collection to manage, or the right to create one: the
+    /// collections screen has something to offer.
     pub fn manages_collections(&self) -> bool {
         self.can_create_collections
             || self
@@ -81,48 +81,48 @@ impl Organization {
                 .any(|c| self.can_manage_collection(c))
     }
 
-    /// Propriétaire : renommer l'organisation.
+    /// Owner: rename the organization.
     pub fn can_rename(&self) -> bool {
         self.role == Some(MemberRole::Owner)
     }
 }
 
-/// Une organisation que le compte a rejointe sans encore en avoir la clé :
-/// invitation acceptée, en attente de la confirmation d'un administrateur.
+/// An organization the account joined without having its key yet:
+/// invitation accepted, waiting for an admin's confirmation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingMembership {
     pub organization_id: String,
     pub name: String,
 }
 
-/// Bilan d'un partage de plusieurs éléments.
+/// Outcome of sharing several items.
 pub struct ShareOutcome {
-    /// Éléments passés dans l'organisation.
+    /// Items moved into the organization.
     pub shared: usize,
-    /// Écartés avant tout envoi : (identifiant, raison).
+    /// Skipped before any request: (id, reason).
     pub skipped: Vec<(String, Skipped)>,
-    /// Refusés (par le SDK ou le serveur) : (titre, raison).
+    /// Refused (by the SDK or the server): (title, reason).
     pub failed: Vec<(String, String)>,
     pub vault: Decrypted,
 }
 
-/// Nombre d'éléments par requête de partage groupé : le serveur les traite
-/// un par un, un lot raisonnable garde la requête de taille modeste.
+/// Number of items per bulk share request: the server handles them
+/// one by one, a reasonable batch keeps the request modest in size.
 const SHARE_BATCH: usize = 100;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Collection {
     pub id: String,
     pub name: String,
-    /// Le compte peut voir, pas modifier.
+    /// The account can view, not modify.
     pub read_only: bool,
-    /// Le compte ne voit pas les mots de passe (il peut remplir).
+    /// The account does not see the passwords (it can fill).
     pub hide_passwords: bool,
-    /// Le compte gère la collection (membres, droits).
+    /// The account manages the collection (members, rights).
     pub manage: bool,
 }
 
-/// Organisations et collections, pour rattacher chaque élément aux siennes.
+/// Organizations and collections, to attach each item to its own.
 #[derive(Default)]
 pub(crate) struct Directory {
     pub organizations: Vec<Organization>,
@@ -131,7 +131,7 @@ pub(crate) struct Directory {
 }
 
 impl Directory {
-    /// Où se trouve l'élément, `None` pour un élément personnel.
+    /// Where the item is, `None` for a personal item.
     pub fn sharing(&self, view: &CipherView) -> Option<Sharing> {
         let organization_id = view.organization_id?.to_string();
         let mut collections: Vec<(String, String)> = view
@@ -149,7 +149,7 @@ impl Directory {
                 .organization_names
                 .get(&organization_id)
                 .cloned()
-                .unwrap_or_else(|| "Organisation".to_owned()),
+                .unwrap_or_else(|| "Organization".to_owned()),
             organization_id,
             collections,
             read_only: !view.edit,
@@ -159,8 +159,8 @@ impl Directory {
 }
 
 impl Connection {
-    /// Organisations du profil et collections de la synchronisation, noms
-    /// déchiffrés. Les clés des organisations sont déjà chargées
+    /// The profile's organizations and the sync's collections, names
+    /// decrypted. The organization keys are already loaded
     /// (`init_organizations`).
     pub(crate) fn decrypt_directory(&self, sync: &SyncResponseModel) -> Directory {
         let mut organizations: Vec<Organization> = sync
@@ -169,7 +169,7 @@ impl Connection {
             .and_then(|p| p.organizations.as_ref())
             .into_iter()
             .flatten()
-            // Sans clé (invitation pas encore confirmée), rien à déchiffrer.
+            // Without a key (invitation not confirmed yet), nothing to decrypt.
             .filter(|org| org.key.is_some() && org.enabled != Some(false))
             .filter_map(|org| {
                 use bitwarden_api_api::models::OrganizationUserType as Role;
@@ -210,12 +210,12 @@ impl Connection {
                     read_only: c.read_only.unwrap_or(false),
                     manage: c.manage.unwrap_or(false),
                     default_user_collection_email: None,
-                    // Vaultwarden n'a que des collections partagées.
+                    // Vaultwarden only has shared collections.
                     r#type: CollectionType::SharedCollection,
                 })
             })
             .collect();
-        // Une collection illisible (clé d'organisation absente) est ignorée.
+        // An unreadable collection (missing organization key) is ignored.
         let decrypted = self
             .sdk
             .vault()
@@ -255,20 +255,18 @@ impl Connection {
         }
     }
 
-    /// Crée l'élément directement dans des collections d'une organisation ;
-    /// rend son identifiant et le coffre resynchronisé.
+    /// Creates the item directly in collections of an organization;
+    /// returns its id and the resynced vault.
     pub async fn create_shared(
         &mut self,
         draft: Draft,
         organization_id: &str,
         collection_ids: &[String],
     ) -> Result<(String, Decrypted), Error> {
-        let access = self
-            .require_online("La création dans un coffre partagé")
-            .await?;
+        let access = self.require_online("Creating in a shared vault").await?;
         let (organization, collections) = self.destination(organization_id, collection_ids)?;
         let mut view = new_view(draft, Utc::now())?;
-        // Le dossier reste personnel : seul ce compte le voit.
+        // The folder stays personal: only this account sees it.
         view.organization_id = Some(organization);
         view.collection_ids.clone_from(&collections);
         let cipher = self.encrypt(view).await?;
@@ -287,27 +285,27 @@ impl Connection {
             .get("id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned)
-            .ok_or_else(|| Error::Server("élément créé sans identifiant".to_owned()))?;
+            .ok_or_else(|| Error::Server("item created without an id".to_owned()))?;
         let vault = self.sync_with(&access).await?;
         Ok((id, vault))
     }
 
-    /// « Partager… » : déplace un élément personnel dans des collections
-    /// d'une organisation. Il est rechiffré sous la clé de l'organisation,
-    /// ses pièces jointes gardent leur contenu (leurs clés sont rechiffrées).
+    /// "Share…": moves a personal item into collections
+    /// of an organization. It is re-encrypted under the organization's key,
+    /// its attachments keep their content (their keys are re-encrypted).
     pub async fn share(
         &mut self,
         id: &str,
         organization_id: &str,
         collection_ids: &[String],
     ) -> Result<Decrypted, Error> {
-        let access = self.require_online("Le partage").await?;
+        let access = self.require_online("Sharing").await?;
         let id = &self.resolve(id);
         let (organization, collections) = self.destination(organization_id, collection_ids)?;
         let mut view = self.editable_view(id).await?;
         if view.organization_id.is_some() {
             return Err(Error::Invalid(
-                "cet élément est déjà dans une organisation".to_owned(),
+                "this item is already in an organization".to_owned(),
             ));
         }
         view.move_to_organization(organization)
@@ -329,19 +327,19 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Range un élément d'organisation dans d'autres collections (de la même
-    /// organisation). Il faut pouvoir écrire dans chacune.
+    /// Puts an organization item in other collections (of the same
+    /// organization). Writing must be allowed in each one.
     pub async fn set_collections(
         &mut self,
         id: &str,
         collection_ids: &[String],
     ) -> Result<Decrypted, Error> {
-        let access = self.require_online("Le changement de collections").await?;
+        let access = self.require_online("Changing collections").await?;
         let id = &self.resolve(id);
         let view = self.editable_view(id).await?;
         let organization = view
             .organization_id
-            .ok_or_else(|| Error::Invalid("cet élément n'est pas partagé".to_owned()))?;
+            .ok_or_else(|| Error::Invalid("this item is not shared".to_owned()))?;
         let (_, collections) = self.destination(&organization.to_string(), collection_ids)?;
         let request = CipherCollectionsRequestModel::new(
             collections.iter().map(ToString::to_string).collect(),
@@ -357,13 +355,13 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// « Partager… » sur plusieurs éléments : chacun est rechiffré sous la
-    /// clé de l'organisation (clés des pièces jointes comprises, par le SDK)
-    /// et tous partent en une requête (`PUT /api/ciphers/share`), par lots.
-    /// Sont écartés sans envoi : les éléments déjà partagés, en lecture
-    /// seule, dans la corbeille ou disparus. Un lot refusé (Vaultwarden
-    /// s'arrête au premier élément refusé, les précédents restent partagés)
-    /// est repris élément par élément, pour savoir lequel.
+    /// "Share…" on several items: each is re-encrypted under the
+    /// organization's key (attachment keys included, by the SDK)
+    /// and all go in one request (`PUT /api/ciphers/share`), in batches.
+    /// Skipped without a request: items already shared, read-only,
+    /// in the trash or gone. A refused batch (Vaultwarden
+    /// stops at the first refused item, the previous ones stay shared)
+    /// is retried item by item, to find out which one.
     pub async fn share_many(
         &mut self,
         ids: &[String],
@@ -371,7 +369,7 @@ impl Connection {
         collection_ids: &[String],
         progress: Progress<'_>,
     ) -> Result<ShareOutcome, Error> {
-        let access = self.require_online("Le partage").await?;
+        let access = self.require_online("Sharing").await?;
         let (organization, collections) = self.destination(organization_id, collection_ids)?;
         let collection_list: Vec<String> = collections.iter().map(ToString::to_string).collect();
 
@@ -405,9 +403,9 @@ impl Connection {
                     return Err(Error::Network(message));
                 }
                 Err(_) => {
-                    // Lot refusé : élément par élément. Ceux que le lot a déjà
-                    // partagés sont refusés à leur tour (déjà dans
-                    // l'organisation) : on les reconnaît à la resynchronisation.
+                    // Batch refused: item by item. Those the batch already
+                    // shared are refused in turn (already in
+                    // the organization): they are recognized by the resync.
                     let already = self.shared_ids(&access).await?;
                     for (id, title, cipher) in batch {
                         if already.contains(&id) {
@@ -445,8 +443,8 @@ impl Connection {
         })
     }
 
-    /// Les éléments à partager (rechiffrés pour l'organisation), les
-    /// écartés et les refusés avant tout envoi.
+    /// The items to share (re-encrypted for the organization), the
+    /// skipped and the refused ones before any request.
     #[allow(clippy::type_complexity)]
     async fn plan_share(
         &self,
@@ -468,7 +466,7 @@ impl Connection {
             .collect();
         let mut seen = std::collections::HashSet::new();
         let (mut skipped, mut failed) = (Vec::new(), Vec::new());
-        // (identifiant, titre, requête chiffrée)
+        // (id, title, encrypted request)
         let mut ready: Vec<(String, String, CipherWithIdRequestModel)> = Vec::new();
         for id in ids {
             let id = self.resolve(id);
@@ -514,15 +512,15 @@ impl Connection {
         Ok((ready, skipped, failed))
     }
 
-    /// Les éléments d'organisation que le serveur connaît (synchronisation
-    /// fraîche, enregistrée comme cache).
+    /// The organization items the server knows (fresh
+    /// sync, saved as the cache).
     async fn shared_ids(
         &mut self,
         access: &str,
     ) -> Result<std::collections::HashSet<String>, Error> {
         let json = self.api.sync(access).await?;
         let sync: SyncResponseModel = serde_json::from_str(&json)
-            .map_err(|e| Error::Server(format!("synchronisation illisible ({e})")))?;
+            .map_err(|e| Error::Server(format!("unreadable sync ({e})")))?;
         Ok(sync
             .ciphers
             .into_iter()
@@ -532,14 +530,14 @@ impl Connection {
             .collect())
     }
 
-    /// Crée une organisation dont ce compte est propriétaire, avec une
-    /// première collection, comme le coffre web : la clé de l'organisation
-    /// est tirée au hasard par le SDK, chiffrée pour la clé publique du
-    /// compte (RSA-OAEP) ; la paire de clés de l'organisation (sa clé privée
-    /// chiffrée par la clé de l'organisation) sert aux invitations de
-    /// Bitwarden. Le serveur ne voit aucune clé en clair. Il peut refuser
-    /// (`ORG_CREATION_USERS` de Vaultwarden). Rend l'identifiant et le
-    /// coffre resynchronisé.
+    /// Creates an organization owned by this account, with a
+    /// first collection, like the web vault: the organization's key
+    /// is drawn at random by the SDK, encrypted for the account's public
+    /// key (RSA-OAEP); the organization's key pair (its private key
+    /// encrypted by the organization's key) is used for Bitwarden
+    /// invitations. The server sees no key in clear. It may refuse
+    /// (Vaultwarden's `ORG_CREATION_USERS`). Returns the id and the
+    /// resynced vault.
     pub async fn create_organization(
         &mut self,
         name: &str,
@@ -548,16 +546,14 @@ impl Connection {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::Invalid(
-                "le nom de l'organisation est obligatoire".to_owned(),
+                "the organization name is required".to_owned(),
             ));
         }
         let collection_name = match collection_name.trim() {
-            "" => "Général",
+            "" => "General",
             other => other,
         };
-        let access = self
-            .require_online("La création d'une organisation")
-            .await?;
+        let access = self.require_online("Creating an organization").await?;
         let body = self.new_organization_body(name, collection_name)?;
         let created = self
             .api
@@ -566,8 +562,8 @@ impl Connection {
             .map_err(|error| match error {
                 Error::Server(message) if message.contains("not allowed to create") => {
                     Error::Invalid(
-                        "ce serveur ne vous permet pas de créer une organisation (réglage \
-                         ORG_CREATION_USERS de Vaultwarden)"
+                        "this server does not allow you to create an organization (Vaultwarden's \
+                         ORG_CREATION_USERS setting)"
                             .to_owned(),
                     )
                 }
@@ -577,13 +573,13 @@ impl Connection {
             .get("id")
             .and_then(serde_json::Value::as_str)
             .map(str::to_owned)
-            .ok_or_else(|| Error::Server("organisation créée sans identifiant".to_owned()))?;
+            .ok_or_else(|| Error::Server("organization created without an id".to_owned()))?;
         let vault = self.sync_with(&access).await?;
         Ok((id, vault))
     }
 
-    /// Le corps de `POST /api/organizations` : clés tirées et chiffrées dans
-    /// le magasin de clés du SDK, sans jamais en sortir en clair.
+    /// The body of `POST /api/organizations`: keys drawn and encrypted in
+    /// the SDK's key store, never leaving it in clear.
     fn new_organization_body(
         &self,
         name: &str,
@@ -607,7 +603,7 @@ impl Connection {
             .map_err(Error::crypto)?;
         let own_public = ctx
             .get_public_key(PrivateKeySlotId::UserPrivateKey)
-            .map_err(|_| Error::Crypto("clé privée du compte indisponible".to_owned()))?;
+            .map_err(|_| Error::Crypto("the account's private key is unavailable".to_owned()))?;
         let key =
             UnsignedSharedKey::encapsulate(org_key, &own_public, &ctx).map_err(Error::crypto)?;
         let collection: EncString = collection_name
@@ -626,8 +622,8 @@ impl Connection {
         }))
     }
 
-    /// Renomme l'organisation (propriétaire seulement). L'adresse de
-    /// facturation, que Vaultwarden demande aussi, est relue et gardée.
+    /// Renames the organization (owner only). The billing
+    /// address, which Vaultwarden also requires, is read back and kept.
     pub async fn rename_organization(
         &mut self,
         organization_id: &str,
@@ -636,15 +632,15 @@ impl Connection {
         let name = name.trim();
         if name.is_empty() {
             return Err(Error::Invalid(
-                "le nom de l'organisation est obligatoire".to_owned(),
+                "the organization name is required".to_owned(),
             ));
         }
         if !self.organization(organization_id)?.can_rename() {
             return Err(Error::Invalid(
-                "seul un propriétaire peut renommer l'organisation".to_owned(),
+                "only an owner can rename the organization".to_owned(),
             ));
         }
-        let access = self.require_online("Renommer l'organisation").await?;
+        let access = self.require_online("Renaming the organization").await?;
         let path = format!("organizations/{organization_id}");
         let current = self
             .api
@@ -663,12 +659,12 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Quitte l'organisation : ses éléments disparaissent du coffre de ce
-    /// compte (ils restent dans l'organisation). Le dernier propriétaire ne
-    /// peut pas partir.
+    /// Leaves the organization: its items disappear from this account's
+    /// vault (they stay in the organization). The last owner cannot
+    /// leave.
     pub async fn leave_organization(&mut self, organization_id: &str) -> Result<Decrypted, Error> {
         let organization = self.organization(organization_id)?;
-        let access = self.require_online("Quitter l'organisation").await?;
+        let access = self.require_online("Leaving the organization").await?;
         self.api
             .call(
                 reqwest::Method::POST,
@@ -680,8 +676,8 @@ impl Connection {
             .map_err(|error| match error {
                 Error::Server(message) if message.contains("last owner") => {
                     Error::Invalid(format!(
-                        "vous êtes le dernier propriétaire de {} : nommez un autre propriétaire \
-                     avant de la quitter",
+                        "you are the last owner of {}: appoint another owner \
+                     before leaving it",
                         organization.name
                     ))
                 }
@@ -690,9 +686,9 @@ impl Connection {
         self.sync_with(&access).await
     }
 
-    /// Les organisations rejointes en attente de confirmation (invitation
-    /// acceptée, clé pas encore reçue), d'après la dernière synchronisation.
-    /// Vaultwarden les liste dans `profile.organizationsNew`.
+    /// The joined organizations waiting for confirmation (invitation
+    /// accepted, key not received yet), from the last sync.
+    /// Vaultwarden lists them in `profile.organizationsNew`.
     pub fn pending_memberships(&self) -> Vec<PendingMembership> {
         self.account
             .sync
@@ -701,9 +697,9 @@ impl Connection {
             .unwrap_or_default()
     }
 
-    /// Vérifie la destination d'après le cache : organisation connue, au
-    /// moins une collection, toutes de cette organisation et ouvertes en
-    /// écriture à ce compte.
+    /// Checks the destination from the cache: known organization, at
+    /// least one collection, all of this organization and open for
+    /// writing to this account.
     fn destination(
         &self,
         organization_id: &str,
@@ -711,17 +707,15 @@ impl Connection {
     ) -> Result<(OrganizationId, Vec<CollectionId>), Error> {
         let json = self.account.sync.as_deref().ok_or(Error::NotFound)?;
         let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
+            .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?;
         let directory = self.decrypt_directory(&sync);
         let organization = directory
             .organizations
             .iter()
             .find(|o| o.id == organization_id)
-            .ok_or_else(|| Error::Invalid("organisation inconnue".to_owned()))?;
+            .ok_or_else(|| Error::Invalid("unknown organization".to_owned()))?;
         if collection_ids.is_empty() {
-            return Err(Error::Invalid(
-                "choisissez au moins une collection".to_owned(),
-            ));
+            return Err(Error::Invalid("choose at least one collection".to_owned()));
         }
         let mut collections = Vec::with_capacity(collection_ids.len());
         for id in collection_ids {
@@ -730,7 +724,7 @@ impl Connection {
                 .iter()
                 .find(|c| &c.id == id)
                 .ok_or_else(|| {
-                    Error::Invalid(format!("collection inconnue dans {}", organization.name))
+                    Error::Invalid(format!("unknown collection in {}", organization.name))
                 })?;
             if collection.read_only {
                 return Err(Error::ReadOnly);
@@ -741,10 +735,10 @@ impl Connection {
     }
 }
 
-/// Les adhésions acceptées mais pas encore confirmées d'une synchronisation
-/// (`profile.organizationsNew`, état 1), triées par nom. Seul le profil est
-/// lu : le reste du document (les éléments, des mégaoctets dans un grand
-/// coffre) est sauté sans être construit.
+/// The memberships accepted but not yet confirmed in a sync
+/// (`profile.organizationsNew`, status 1), sorted by name. Only the profile is
+/// read: the rest of the document (the items, megabytes in a large
+/// vault) is skipped without being built.
 fn parse_pending_memberships(json: &str) -> Vec<PendingMembership> {
     #[derive(serde::Deserialize)]
     struct Sync {
@@ -774,7 +768,7 @@ fn parse_pending_memberships(json: &str) -> Vec<PendingMembership> {
         .filter_map(|m| {
             Some(PendingMembership {
                 organization_id: m.id?,
-                name: m.name.unwrap_or_else(|| "Organisation".to_owned()),
+                name: m.name.unwrap_or_else(|| "Organization".to_owned()),
             })
         })
         .collect();
@@ -782,20 +776,20 @@ fn parse_pending_memberships(json: &str) -> Vec<PendingMembership> {
     pending
 }
 
-/// Le message d'un refus du SDK au moment de partager.
+/// The message of an SDK refusal when sharing.
 fn share_error(error: CipherError) -> Error {
     match error {
         CipherError::AttachmentsWithoutKeys => Error::Invalid(
-            "ses pièces jointes datent d'un ancien format (sans clé propre) : partagez-le \
-             depuis le coffre web, qui les rechiffre"
+            "its attachments use an old format (without their own key): share it \
+             from the web vault, which re-encrypts them"
                 .to_owned(),
         ),
         other => Error::crypto(other),
     }
 }
 
-/// Le même élément chiffré, sans son identifiant (corps d'un seul
-/// partage, `PUT /api/ciphers/{id}/share`).
+/// The same encrypted item, without its id (body of a single
+/// share, `PUT /api/ciphers/{id}/share`).
 fn without_id(with_id: &CipherWithIdRequestModel) -> Result<serde_json::Value, Error> {
     let mut value = serde_json::to_value(with_id).map_err(Error::crypto)?;
     if let Some(object) = value.as_object_mut() {
@@ -818,8 +812,12 @@ mod tests {
             ]}}"#;
         let pending = parse_pending_memberships(json);
         let names: Vec<&str> = pending.iter().map(|p| p.name.as_str()).collect();
-        assert_eq!(names, ["Atelier", "Zèbres"], "confirmées écartées, triées");
+        assert_eq!(
+            names,
+            ["Atelier", "Zèbres"],
+            "confirmed ones skipped, sorted"
+        );
         assert_eq!(parse_pending_memberships(r#"{"profile":{}}"#).len(), 0);
-        assert_eq!(parse_pending_memberships("pas du json").len(), 0);
+        assert_eq!(parse_pending_memberships("not json").len(), 0);
     }
 }

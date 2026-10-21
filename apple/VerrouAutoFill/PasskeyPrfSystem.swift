@@ -2,9 +2,9 @@ import AuthenticationServices
 import CryptoKit
 import Foundation
 
-// Passage entre les types d'AuthenticationServices (iOS 18, macOS 15) et
-// ceux de `PasskeyPrf.swift`. Les sorties sont des clés (`SymmetricKey`) :
-// elles vont du cœur Rust au système, sans être gardées.
+// Bridge between AuthenticationServices' types (iOS 18, macOS 15) and
+// those of `PasskeyPrf.swift`. The outputs are keys (`SymmetricKey`): they
+// go from the Rust core to the system, without being kept.
 
 @available(iOS 18.0, macOS 15.0, *)
 extension PrfInputs {
@@ -15,7 +15,7 @@ extension PrfInputs {
 
 @available(iOS 18.0, macOS 15.0, *)
 extension PasskeyPrfAssertion {
-    /// `nil` si le site ne demande pas la PRF.
+    /// `nil` if the site doesn't request PRF.
     init?(_ input: ASAuthorizationPublicKeyCredentialPRFAssertionInput?) {
         guard let input else { return nil }
         var perCredential: [Data: PrfInputs] = [:]
@@ -25,7 +25,7 @@ extension PasskeyPrfAssertion {
         self.init(eval: input.inputValues.map(PrfInputs.init), perCredential: perCredential)
     }
 
-    /// La demande de connexion du système (suggestion touchée).
+    /// The system's sign-in request (suggestion tapped).
     init?(request: ASPasskeyCredentialRequest) {
         guard case .assertion(let input) = request.extensionInput else { return nil }
         self.init(input.prf)
@@ -34,7 +34,7 @@ extension PasskeyPrfAssertion {
 
 @available(iOS 18.0, macOS 15.0, *)
 extension PasskeyPrfRegistration {
-    /// `nil` si le site ne demande pas la PRF.
+    /// `nil` if the site doesn't request PRF.
     init?(request: ASPasskeyCredentialRequest) {
         guard case .registration(let input) = request.extensionInput, let prf = input.prf else { return nil }
         self.init(eval: prf.inputValues.map(PrfInputs.init))
@@ -48,8 +48,8 @@ enum PasskeyPrfOutputs {
             first: SymmetricKey(data: output.first), second: output.second.map { SymmetricKey(data: $0) }))
     }
 
-    /// Création : la passkey sait évaluer la PRF ; les sorties si le site a
-    /// donné des entrées.
+    /// Creation: the passkey can evaluate PRF; the outputs if the site gave
+    /// inputs.
     static func registration(_ output: PasskeyPrfOutput?) -> ASPasskeyRegistrationCredentialExtensionOutput {
         guard let output else { return ASPasskeyRegistrationCredentialExtensionOutput(prf: .supported) }
         return ASPasskeyRegistrationCredentialExtensionOutput(prf: ASAuthorizationPublicKeyCredentialPRFRegistrationOutput(

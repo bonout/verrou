@@ -1,10 +1,10 @@
-//! Signaux d'un identifiant et comparaison de deux identifiants.
+//! Signals of a login and comparison of two logins.
 //!
-//! Chaque identifiant est résumé une fois (sites, domaines, applications,
-//! titre normalisé, marque, identifiant normalisé), puis comparé deux à deux
-//! dans des « paquets » (même domaine, même marque, même titre) : jamais tout
-//! le coffre contre tout le coffre. Les mots de passe et les graines TOTP ne
-//! sont comparés qu'ici, en temps constant ; rien ne sort qu'un verdict.
+//! Each login is summarised once (sites, domains, apps, normalised title,
+//! brand, normalised username), then compared pairwise within "buckets"
+//! (same domain, same brand, same title): never the whole vault against the
+//! whole vault. Passwords and TOTP seeds are compared only here, in
+//! constant time; nothing comes out but a verdict.
 
 use zeroize::Zeroizing;
 
@@ -12,13 +12,15 @@ use crate::apps::is_app_uri;
 use crate::matching::{host_of, registrable_domain};
 use crate::search::fold;
 
-/// Premiers niveaux d'un hôte qui désignent la page de connexion (ou
-/// l'espace client) d'un site, pas un service à part : `connect.maif.fr`,
-/// `accounts.google.com` et `m.facebook.com` sont `maif.fr`, `google.com`
-/// et `facebook.com`.
-const LOGIN_PREFIXES: [&str; 31] = [
+/// Leading labels of a host that designate a site's sign-in page (or
+/// customer area), not a separate service: `connect.maif.fr`,
+/// `accounts.google.com` and `m.facebook.com` are `maif.fr`, `google.com`
+/// and `facebook.com`.
+const LOGIN_PREFIXES: [&str; 35] = [
     "login",
+    "logon",
     "signin",
+    "signon",
     "auth",
     "account",
     "accounts",
@@ -38,6 +40,8 @@ const LOGIN_PREFIXES: [&str; 31] = [
     "espace-client",
     "client",
     "clients",
+    "customer",
+    "customers",
     "compte",
     "moncompte",
     "mon-compte",
@@ -50,9 +54,9 @@ const LOGIN_PREFIXES: [&str; 31] = [
     "www2",
 ];
 
-/// Mots d'un titre qui ne disent rien du service : « Mon compte Maif »,
-/// « MAIF - Espace sociétaire » et « maif.fr » sont tous « maif ».
-const TITLE_NOISE: [&str; 52] = [
+/// Title words that say nothing about the service: "Mon compte Maif",
+/// "MAIF - Espace sociétaire" and "maif.fr" are all "maif".
+const TITLE_NOISE: [&str; 61] = [
     "www",
     "http",
     "https",
@@ -93,6 +97,15 @@ const TITLE_NOISE: [&str; 52] = [
     "personnel",
     "client",
     "clients",
+    "customer",
+    "customers",
+    "area",
+    "your",
+    "personal",
+    "member",
+    "members",
+    "subscriber",
+    "log",
     "societaire",
     "societaires",
     "adherent",
@@ -107,8 +120,8 @@ const TITLE_NOISE: [&str; 52] = [
     "io",
 ];
 
-/// Site d'une adresse : son hôte sans `www.` ni préfixe de connexion, jamais
-/// plus court que le domaine enregistrable.
+/// Site of a URL: its host without `www.` or sign-in prefix, never
+/// shorter than the registrable domain.
 pub fn site_of(url: &str) -> Option<String> {
     let host = host_of(url)?;
     let domain = registrable_domain(&host)?;
@@ -122,16 +135,16 @@ pub fn site_of(url: &str) -> Option<String> {
     Some(site.to_owned())
 }
 
-/// Premier niveau d'un domaine enregistrable, sans tiret : `maif` pour
-/// `maif.fr`, `sncfconnect` pour `sncf-connect.com`.
+/// First label of a registrable domain, without hyphens: `maif` for
+/// `maif.fr`, `sncfconnect` for `sncf-connect.com`.
 fn label_of(domain: &str) -> Option<String> {
     let first = domain.split('.').next()?;
     let label: String = first.chars().filter(char::is_ascii_alphanumeric).collect();
     (label.len() >= 2 && domain.contains('.')).then_some(label)
 }
 
-/// Un mot du titre qui est un nom de domaine (`maif.fr`,
-/// `connect.maif.fr`) : son domaine enregistrable.
+/// A title word that is a domain name (`maif.fr`,
+/// `connect.maif.fr`): its registrable domain.
 fn domain_in_word(word: &str) -> Option<String> {
     let word = word
         .trim_matches(|c: char| !c.is_alphanumeric())
@@ -144,23 +157,23 @@ fn domain_in_word(word: &str) -> Option<String> {
     Some(std::str::from_utf8(domain.as_bytes()).ok()?.to_owned())
 }
 
-/// Ce que dit un titre.
+/// What a title says.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Title {
-    /// Mots significatifs, accents et casse ignorés, séparés par une espace.
+    /// Significant words, ignoring accents and case, separated by a space.
     pub normalized: String,
-    /// Premier mot significatif (au moins trois lettres).
+    /// First significant word (at least three letters).
     pub first: Option<String>,
-    /// Les mots significatifs accolés (« creditagricole »).
+    /// The significant words joined together ("creditagricole").
     pub whole: Option<String>,
-    /// Hôtes cités par le titre (`connect.maif.fr`), pour un identifiant
-    /// sans adresse.
+    /// Hosts mentioned in the title (`connect.maif.fr`), for a login
+    /// without a URL.
     pub hosts: Vec<String>,
 }
 
-/// Normalise un titre : sans accents ni casse, sans ce qui est entre
-/// parenthèses ou crochets, sans ponctuation ni mots de remplissage ; un
-/// nom de domaine y devient son premier niveau (`maif.fr` → `maif`).
+/// Normalises a title: without accents or case, without what is in
+/// parentheses or brackets, without punctuation or filler words; a
+/// domain name becomes its first label (`maif.fr` → `maif`).
 pub(crate) fn normalize_title(title: &str) -> Title {
     let mut kept = String::with_capacity(title.len());
     let mut depth = 0usize;
@@ -195,8 +208,8 @@ pub(crate) fn normalize_title(title: &str) -> Title {
         .iter()
         .filter(|w| !TITLE_NOISE.contains(&w.as_str()))
         .collect();
-    // Un titre fait seulement de mots de remplissage (« Mon compte ») reste
-    // ce qu'il est.
+    // A title made only of filler words ("Mon compte") stays
+    // as it is.
     let tokens: Vec<&String> = if significant.is_empty() {
         words.iter().collect()
     } else {
@@ -220,8 +233,8 @@ pub(crate) fn normalize_title(title: &str) -> Title {
     }
 }
 
-/// Identifiant normalisé : sans espaces autour, en minuscules. Une adresse
-/// électronique perd aussi son étiquette `+…` (`camille+maif@…`), dans
+/// Normalised username: trimmed, lowercase. An email address also
+/// loses its `+…` tag (`camille+maif@…`), in
 /// `base`.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct Username {
@@ -241,8 +254,8 @@ pub(crate) fn normalize_username(username: Option<&str>) -> Username {
     Username { full, base }
 }
 
-/// Graine TOTP comparable : celle d'une adresse `otpauth://`, en
-/// majuscules, sans espaces, tirets ni remplissage.
+/// Comparable TOTP seed: the one of an `otpauth://` URL, in
+/// uppercase, without spaces, hyphens or padding.
 pub(crate) fn normalize_totp(totp: &str) -> Zeroizing<String> {
     let trimmed = totp.trim();
     let secret = if trimmed.to_ascii_lowercase().starts_with("otpauth://") {
@@ -268,8 +281,8 @@ pub(crate) fn normalize_totp(totp: &str) -> Zeroizing<String> {
     )
 }
 
-/// Égalité de deux secrets sans court-circuit : le temps ne dépend que de
-/// leurs longueurs.
+/// Equality of two secrets without short-circuit: the time depends only on
+/// their lengths.
 pub(crate) fn same_secret(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
     if a.len() != b.len() {
@@ -279,21 +292,21 @@ pub(crate) fn same_secret(a: &str, b: &str) -> bool {
     std::hint::black_box(diff) == 0
 }
 
-/// Résumé d'un identifiant, calculé une fois.
+/// Summary of a login, computed once.
 pub(crate) struct Signals<'a> {
-    /// Coffre de l'élément : personnel (`""`) ou organisation.
+    /// The item's vault: personal (`""`) or organisation.
     pub owner: &'a str,
     pub display_title: &'a str,
-    /// Sites (hôte sans préfixe de connexion), triés, sans doublon.
+    /// Sites (host without sign-in prefix), sorted, deduplicated.
     pub sites: Vec<String>,
-    /// Domaines enregistrables, triés, sans doublon.
+    /// Registrable domains, sorted, deduplicated.
     pub domains: Vec<String>,
-    /// Premier niveau de chaque domaine (`maif`).
+    /// First label of each domain (`maif`).
     pub labels: Vec<String>,
-    /// Applications (`macapp:com.exemple`), en minuscules.
+    /// Apps (`macapp:com.exemple`), lowercase.
     pub apps: Vec<String>,
-    /// Au moins une adresse web (ou une passkey) : le titre ne sert alors
-    /// pas de site.
+    /// At least one web URL (or a passkey): the title then does not
+    /// serve as a site.
     pub has_web: bool,
     pub title: Title,
     pub user: Username,
@@ -301,12 +314,12 @@ pub(crate) struct Signals<'a> {
     pub totp: Option<Zeroizing<String>>,
 }
 
-/// Ce que l'élément apporte pour être comparé.
+/// What the item provides to be compared.
 pub(crate) struct Source<'a> {
     pub owner: &'a str,
     pub title: &'a str,
     pub urls: &'a [String],
-    /// Sites des passkeys (`rpId`).
+    /// Passkey sites (`rpId`).
     pub passkeys: &'a [String],
     pub username: Option<&'a str>,
     pub password: &'a str,
@@ -342,7 +355,7 @@ impl<'a> Signals<'a> {
         hosts.extend(source.passkeys.iter().filter_map(|rp| host_of(rp)));
         let has_web = !hosts.is_empty();
         let title = normalize_title(source.title);
-        // Sans adresse web, un titre qui cite un domaine en tient lieu.
+        // Without a web URL, a title that mentions a domain stands in for it.
         if !has_web {
             hosts.extend(title.hosts.iter().cloned());
         }
@@ -367,7 +380,7 @@ impl<'a> Signals<'a> {
         }
     }
 
-    /// Clés des paquets « web » : domaines et applications.
+    /// Keys of the "web" buckets: domains and apps.
     pub(crate) fn web_keys(&self) -> impl Iterator<Item = String> + '_ {
         let domains = self
             .domains
@@ -380,9 +393,9 @@ impl<'a> Signals<'a> {
         domains.chain(apps)
     }
 
-    /// Clés des paquets « nom » : marques du titre, premiers niveaux des
-    /// domaines, titre normalisé. Ne servent qu'à rapprocher un élément
-    /// sans adresse web d'un autre.
+    /// Keys of the "name" buckets: title brands, first labels of the
+    /// domains, normalised title. Used only to match an item
+    /// without a web URL with another.
     pub(crate) fn name_keys(&self) -> Vec<String> {
         let mut keys: Vec<String> = Vec::new();
         let brands = self
@@ -406,14 +419,14 @@ impl<'a> Signals<'a> {
     }
 }
 
-/// Degré de certitude d'un doublon, du plus faible au plus fort.
+/// Certainty level of a duplicate, from weakest to strongest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Confidence {
-    /// « À vérifier » : jamais coché d'office.
+    /// "To review": never checked by default.
     Review,
-    /// « Probable » : suggéré, pas coché.
+    /// "Probable": suggested, not checked.
     Probable,
-    /// « Certain » : les copies sont cochées pour la corbeille.
+    /// "Certain": the copies are checked for the trash.
     Certain,
 }
 
@@ -422,27 +435,27 @@ impl Confidence {
         match self {
             Self::Certain => "Certain",
             Self::Probable => "Probable",
-            Self::Review => "À vérifier",
+            Self::Review => "To review",
         }
     }
 }
 
-/// Ce que deux identifiants ont en commun côté site.
+/// What two logins have in common on the site side.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SiteLink {
     App(String),
     Site(String),
-    /// Même domaine, sous-domaines différents (`cloud.exemple.fr` et
-    /// `vault.exemple.fr`) : souvent deux services.
+    /// Same domain, different subdomains (`cloud.exemple.fr` and
+    /// `vault.exemple.fr`): often two services.
     Domain(String),
-    /// Le titre de l'un (sans adresse web) est la marque du domaine de
-    /// l'autre. `whole` : le titre entier, pas seulement son premier mot.
+    /// The title of one (without a web URL) is the brand of the other's
+    /// domain. `whole`: the whole title, not just its first word.
     Brand {
         title: String,
         domain: String,
         whole: bool,
     },
-    /// Même titre normalisé, l'un au moins sans adresse web.
+    /// Same normalised title, at least one without a web URL.
     Title(String),
 }
 
@@ -456,13 +469,13 @@ pub(crate) enum UserLink {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum PasswordLink {
-    /// Égaux (ou tous deux vides).
+    /// Equal (or both empty).
     Same,
     Different,
     OneMissing,
 }
 
-/// Verdict sur deux identifiants.
+/// Verdict on two logins.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Relation {
     pub confidence: Confidence,
@@ -473,40 +486,40 @@ pub(crate) struct Relation {
 }
 
 impl Relation {
-    /// La raison, en clair : « même site (maif.fr), même identifiant, même
-    /// mot de passe ».
+    /// The reason, in plain words: "same site (maif.fr), same username, same
+    /// password".
     pub(crate) fn reason(&self) -> String {
         let site = match &self.site {
             SiteLink::App(app) => format!(
-                "même app ({})",
+                "same app ({})",
                 app.split_once(':').map_or(app.as_str(), |(_, id)| id)
             ),
-            SiteLink::Site(site) => format!("même site ({site})"),
-            SiteLink::Domain(domain) => format!("même domaine ({domain}), autre sous-domaine"),
-            SiteLink::Brand { title, domain, .. } => format!("titre « {title} » ↔ {domain}"),
-            SiteLink::Title(title) => format!("même titre « {title} », sans site"),
+            SiteLink::Site(site) => format!("same site ({site})"),
+            SiteLink::Domain(domain) => format!("same domain ({domain}), different subdomain"),
+            SiteLink::Brand { title, domain, .. } => format!("title \"{title}\" ↔ {domain}"),
+            SiteLink::Title(title) => format!("same title \"{title}\", no site"),
         };
         let user = match self.user {
-            UserLink::Same => "même identifiant",
-            UserLink::OneMissing => "un identifiant manquant",
-            UserLink::BothMissing => "sans identifiant",
-            UserLink::Different => "autre identifiant",
+            UserLink::Same => "same username",
+            UserLink::OneMissing => "one username missing",
+            UserLink::BothMissing => "no username",
+            UserLink::Different => "different username",
         };
         let password = match self.password {
-            PasswordLink::Same => "même mot de passe",
-            PasswordLink::Different => "autre mot de passe",
-            PasswordLink::OneMissing => "un mot de passe manquant",
+            PasswordLink::Same => "same password",
+            PasswordLink::Different => "different password",
+            PasswordLink::OneMissing => "one password missing",
         };
         let mut parts = vec![site, user.to_owned(), password.to_owned()];
         if self.same_totp {
-            parts.push("même code à usage unique".to_owned());
+            parts.push("same one-time code".to_owned());
         }
         parts.join(", ")
     }
 }
 
 fn common<'v>(a: &'v [String], b: &[String]) -> Option<&'v String> {
-    // Listes triées : parcours conjoint.
+    // Sorted lists: walk both together.
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         match a[i].cmp(&b[j]) {
@@ -518,7 +531,7 @@ fn common<'v>(a: &'v [String], b: &[String]) -> Option<&'v String> {
     None
 }
 
-/// Le titre de `named` (sans adresse web) désigne-t-il un domaine de `other` ?
+/// Does the title of `named` (without a web URL) designate a domain of `other`?
 fn brand_link(named: &Signals, other: &Signals) -> Option<SiteLink> {
     if named.has_web {
         return None;
@@ -588,8 +601,8 @@ fn password_link(a: &str, b: &str) -> PasswordLink {
     }
 }
 
-/// Le titre de l'un désigne-t-il le domaine commun (ou les titres sont-ils
-/// les mêmes) ? Sert à départager deux sous-domaines.
+/// Does the title of one designate the shared domain (or are the titles
+/// the same)? Used to decide between two subdomains.
 fn titles_agree(a: &Signals, b: &Signals, domain: &str) -> bool {
     if !a.title.normalized.is_empty() && a.title.normalized == b.title.normalized {
         return true;
@@ -600,7 +613,7 @@ fn titles_agree(a: &Signals, b: &Signals, domain: &str) -> bool {
         .any(|s| label.is_some() && (s.title.first == label || s.title.whole == label))
 }
 
-/// Compare deux identifiants. `None` : rien qui ressemble à un doublon.
+/// Compares two logins. `None`: nothing that looks like a duplicate.
 pub(crate) fn relate(a: &Signals, b: &Signals) -> Option<Relation> {
     use Confidence::{Certain, Probable, Review};
     use PasswordLink as P;
@@ -617,7 +630,7 @@ pub(crate) fn relate(a: &Signals, b: &Signals) -> Option<Relation> {
     };
     let missing = matches!(user, U::OneMissing | U::BothMissing);
     let confidence = match &site {
-        // Même graine TOTP : le même compte, même sur un autre sous-domaine.
+        // Same TOTP seed: the same account, even on another subdomain.
         SiteLink::App(_) | SiteLink::Site(_) => strong(user, password),
         SiteLink::Domain(_) if same_totp => strong(user, password),
         SiteLink::Domain(domain) => {
@@ -653,7 +666,7 @@ pub(crate) fn relate(a: &Signals, b: &Signals) -> Option<Relation> {
     })
 }
 
-/// Même site (ou même app) : la règle de base.
+/// Same site (or same app): the base rule.
 fn strong(user: UserLink, password: PasswordLink) -> Option<Confidence> {
     use Confidence::{Certain, Probable, Review};
     use PasswordLink as P;
@@ -684,7 +697,7 @@ mod tests {
             normalize_title("Crédit Agricole").whole.as_deref(),
             Some("creditagricole")
         );
-        assert_eq!(maif("Mon compte"), "mon compte", "rien que du remplissage");
+        assert_eq!(maif("Mon compte"), "mon compte", "nothing but filler");
         assert_eq!(
             normalize_title("connect.maif.fr").hosts,
             vec!["connect.maif.fr"]
@@ -693,7 +706,7 @@ mod tests {
         assert_eq!(
             normalize_title("Wi-Fi").first,
             None,
-            "trop court pour une marque"
+            "too short for a brand"
         );
     }
 

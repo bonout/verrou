@@ -1,16 +1,16 @@
-//! « Passer aux passkeys » : les identifiants dont le site accepte les
-//! passkeys, mais qui n'en ont pas encore dans Verrou.
+//! "Switch to passkeys": the logins whose site accepts passkeys, but that
+//! don't have one in Verrou yet.
 //!
-//! Comme `watchtower`, tout se calcule ici sans réseau : l'annuaire des sites
-//! qui acceptent les passkeys (passkeys.2fa.directory) est téléchargé en
-//! entier et mis en cache par `verrou-vaultwarden` (`passkey_directory`),
-//! puis analysé par `PasskeyDirectory::parse`. Aucune requête par site.
+//! Like `watchtower`, everything is computed here without network: the
+//! directory of sites that accept passkeys (passkeys.2fa.directory) is
+//! downloaded whole and cached by `verrou-vaultwarden` (`passkey_directory`),
+//! then parsed by `PasskeyDirectory::parse`. No request per site.
 //!
-//! La page où créer la passkey (« Créer une passkey ») se cherche, elle,
-//! seulement sur demande et pour un seul élément : norme du W3C « Passkey
-//! Endpoints » (`/.well-known/passkey-endpoints`), vérifiée par
-//! `verrou_vaultwarden::passkey_setup`, puis une courte table de grands
-//! sites (`known_setup_url`), puis l'adresse de l'annuaire ou l'accueil.
+//! The page where to create the passkey ("Create a passkey") is looked up
+//! only on demand and for a single item: the W3C "Passkey Endpoints"
+//! standard (`/.well-known/passkey-endpoints`), checked by
+//! `verrou_vaultwarden::passkey_setup`, then a short table of big sites
+//! (`known_setup_url`), then the directory's address or the home page.
 
 use std::collections::HashMap;
 
@@ -21,18 +21,18 @@ use crate::matching::{host_of, registrable_domain};
 use crate::watchtower::lookup_domain;
 use crate::{FieldKind, Item, ItemKind, Vault};
 
-/// Chemin normalisé des adresses de passkeys d'un site (W3C).
+/// Standard path of a site's passkey addresses (W3C).
 pub const ENDPOINTS_PATH: &str = "/.well-known/passkey-endpoints";
 
-/// Longueur maximale des notes de l'annuaire gardées pour l'affichage.
+/// Maximum length of the directory notes kept for display.
 const MAX_NOTES: usize = 300;
 
-/// Ce que le site permet avec une passkey.
+/// What the site allows with a passkey.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Support {
-    /// Proposée, facultative.
+    /// Offered, optional.
     Allowed,
-    /// Imposée par le site.
+    /// Enforced by the site.
     Required,
 }
 
@@ -46,32 +46,32 @@ impl Support {
     }
 }
 
-/// Un site de l'annuaire qui accepte les passkeys.
+/// A directory site that accepts passkeys.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PasskeySite {
-    /// Domaine de l'annuaire, normalisé (minuscules, sans `www.`).
+    /// Directory domain, normalised (lowercase, no `www.`).
     pub domain: String,
-    /// Connexion sans mot de passe : la passkey remplace le mot de passe.
+    /// Passwordless sign-in: the passkey replaces the password.
     pub passwordless: Option<Support>,
-    /// Passkey en second facteur, après le mot de passe.
+    /// Passkey as a second factor, after the password.
     pub mfa: Option<Support>,
-    /// Page d'aide du site sur les passkeys (HTTPS).
+    /// The site's help page on passkeys (HTTPS).
     pub documentation: Option<String>,
-    /// Adresse du site quand ce n'est pas `https://<domaine>` (HTTPS).
+    /// Site address when it is not `https://<domain>` (HTTPS).
     pub url: Option<String>,
-    /// Remarque de l'annuaire (en anglais), courte.
+    /// Directory remark (in English), short.
     pub notes: Option<String>,
 }
 
 impl PasskeySite {
-    /// La passkey peut remplacer le mot de passe à la connexion.
+    /// The passkey can replace the password at sign-in.
     pub fn passwordless(&self) -> bool {
         self.passwordless.is_some()
     }
 }
 
-/// Entrée brute de l'annuaire (`v1/supported.json` ou `v1/all.json` :
-/// `{ "<domaine>": { passwordless, mfa, documentation, … } }`).
+/// Raw directory entry (`v1/supported.json` or `v1/all.json`:
+/// `{ "<domain>": { passwordless, mfa, documentation, … } }`).
 #[derive(Deserialize)]
 struct RawSite {
     #[serde(default)]
@@ -93,24 +93,24 @@ fn https(text: Option<String>) -> Option<String> {
         .filter(|t| t.starts_with("https://") && t.len() > "https://".len())
 }
 
-/// Annuaire des sites qui acceptent les passkeys, indexé par domaine
-/// (principal et secondaires) et par domaine enregistrable.
+/// Directory of sites that accept passkeys, indexed by domain
+/// (main and additional) and by registrable domain.
 #[derive(Clone, Debug, Default)]
 pub struct PasskeyDirectory {
     sites: Vec<PasskeySite>,
     by_domain: HashMap<String, usize>,
-    /// Domaine enregistrable → premier site (sans mot de passe d'abord),
-    /// pour les sites listés seulement par sous-domaine (`mail.google.com`).
+    /// Registrable domain → first site (passwordless first),
+    /// for sites listed only by subdomain (`mail.google.com`).
     by_registrable: HashMap<String, usize>,
 }
 
 impl PasskeyDirectory {
-    /// Analyse l'annuaire. Les entrées illisibles, ou sans passkey (le
-    /// fichier complet liste aussi les sites à démarcher), sont ignorées :
-    /// une évolution du format ne doit pas priver l'audit de toute la liste.
+    /// Parses the directory. Unreadable entries, or entries without passkeys
+    /// (the full file also lists sites to reach out to), are ignored: a change
+    /// in the format must not deprive the audit of the whole list.
     pub fn parse(json: &[u8]) -> Result<Self, serde_json::Error> {
         let entries: HashMap<String, serde_json::Value> = serde_json::from_slice(json)?;
-        // Ordre stable (le JSON est un objet) : par domaine.
+        // Stable order (the JSON is an object): by domain.
         let mut entries: Vec<(String, serde_json::Value)> = entries.into_iter().collect();
         entries.sort_by(|a, b| a.0.cmp(&b.0));
         let mut directory = Self::default();
@@ -142,7 +142,7 @@ impl PasskeyDirectory {
                         .by_registrable
                         .entry(registrable)
                         .and_modify(|current| {
-                            // Un site sans mot de passe passe devant.
+                            // A passwordless site goes first.
                             if passwordless.is_some()
                                 && directory.sites[*current].passwordless.is_none()
                             {
@@ -173,11 +173,11 @@ impl PasskeyDirectory {
         self.sites.is_empty()
     }
 
-    /// Le site dont relève `url` : d'abord comme l'audit de la double
-    /// authentification (l'hôte, puis ses domaines parents jusqu'au domaine
-    /// enregistrable), sinon un site du même domaine enregistrable : les
-    /// comptes sont communs à tout le domaine (`accounts.google.com` relève
-    /// de `mail.google.com`, seul listé). Jamais au-delà (`co.uk`).
+    /// The site `url` belongs to: first like the two-factor audit (the host,
+    /// then its parent domains up to the registrable domain), otherwise a site
+    /// of the same registrable domain: accounts are shared across the whole
+    /// domain (`accounts.google.com` belongs to `mail.google.com`, the only one
+    /// listed). Never beyond (`co.uk`).
     pub fn lookup(&self, url: &str) -> Option<&PasskeySite> {
         if let Some(index) = lookup_domain(&self.by_domain, url) {
             return Some(&self.sites[index]);
@@ -187,7 +187,7 @@ impl PasskeyDirectory {
             return None;
         }
         let registrable = registrable_domain(&host)?;
-        // Un nom sans suffixe public (`routeur`) n'est pas un site.
+        // A name without a public suffix (`routeur`) is not a site.
         psl::domain_str(&registrable)?;
         self.by_registrable
             .get(&registrable)
@@ -195,7 +195,7 @@ impl PasskeyDirectory {
     }
 }
 
-/// Nom d'utilisateur (ou e-mail) d'un identifiant, en minuscules.
+/// Username (or email) of a login, lowercased.
 fn user_of(item: &Item) -> Option<String> {
     item.field_of_kind(FieldKind::Username)
         .or_else(|| item.field_of_kind(FieldKind::Email))
@@ -203,9 +203,9 @@ fn user_of(item: &Item) -> Option<String> {
         .filter(|u| !u.is_empty())
 }
 
-/// L'identifiant a-t-il déjà une passkey : la sienne (`fido2Credentials`),
-/// ou une passkey du même compte rangée dans un autre identifiant actif
-/// (même domaine enregistrable, même nom d'utilisateur) ?
+/// Does the login already have a passkey: its own (`fido2Credentials`),
+/// or a passkey of the same account stored in another active login
+/// (same registrable domain, same username)?
 fn has_passkey(vault: &Vault, item: &Item) -> bool {
     if !vault.passkeys_of(&item.id).is_empty() {
         return true;
@@ -229,8 +229,8 @@ fn has_passkey(vault: &Vault, item: &Item) -> bool {
     })
 }
 
-/// Identifiants actifs, avec un mot de passe, dont le site accepte les
-/// passkeys mais qui n'en ont pas encore. Triés par titre.
+/// Active logins, with a password, whose site accepts passkeys but that
+/// don't have one yet. Sorted by title.
 pub fn passkey_candidates<'d>(
     vault: &Vault,
     directory: &'d PasskeyDirectory,
@@ -255,11 +255,11 @@ pub fn passkey_candidates<'d>(
         .collect()
 }
 
-// MARK: Page de création
+// MARK: Setup page
 
-/// Grands sites qui ne publient pas `/.well-known/passkey-endpoints`, et
-/// leur page de passkeys (ou de sécurité du compte), par domaine
-/// enregistrable. Liste courte, à garder à jour à la main.
+/// Big sites that don't publish `/.well-known/passkey-endpoints`, and
+/// their passkeys page (or account security page), by registrable
+/// domain. Short list, to keep up to date by hand.
 const KNOWN: &[(&[&str], &str)] = &[
     (
         &["google.com", "youtube.com", "gmail.com"],
@@ -284,7 +284,7 @@ const KNOWN: &[(&[&str], &str)] = &[
     ),
 ];
 
-/// Page de passkeys connue d'avance pour l'hôte d'un élément.
+/// Passkeys page known in advance for an item's host.
 pub fn known_setup_url(host: &str) -> Option<String> {
     let domain = registrable_domain(host)?;
     KNOWN
@@ -293,17 +293,17 @@ pub fn known_setup_url(host: &str) -> Option<String> {
         .map(|(_, url)| (*url).to_owned())
 }
 
-/// Adresses publiées par un site (`/.well-known/passkey-endpoints`).
+/// Addresses published by a site (`/.well-known/passkey-endpoints`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Endpoints {
-    /// Page où créer une passkey.
+    /// Page where to create a passkey.
     pub enroll: Option<String>,
-    /// Page où gérer ses passkeys.
+    /// Page where to manage one's passkeys.
     pub manage: Option<String>,
 }
 
 impl Endpoints {
-    /// La page à ouvrir pour créer une passkey : `enroll`, sinon `manage`.
+    /// The page to open to create a passkey: `enroll`, otherwise `manage`.
     pub fn setup(&self) -> Option<&str> {
         self.enroll.as_deref().or(self.manage.as_deref())
     }
@@ -317,9 +317,9 @@ struct RawEndpoints {
     manage: Option<String>,
 }
 
-/// Lit la réponse de `/.well-known/passkey-endpoints`. Seules les adresses
-/// HTTPS du même domaine enregistrable que `host` sont gardées : le fichier
-/// ne doit pas pouvoir envoyer l'utilisateur ailleurs.
+/// Reads the response of `/.well-known/passkey-endpoints`. Only HTTPS
+/// addresses on the same registrable domain as `host` are kept: the file
+/// must not be able to send the user elsewhere.
 pub fn parse_endpoints(json: &[u8], host: &str) -> Option<Endpoints> {
     let raw: RawEndpoints = serde_json::from_slice(json).ok()?;
     let site = registrable_domain(host)?;
@@ -339,8 +339,8 @@ mod tests {
     use crate::passkey::Passkey;
     use crate::{Field, ItemState, SecretString};
 
-    /// Extrait de `https://passkeys-api.2fa.directory/v1/supported.json`
-    /// (octobre 2026), avec des entrées que l'analyse doit ignorer.
+    /// Excerpt of `https://passkeys-api.2fa.directory/v1/supported.json`
+    /// (October 2026), with entries the parser must ignore.
     const FIXTURE: &str = r#"{
         "github.com": {"mfa": "allowed", "passwordless": "allowed",
             "documentation": "https://docs.github.com/en/authentication/authenticating-with-a-passkey/about-passkeys",
@@ -425,15 +425,15 @@ mod tests {
                 .unwrap()
                 .starts_with("https://docs.github.com/")
         );
-        // Second facteur seulement.
+        // Second factor only.
         let onepassword = dir.lookup("1password.com").unwrap();
         assert!(!onepassword.passwordless());
         assert_eq!(onepassword.mfa, Some(Support::Allowed));
-        // Adresse du site gardée, aide en HTTP écartée.
+        // Site address kept, HTTP help page dropped.
         let xbox = dir.lookup("https://www.xbox.com").unwrap();
         assert_eq!(xbox.url.as_deref(), Some("https://www.xbox.com/live"));
         assert_eq!(xbox.documentation, None);
-        // Domaine normalisé, domaine secondaire, « required ».
+        // Normalised domain, additional domain, "required".
         let exemple = dir.lookup("https://exemple.fr/connexion").unwrap();
         assert_eq!(exemple.domain, "exemple.co.uk");
         assert_eq!(exemple.passwordless, Some(Support::Required));
@@ -445,7 +445,7 @@ mod tests {
                 .unwrap()
                 .starts_with("Passkeys must")
         );
-        // Sans passkey (contact seulement), valeur inconnue, IP : ignorés.
+        // Without passkeys (contact only), unknown value, IP: ignored.
         for url in ["2k.com", "banque.fr", "https://192.168.1.1"] {
             assert!(dir.lookup(url).is_none(), "{url}");
         }
@@ -457,7 +457,7 @@ mod tests {
     fn lookup_matches_by_registrable_domain() {
         let dir = directory();
         let site = |url: &str| dir.lookup(url).map(|s| s.domain.clone());
-        // Hôte exact et sous-domaines.
+        // Exact host and subdomains.
         assert_eq!(
             site("https://github.com/login").as_deref(),
             Some("github.com")
@@ -466,7 +466,7 @@ mod tests {
             site("https://gist.github.com").as_deref(),
             Some("github.com")
         );
-        // L'entrée la plus précise gagne ; le parent garde la sienne.
+        // The most specific entry wins; the parent keeps its own.
         assert_eq!(
             site("https://console.aws.amazon.com").as_deref(),
             Some("aws.amazon.com")
@@ -475,8 +475,8 @@ mod tests {
             site("https://www.amazon.com/gp/cart").as_deref(),
             Some("amazon.com")
         );
-        // Site listé seulement par sous-domaines : même domaine enregistrable,
-        // et la connexion sans mot de passe passe devant le second facteur.
+        // Site listed only by subdomains: same registrable domain,
+        // and passwordless sign-in goes ahead of the second factor.
         assert_eq!(
             site("https://accounts.google.com/signin").as_deref(),
             Some("mail.google.com")
@@ -529,7 +529,7 @@ mod tests {
         ])
         .with_passkeys(vec![
             passkey("Avec passkey", "github.com", "lea"),
-            // Passkey du même compte Google, rangée dans un autre élément.
+            // Passkey of the same Google account, stored in another item.
             passkey("Passkey Google", "google.com", "lea@gmail.com"),
         ]);
         let found: Vec<(String, String)> = passkey_candidates(&vault, &dir)
@@ -585,7 +585,7 @@ mod tests {
             endpoints.setup(),
             Some("https://exemple.fr/compte/passkeys/nouvelle")
         );
-        // Gestion seulement.
+        // Manage only.
         let manage = parse_endpoints(
             br#"{"manage": "https://id.exemple.fr/passkeys"}"#,
             "exemple.fr",
@@ -594,7 +594,7 @@ mod tests {
             manage.unwrap().setup(),
             Some("https://id.exemple.fr/passkeys")
         );
-        // Ailleurs, en HTTP, vide ou illisible : rien.
+        // Elsewhere, over HTTP, empty or unreadable: nothing.
         for json in [
             &br#"{"enroll": "https://hameconnage.fr/passkeys"}"#[..],
             br#"{"enroll": "http://exemple.fr/passkeys"}"#,

@@ -1,6 +1,6 @@
-//! Temps du déverrouillage sur un vrai serveur, étape par étape :
-//! `cargo run --release -p verrou-vaultwarden --example profile_unlock -- <serveur> <e-mail> <mot de passe>`
-//! (compte sans second facteur).
+//! Unlock timings against a real server, step by step:
+//! `cargo run --release -p verrou-vaultwarden --example profile_unlock -- <server> <email> <password>`
+//! (account without a second factor).
 use std::time::Instant;
 
 use bitwarden_api_api::models::SyncResponseModel;
@@ -18,11 +18,11 @@ async fn main() {
     let LoginStep::Unlocked(unlocked) =
         verrou_vaultwarden::login(&store, server, email, SecretString::new(password.clone()))
             .await
-            .expect("connexion")
+            .expect("login")
     else {
-        panic!("second facteur : prendre un compte sans");
+        panic!("second factor: use an account without one");
     };
-    println!("connexion (KDF + jeton + sync) : {:?}", t.elapsed());
+    println!("login (KDF + token + sync): {:?}", t.elapsed());
     let user_key = unlocked.connection.user_key().await.unwrap();
     drop(unlocked);
 
@@ -50,12 +50,12 @@ async fn main() {
         let synced = connection.sync().await.unwrap();
         let sync = t.elapsed();
         println!(
-            "#{round} {n} éléments ({} Kio) : lecture du fichier {read:?}, analyse JSON {parse:?}, \
-             déverrouillage par clé (lecture + JSON + déchiffrement) {unlock:?}, index {index:?}, \
-             synchronisation sans changement {sync:?}",
+            "#{round} {n} items ({} KiB): file read {read:?}, JSON parse {parse:?}, \
+             unlock with key (read + JSON + decryption) {unlock:?}, index {index:?}, \
+             sync without changes {sync:?}",
             json.len() / 1024
         );
-        assert!(synced.is_none(), "rien n'a changé : pas de déchiffrement");
+        assert!(synced.is_none(), "nothing changed: no decryption");
         drop(vault);
     }
     let t = Instant::now();
@@ -63,10 +63,7 @@ async fn main() {
         verrou_vaultwarden::unlock_with_password(&store, &SecretString::new(password.clone()))
             .await
             .unwrap();
-    println!(
-        "déverrouillage par mot de passe (KDF + tout) : {:?}",
-        t.elapsed()
-    );
+    println!("unlock with password (KDF + everything): {:?}", t.elapsed());
     drop(unlocked);
     let _ = std::fs::remove_dir_all(dir);
 }

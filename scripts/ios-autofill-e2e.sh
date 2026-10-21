@@ -1,39 +1,39 @@
 #!/usr/bin/env bash
-# Remplissage automatique d'iOS de bout en bout (extension VerrouAutoFill),
-# dans un simulateur sans fenêtre, contre un Vaultwarden jetable.
+# iOS AutoFill end to end (VerrouAutoFill extension), in a windowless
+# simulator, against a throwaway Vaultwarden.
 #
 #   scripts/ios-autofill-e2e.sh
 #
-# Ce que fait le script :
-#   1. construit le cœur Rust (macOS de cette machine + simulateur), puis
-#      l'app, l'extension et le test XCUITest pour le simulateur, signés ad
-#      hoc (« - ») : sans signature, ni groupe d'apps ni droit de fournisseur
-#      de remplissage (sauf SKIP_BUILD=1) ;
-#   2. lance un Vaultwarden jetable (conteneur verrou-vw-autofill-ios, port
-#      8122) et y crée le compte du parcours (seed_walkthrough_account) ;
-#   3. sert la page de test (scripts/ios-autofill-page) sur
-#      http://localhost:<port libre> : WebAuthn y est permis sans HTTPS ;
-#   4. crée un simulateur « Verrou AutoFill E2E », le démarre sans ouvrir
-#      Simulator.app, le passe en français, enrôle Face ID, installe l'app et
-#      choisit Verrou comme fournisseur de remplissage (pluginkit, ce que
-#      fait le bouton de Réglages → Général → Remplissage automatique) ;
-#   5. lance les tests XCUITest (apple/VerrouAutoFillUITests) en acceptant
-#      chaque demande Face ID ; ils pilotent l'app, puis Safari ;
-#   6. relève le pic de mémoire de l'extension (journal AUTOFILL_MEMORY),
-#      puis efface simulateur, serveur de page et conteneur.
+# What the script does:
+#   1. builds the Rust core (this machine's macOS + simulator), then the
+#      app, the extension and the XCUITest test for the simulator, ad hoc
+#      signed ("-"): without a signature, neither app group nor AutoFill
+#      provider entitlement (unless SKIP_BUILD=1);
+#   2. starts a throwaway Vaultwarden (container verrou-vw-autofill-ios, port
+#      8122) and creates the walk's account in it (seed_walkthrough_account);
+#   3. serves the test page (scripts/ios-autofill-page) on
+#      http://localhost:<free port>: WebAuthn is allowed there without HTTPS;
+#   4. creates a "Verrou AutoFill E2E" simulator, boots it without opening
+#      Simulator.app, switches it to English, enrolls Face ID, installs the app
+#      and picks Verrou as the AutoFill provider (pluginkit, what the switch in
+#      Settings → General → AutoFill does);
+#   5. runs the XCUITest tests (apple/VerrouAutoFillUITests), accepting each
+#      Face ID request; they drive the app, then Safari;
+#   6. records the extension's memory peak (AUTOFILL_MEMORY log), then
+#      deletes the simulator, page server and container.
 #
-# Variables : OUT (captures, défaut target/ios-autofill-e2e), SKIP_BUILD=1,
-# KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, ONLY (un
-# test, ex. test2_PasswordFillsFromTheKeyboardSuggestion), VW_CONTAINER et
-# VW_PORT (autre conteneur, pour deux exécutions en parallèle),
-# VERROU_RECORD=<fichier.mp4> (vidéo du simulateur, `simctl io recordVideo`,
-# avec des pauses de RECORD_PAUSE secondes, défaut 2, aux étapes clés ; les
-# repères AUTOFILL_E2E_MARK du journal, comparés à RECORD_START, permettent
-# de la découper), APPEARANCE (light ou dark, défaut light). Les captures
-# sont prises par `simctl io screenshot`, à la demande du test.
+# Variables: OUT (screenshots, default target/ios-autofill-e2e), SKIP_BUILD=1,
+# KEEP_SIMULATOR=1, KEEP_SERVER=1, SIM_DEVICE_TYPE, SIM_RUNTIME, ONLY (one
+# test, e.g. test2_PasswordFillsFromTheKeyboardSuggestion), VW_CONTAINER and
+# VW_PORT (another container, for two runs in parallel),
+# VERROU_RECORD=<file.mp4> (simulator video, `simctl io recordVideo`, with
+# pauses of RECORD_PAUSE seconds, default 2, at the key steps; the
+# AUTOFILL_E2E_MARK markers of the log, compared with RECORD_START, allow
+# cutting it), APPEARANCE (light or dark, default light). The screenshots
+# are taken by `simctl io screenshot`, when the test asks.
 #
-# Rien ne s'affiche sur l'écran du Mac : `simctl boot` n'ouvre pas
-# Simulator.app, et les captures viennent de XCUIScreen (dans le simulateur).
+# Nothing shows on the Mac's screen: `simctl boot` doesn't open
+# Simulator.app, and the screenshots come from XCUIScreen (in the simulator).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -61,7 +61,7 @@ STARTED_SERVER=0
 
 stop_recording() {
   if [[ -n "$RECORD_PID" ]]; then
-    # SIGINT : recordVideo termine proprement le fichier.
+    # SIGINT: recordVideo finishes the file cleanly.
     kill -INT "$RECORD_PID" 2>/dev/null || true
     wait "$RECORD_PID" 2>/dev/null || true
     RECORD_PID=""
@@ -84,7 +84,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Construction
+# 1. Build
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   HOST="$(uname -m | sed 's/arm64/aarch64/')-apple-darwin"
   SIM="$( [[ "$(uname -m)" == arm64 ]] && echo aarch64-apple-ios-sim || echo x86_64-apple-ios )"
@@ -95,7 +95,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
     ARCHS="$(uname -m)" build-for-testing -quiet
 fi
 
-# 2. Serveur et compte
+# 2. Server and account
 if ! docker ps --format '{{.Names}}' | grep -qx "$CONTAINER"; then
   docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
   docker run -d --name "$CONTAINER" -p "127.0.0.1:$VW_PORT:80" \
@@ -111,21 +111,21 @@ SEED="$(VERROU_TEST_SERVER="http://localhost:$VW_PORT" VERROU_SEED_EMAIL="autofi
 EMAIL="$(sed -n 's/^SEED_EMAIL=//p' <<< "$SEED")"
 PASSWORD="$(sed -n 's/^SEED_PASSWORD=//p' <<< "$SEED")"
 TOTP="$(sed -n 's/^SEED_TOTP=//p' <<< "$SEED")"
-[[ -n "$TOTP" ]] || { echo "compte du parcours impossible à créer" >&2; exit 1; }
+[[ -n "$TOTP" ]] || { echo "could not create the walk's account" >&2; exit 1; }
 
-# 3. Page de test
+# 3. Test page
 python3 -I -m http.server "$PAGE_PORT" --bind 127.0.0.1 --directory "$ROOT/scripts/ios-autofill-page" \
   >/dev/null 2>&1 &
 PAGE_PID=$!
 for _ in $(seq 20); do curl -fs "http://localhost:$PAGE_PORT/" >/dev/null && break; sleep 0.25; done
 SITE="http://localhost:$PAGE_PORT"
 
-# 4. Simulateur sans fenêtre, en français, avec Face ID enrôlé
+# 4. Windowless simulator, in English, with Face ID enrolled
 DEV="$(xcrun simctl create "Verrou AutoFill E2E" "$SIM_DEVICE_TYPE" "$SIM_RUNTIME")"
 xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
-xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array fr-FR
-xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string fr_FR
+xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array en-US
+xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string en_US
 xcrun simctl spawn "$DEV" defaults write com.apple.Preferences DidShowContinuousPathIntroduction -bool true
 xcrun simctl shutdown "$DEV"
 xcrun simctl boot "$DEV"
@@ -143,9 +143,9 @@ fi
 xcrun simctl spawn "$DEV" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1
 xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit.enrollmentChanged
 xcrun simctl install "$DEV" "$APP"
-# Verrou comme fournisseur de remplissage : l'élection de pluginkit est ce
-# que règle l'interrupteur « Verrou » des Réglages. Refaite tant que le test
-# réinstalle l'app.
+# Verrou as the AutoFill provider: the pluginkit election is what the
+# "Verrou" switch in Settings sets. Redone as long as the test reinstalls
+# the app.
 enable_provider() {
   xcrun simctl spawn "$DEV" pluginkit -e use -i app.verrou.ios.autofill >/dev/null 2>&1 || true
 }
@@ -153,7 +153,7 @@ enable_provider
 xcrun simctl spawn "$DEV" pluginkit -m -v -p com.apple.authentication-services-credential-provider-ui
 sleep 5
 
-# 5. Tests, Face ID reconnu à chaque demande
+# 5. Tests, Face ID matched on each request
 (
   while true; do
     xcrun simctl spawn "$DEV" notifyutil -p com.apple.BiometricKit_Sim.pearl.match >/dev/null 2>&1 || true
@@ -164,7 +164,7 @@ sleep 5
 FACE_PID=$!
 
 rm -rf "$OUT" && mkdir -p "$OUT" "$WORK/ack" "$WORK/snap/req" "$WORK/snap/ack"
-# Captures demandées par le test : req/<nom> → $OUT/<nom>.png.
+# Screenshots requested by the test: req/<name> → $OUT/<name>.png.
 (
   while true; do
     for request in "$WORK"/snap/req/*; do
@@ -196,22 +196,22 @@ TEST_RUNNER_VERROU_AUTOFILL_E2E_PAUSE="$( [[ -n "$RECORD" ]] && echo "${RECORD_P
     > "$OUT/xcodebuild.log" 2>&1 || status=$?
 grep -E "Test Case .*(passed|failed|skipped)|error: |AUTOFILL_E2E|Executed" "$OUT/xcodebuild.log" || true
 stop_recording
-[[ -n "$RECORD" ]] && echo "vidéo : $RECORD"
+[[ -n "$RECORD" ]] && echo "video: $RECORD"
 
-# 6. Mémoire de l'extension
+# 6. Extension memory
 xcrun simctl spawn "$DEV" log show --last 30m --style compact \
   --predicate 'subsystem == "app.verrou.autofill" AND category == "memory"' > "$OUT/memory.log" 2>/dev/null || true
 PEAK="$(sed -n 's/.*peak=\([0-9.]*\)MB.*/\1/p' "$OUT/memory.log" | sort -n | tail -1)"
-echo "pic de mémoire de l'extension : ${PEAK:-inconnu} Mo (limite d'iOS : environ 120 Mo)"
+echo "extension memory peak: ${PEAK:-unknown} MB (iOS limit: about 120 MB)"
 if [[ -n "$PEAK" ]] && python3 -I -c "import sys; sys.exit(0 if float(sys.argv[1]) < 120 else 1)" "$PEAK"; then
   :
 elif [[ -n "$PEAK" ]]; then
-  echo "ÉCHEC : l'extension dépasse 120 Mo" >&2
+  echo "FAILED: the extension exceeds 120 MB" >&2
   status=1
 fi
 
 if [[ $status != 0 ]]; then
-  echo "ÉCHEC du remplissage automatique (journal : $OUT/xcodebuild.log)" >&2
+  echo "AutoFill FAILED (log: $OUT/xcodebuild.log)" >&2
   exit 1
 fi
-echo "captures : $OUT"
+echo "screenshots: $OUT"

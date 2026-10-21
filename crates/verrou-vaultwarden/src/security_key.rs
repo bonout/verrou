@@ -1,16 +1,17 @@
-//! Second facteur par clé de sécurité (`YubiKey` en `FIDO2`), sans navigateur.
+//! Second factor with a security key (`YubiKey` over `FIDO2`), without a
+//! browser.
 //!
-//! Verrou joue ici le rôle que tient un navigateur pour `WebAuthn` :
-//! 1. il construit `clientDataJSON` (type, défi du serveur, origine du
-//!    serveur) et en donne l'empreinte à la clé ;
-//! 2. la clé signe, après un contact, l'empreinte du domaine (`rpId`) et
-//!    celle de `clientDataJSON` : la signature ne vaut que pour ce serveur ;
-//! 3. Verrou rend au serveur la réponse au format qu'attend Vaultwarden (celui
-//!    de sa page `webauthn-mobile-connector.html`).
+//! Verrou plays here the role a browser plays for `WebAuthn`:
+//! 1. it builds `clientDataJSON` (type, server challenge, server origin)
+//!    and gives its hash to the key;
+//! 2. the key signs, after a touch, the hash of the domain (`rpId`) and
+//!    that of `clientDataJSON`: the signature is only valid for this server;
+//! 3. Verrou returns the answer to the server in the format Vaultwarden
+//!    expects (that of its `webauthn-mobile-connector.html` page).
 //!
-//! La partie « dialogue avec la clé » (USB, protocole CTAP2) est confiée à
-//! `authenticator-rs`, la bibliothèque de Firefox. Aucune cryptographie ici :
-//! seule la clé signe, et seul le serveur vérifie.
+//! The "dialogue with the key" part (USB, CTAP2 protocol) is handed to
+//! `authenticator-rs`, Firefox's library. No cryptography here: only the
+//! key signs, and only the server verifies.
 
 use data_encoding::{BASE64_NOPAD, BASE64URL_NOPAD};
 use serde_json::{Value, json};
@@ -18,39 +19,39 @@ use sha2::{Digest, Sha256};
 
 use crate::error::Error;
 
-/// Ce qu'il faut demander à la clé.
+/// What to ask the key.
 #[derive(Clone, Debug)]
 pub struct AssertionRequest {
     pub rp_id: String,
     pub origin: String,
     pub client_data_json: Vec<u8>,
     pub client_data_hash: [u8; 32],
-    /// Identifiants des clés enregistrées sur le compte.
+    /// Ids of the keys registered on the account.
     pub allow_credentials: Vec<Vec<u8>>,
-    /// Extension `appid` (clés enregistrées autrefois en U2F).
+    /// `appid` extension (keys registered long ago with U2F).
     pub app_id: Option<String>,
     pub timeout_ms: u64,
 }
 
-/// Ce que la clé a répondu.
+/// What the key answered.
 #[derive(Clone, Debug)]
 pub struct AssertionResponse {
     pub credential_id: Vec<u8>,
     pub authenticator_data: Vec<u8>,
     pub signature: Vec<u8>,
-    /// La clé a signé pour l'`appid` (U2F) plutôt que pour le `rpId`.
+    /// The key signed for the `appid` (U2F) rather than for the `rpId`.
     pub used_app_id: bool,
 }
 
-/// Prépare la demande à partir du défi `WebAuthn` envoyé par le serveur.
+/// Prepares the request from the `WebAuthn` challenge sent by the server.
 pub fn assertion_request(server: &str, challenge_json: &str) -> Result<AssertionRequest, Error> {
     let options: Value = serde_json::from_str(challenge_json)
-        .map_err(|e| Error::SecurityKey(format!("défi illisible ({e})")))?;
+        .map_err(|e| Error::SecurityKey(format!("unreadable challenge ({e})")))?;
     let options = options.get("publicKey").unwrap_or(&options);
     let challenge = options
         .get("challenge")
         .and_then(Value::as_str)
-        .ok_or_else(|| Error::SecurityKey("défi absent".to_owned()))?;
+        .ok_or_else(|| Error::SecurityKey("challenge missing".to_owned()))?;
     let origin = origin_of(server)?;
     let rp_id = options
         .get("rpId")
@@ -67,11 +68,11 @@ pub fn assertion_request(server: &str, challenge_json: &str) -> Result<Assertion
         .collect::<Result<Vec<_>, _>>()?;
     if allow_credentials.is_empty() {
         return Err(Error::SecurityKey(
-            "aucune clé de sécurité n'est enregistrée sur ce compte".to_owned(),
+            "no security key is registered on this account".to_owned(),
         ));
     }
-    // Ordre et forme de ce qu'écrit un navigateur ; le serveur vérifie le
-    // type, le défi et l'origine.
+    // Order and shape of what a browser writes; the server checks the type,
+    // the challenge and the origin.
     let client_data_json = serde_json::to_vec(&json!({
         "type": "webauthn.get",
         "challenge": challenge,
@@ -99,7 +100,7 @@ pub fn assertion_request(server: &str, challenge_json: &str) -> Result<Assertion
     })
 }
 
-/// Le jeton à envoyer au serveur comme réponse au second facteur.
+/// The token to send to the server as the second factor answer.
 pub fn token(request: &AssertionRequest, response: &AssertionResponse) -> String {
     let id = BASE64URL_NOPAD.encode(&response.credential_id);
     let extensions = if response.used_app_id {
@@ -121,7 +122,7 @@ pub fn token(request: &AssertionRequest, response: &AssertionResponse) -> String
     .to_string()
 }
 
-/// `https://vault.exemple.fr/chemin` → `https://vault.exemple.fr`.
+/// `https://vault.exemple.fr/path` → `https://vault.exemple.fr`.
 fn origin_of(server: &str) -> Result<String, Error> {
     let url =
         reqwest::Url::parse(server).map_err(|e| Error::InvalidServer(format!("{server} ({e})")))?;
@@ -135,20 +136,20 @@ fn host_of(server: &str) -> Result<String, Error> {
         .ok_or_else(|| Error::InvalidServer(server.to_owned()))
 }
 
-/// Les identifiants arrivent en base64url ; certains serveurs anciens les
-/// envoient en base64 classique, avec ou sans remplissage.
+/// Ids arrive in base64url; some old servers send them in standard base64,
+/// with or without padding.
 fn decode_base64(text: &str) -> Result<Vec<u8>, Error> {
     let trimmed = text.trim_end_matches('=');
     BASE64URL_NOPAD
         .decode(trimmed.as_bytes())
         .or_else(|_| BASE64_NOPAD.decode(trimmed.as_bytes()))
-        .map_err(|_| Error::SecurityKey("identifiant de clé illisible".to_owned()))
+        .map_err(|_| Error::SecurityKey("unreadable key id".to_owned()))
 }
 
 pub use device::{SecurityKeyStatus, SigningSession};
 
-/// Hors macOS, pas d'USB : la même interface, qui refuse tout. L'interface
-/// Swift et les tests de la CI Linux compilent sans conditions.
+/// Outside macOS, no USB: the same interface, which refuses everything. The
+/// Swift interface and the Linux CI tests compile without conditions.
 #[cfg(not(target_os = "macos"))]
 mod device {
     use super::{AssertionRequest, AssertionResponse};
@@ -165,7 +166,7 @@ mod device {
     pub struct SigningSession;
 
     fn unsupported() -> Error {
-        Error::SecurityKey("clé de sécurité en USB : macOS seulement".to_owned())
+        Error::SecurityKey("USB security keys: macOS only".to_owned())
     }
 
     #[allow(clippy::unused_self)]
@@ -207,8 +208,8 @@ mod device {
     }
 }
 
-/// Dialogue avec la clé, par USB (macOS seulement : l'app sandboxée a le droit
-/// `com.apple.security.device.usb`).
+/// Dialogue with the key, over USB (macOS only: the sandboxed app has the
+/// `com.apple.security.device.usb` entitlement).
 #[cfg(target_os = "macos")]
 mod device {
     use std::collections::HashMap;
@@ -236,29 +237,29 @@ mod device {
     use crate::error::Error;
     use crate::unlock_keys::{HmacSecret, RP_ID, UnlockCredential};
 
-    /// Déverrouillage et enrôlement : le temps de brancher la clé, de saisir
-    /// son code PIN et de la toucher.
+    /// Unlocking and enrolment: time to plug in the key, type its PIN and
+    /// touch it.
     const UNLOCK_TIMEOUT_MS: u64 = 120_000;
 
-    /// Où en est l'échange, pour l'afficher.
+    /// Where the exchange stands, to display it.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum SecurityKeyStatus {
-        /// Clé détectée : il faut la toucher.
+        /// Key detected: it must be touched.
         TouchRequired,
-        /// La clé attend son code PIN, à donner par
-        /// [`SigningSession::submit_pin`]. `retry` : le précédent était faux ;
-        /// `attempts` : essais restants, si la clé le dit.
+        /// The key waits for its PIN, to be given through
+        /// [`SigningSession::submit_pin`]. `retry`: the previous one was
+        /// wrong; `attempts`: attempts left, if the key says so.
         PinRequired { retry: bool, attempts: Option<u8> },
     }
 
-    /// Un échange en cours avec la clé, annulable depuis un autre fil.
+    /// An ongoing exchange with the key, cancellable from another thread.
     #[derive(Clone, Default)]
     pub struct SigningSession {
         service: Arc<Mutex<Option<AuthenticatorService>>>,
-        /// Où répondre quand la clé attend son code PIN.
+        /// Where to answer when the key waits for its PIN.
         pin_reply: Arc<Mutex<Option<Sender<Pin>>>>,
-        /// Le code PIN saisi, gardé le temps d'un enrôlement (deux échanges
-        /// avec la clé, un seul code à taper), puis effacé.
+        /// The typed PIN, kept for the length of an enrolment (two exchanges
+        /// with the key, a single PIN to type), then wiped.
         pin: Arc<Mutex<Option<Zeroizing<String>>>>,
     }
 
@@ -271,9 +272,9 @@ mod device {
             Self::default()
         }
 
-        /// Interrompt l'attente (l'utilisateur a annulé ou changé de méthode).
+        /// Interrupts the wait (the user cancelled or changed method).
         pub fn cancel(&self) {
-            // Sans destinataire, la bibliothèque cesse d'attendre le code PIN.
+            // Without a receiver, the library stops waiting for the PIN.
             lock(&self.pin_reply).take();
             lock(&self.pin).take();
             let mut guard = lock(&self.service);
@@ -283,8 +284,8 @@ mod device {
             guard.take();
         }
 
-        /// Le code PIN que la clé attend (après
-        /// [`SecurityKeyStatus::PinRequired`]). `false` : plus rien n'attend.
+        /// The PIN the key waits for (after
+        /// [`SecurityKeyStatus::PinRequired`]). `false`: nothing waits any more.
         pub fn submit_pin(&self, pin: &str) -> bool {
             let Some(reply) = lock(&self.pin_reply).take() else {
                 return false;
@@ -293,11 +294,11 @@ mod device {
             reply.send(Pin::new(pin)).is_ok()
         }
 
-        /// Crée sur la clé une accréditation pour déverrouiller Verrou
-        /// (extension `hmac-secret`, code PIN exigé), puis lui demande son
-        /// secret pour `salt`. Deux contacts, un seul code PIN. `exclude` : les
-        /// accréditations déjà enrôlées, pour ne pas enrôler deux fois la même
-        /// clé. Rend l'identifiant de l'accréditation et le secret.
+        /// Creates on the key a credential to unlock Verrou (`hmac-secret`
+        /// extension, PIN required), then asks it for its secret for `salt`.
+        /// Two touches, a single PIN. `exclude`: the credentials already
+        /// enrolled, so as not to enrol the same key twice. Returns the
+        /// credential id and the secret.
         pub fn enroll_for_unlock(
             &self,
             salt: &[u8; 32],
@@ -315,8 +316,8 @@ mod device {
             exclude: &[Vec<u8>],
             on_status: &dyn Fn(SecurityKeyStatus),
         ) -> Result<(Vec<u8>, HmacSecret), Error> {
-            // L'accréditation n'est pas « résidente » : la clé ne garde rien,
-            // l'utilisateur est un identifiant aléatoire sans signification.
+            // The credential is not "resident": the key keeps nothing, the
+            // user is a meaningless random id.
             let mut user_id = [0u8; 16];
             OsRng.fill_bytes(&mut user_id);
             let args = RegisterArgs {
@@ -329,7 +330,7 @@ mod device {
                 user: PublicKeyCredentialUserEntity {
                     id: user_id.to_vec(),
                     name: Some("Verrou".to_owned()),
-                    display_name: Some("Déverrouillage de Verrou".to_owned()),
+                    display_name: Some("Verrou unlock".to_owned()),
                 },
                 pub_cred_params: vec![
                     PublicKeyCredentialParameters {
@@ -361,7 +362,7 @@ mod device {
                 .map_err(unlock_error)?;
             if registered.extensions.hmac_create_secret != Some(true) {
                 return Err(Error::SecurityKey(
-                    "cette clé ne prend pas en charge hmac-secret".to_owned(),
+                    "this key does not support hmac-secret".to_owned(),
                 ));
             }
             let credential_id = registered
@@ -369,9 +370,7 @@ mod device {
                 .auth_data
                 .credential_data
                 .map(|data| data.credential_id)
-                .ok_or_else(|| {
-                    Error::SecurityKey("la clé n'a pas rendu d'identifiant".to_owned())
-                })?;
+                .ok_or_else(|| Error::SecurityKey("the key did not return an id".to_owned()))?;
             let credential = UnlockCredential {
                 credential_id: credential_id.clone(),
                 salt: *salt,
@@ -380,9 +379,9 @@ mod device {
             Ok((credential_id, secret))
         }
 
-        /// Demande à la clé branchée le secret de l'une des accréditations
-        /// enrôlées (code PIN exigé, puis un contact). Rend l'accréditation
-        /// qui a répondu, si la clé le dit, et le secret.
+        /// Asks the plugged-in key for the secret of one of the enrolled
+        /// credentials (PIN required, then a touch). Returns the credential
+        /// that answered, if the key says so, and the secret.
         pub fn unlock_secret(
             &self,
             credentials: &[UnlockCredential],
@@ -396,9 +395,9 @@ mod device {
             credentials: &[UnlockCredential],
             on_status: &dyn Fn(SecurityKeyStatus),
         ) -> Result<(Option<Vec<u8>>, HmacSecret), Error> {
-            // Un sel par accréditation (extension PRF, `evalByCredential`) : la
-            // bibliothèque ne garde de la liste que les accréditations de la
-            // clé branchée, puis choisit le sel qui va avec.
+            // One salt per credential (PRF extension, `evalByCredential`): the
+            // library keeps from the list only the plugged-in key's
+            // credentials, then picks the matching salt.
             let by_credential: HashMap<Vec<u8>, AuthenticationExtensionsPRFValues> = credentials
                 .iter()
                 .map(|c| {
@@ -423,8 +422,7 @@ mod device {
                     }),
                     ..Default::default()
                 },
-                // Enrôlement : le code PIN vient d'être saisi pour créer
-                // l'accréditation.
+                // Enrolment: the PIN was just typed to create the credential.
                 pin: lock(&self.pin).as_ref().map(|pin| Pin::new(pin)),
                 use_ctap1_fallback: false,
             };
@@ -445,8 +443,7 @@ mod device {
                 .map(|values| values.first)
                 .ok_or_else(|| {
                     Error::SecurityKey(
-                        "la clé n'a pas rendu son secret (hmac-secret non pris en charge)"
-                            .to_owned(),
+                        "the key did not return its secret (hmac-secret not supported)".to_owned(),
                     )
                 })?;
             let secret = HmacSecret::from_slice(&output);
@@ -454,8 +451,8 @@ mod device {
             Ok((signed.assertion.credentials.map(|c| c.id), secret?))
         }
 
-        /// Un échange avec la clé : relaie les demandes de contact et de code
-        /// PIN (`allow_pin`), jusqu'à la réponse, au délai, ou à `cancel`.
+        /// An exchange with the key: relays the touch and PIN requests
+        /// (`allow_pin`), until the answer, the timeout, or `cancel`.
         fn exchange<T: Send + 'static>(
             &self,
             timeout_ms: u64,
@@ -468,7 +465,7 @@ mod device {
             ) -> authenticator::Result<()>,
         ) -> Result<authenticator::Result<T>, Error> {
             let mut service = AuthenticatorService::new()
-                .map_err(|e| Error::SecurityKey(format!("USB indisponible ({e:?})")))?;
+                .map_err(|e| Error::SecurityKey(format!("USB unavailable ({e:?})")))?;
             service.add_u2f_usb_hid_platform_transports();
             let (status_tx, status_rx) = channel::<StatusUpdate>();
             let (result_tx, result_rx) = channel();
@@ -508,8 +505,7 @@ mod device {
                         ) => {
                             self.cancel();
                             return Err(Error::SecurityKey(
-                                "la clé demande son code PIN : utilisez la connexion par le navigateur"
-                                    .to_owned(),
+                                "the key asks for its PIN: use the browser login".to_owned(),
                             ));
                         }
                         _ => {}
@@ -520,9 +516,7 @@ mod device {
                     Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
                     Err(_) => {
                         self.cancel();
-                        return Err(Error::SecurityKey(
-                            "aucune clé n'a répondu à temps".to_owned(),
-                        ));
+                        return Err(Error::SecurityKey("no key answered in time".to_owned()));
                     }
                 }
             };
@@ -531,7 +525,7 @@ mod device {
             Ok(outcome)
         }
 
-        /// Bloquant : attend une clé, puis son contact, jusqu'au délai.
+        /// Blocking: waits for a key, then its touch, until the timeout.
         pub fn sign(
             &self,
             request: &AssertionRequest,
@@ -542,8 +536,8 @@ mod device {
                 origin: request.origin.clone(),
                 relying_party_id: request.rp_id.clone(),
                 allow_list: descriptors(request.allow_credentials.iter()),
-                // Vaultwarden demande « discouraged » : un contact suffit,
-                // pas de code PIN.
+                // Vaultwarden asks for "discouraged": a touch is enough, no
+                // PIN.
                 user_verification_req: UserVerificationRequirement::Discouraged,
                 user_presence_req: true,
                 extensions: AuthenticationExtensionsClientInputs {
@@ -553,7 +547,7 @@ mod device {
                 pin: None,
                 use_ctap1_fallback: false,
             };
-            // Pas de code PIN ici : le second facteur se contente d'un contact.
+            // No PIN here: the second factor makes do with a touch.
             let outcome = self.exchange(
                 request.timeout_ms,
                 false,
@@ -574,9 +568,7 @@ mod device {
                                 .then(|| request.allow_credentials[0].clone())
                         })
                         .ok_or_else(|| {
-                            Error::SecurityKey(
-                                "la clé n'a pas dit quel identifiant elle a utilisé".to_owned(),
-                            )
+                            Error::SecurityKey("the key did not say which id it used".to_owned())
                         })?;
                     Ok(AssertionResponse {
                         credential_id,
@@ -586,14 +578,14 @@ mod device {
                     })
                 }
                 Err(AuthenticatorError::CancelledByUser) => {
-                    Err(Error::SecurityKey("demande annulée".to_owned()))
+                    Err(Error::SecurityKey("request cancelled".to_owned()))
                 }
                 Err(
                     AuthenticatorError::CredentialExcluded
                     | AuthenticatorError::UnsupportedOption(_),
-                ) => Err(Error::SecurityKey("cette clé ne convient pas".to_owned())),
+                ) => Err(Error::SecurityKey("this key is not suitable".to_owned())),
                 Err(e) => Err(Error::SecurityKey(format!(
-                    "cette clé n'est pas enregistrée sur ce compte, ou elle a refusé ({e:?})"
+                    "this key is not registered on this account, or it refused ({e:?})"
                 ))),
             }
         }
@@ -609,44 +601,44 @@ mod device {
         .collect()
     }
 
-    /// Aucun serveur ne vérifie la signature du déverrouillage : seul compte
-    /// le secret `hmac-secret`. L'empreinte signée est donc aléatoire.
+    /// No server checks the unlock signature: only the `hmac-secret` secret
+    /// counts. The signed hash is therefore random.
     fn random_hash() -> [u8; 32] {
         let mut hash = [0u8; 32];
         OsRng.fill_bytes(&mut hash);
         hash
     }
 
-    /// Les refus de la clé, dits à l'utilisateur.
+    /// The key's refusals, told to the user.
     fn unlock_error(error: AuthenticatorError) -> Error {
         let message = match error {
-            AuthenticatorError::CancelledByUser => "demande annulée",
+            AuthenticatorError::CancelledByUser => "request cancelled",
             AuthenticatorError::CredentialExcluded => {
-                "cette clé est déjà enregistrée pour déverrouiller ce coffre"
+                "this key is already registered to unlock this vault"
             }
             AuthenticatorError::PinError(PinError::PinNotSet) => {
-                "la clé n'a pas de code PIN : définissez-en un (Yubico Authenticator, rubrique Passkeys), puis recommencez"
+                "the key has no PIN: set one (Yubico Authenticator, Passkeys section), then try again"
             }
             AuthenticatorError::PinError(PinError::PinBlocked) => {
-                "code PIN bloqué : la clé doit être réinitialisée (ses accréditations seront perdues)"
+                "PIN blocked: the key must be reset (its credentials will be lost)"
             }
             AuthenticatorError::PinError(PinError::PinAuthBlocked | PinError::UvBlocked) => {
-                "trop de codes PIN erronés : débranchez la clé, rebranchez-la, puis recommencez"
+                "too many wrong PINs: unplug the key, plug it back in, then try again"
             }
             AuthenticatorError::PinError(PinError::PinIsTooShort | PinError::PinIsTooLong(_)) => {
-                "longueur de code PIN invalide"
+                "invalid PIN length"
             }
             AuthenticatorError::HIDError(HIDError::Command(CommandError::StatusCode(
                 StatusCode::NoCredentials,
                 _,
-            ))) => "cette clé n'est pas enregistrée pour déverrouiller ce coffre",
+            ))) => "this key is not registered to unlock this vault",
             AuthenticatorError::HIDError(HIDError::IO(..)) | AuthenticatorError::Io(_) => {
-                "la clé a été débranchée"
+                "the key was unplugged"
             }
             AuthenticatorError::UnsupportedOption(_) => {
-                "cette clé ne convient pas : il faut une clé FIDO2 avec code PIN et hmac-secret"
+                "this key is not suitable: a FIDO2 key with a PIN and hmac-secret is needed"
             }
-            e => return Error::SecurityKey(format!("la clé a refusé ({e:?})")),
+            e => return Error::SecurityKey(format!("the key refused ({e:?})")),
         };
         Error::SecurityKey(message.to_owned())
     }
@@ -656,7 +648,7 @@ mod device {
 mod tests {
     use super::*;
 
-    /// Défi tel que l'envoie Vaultwarden 1.37 (`PublicKeyCredentialRequestOptions`).
+    /// Challenge as Vaultwarden 1.37 sends it (`PublicKeyCredentialRequestOptions`).
     const CHALLENGE: &str = r#"{"challenge":"q83vEjRWeJA","timeout":60000,"rpId":"vault.exemple.fr","allowCredentials":[{"type":"public-key","id":"AQIDBA"}],"userVerification":"discouraged","extensions":{"appid":"https://vault.exemple.fr/app-id.json"}}"#;
 
     #[test]

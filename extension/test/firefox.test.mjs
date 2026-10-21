@@ -1,14 +1,13 @@
-// L'extension pour Firefox : produite à partir de extension/ par
-// scripts/firefox-extension.sh (même code, autre manifeste), puis
-// versionnée avec celle de Brave par scripts/stamp-extension.sh. Sans
-// navigateur : on vérifie le manifeste, les fichiers, la concordance des
-// identifiants (app, hôte Native Messaging, extension) et le
-// rechargement propre à Firefox (update.js).
+// The extension for Firefox: produced from extension/ by
+// scripts/firefox-extension.sh (same code, another manifest), then
+// versioned with Brave's by scripts/stamp-extension.sh. Without a browser:
+// we check the manifest, the files, the agreement of the IDs (app, Native
+// Messaging host, extension) and the Firefox-specific reload (update.js).
 //
 //   node --test extension/test/firefox.test.mjs
 //
-// VERROU_LINT_FIREFOX=1 lance aussi `web-ext lint` (l'outil de Mozilla, par npx :
-// téléchargé au premier passage) sur le dossier produit.
+// VERROU_LINT_FIREFOX=1 also runs `web-ext lint` (Mozilla's tool, through npx:
+// downloaded on the first run) on the produced folder.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -46,35 +45,35 @@ function files(dir) {
   return out.sort();
 }
 
-test("le manifeste de Firefox : page d'arrière-plan, identifiant, accès aux sites", () => {
+test("the Firefox manifest: background page, ID, site access", () => {
   const dir = build();
   const manifest = readJson(join(dir, "manifest.json"));
 
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.version, chromeManifest.version);
   assert.equal(manifest.name, chromeManifest.name);
-  // Propre à Chrome : absent.
+  // Specific to Chrome: absent.
   assert.equal(manifest.key, undefined);
   assert.equal(manifest.minimum_chrome_version, undefined);
-  // Firefox n'a pas de service worker d'extension : une page d'arrière-plan,
-  // le même module.
+  // Firefox has no extension service worker: a background page, the same
+  // module.
   assert.deepEqual(manifest.background, { scripts: ["background.js"], type: "module" });
 
   const gecko = manifest.browser_specific_settings?.gecko;
   assert.equal(gecko?.id, "verrou@verrou.app");
-  // `world: "MAIN"` des scripts de contenu (passkeys) : Firefox 128.
+  // `world: "MAIN"` of the content scripts (passkeys): Firefox 128.
   assert.equal(gecko?.strict_min_version, "128.0");
   assert.deepEqual(gecko?.data_collection_permissions, { required: ["none"] });
 
   for (const permission of ["nativeMessaging", "storage", "activeTab", "alarms"]) {
     assert.ok(manifest.permissions.includes(permission), permission);
   }
-  // Chaque site des scripts de contenu est un accès demandable.
+  // Each site of the content scripts is a requestable access.
   const matches = new Set(manifest.content_scripts.flatMap((script) => script.matches));
   assert.deepEqual(new Set(manifest.host_permissions), matches);
   assert.ok(manifest.host_permissions.includes("https://*/*"));
 
-  // Les scripts de contenu sont ceux de Brave, monde MAIN compris.
+  // The content scripts are Brave's, MAIN world included.
   assert.deepEqual(manifest.content_scripts, chromeManifest.content_scripts);
   assert.ok(manifest.content_scripts.some((script) => script.world === "MAIN"
     && script.run_at === "document_start" && script.js.includes("passkey-page.js")));
@@ -82,7 +81,7 @@ test("le manifeste de Firefox : page d'arrière-plan, identifiant, accès aux si
   assert.deepEqual(manifest.icons, chromeManifest.icons);
 });
 
-test("même code que pour Brave : fichiers identiques, rien de manquant", () => {
+test("same code as for Brave: identical files, nothing missing", () => {
   const dir = build();
   const shipped = files(`${root}extension`).filter((f) => !/^(test|e2e)\//.test(f) && f !== "manifest.json" && !f.endsWith(".DS_Store"));
   const built = files(dir).filter((f) => f !== "manifest.json");
@@ -90,7 +89,7 @@ test("même code que pour Brave : fichiers identiques, rien de manquant", () => 
   for (const file of built) {
     assert.ok(readFileSync(join(dir, file)).equals(readFileSync(`${root}extension/${file}`)), file);
   }
-  // Tout ce que le manifeste cite existe.
+  // Everything the manifest cites exists.
   const manifest = readJson(join(dir, "manifest.json"));
   const cited = [
     ...manifest.background.scripts,
@@ -100,13 +99,13 @@ test("même code que pour Brave : fichiers identiques, rien de manquant", () => 
     ...manifest.content_scripts.flatMap((script) => script.js),
   ];
   for (const file of cited) assert.ok(existsSync(join(dir, file)), file);
-  // Relancer remplace le dossier : pas de reste d'un ancien passage.
-  appendFileSync(join(dir, "reste.txt"), "ancien");
+  // Running again replaces the folder: no leftover from an earlier run.
+  appendFileSync(join(dir, "leftover.txt"), "old");
   build();
-  assert.ok(!existsSync(join(dir, "reste.txt")));
+  assert.ok(!existsSync(join(dir, "leftover.txt")));
 });
 
-test("Brave et Firefox reçoivent la même version, tirée des deux dossiers", () => {
+test("Brave and Firefox get the same version, drawn from both folders", () => {
   const brave = join(scratch, "stamp", "extension");
   execFileSync("mkdir", ["-p", join(scratch, "stamp")]);
   execFileSync("cp", ["-R", `${root}extension`, brave]);
@@ -115,22 +114,22 @@ test("Brave et Firefox reçoivent la même version, tirée des deux dossiers", (
     execFileSync(`${root}scripts/stamp-extension.sh`, [brave, firefox], { stdio: "ignore" });
     const a = readJson(join(brave, "manifest.json")).version;
     const b = readJson(join(firefox, "manifest.json")).version;
-    assert.equal(a, b, "une seule version, annoncée par le pont pour les deux");
+    assert.equal(a, b, "a single version, announced by the bridge for both");
     return a;
   };
   const first = stamp();
   assert.match(first, /^\d+\.\d+\.\d+\.\d{1,5}$/);
-  assert.equal(stamp(), first, "relancer ne change rien");
-  // Reproduire Firefox depuis la copie déjà versionnée (compilation
-  // incrémentale) ne change rien non plus.
+  assert.equal(stamp(), first, "running again changes nothing");
+  // Producing Firefox again from the already versioned copy (incremental
+  // build) changes nothing either.
   build(brave, firefox);
   assert.equal(stamp(), first);
-  // Un changement propre au dossier de Firefox change la version.
-  appendFileSync(join(firefox, "popup.css"), "\n/* changement */\n");
+  // A change specific to the Firefox folder changes the version.
+  appendFileSync(join(firefox, "popup.css"), "\n/* change */\n");
   assert.notEqual(stamp(), first);
 });
 
-test("les identifiants de l'extension concordent : app, hôte Native Messaging, manifestes", () => {
+test("the extension IDs agree: app, Native Messaging host, manifests", () => {
   const swift = readFileSync(`${root}apple/Verrou/App/BrowserBridge.swift`, "utf8");
   const rust = readFileSync(`${root}crates/verrou-bridge/src/lib.rs`, "utf8");
   const script = readFileSync(`${root}scripts/firefox-extension.sh`, "utf8");
@@ -139,27 +138,27 @@ test("les identifiants de l'extension concordent : app, hôte Native Messaging, 
   assert.match(rust, new RegExp(`FIREFOX_EXTENSION_ID: &str = "${firefoxId}"`));
   assert.match(script, new RegExp(`FIREFOX_ID="${firefoxId}"`));
 
-  // Chrome : identifiant = SHA-256 de la clé publique, 32 premiers chiffres
-  // hexadécimaux écrits de « a » à « p ».
+  // Chrome: ID = SHA-256 of the public key, first 32 hexadecimal digits
+  // written from "a" to "p".
   const digest = createHash("sha256").update(Buffer.from(chromeManifest.key, "base64")).digest("hex");
   const chromeId = [...digest.slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");
   assert.match(swift, new RegExp(`static let extensionID = "${chromeId}"`));
   assert.match(rust, new RegExp(`CHROMIUM_EXTENSION_ID: &str = "${chromeId}"`));
 
-  // Le sandbox de l'app peut écrire la déclaration de Firefox.
+  // The app's sandbox can write Firefox's declaration.
   const entitlements = readFileSync(`${root}apple/Verrou/Verrou.entitlements`, "utf8");
   assert.match(entitlements, /Library\/Application Support\/Mozilla\/NativeMessagingHosts\//);
   assert.match(swift, /"allowed_extensions": \[Self\.firefoxExtensionID\]/);
 });
 
-test("Firefox : rechargement pour un manifeste changé sur le disque seulement", async () => {
+test("Firefox: reload for a manifest changed on disk only", async () => {
   const memory = () => {
     let value;
     return { get: async () => value, set: async (v) => { value = v; } };
   };
   let reloads = 0;
-  // Module signé, ou extension temporaire à jour : Verrou en livre une autre.
-  // Pas de rechargement (il ne changerait rien), l'avertissement à la place.
+  // Signed add-on, or up-to-date temporary extension: Verrou ships another
+  // one. No reload (it would change nothing), the warning instead.
   const installed = createUpdater({
     running: "0.3.0.1", readDisk: async () => "0.3.0.1", reload: () => { reloads += 1; },
     store: memory(), reloadForBundled: false,
@@ -170,8 +169,8 @@ test("Firefox : rechargement pour un manifeste changé sur le disque seulement",
   assert.deepEqual(installed.state(), { running: "0.3.0.1", bundled: "0.3.0.2", mismatch: true });
   assert.equal(reloads, 0);
 
-  // Extension temporaire chargée depuis Verrou.app, mis à jour : le
-  // manifeste sur le disque a changé, elle se recharge (une fois).
+  // Temporary extension loaded from Verrou.app, updated: the manifest on
+  // disk changed, it reloads (once).
   const temporary = createUpdater({
     running: "0.3.0.1", readDisk: async () => "0.3.0.2", reload: () => { reloads += 1; },
     store: memory(), reloadForBundled: false,
@@ -183,8 +182,8 @@ test("Firefox : rechargement pour un manifeste changé sur le disque seulement",
 
 test("web-ext lint (VERROU_LINT_FIREFOX=1)", { skip: process.env.VERROU_LINT_FIREFOX !== "1" }, () => {
   const dir = build();
-  // Sans NODE_TEST_CONTEXT : web-ext (Node lui aussi) se croirait un test.
-  // (Le réglage ne s'appelle pas WEB_EXT_… : web-ext en ferait une option.)
+  // Without NODE_TEST_CONTEXT: web-ext (Node too) would think it is a test.
+  // (The setting isn't called WEB_EXT_…: web-ext would make it an option.)
   const { NODE_TEST_CONTEXT, ...env } = process.env;
   const output = execFileSync("npx", ["--yes", "web-ext@8", "lint", "--source-dir", dir, "--output", "json"],
     { encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });

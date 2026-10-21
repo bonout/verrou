@@ -1,19 +1,19 @@
-//! Correspondance entre un élément et la page où l'on se trouve.
+//! Matching between an item and the current page.
 //!
-//! Même règle par défaut que Bitwarden (« domaine de base ») : `login.github.com`
-//! et `github.com` partagent un identifiant, mais `github.io` et `github.com`
-//! non. Le domaine enregistrable vient de la Public Suffix List, ce qui évite
-//! de confondre `example.co.uk` avec tout `co.uk`.
+//! Same default rule as Bitwarden ("base domain"): `login.github.com`
+//! and `github.com` share a login, but `github.io` and `github.com`
+//! do not. The registrable domain comes from the Public Suffix List, which
+//! avoids mixing up `example.co.uk` with all of `co.uk`.
 //!
-//! Chaque site d'un identifiant peut porter sa propre règle (le réglage
-//! « détection de correspondance » de Bitwarden, enregistré dans l'élément) :
-//! domaine, hôte, « commence par », exacte, expression régulière ou jamais.
-//! Sans règle, c'est la règle par défaut de l'appareil qui s'applique, ou
-//! celle du dossier de l'élément si l'appareil en définit une : ces deux
-//! réglages restent locaux (Bitwarden n'a ni règle par dossier, ni règle par
-//! défaut partagée entre appareils). Les domaines équivalents du compte
-//! (`/api/settings/domains`) élargissent la règle « domaine », comme dans les
-//! apps Bitwarden.
+//! Each site of a login can carry its own rule (Bitwarden's "match
+//! detection" setting, stored in the item): domain, host, "starts with",
+//! exact, regular expression or never.
+//! Without a rule, the device's default rule applies, or the rule of the
+//! item's folder if the device defines one: both settings stay local
+//! (Bitwarden has neither per-folder rules nor a default rule shared
+//! between devices). The account's equivalent domains
+//! (`/api/settings/domains`) widen the "domain" rule, as in the
+//! Bitwarden apps.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -22,22 +22,22 @@ use url::Url;
 
 use crate::model::Item;
 
-/// Règle de correspondance d'un site (`UriMatchType` de Bitwarden, même
-/// numérotation dans le format chiffré).
+/// Match rule of a site (Bitwarden's `UriMatchType`, same numbering in
+/// the encrypted format).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum UriMatch {
-    /// Même domaine enregistrable (ou domaine équivalent).
+    /// Same registrable domain (or equivalent domain).
     #[default]
     Domain,
-    /// Même hôte, port compris.
+    /// Same host, port included.
     Host,
-    /// L'adresse de la page commence par celle du site.
+    /// The page address starts with the site's.
     StartsWith,
-    /// Même adresse, caractère pour caractère.
+    /// Same address, character for character.
     Exact,
-    /// L'adresse de la page vérifie l'expression régulière (sans casse).
+    /// The page address matches the regular expression (case-insensitive).
     RegularExpression,
-    /// Jamais proposé.
+    /// Never offered.
     Never,
 }
 
@@ -53,16 +53,16 @@ impl UriMatch {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Domain => "Domaine de base",
-            Self::Host => "Hôte",
-            Self::StartsWith => "Commence par",
-            Self::Exact => "Exacte",
-            Self::RegularExpression => "Expression régulière",
-            Self::Never => "Jamais",
+            Self::Domain => "Base domain",
+            Self::Host => "Host",
+            Self::StartsWith => "Starts with",
+            Self::Exact => "Exact",
+            Self::RegularExpression => "Regular expression",
+            Self::Never => "Never",
         }
     }
 
-    /// Valeur de Bitwarden (`0` domaine … `5` jamais).
+    /// Bitwarden value (`0` domain … `5` never).
     pub fn code(self) -> u8 {
         match self {
             Self::Domain => 0,
@@ -79,23 +79,23 @@ impl UriMatch {
     }
 }
 
-/// Règles de l'appareil : la règle par défaut, celles des dossiers, et les
-/// domaines équivalents du compte.
+/// Device rules: the default rule, the folder rules, and the account's
+/// equivalent domains.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MatchRules {
-    /// Règle des sites qui n'en ont pas (« Domaine de base » par défaut,
-    /// comme Bitwarden).
+    /// Rule for sites that have none ("base domain" by default, like
+    /// Bitwarden).
     pub default: UriMatch,
-    /// Règle par dossier, par nom de dossier replié (`search::fold`) : elle
-    /// remplace la règle par défaut pour les éléments du dossier.
+    /// Rule per folder, keyed by folded folder name (`search::fold`): it
+    /// replaces the default rule for the folder's items.
     pub folders: HashMap<String, UriMatch>,
-    /// Groupes de domaines équivalents (`google.com`, `youtube.com`…).
+    /// Groups of equivalent domains (`google.com`, `youtube.com`…).
     pub equivalent_domains: Vec<Vec<String>>,
 }
 
 impl MatchRules {
-    /// Règle qui s'applique au site `index` d'un élément : la sienne, sinon
-    /// celle du dossier, sinon celle de l'appareil.
+    /// Rule that applies to site `index` of an item: its own, otherwise
+    /// the folder's, otherwise the device's.
     pub fn rule_for(&self, item: &Item, index: usize) -> UriMatch {
         item.url_matches
             .get(index)
@@ -104,7 +104,7 @@ impl MatchRules {
             .unwrap_or_else(|| self.fallback_for(item))
     }
 
-    /// Règle d'un site sans règle propre dans cet élément.
+    /// Rule of a site with no rule of its own in this item.
     pub fn fallback_for(&self, item: &Item) -> UriMatch {
         item.folder
             .as_deref()
@@ -113,7 +113,7 @@ impl MatchRules {
             .unwrap_or(self.default)
     }
 
-    /// Le domaine de la page et ses équivalents.
+    /// The page's domain and its equivalents.
     fn page_domains(&self, domain: &str) -> HashSet<String> {
         let mut domains: HashSet<String> = HashSet::from([domain.to_owned()]);
         for group in &self.equivalent_domains {
@@ -125,18 +125,18 @@ impl MatchRules {
     }
 }
 
-/// Réglages de correspondance enregistrés sur l'appareil
-/// (`match-rules.json`) : jamais envoyés au serveur.
+/// Match settings stored on the device
+/// (`match-rules.json`): never sent to the server.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceMatchSettings {
     #[serde(default)]
     pub default: UriMatch,
-    /// Règle par dossier, par identifiant de dossier.
+    /// Rule per folder, keyed by folder id.
     #[serde(default)]
     pub folders: BTreeMap<String, UriMatch>,
 }
 
-/// Qualité d'une correspondance, de la meilleure à l'absence.
+/// Quality of a match, from none to best.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SiteMatch {
     None,
@@ -144,9 +144,9 @@ pub enum SiteMatch {
     SameHost,
 }
 
-/// Hôte en minuscules et sans `www.`, à partir d'une URL ou d'un hôte nu.
-/// Une adresse d'application (`macapp://`, `iosapp://`, `androidapp://`)
-/// n'a pas d'hôte : ce n'est pas un site.
+/// Lowercase host without `www.`, from a URL or a bare host.
+/// An app address (`macapp://`, `iosapp://`, `androidapp://`)
+/// has no host: it is not a site.
 pub fn host_of(input: &str) -> Option<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() || crate::apps::is_app_uri(trimmed) {
@@ -166,8 +166,8 @@ pub fn host_of(input: &str) -> Option<String> {
     )
 }
 
-/// Domaine enregistrable (`login.github.com` → `github.com`). Pour une adresse
-/// IP ou un nom sans suffixe public, l'hôte lui-même.
+/// Registrable domain (`login.github.com` → `github.com`). For an IP
+/// address or a name without a public suffix, the host itself.
 pub fn registrable_domain(input: &str) -> Option<String> {
     let host = host_of(input)?;
     if host.parse::<std::net::IpAddr>().is_ok() {
@@ -179,8 +179,8 @@ pub fn registrable_domain(input: &str) -> Option<String> {
     }
 }
 
-/// Hôte et port, en minuscules (`Utils.getHost` de Bitwarden) : la règle
-/// « hôte » distingue `www.exemple.fr` d'`exemple.fr`, et les ports.
+/// Host and port, lowercase (Bitwarden's `Utils.getHost`): the "host"
+/// rule tells `www.exemple.fr` from `exemple.fr`, and ports apart.
 fn host_and_port(input: &str) -> Option<String> {
     let trimmed = input.trim();
     if trimmed.is_empty() || crate::apps::is_app_uri(trimmed) {
@@ -200,17 +200,17 @@ fn host_and_port(input: &str) -> Option<String> {
     })
 }
 
-/// Sous-domaines exclus de la règle « domaine » de Bitwarden
-/// (`DomainMatchBlacklist`) : un identifiant Google ne se propose pas sur
-/// les scripts Apps Script.
+/// Subdomains excluded from Bitwarden's "domain" rule
+/// (`DomainMatchBlacklist`): a Google login is not offered on
+/// Apps Script scripts.
 const DOMAIN_MATCH_BLACKLIST: [(&str, &str); 1] = [("google.com", "script.google.com")];
 
-/// Une page, préparée une fois pour tous les éléments.
+/// A page, prepared once for all items.
 struct Page<'a> {
     url: &'a str,
     host: String,
     host_and_port: Option<String>,
-    /// Domaine enregistrable de la page et ses équivalents.
+    /// Registrable domain of the page and its equivalents.
     domains: HashSet<String>,
 }
 
@@ -227,8 +227,8 @@ impl<'a> Page<'a> {
     }
 }
 
-/// Correspondance d'un site (`uri`, règle `rule`) avec une page déjà
-/// préparée. Une adresse d'application ne correspond jamais à une page.
+/// Match of a site (`uri`, rule `rule`) against an already prepared
+/// page. An app address never matches a page.
 fn uri_match_at(uri: &str, rule: UriMatch, page: &Page<'_>) -> SiteMatch {
     let uri = uri.trim();
     if uri.is_empty() || crate::apps::is_app_uri(uri) {
@@ -248,7 +248,7 @@ fn uri_match_at(uri: &str, rule: UriMatch, page: &Page<'_>) -> SiteMatch {
         UriMatch::RegularExpression => precise(
             regex::RegexBuilder::new(uri)
                 .case_insensitive(true)
-                // Une expression démesurée ne bloque pas le remplissage.
+                // An oversized expression does not block filling.
                 .size_limit(1 << 20)
                 .build()
                 .is_ok_and(|re| re.is_match(page.url)),
@@ -279,13 +279,13 @@ fn uri_match_at(uri: &str, rule: UriMatch, page: &Page<'_>) -> SiteMatch {
     }
 }
 
-/// Correspondance d'un site avec une page, selon une règle explicite.
+/// Match of a site against a page, with an explicit rule.
 pub fn uri_match(uri: &str, rule: UriMatch, page: &str, rules: &MatchRules) -> SiteMatch {
     Page::new(page, rules).map_or(SiteMatch::None, |p| uri_match_at(uri, rule, &p))
 }
 
-/// Meilleure correspondance entre une page et la liste d'URL d'un élément,
-/// avec la règle par défaut (domaine de base) pour chacune.
+/// Best match between a page and an item's URL list, with the default
+/// rule (base domain) for each.
 pub fn site_match(item_urls: &[String], page: &str) -> SiteMatch {
     let rules = MatchRules::default();
     let Some(page) = Page::new(page, &rules) else {
@@ -298,8 +298,8 @@ pub fn site_match(item_urls: &[String], page: &str) -> SiteMatch {
         .unwrap_or(SiteMatch::None)
 }
 
-/// Meilleure correspondance entre une page et les sites d'un élément, chacun
-/// avec sa règle (ou celle du dossier, ou celle de l'appareil).
+/// Best match between a page and an item's sites, each with its rule
+/// (or the folder's, or the device's).
 pub fn item_match(item: &Item, page: &str, rules: &MatchRules) -> SiteMatch {
     let Some(page) = Page::new(page, rules) else {
         return SiteMatch::None;
@@ -316,8 +316,8 @@ fn item_match_at(item: &Item, page: &Page<'_>, rules: &MatchRules) -> SiteMatch 
         .unwrap_or(SiteMatch::None)
 }
 
-/// Les éléments qui correspondent à une page, avec leur correspondance (la
-/// page n'est analysée qu'une fois).
+/// The items that match a page, with their match (the page is parsed
+/// only once).
 pub fn matching_items<'i>(
     items: impl Iterator<Item = &'i Item>,
     page: &str,
@@ -419,7 +419,7 @@ mod tests {
             check("http://192.168.1.10:8080", Domain, "https://192.168.1.10"),
             SiteMatch::SameHost
         );
-        // Liste d'exclusion de Bitwarden.
+        // Bitwarden's exclusion list.
         assert_eq!(
             check("https://google.com", Domain, "https://script.google.com"),
             SiteMatch::None
@@ -488,13 +488,13 @@ mod tests {
             ),
             SiteMatch::None
         );
-        // Expression invalide : jamais, sans paniquer.
+        // Invalid expression: never, without panicking.
         assert_eq!(
             check("([", RegularExpression, "https://exemple.fr"),
             SiteMatch::None
         );
         assert_eq!(check(base, Never, base), SiteMatch::None);
-        // Une adresse d'app ne correspond à aucune page, quelle que soit la règle.
+        // An app address matches no page, whatever the rule.
         for rule in UriMatch::ALL {
             assert_eq!(
                 check("macapp://com.apple.Terminal", rule, "https://apple.com"),
@@ -509,21 +509,21 @@ mod tests {
         let mut rules = MatchRules::default();
         let item = login(&[("https://github.com", None)], Some("Travail"));
         assert_eq!(item_match(&item, page, &rules), SiteMatch::SameDomain);
-        // Règle de l'appareil : hôte.
+        // Device rule: host.
         rules.default = UriMatch::Host;
         assert_eq!(item_match(&item, page, &rules), SiteMatch::None);
-        // Le dossier « Travail » revient au domaine.
+        // The "Travail" folder goes back to domain.
         rules
             .folders
             .insert(crate::search::fold("TRAVAIL"), UriMatch::Domain);
         assert_eq!(item_match(&item, page, &rules), SiteMatch::SameDomain);
-        // La règle du site l'emporte sur les deux.
+        // The site's rule wins over both.
         let never = login(
             &[("https://github.com", Some(UriMatch::Never))],
             Some("Travail"),
         );
         assert_eq!(item_match(&never, page, &rules), SiteMatch::None);
-        // Chaque site a la sienne : le meilleur l'emporte.
+        // Each site has its own: the best wins.
         let two = login(
             &[
                 ("https://github.com", Some(UriMatch::Never)),

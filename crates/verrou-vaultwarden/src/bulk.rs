@@ -1,22 +1,19 @@
-//! Actions groupées : plusieurs éléments sélectionnés dans la liste,
-//! archivés, mis à la corbeille, restaurés, ajoutés aux favoris ou rangés
-//! dans un dossier d'un coup.
+//! Bulk actions: several items selected in the list, archived, trashed,
+//! restored, added to favorites or moved to a folder at once.
 //!
-//! Même chemin d'écriture qu'une action seule : chaque élément rejoint la
-//! file (`outbox`), appliquée tout de suite au coffre affiché, et l'envoi
-//! suit en arrière-plan. Il regroupe ce que Vaultwarden 1.37 sait faire en
-//! une requête : corbeille (`PUT /api/ciphers/delete`), restauration
-//! (`…/restore`), archives (`…/archive`, `…/unarchive`) et dossiers
-//! (`…/move`), par lots de 500 ; un lot refusé (Vaultwarden s'arrête au
-//! premier élément refusé) est repris un par un, pour savoir lequel. Pas de
-//! route pour les favoris : une modification chiffrée par élément, comme
-//! pour un seul (date de révision connue, conflit gardé en copie). Une
-//! seule synchronisation à la fin, pas une par élément.
+//! Same write path as a single action: each item joins the queue
+//! (`outbox`), applied right away to the displayed vault, and the upload
+//! follows in the background. It groups what Vaultwarden 1.37 can do in one
+//! request: trash (`PUT /api/ciphers/delete`), restore (`…/restore`),
+//! archives (`…/archive`, `…/unarchive`) and folders (`…/move`), in batches
+//! of 500; a refused batch (Vaultwarden stops at the first refused item) is
+//! retried one by one, to find out which. No route for favorites: one
+//! encrypted edit per item, as for a single one (known revision date,
+//! conflict kept as a copy). A single sync at the end, not one per item.
 //!
-//! Les éléments auxquels l'action ne s'applique pas sont écartés avant tout
-//! envoi et comptés : lecture seule, dans la corbeille (sauf pour
-//! restaurer), disparus. Ceux qui sont déjà dans l'état voulu comptent
-//! comme faits, sans requête.
+//! Items the action doesn't apply to are set aside before anything is sent
+//! and counted: read-only, in the trash (except to restore), gone. Those
+//! already in the wanted state count as done, without a request.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -27,7 +24,7 @@ use crate::edit::folder_id;
 use crate::outbox::Action;
 use crate::{Connection, Decrypted, Error};
 
-/// Ce qu'on fait aux éléments sélectionnés.
+/// What is done to the selected items.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BulkAction {
     Trash,
@@ -35,43 +32,43 @@ pub enum BulkAction {
     Archive,
     Unarchive,
     Favorite(bool),
-    /// Range dans ce dossier (`None` : aucun dossier).
+    /// Moves to this folder (`None`: no folder).
     MoveToFolder(Option<String>),
 }
 
-/// Pourquoi un élément a été écarté.
+/// Why an item was set aside.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Skipped {
-    /// Partagé en lecture seule (ou visible seulement en partie).
+    /// Shared read-only (or only partly visible).
     ReadOnly,
-    /// Dans la corbeille : à restaurer d'abord.
+    /// In the trash: restore it first.
     InTrash,
-    /// Plus dans le coffre (supprimé ailleurs entre-temps).
+    /// No longer in the vault (deleted elsewhere in the meantime).
     NotFound,
-    /// Déjà dans une organisation (partage seulement).
+    /// Already in an organization (sharing only).
     AlreadyShared,
-    /// Pas dans une organisation (retrait du partage seulement).
+    /// Not in an organization (unsharing only).
     NotShared,
-    /// L'organisation en masque les mots de passe à ce compte (retrait du
-    /// partage seulement : la copie les révélerait).
+    /// The organization hides its passwords from this account (unsharing
+    /// only: the copy would reveal them).
     PasswordsHidden,
 }
 
-/// Bilan d'une action groupée.
+/// Outcome of a bulk action.
 pub struct BulkOutcome {
-    /// Éléments traités : mis dans la file, ou déjà dans l'état voulu.
+    /// Items handled: queued, or already in the wanted state.
     pub done: usize,
-    /// Partie de `done` qui attend le serveur (dans la file).
+    /// Part of `done` waiting for the server (in the queue).
     pub queued: usize,
-    /// Éléments écartés avant tout envoi : (identifiant, raison).
+    /// Items set aside before anything is sent: (id, reason).
     pub skipped: Vec<(String, Skipped)>,
-    /// Refusés avant tout envoi : (titre, raison). Les refus du serveur
-    /// arrivent plus tard, dans le bilan des envois (`take_report`).
+    /// Refused before anything is sent: (title, reason). The server's
+    /// refusals come later, in the upload report (`take_report`).
     pub failed: Vec<(String, String)>,
     pub vault: Decrypted,
 }
 
-/// Avancement : (éléments traités, éléments à traiter).
+/// Progress: (items handled, items to handle).
 pub type Progress<'a> = &'a (dyn Fn(usize, usize) + Send + Sync);
 
 enum Fit {
@@ -81,8 +78,8 @@ enum Fit {
 }
 
 impl Connection {
-    /// Applique `action` à ces éléments (dans cet ordre, sans doublon) :
-    /// dans la file, envoyée ensuite par `sync_shared`.
+    /// Applies `action` to these items (in this order, without duplicates):
+    /// in the queue, then sent by `sync_shared`.
     pub async fn bulk(
         &mut self,
         ids: &[String],
@@ -92,7 +89,7 @@ impl Connection {
         if let BulkAction::MoveToFolder(Some(folder)) = action
             && !self.cached_folders()?.contains_key(folder)
         {
-            return Err(Error::Invalid("ce dossier n'existe plus".to_owned()));
+            return Err(Error::Invalid("this folder no longer exists".to_owned()));
         }
         if let BulkAction::MoveToFolder(folder) = action {
             folder_id(folder.clone())?;
@@ -134,16 +131,14 @@ impl Connection {
         })
     }
 
-    /// Crée un dossier (nom chiffré par le SDK) ; rend son identifiant et
-    /// le coffre resynchronisé. Un dossier du même nom est réutilisé.
+    /// Creates a folder (name encrypted by the SDK); returns its id and the
+    /// resynced vault. A folder with the same name is reused.
     pub async fn create_folder(&mut self, name: &str) -> Result<(String, Decrypted), Error> {
         let name = name.trim().to_owned();
         if name.is_empty() {
-            return Err(Error::Invalid(
-                "le nom du dossier est obligatoire".to_owned(),
-            ));
+            return Err(Error::Invalid("the folder name is required".to_owned()));
         }
-        let access = self.require_online("Créer un dossier").await?;
+        let access = self.require_online("Creating a folder").await?;
         let folders = self
             .ensure_folders(&access, BTreeSet::from([name.clone()]))
             .await?;
@@ -154,8 +149,8 @@ impl Connection {
         Ok((id, self.sync_with(&access).await?))
     }
 
-    /// Les éléments à écrire (déchiffrés, depuis le coffre affiché), le
-    /// nombre de ceux déjà dans l'état voulu, et les écartés.
+    /// The items to write (decrypted, from the displayed vault), the number
+    /// of those already in the wanted state, and the set-aside ones.
     #[allow(clippy::type_complexity)]
     async fn plan_bulk(
         &self,
@@ -189,7 +184,7 @@ impl Connection {
     }
 }
 
-/// L'action s'applique-t-elle à cet élément ?
+/// Does the action apply to this item?
 fn fit(view: &CipherView, action: &BulkAction) -> Fit {
     if !view.edit || view.partial {
         return Fit::Skip(Skipped::ReadOnly);

@@ -1,34 +1,32 @@
-//! Connexion de Verrou à un serveur Vaultwarden.
+//! Connects Verrou to a Vaultwarden server.
 //!
-//! Répartition des rôles :
-//! - le **SDK Rust de Bitwarden** fait toute la cryptographie : dérivation du
-//!   mot de passe principal, déchiffrement de la clé de l'utilisateur, des
-//!   dossiers et des éléments ;
-//! - ce crate fait le reste : HTTP (`api`), cache local (`store`) et
-//!   conversion vers le modèle de Verrou (`convert`).
+//! Division of roles:
+//! - the **Bitwarden Rust SDK** does all the cryptography: master password
+//!   derivation, decryption of the user key, of folders and of items;
+//! - this crate does the rest: HTTP (`api`), local cache (`store`) and
+//!   conversion to Verrou's model (`convert`).
 //!
-//! Écriture (`edit`) : création, modification et corbeille, chiffrées par le
-//! SDK avant d'être envoyées ; en masse (`import`) : import d'un export
-//! d'un autre gestionnaire, corbeille de plusieurs éléments ; actions
-//! groupées sur une sélection (`bulk`) ; fusion de doublons (`merge`). Les
-//! écritures d'éléments passent par une file chiffrée (`outbox`), appliquée
-//! tout de suite au coffre affiché puis envoyée en arrière-plan
-//! (`sync_shared`), ou au retour du réseau.
+//! Writing (`edit`): creation, edits and trash, encrypted by the SDK before
+//! being sent; in bulk (`import`): import of another manager's export,
+//! trashing several items; grouped actions on a selection (`bulk`); merging
+//! duplicates (`merge`). Item writes go through an encrypted queue
+//! (`outbox`), applied right away to the displayed vault then sent in the
+//! background (`sync_shared`), or when the network comes back.
 //!
-//! Accès d'urgence (`emergency`) : confier son coffre à un proche, ou
-//! ouvrir en lecture seule celui qu'un proche nous a confié.
+//! Emergency access (`emergency`): entrust one's vault to someone close, or
+//! open read-only the one someone close entrusted to us.
 //!
-//! Membres des organisations (`members`) : inviter, confirmer (empreinte
-//! vérifiée), rôles et collections. Création d'un compte sur invitation
+//! Organization members (`members`): invite, confirm (fingerprint
+//! verified), roles and collections. Account creation from an invitation
 //! (`register`).
 //!
-//! Nouveautés à notifier (`activity`, sans clé ni secret) et mises à jour
-//! en direct du serveur (`hub`, le canal `WebSocket` de Vaultwarden).
+//! News to notify (`activity`, without key or secret) and live updates
+//! from the server (`hub`, Vaultwarden's `WebSocket` channel).
 //!
-//! Envois (`send`) : Bitwarden Send, partage d'un texte par un lien chiffré.
+//! Sends (`send`): Bitwarden Send, sharing a text through an encrypted link.
 //!
-//! Déverrouillage par clé de sécurité (`unlock_keys`) : la clé de
-//! l'utilisateur scellée par le secret `hmac-secret` d'une `YubiKey`.
+//! Security key unlock (`unlock_keys`): the user key sealed by a `YubiKey`'s
+//! `hmac-secret` secret.
 
 pub mod activity;
 mod api;
@@ -91,56 +89,56 @@ pub use unshare::UnshareOutcome;
 
 use api::{Api, PasswordGrant, Prelogin, TokenOutcome, Tokens};
 
-/// Le coffre déchiffré, prêt à indexer.
+/// The decrypted vault, ready to index.
 pub struct Decrypted {
     pub items: Vec<Item>,
-    /// Éléments que le SDK n'a pas su déchiffrer (clé d'organisation absente,
-    /// format inconnu). Ils sont ignorés, mais l'interface le signale.
+    /// Items the SDK could not decrypt (missing organization key, unknown
+    /// format). They are ignored, but the interface reports it.
     pub failures: usize,
-    /// Dossiers (identifiant, nom), triés par nom : pour ranger un élément.
+    /// Folders (id, name), sorted by name: to file an item.
     pub folders: Vec<(String, String)>,
-    /// Passkeys des identifiants (clé privée comprise) : pour
+    /// Passkeys of the logins (private key included): for
     /// `Vault::with_passkeys`.
     pub passkeys: Vec<verrou_core::Passkey>,
-    /// Organisations (coffres partagés) et leurs collections, triées par nom.
+    /// Organizations (shared vaults) and their collections, sorted by name.
     pub organizations: Vec<Organization>,
-    /// Domaines équivalents du compte (réglages Bitwarden), pour la règle
-    /// de correspondance « domaine ».
+    /// The account's equivalent domains (Bitwarden settings), for the
+    /// "domain" match rule.
     pub equivalent_domains: Vec<Vec<String>>,
-    /// Éléments dont une modification faite hors ligne attend le serveur.
+    /// Items with an offline change waiting for the server.
     pub pending_items: Vec<String>,
-    /// Modifications faites hors ligne, pas encore envoyées.
+    /// Changes made offline, not sent yet.
     pub pending_changes: usize,
-    /// Éléments créés hors ligne puis envoyés : (identifiant provisoire,
-    /// identifiant du serveur), depuis l'ouverture du coffre.
+    /// Items created offline then sent: (provisional id, server id), since
+    /// the vault was opened.
     pub remapped: Vec<(String, String)>,
-    /// État de la connexion (file et cache) dont ce coffre est l'image :
-    /// croissant. Un coffre plus ancien que celui affiché ne le remplace pas
-    /// (une synchronisation finie après une écriture locale).
+    /// State of the connection (queue and cache) this vault reflects:
+    /// increasing. A vault older than the displayed one does not replace it
+    /// (a sync that finished after a local write).
     pub version: u64,
 }
 
-/// Un coffre ouvert : le SDK porte la clé de l'utilisateur en mémoire.
-/// Le libérer (verrouiller) efface cette clé.
+/// An open vault: the SDK holds the user key in memory.
+/// Dropping it (locking) erases that key.
 pub struct Connection {
     api: Api,
     sdk: Client,
     store: Store,
     account: Account,
-    /// Modifications faites hors ligne (voir `outbox`).
+    /// Changes made offline (see `outbox`).
     outbox: outbox::Outbox,
-    /// Dernière erreur réseau : les écritures qui suivent de près vont
-    /// directement dans la file.
+    /// Last network error: writes that follow closely go straight into the
+    /// queue.
     offline_at: Option<Instant>,
-    /// Bilan des envois de la file, en attente d'être lu.
+    /// Report of the queue's sends, waiting to be read.
     report: SyncReport,
-    /// Identifiants provisoires des éléments créés hors ligne → serveur.
+    /// Provisional ids of items created offline → server.
     remapped: outbox::Remapped,
-    /// Envois en arrière-plan (`sync_shared`), partagés hors du verrou.
+    /// Background sends (`sync_shared`), shared outside the lock.
     courier: std::sync::Arc<outbox::Courier>,
-    /// Synchronisations enregistrées comme cache.
+    /// Syncs saved as cache.
     generation: u64,
-    /// Changements de la file ou du cache (voir `Decrypted::version`).
+    /// Changes to the queue or the cache (see `Decrypted::version`).
     version: u64,
 }
 
@@ -151,15 +149,15 @@ pub struct Unlocked {
 
 pub enum LoginStep {
     Unlocked(Box<Unlocked>),
-    /// Le serveur demande un second facteur. Répondre avec
-    /// [`PendingLogin::answer`] ; on peut réessayer après un refus.
+    /// The server asks for a second factor. Answer with
+    /// [`PendingLogin::answer`]; retrying after a rejection is allowed.
     TwoFactor(Box<PendingLogin>),
 }
 
-/// Connexion en attente du second facteur. Garde le mot de passe principal
-/// (dans un `SecretString`), ou la clé reçue d'un autre appareil, le temps de
-/// l'échange : il faut encore déchiffrer la clé de l'utilisateur une fois le
-/// jeton obtenu.
+/// Login waiting for the second factor. Keeps the master password (in a
+/// `SecretString`), or the key received from another device, for the
+/// duration of the exchange: the user key still has to be decrypted once the
+/// token is obtained.
 #[derive(Clone)]
 pub struct PendingLogin {
     api: Api,
@@ -167,23 +165,23 @@ pub struct PendingLogin {
     email: String,
     secret: LoginSecret,
     prelogin: Prelogin,
-    /// Empreinte d'authentification, ou code d'accès d'une demande approuvée.
+    /// Authentication hash, or access code of an approved request.
     auth_hash: String,
-    /// Connexion approuvée par un autre appareil : la demande.
+    /// Login approved by another device: the request.
     auth_request: Option<String>,
     device_id: String,
     methods: Vec<TwoFactorMethod>,
 }
 
-/// Ce qui ouvre la clé de l'utilisateur une fois connecté.
+/// What opens the user key once logged in.
 #[derive(Clone)]
 enum LoginSecret {
     Password(SecretString),
-    /// Approuvée par un autre appareil (`device_login`).
+    /// Approved by another device (`device_login`).
     Device(device_login::Approval),
 }
 
-/// Première connexion (ou reconnexion après expiration de la session).
+/// First login (or login again after the session expired).
 pub async fn login(
     store: &Store,
     server: &str,
@@ -219,14 +217,14 @@ impl PendingLogin {
         self.api.server()
     }
 
-    /// Redemande les méthodes de second facteur. Le serveur ne laisse qu'une
-    /// tentative par défi de clé de sécurité : après un refus, il en faut un
-    /// nouveau.
+    /// Asks for the second factor methods again. The server allows only one
+    /// attempt per security key challenge: after a rejection, a new one is
+    /// needed.
     pub async fn restart(&self) -> Result<LoginStep, Error> {
         self.request(None).await
     }
 
-    /// Envoie le code par e-mail (méthode `Email`).
+    /// Sends the code by email (`Email` method).
     pub async fn send_email_code(&self) -> Result<(), Error> {
         self.api
             .send_email_code(
@@ -238,19 +236,18 @@ impl PendingLogin {
             .await
     }
 
-    /// Connexion approuvée par un autre appareil (pas de mot de passe
-    /// principal saisi).
+    /// Login approved by another device (no master password typed).
     pub fn is_device_login(&self) -> bool {
         self.auth_request.is_some()
     }
 
-    /// Envoie la réponse au second facteur. En cas de refus
-    /// (`Error::TwoFactorRejected`), la connexion reste en attente.
+    /// Sends the answer to the second factor. On rejection
+    /// (`Error::TwoFactorRejected`), the login stays pending.
     pub async fn answer(&self, answer: &TwoFactorAnswer) -> Result<Unlocked, Error> {
         match self.request(Some(answer)).await? {
             LoginStep::Unlocked(unlocked) => Ok(*unlocked),
             LoginStep::TwoFactor(_) => Err(Error::TwoFactorRejected(
-                "le serveur redemande un second facteur".to_owned(),
+                "the server asks for a second factor again".to_owned(),
             )),
         }
     }
@@ -271,8 +268,8 @@ impl PendingLogin {
             TokenOutcome::TwoFactorRequired(methods) => {
                 if methods.is_empty() {
                     return Err(Error::Server(
-                        "second facteur demandé, mais aucune méthode prise en charge \
-                         (clé de sécurité, application TOTP, YubiKey OTP ou e-mail)"
+                        "second factor required, but no supported method \
+                         (security key, TOTP app, YubiKey OTP or email)"
                             .to_owned(),
                     ));
                 }
@@ -284,12 +281,12 @@ impl PendingLogin {
         }
     }
 
-    /// Jetons obtenus : synchroniser, ouvrir le coffre avec le mot de passe,
-    /// puis enregistrer le compte.
+    /// Tokens obtained: sync, open the vault with the password, then save
+    /// the account.
     async fn complete(&self, tokens: Tokens) -> Result<Unlocked, Error> {
         let sync_json = self.api.sync(&tokens.access).await?;
         let sync: serde_json::Value = serde_json::from_str(&sync_json)
-            .map_err(|e| Error::Server(format!("synchronisation illisible ({e})")))?;
+            .map_err(|e| Error::Server(format!("unreadable sync ({e})")))?;
         let profile_text = |key: &str| {
             sync.pointer(&format!("/profile/{key}"))
                 .and_then(serde_json::Value::as_str)
@@ -301,22 +298,22 @@ impl PendingLogin {
             server: self.api.server().to_owned(),
             email: self.email.clone(),
             user_id: profile_text("id")
-                .ok_or_else(|| Error::Server("profil sans identifiant".to_owned()))?,
+                .ok_or_else(|| Error::Server("profile without an id".to_owned()))?,
             kdf: KdfSettings::from(&unlock.kdf),
             salt: unlock.salt,
             wrapped_user_key: tokens
                 .wrapped_user_key
                 .or_else(|| profile_text("key"))
-                .ok_or_else(|| Error::Server("clé de l'utilisateur absente".to_owned()))?,
+                .ok_or_else(|| Error::Server("missing user key".to_owned()))?,
             private_key: tokens
                 .private_key
                 .or_else(|| profile_text("privateKey"))
-                .ok_or_else(|| Error::Server("clé privée absente".to_owned()))?,
+                .ok_or_else(|| Error::Server("missing private key".to_owned()))?,
             refresh_token: String::new(),
             synced_at: Some(now()),
             sync: Some(sync_json),
-            // Lus dès la connexion : la première synchronisation n'a pas à
-            // tout redéchiffrer pour eux.
+            // Read at login: the first sync doesn't have to decrypt
+            // everything again for them.
             equivalent_domains: domains::fetch(&self.api, &tokens.access).await?,
         };
         let sdk = sdk_client(&account.server);
@@ -329,8 +326,8 @@ impl PendingLogin {
             .encrypt_with_local_user_data_key(tokens.refresh)
             .map_err(Error::crypto)?;
         self.store.save_account(&account)?;
-        // Une reconnexion (session expirée) garde les modifications faites
-        // hors ligne : elles partent à la synchronisation suivante.
+        // Logging in again (expired session) keeps the changes made
+        // offline: they go out at the next sync.
         let outbox = outbox::load(&self.store, &account.user_id, &sdk);
         let connection =
             Connection::new(self.api.clone(), sdk, self.store.clone(), account, outbox);
@@ -339,7 +336,7 @@ impl PendingLogin {
     }
 }
 
-/// Déverrouillage hors ligne par le mot de passe principal, sur le cache.
+/// Offline unlock with the master password, on the cache.
 pub async fn unlock_with_password(
     store: &Store,
     password: &SecretString,
@@ -350,7 +347,7 @@ pub async fn unlock_with_password(
     open(store, account, sdk).await
 }
 
-/// Déverrouillage par la clé de l'utilisateur, rendue par Touch ID.
+/// Unlock with the user key, returned by Touch ID.
 pub async fn unlock_with_user_key(
     store: &Store,
     user_key: &SecretString,
@@ -359,15 +356,15 @@ pub async fn unlock_with_user_key(
     let sdk = sdk_client(&account.server);
     init_with_user_key(&sdk, &account, user_key)
         .await
-        // Une clé refusée vient d'un enrôlement Touch ID périmé (mot de passe
-        // changé, reconnexion) : il faut repasser par le mot de passe.
-        .map_err(|_| Error::Crypto("clé Touch ID périmée".to_owned()))?;
+        // A rejected key comes from a stale Touch ID enrollment (password
+        // changed, new login): the password is needed again.
+        .map_err(|_| Error::Crypto("stale Touch ID key".to_owned()))?;
     open(store, account, sdk).await
 }
 
-/// Déverrouillage par une clé de sécurité enrôlée : `secret` est ce que la
-/// clé a rendu (`hmac-secret`), `credential_id` l'accréditation qui a
-/// répondu, si elle l'a dit. La clé de l'utilisateur ne quitte pas Rust.
+/// Unlock with an enrolled security key: `secret` is what the key returned
+/// (`hmac-secret`), `credential_id` the credential that answered, if it said
+/// so. The user key does not leave Rust.
 pub async fn unlock_with_security_key(
     store: &Store,
     credential_id: Option<&[u8]>,
@@ -378,11 +375,11 @@ pub async fn unlock_with_security_key(
     let user_key = unlock_keys::unseal(&keys, credential_id, secret)?;
     let sdk = sdk_client(&account.server);
     if init_with_user_key(&sdk, &account, &user_key).await.is_err() {
-        // Descellée mais refusée : la clé du coffre a changé depuis
-        // l'enrôlement. Les clés enrôlées ne valent plus rien.
+        // Unsealed but rejected: the vault key changed since enrollment.
+        // The enrolled keys are worthless now.
         store.delete_security_keys()?;
         return Err(Error::Crypto(
-            "clé de sécurité périmée, à enregistrer de nouveau".to_owned(),
+            "stale security key, register it again".to_owned(),
         ));
     }
     open(store, account, sdk).await
@@ -401,17 +398,16 @@ async fn init_with_user_key(
         },
     )
     .await?;
-    // Le SDK accepte n'importe quelle clé bien formée (le coffre se
-    // déchiffre alors en zéro élément) : on la vérifie sur le jeton de
-    // renouvellement, chiffré avec elle.
+    // The SDK accepts any well-formed key (the vault then decrypts to zero
+    // items): it is checked against the refresh token, encrypted with it.
     sdk.crypto()
         .decrypt_with_local_user_data_key(account.refresh_token.clone())
         .map(drop)
         .map_err(Error::crypto)
 }
 
-/// Oublie le compte : jetons, cache, clés chiffrées, clés de sécurité
-/// enrôlées et modifications hors ligne pas encore envoyées.
+/// Forgets the account: tokens, cache, encrypted keys, enrolled security
+/// keys and offline changes not sent yet.
 pub fn logout(store: &Store) -> Result<(), Error> {
     activity::forget(store)?;
     store.delete_security_keys()?;
@@ -449,8 +445,8 @@ impl Connection {
         }
     }
 
-    /// Une copie de l'état à déchiffrer hors du verrou de la connexion
-    /// (même SDK, donc mêmes clés).
+    /// A copy of the state to decrypt outside the connection's lock (same
+    /// SDK, so same keys).
     pub(crate) fn snapshot(&self) -> Self {
         Self {
             api: self.api.clone(),
@@ -471,12 +467,12 @@ impl Connection {
         &self.account
     }
 
-    /// Renouvelle le jeton d'accès, envoie la file (bilan :
-    /// `take_report`), télécharge le coffre, l'enregistre comme cache et le
-    /// déchiffre, le tout sous `&mut self` (l'app passe par `sync_shared`,
-    /// qui ne garde pas la connexion pendant le réseau). `None` : rien n'a changé depuis le cache,
-    /// le coffre déjà déchiffré reste valable (le cas courant : pas de
-    /// déchiffrement ni de rechargement de l'affichage pour rien).
+    /// Renews the access token, sends the queue (report:
+    /// `take_report`), downloads the vault, saves it as cache and decrypts
+    /// it, all under `&mut self` (the app goes through `sync_shared`,
+    /// which doesn't hold the connection during the network). `None`: nothing changed since the cache,
+    /// the vault already decrypted stays valid (the common case: no
+    /// decryption nor reload of the display for nothing).
     pub async fn sync(&mut self) -> Result<Option<Decrypted>, Error> {
         let access = match self.access_token().await {
             Err(Error::Network(message)) => {
@@ -513,8 +509,8 @@ impl Connection {
         self.decrypt_cache().await.map(Some)
     }
 
-    /// Enregistre une synchronisation comme cache ; ce que la file avait
-    /// envoyé y figure désormais. Rend `true` si rien n'a changé.
+    /// Saves a sync as cache; what the queue had sent is now in it. Returns
+    /// `true` if nothing changed.
     fn store_sync(&mut self, sync_json: String) -> Result<bool, Error> {
         self.generation += 1;
         self.version += 1;
@@ -528,14 +524,14 @@ impl Connection {
         Ok(unchanged)
     }
 
-    /// Jeton d'accès neuf, obtenu par le jeton de renouvellement (enregistré
-    /// aussitôt si le serveur en donne un nouveau).
+    /// Fresh access token, obtained with the refresh token (saved right
+    /// away if the server gives a new one).
     async fn access_token(&mut self) -> Result<String, Error> {
         let refresh = self.refresh_token()?;
         let tokens = match self.api.refresh(refresh.expose()).await {
             Err(Error::Network(message)) => return Err(Error::Network(message)),
-            // Refusé : l'autre processus (app ou extension) a pu recevoir et
-            // enregistrer un nouveau jeton entre-temps ; on le reprend une fois.
+            // Rejected: the other process (app or extension) may have received
+            // and saved a new token in the meantime; take it over once.
             Err(error) => {
                 if !self.adopt_saved_refresh_token() {
                     return Err(error);
@@ -551,8 +547,8 @@ impl Connection {
         Ok(tokens.access)
     }
 
-    /// Le jeton de renouvellement enregistré sur le disque, s'il diffère de
-    /// celui en mémoire (même compte) : rend `true` s'il a été repris.
+    /// The refresh token saved on disk, if it differs from the one in
+    /// memory (same account): returns `true` if it was taken over.
     pub(crate) fn adopt_saved_refresh_token(&mut self) -> bool {
         let Ok(Some(saved)) = self.store.load_account() else {
             return false;
@@ -566,7 +562,7 @@ impl Connection {
         true
     }
 
-    /// Le jeton de renouvellement, déchiffré par la clé de l'utilisateur.
+    /// The refresh token, decrypted with the user key.
     fn refresh_token(&self) -> Result<SecretString, Error> {
         self.sdk
             .crypto()
@@ -575,9 +571,9 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
-    /// Chiffre `text` avec la clé locale du compte (celle de la file des
-    /// modifications) : le résultat ne se relit que coffre ouvert
-    /// (`open_local`). Sert aux clés des passkeys créées en arrière-plan.
+    /// Encrypts `text` with the account's local key (the one of the change
+    /// queue): the result can only be read back with the vault open
+    /// (`open_local`). Used for the keys of passkeys created in the background.
     pub fn seal_local(&self, text: String) -> Result<String, Error> {
         self.sdk
             .crypto()
@@ -585,7 +581,7 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
-    /// Déchiffre un texte scellé par `seal_local`.
+    /// Decrypts a text sealed by `seal_local`.
     pub fn open_local(&self, sealed: String) -> Result<SecretString, Error> {
         self.sdk
             .crypto()
@@ -594,8 +590,7 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
-    /// Enregistre le jeton de renouvellement que le serveur vient de donner,
-    /// s'il a changé.
+    /// Saves the refresh token the server just gave, if it changed.
     fn keep_refresh_token(&mut self, previous: &SecretString, fresh: String) -> Result<(), Error> {
         if fresh == previous.expose() {
             return Ok(());
@@ -614,8 +609,8 @@ impl Connection {
         self.decrypt_cache().await
     }
 
-    /// Clé de l'utilisateur (base64), pour l'enrôlement Touch ID. Elle ne doit
-    /// être confiée qu'au Secure Enclave, jamais écrite en clair.
+    /// The user key (base64), for Touch ID enrollment. It must only be
+    /// handed to the Secure Enclave, never written in the clear.
     pub async fn user_key(&self) -> Result<SecretString, Error> {
         self.sdk
             .crypto()
@@ -625,9 +620,9 @@ impl Connection {
             .map_err(Error::crypto)
     }
 
-    /// Enrôle une clé de sécurité : scelle la clé de l'utilisateur avec ce que
-    /// la clé a rendu pour `salt`, et l'ajoute à `security-keys.json`. La clé
-    /// de l'utilisateur ne quitte pas Rust.
+    /// Enrolls a security key: seals the user key with what the key returned
+    /// for `salt`, and adds it to `security-keys.json`. The user key does not
+    /// leave Rust.
     pub async fn enroll_security_key(
         &self,
         label: &str,
@@ -637,7 +632,7 @@ impl Connection {
     ) -> Result<unlock_keys::EnrolledKey, Error> {
         let user_key = self.user_key().await?;
         let key = unlock_keys::seal(&user_key, secret, credential_id, salt, label, now())?;
-        // Vérifie le scellement avant de l'écrire.
+        // Checks the seal before writing it.
         key.open(secret)?;
         unlock_keys::add(&self.store, key.clone())?;
         Ok(key)
@@ -646,7 +641,7 @@ impl Connection {
     async fn decrypt_cache(&self) -> Result<Decrypted, Error> {
         let mut sync: SyncResponseModel = match &self.account.sync {
             Some(json) => serde_json::from_str(json)
-                .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?,
+                .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?,
             None => SyncResponseModel::default(),
         };
         self.init_organizations(&sync).await?;
@@ -688,8 +683,8 @@ impl Connection {
         })
     }
 
-    /// Les éléments chiffrés du cache, modifications hors ligne comprises
-    /// (voir `outbox`), et le nombre de ceux que le SDK ne sait pas lire.
+    /// The cache's encrypted items, offline changes included (see
+    /// `outbox`), and the number of those the SDK cannot read.
     fn overlay(&self, models: Option<Vec<CipherDetailsResponseModel>>) -> (Vec<Cipher>, usize) {
         let mut failures = 0;
         let mut ciphers: Vec<Cipher> = models
@@ -701,12 +696,12 @@ impl Connection {
         (ciphers, failures)
     }
 
-    /// Les éléments chiffrés du coffre affiché : cache et file superposés.
+    /// The encrypted items of the displayed vault: cache and queue overlaid.
     pub(crate) fn cached_ciphers(&self) -> Result<Vec<Cipher>, Error> {
         let models = match &self.account.sync {
             Some(json) => {
                 serde_json::from_str::<SyncResponseModel>(json)
-                    .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?
+                    .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?
                     .ciphers
             }
             None => None,
@@ -714,7 +709,7 @@ impl Connection {
         Ok(self.overlay(models).0)
     }
 
-    /// L'élément chiffré, tel que le coffre affiché le connaît.
+    /// The encrypted item, as the displayed vault knows it.
     pub(crate) fn cached_cipher(&self, id: &str) -> Result<Cipher, Error> {
         self.cached_ciphers()?
             .into_iter()
@@ -722,7 +717,7 @@ impl Connection {
             .ok_or(Error::NotFound)
     }
 
-    /// Dossiers de la synchronisation : identifiant → nom.
+    /// Folders of the sync: id → name.
     fn decrypt_folders(
         &self,
         folders: Option<Vec<bitwarden_api_api::models::FolderResponseModel>>,
@@ -732,8 +727,8 @@ impl Connection {
             .into_iter()
             .filter_map(|f| Folder::try_from(f).ok())
             .collect();
-        // Les méthodes « de haut niveau » du SDK passent par son stockage
-        // d'état, que Verrou n'utilise pas (il garde son propre cache).
+        // The SDK's "high-level" methods go through its state storage,
+        // which Verrou doesn't use (it keeps its own cache).
         #[allow(deprecated)]
         let names = self
             .sdk
@@ -747,13 +742,13 @@ impl Connection {
         Ok(names)
     }
 
-    /// Dossiers du cache, sans déchiffrer les éléments.
+    /// Folders of the cache, without decrypting the items.
     pub(crate) fn cached_folders(&self) -> Result<HashMap<String, String>, Error> {
         let Some(json) = &self.account.sync else {
             return Ok(HashMap::new());
         };
         let sync: SyncResponseModel = serde_json::from_str(json)
-            .map_err(|e| Error::Storage(format!("cache illisible ({e})")))?;
+            .map_err(|e| Error::Storage(format!("unreadable cache ({e})")))?;
         self.decrypt_folders(sync.folders)
     }
 
@@ -789,8 +784,8 @@ impl Connection {
 }
 
 pub(crate) fn sdk_client(server: &str) -> Client {
-    // Le SDK ne fait aucune requête pour Verrou : ces adresses ne servent
-    // qu'à remplir sa configuration.
+    // The SDK makes no request for Verrou: these addresses only fill in
+    // its configuration.
     Client::new(Some(ClientSettings {
         identity_url: format!("{server}/identity"),
         api_url: format!("{server}/api"),
@@ -822,13 +817,13 @@ async fn init_with_password(
         },
     )
     .await
-    // La clé de l'utilisateur ne se déchiffre qu'avec le bon mot de passe :
-    // tout échec ici veut dire « mauvais mot de passe ».
+    // The user key only decrypts with the right password: any failure here
+    // means "wrong password".
     .map_err(|_| Error::WrongPassword)
 }
 
-/// Clé reçue d'un autre appareil (`device_login`), chiffrée pour la clé
-/// privée RSA de la demande : le SDK la déchiffre, comme l'app officielle.
+/// Key received from another device (`device_login`), encrypted for the
+/// request's RSA private key: the SDK decrypts it, like the official app.
 async fn init_with_approval(
     sdk: &Client,
     account: &Account,
@@ -858,7 +853,7 @@ async fn init_with_approval(
         },
     )
     .await
-    .map_err(|_| Error::Crypto("la clé reçue de l'autre appareil ne s'ouvre pas".to_owned()))
+    .map_err(|_| Error::Crypto("the key received from the other device does not open".to_owned()))
 }
 
 async fn init(sdk: &Client, account: &Account, method: InitUserCryptoMethod) -> Result<(), Error> {
@@ -906,8 +901,9 @@ impl TryFrom<&KdfSettings> for Kdf {
     type Error = Error;
 
     fn try_from(settings: &KdfSettings) -> Result<Self, Error> {
-        let nonzero =
-            |n: u32| NonZeroU32::new(n).ok_or_else(|| Error::Storage("dérivation invalide".into()));
+        let nonzero = |n: u32| {
+            NonZeroU32::new(n).ok_or_else(|| Error::Storage("invalid key derivation".into()))
+        };
         Ok(match *settings {
             KdfSettings::Pbkdf2 { iterations } => Self::PBKDF2 {
                 iterations: nonzero(iterations)?,

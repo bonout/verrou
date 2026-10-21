@@ -1,7 +1,7 @@
-//! Générateur de mots de passe et de codes PIN.
+//! Password and PIN generator.
 //!
-//! Le hasard vient du générateur du système (`OsRng`) ; une source déterministe
-//! n'est acceptée que pour les données fictives et les tests.
+//! Randomness comes from the system generator (`OsRng`); a deterministic source
+//! is accepted only for mock data and tests.
 
 use rand::seq::SliceRandom;
 use rand::{CryptoRng, Rng, RngCore};
@@ -10,7 +10,7 @@ const LOWER: &str = "abcdefghijkmnopqrstuvwxyz";
 const UPPER: &str = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const DIGITS: &str = "23456789";
 const SYMBOLS: &str = "!@#$%^&*-_=+?";
-// Caractères ambigus exclus par défaut : l, I, O, 0, 1.
+// Ambiguous characters excluded by default: l, I, O, 0, 1.
 const LOWER_ALL: &str = "abcdefghijklmnopqrstuvwxyz";
 const UPPER_ALL: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGITS_ALL: &str = "0123456789";
@@ -34,8 +34,8 @@ impl Default for PasswordOptions {
     }
 }
 
-/// Mot de passe aléatoire, avec au moins un caractère de chaque classe
-/// demandée.
+/// Random password, with at least one character from each requested
+/// class.
 pub fn password(options: &PasswordOptions) -> String {
     password_with(&mut rand::rngs::OsRng, options)
 }
@@ -67,14 +67,14 @@ pub fn password_with<R: RngCore + CryptoRng>(rng: &mut R, options: &PasswordOpti
     chars.into_iter().collect()
 }
 
-/// Code PIN numérique.
+/// Numeric PIN code.
 pub fn pin<R: RngCore + CryptoRng>(rng: &mut R, length: usize) -> String {
     (0..length.clamp(4, 12))
         .map(|_| char::from(b'0' + rng.gen_range(0..10u8)))
         .collect()
 }
 
-/// Entropie approximative, en bits, pour la jauge de robustesse.
+/// Approximate entropy, in bits, for the strength gauge.
 pub fn entropy_bits(password: &str) -> f64 {
     let mut pool = 0u32;
     if password.chars().any(|c| c.is_ascii_lowercase()) {

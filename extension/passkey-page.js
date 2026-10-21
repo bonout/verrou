@@ -1,18 +1,18 @@
-// Dans la page (monde MAIN), avant ses propres scripts : les demandes de
-// passkey (`navigator.credentials.create` et `.get` avec `publicKey`) passent
-// d'abord par Verrou. passkeys.js (le script de contenu) les montre à
-// l'utilisateur ; s'il préfère le navigateur, ou si Verrou n'a rien pour ce
-// site, l'implémentation d'origine prend le relais avec les mêmes options.
+// In the page (MAIN world), before its own scripts: passkey requests
+// (`navigator.credentials.create` and `.get` with `publicKey`) go through
+// Verrou first. passkeys.js (the content script) shows them to the user; if
+// they prefer the browser, or if Verrou has nothing for this site, the
+// original implementation takes over with the same options.
 //
-// Remplissage automatique (`mediation: "conditional"`) : la demande reste en
-// attente chez Verrou, qui propose ses passkeys dans sa pastille en haut de
-// la page (content.js) ; sans passkey de Verrou pour ce site, ou sans
-// Verrou, elle passe au navigateur, dont le remplissage marche comme avant.
+// Autofill (`mediation: "conditional"`): the request stays pending at
+// Verrou, which offers its passkeys in its pill at the top of the page
+// (content.js); without a Verrou passkey for this site, or without Verrou,
+// it goes to the browser, whose autofill works as before.
 //
-// Ce script vit dans le monde de la page : il ne détient rien de secret et
-// n'est cru sur rien. Il ne fait que relayer des options que la page aurait
-// pu passer elle-même au navigateur ; l'adresse, Verrou la tient du
-// navigateur, et rien ne se fait sans un vrai clic dans la fenêtre de Verrou.
+// This script lives in the page's world: it holds nothing secret and is
+// trusted on nothing. It only relays options the page could have passed to
+// the browser itself; the address, Verrou gets from the browser, and
+// nothing happens without a real click in Verrou's window.
 
 (() => {
   const codec = globalThis.__verrouPasskeyCodec;
@@ -33,8 +33,8 @@
     if (settle) settle(event.data);
   });
 
-  // Demande à passkeys.js (`create`, `get` ou `conditional`) ; la réponse :
-  // `credential`, `browser`, `exists` ou `cancelled`.
+  // Asks passkeys.js (`create`, `get` or `conditional`); the answer:
+  // `credential`, `browser`, `exists` or `cancelled`.
   function ask(kind, request, signal) {
     return new Promise((resolve, reject) => {
       next += 1;
@@ -42,7 +42,7 @@
       const abort = () => {
         pending.delete(id);
         postMessage({ verrouPasskey: "cancel", id }, origin);
-        reject(signal.reason ?? new DOMException("Opération annulée.", "AbortError"));
+        reject(signal.reason ?? new DOMException("The operation was aborted.", "AbortError"));
       };
       if (signal?.aborted) {
         abort();
@@ -65,9 +65,9 @@
       case "browser":
         return fallback();
       case "exists":
-        throw new DOMException("Une passkey de ce compte est déjà enregistrée.", "InvalidStateError");
+        throw new DOMException("A passkey for this account is already registered.", "InvalidStateError");
       default:
-        throw new DOMException("L'opération a été annulée ou refusée.", "NotAllowedError");
+        throw new DOMException("The operation either timed out or was not allowed.", "NotAllowedError");
     }
   }
 
@@ -97,7 +97,7 @@
     } catch {
       return nativeGet(options);
     }
-    // Remplissage automatique : proposé dans la pastille de Verrou.
+    // Autofill: offered in Verrou's pill.
     const kind = options.mediation === "conditional" ? "conditional" : "get";
     const reply = await ask(kind, request, options.signal);
     return outcome(reply, () => nativeGet(options), (credential) => codec.assertionCredential(credential));

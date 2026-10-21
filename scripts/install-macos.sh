@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
-# Construit Verrou en Release et l'installe dans /Applications.
+# Builds Verrou in Release and installs it in /Applications.
 #
 #   scripts/install-macos.sh
-#   VERROU_MAC_TEAM=<équipe> scripts/install-macos.sh   # avec le fournisseur d'identifiants
+#   VERROU_MAC_TEAM=<team> scripts/install-macos.sh   # with the credential provider
 #
-# Signature ad hoc (par défaut) : aucune équipe de développeur Apple n'est
-# nécessaire, l'app ne tourne que sur ce Mac. Le compte et le cache vivent
-# dans le conteneur de l'app (~/Library/Containers/app.verrou.mac) :
-# réinstaller ne les efface pas.
+# Ad hoc signing (default): no Apple developer team is needed, the app only
+# runs on this Mac. The account and the cache live in the app's container
+# (~/Library/Containers/app.verrou.mac): reinstalling doesn't erase them.
 #
-# VERROU_MAC_TEAM : signé « Apple Development » par cette équipe (profils
-# créés par Xcode, ce Mac enregistré dans l'équipe), avec l'extension
-# VerrouAutoFillMac (Safari et les apps du Mac) et le groupe d'apps
-# <équipe>.app.verrou. Au premier lancement, l'app copie son compte dans le
-# groupe (voir VerrouStorage.migrateMac et docs/GUIDE.md). macOS refuse les
-# deux à une app signée ad hoc.
+# VERROU_MAC_TEAM: signed "Apple Development" by this team (profiles created
+# by Xcode, this Mac registered in the team), with the VerrouAutoFillMac
+# extension (Safari and the Mac's apps) and the app group
+# <team>.app.verrou. On first launch, the app copies its account into the
+# group (see VerrouStorage.migrateMac and docs/GUIDE.md). macOS refuses both
+# to an ad hoc signed app.
 #
-# VERROU_INSTALL_DIR : dossier d'installation (défaut /Applications) ;
-# VERROU_INSTALL_DIR=none construit sans installer (vérifications).
+# VERROU_INSTALL_DIR: install folder (default /Applications);
+# VERROU_INSTALL_DIR=none builds without installing (checks).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -27,7 +26,7 @@ ARCH="$(uname -m)"
 [[ "$ARCH" == arm64 ]] && TARGET=aarch64-apple-darwin || TARGET=x86_64-apple-darwin
 TEAM="${VERROU_MAC_TEAM:-}"
 if [[ -n "$TEAM" ]]; then
-  [[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || { echo "VERROU_MAC_TEAM : identifiant d'équipe à 10 caractères attendu" >&2; exit 2; }
+  [[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || { echo "VERROU_MAC_TEAM: 10-character team identifier expected" >&2; exit 2; }
   SIGNING=(CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="Apple Development"
            VERROU_MAC_APP_GROUP="$TEAM.app.verrou" VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements
            VERROU_MAC_AUTOFILL_ENTITLEMENTS=VerrouAutoFillMac/VerrouAutoFillMac.entitlements
@@ -45,27 +44,27 @@ xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Release
 
 APP="target/xcode.noindex/Build/Products/Release/Verrou.app"
 codesign --verify --strict "$APP"
-# Pas de get-task-allow : aucun débogueur ne doit pouvoir lire la mémoire du coffre.
+# No get-task-allow: no debugger must be able to read the vault's memory.
 for code in "$APP" "$APP/Contents/PlugIns/VerrouAutoFillMac.appex"; do
   [[ -e "$code" ]] || continue
   if codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q get-task-allow; then
-    echo "get-task-allow présent dans le build Release ($code) : abandon" >&2
+    echo "get-task-allow present in the Release build ($code): aborting" >&2
     exit 1
   fi
 done
 APPEX="$APP/Contents/PlugIns/VerrouAutoFillMac.appex"
 if [[ -n "$TEAM" ]]; then
-  [[ -d "$APPEX" ]] || { echo "extension VerrouAutoFillMac absente du build signé" >&2; exit 1; }
+  [[ -d "$APPEX" ]] || { echo "VerrouAutoFillMac extension missing from the signed build" >&2; exit 1; }
   codesign --verify --strict "$APPEX"
-  # Droits du fournisseur et groupe d'apps, autorisés par le profil.
+  # Provider entitlements and app group, allowed by the profile.
   for code in "$APP" "$APPEX"; do
     codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q "$TEAM.app.verrou" \
-      || { echo "groupe d'apps absent de $code" >&2; exit 1; }
+      || { echo "app group missing from $code" >&2; exit 1; }
   done
 elif [[ -d "$APPEX" ]]; then
-  # Ad hoc : l'extension est construite sans droits (macOS ne lance un
-  # fournisseur d'identifiants que signé par une équipe) ; on la retire et on
-  # re-signe l'app avec ses propres droits.
+  # Ad hoc: the extension is built without entitlements (macOS only launches
+  # a credential provider signed by a team); we remove it and re-sign the
+  # app with its own entitlements.
   ENTITLEMENTS="$(mktemp)"
   codesign -d --entitlements - --xml "$APP" > "$ENTITLEMENTS"
   rm -rf "$APPEX"
@@ -74,14 +73,14 @@ elif [[ -d "$APPEX" ]]; then
   codesign --verify --strict "$APP"
 fi
 if [[ "$DEST" == none ]]; then
-  echo "Construit (non installé) : $APP"
+  echo "Built (not installed): $APP"
   exit 0
 fi
 osascript -e 'tell application id "app.verrou.mac" to quit' >/dev/null 2>&1 || true
-# L'app refuse parfois de quitter (« User canceled ») : l'ancienne version
-# resterait ouverte par-dessus le nouveau paquet.
+# The app sometimes refuses to quit ("User canceled"): the old version
+# would stay open on top of the new bundle.
 sleep 1
 pkill -x Verrou 2>/dev/null || true
 rm -rf "$DEST/Verrou.app"
 ditto "$APP" "$DEST/Verrou.app"
-echo "Installé : $DEST/Verrou.app"
+echo "Installed: $DEST/Verrou.app"

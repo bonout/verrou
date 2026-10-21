@@ -1,25 +1,24 @@
-//! Création d'un compte depuis Verrou, pour une personne invitée sur un
-//! serveur aux inscriptions fermées (`SIGNUPS_ALLOWED=false`).
+//! Account creation from Verrou, for a person invited to a server with
+//! closed signups (`SIGNUPS_ALLOWED=false`).
 //!
-//! Le SDK fait toute la cryptographie, comme dans le coffre web : clé
-//! principale dérivée du mot de passe (PBKDF2-SHA256 ou Argon2id), clé de
-//! l'utilisateur tirée au hasard et chiffrée par la clé principale, paire de
-//! clés RSA dont la clé privée est chiffrée par la clé de l'utilisateur.
-//! Le serveur ne reçoit que l'empreinte d'authentification, jamais le mot de
-//! passe.
+//! The SDK does all the cryptography, as in the web vault: master key
+//! derived from the password (PBKDF2-SHA256 or Argon2id), user key drawn at
+//! random and encrypted by the master key, RSA key pair whose private key
+//! is encrypted by the user key. The server only receives the
+//! authentication hash, never the password.
 //!
-//! Ce que Vaultwarden 1.37.4 accepte (`/identity/accounts/register/finish`,
-//! la seule route d'inscription) :
-//! - **lien d'invitation** d'une organisation (serveur avec courriel) :
-//!   `orgInviteToken` + `organizationUserId`, le jeton signé par le serveur
-//!   tiré du lien `…/#/accept-organization/?…&token=…` ; l'adresse est alors
-//!   vérifiée. L'invitation reste à accepter une fois connecté
-//!   (`Connection::accept_invitation`) ;
-//! - **jeton de vérification** : `register/send-verification-email` le rend
-//!   directement quand le serveur n'envoie pas de courriel de vérification
-//!   (inscriptions ouvertes, ou serveur sans courriel et adresse invitée ;
-//!   l'invitation est alors acceptée d'office), sinon il l'envoie par
-//!   courriel (lien `…/#/finish-signup/?…&token=…`, à coller dans Verrou).
+//! What Vaultwarden 1.37.4 accepts (`/identity/accounts/register/finish`,
+//! the only signup route):
+//! - an organization's **invitation link** (server with email):
+//!   `orgInviteToken` + `organizationUserId`, the server-signed token taken
+//!   from the `…/#/accept-organization/?…&token=…` link; the address is then
+//!   verified. The invitation still has to be accepted once logged in
+//!   (`Connection::accept_invitation`);
+//! - **verification token**: `register/send-verification-email` returns it
+//!   directly when the server doesn't send a verification email (open
+//!   signups, or server without email and invited address; the invitation
+//!   is then accepted automatically), otherwise it sends it by email
+//!   (`…/#/finish-signup/?…&token=…` link, to paste into Verrou).
 
 use std::num::NonZeroU32;
 
@@ -31,21 +30,21 @@ use verrou_core::SecretString;
 use crate::api::{Api, error_message};
 use crate::{Connection, Decrypted, Error};
 
-/// Longueur minimale du mot de passe principal (celle des apps Bitwarden).
+/// Minimum master password length (that of the Bitwarden apps).
 pub const MIN_PASSWORD_LENGTH: usize = 12;
 
-/// Itérations PBKDF2-SHA256 d'un nouveau compte (défaut des apps Bitwarden).
+/// PBKDF2-SHA256 iterations of a new account (the Bitwarden apps' default).
 pub const PBKDF2_ITERATIONS: u32 = 600_000;
 
-/// Réglages Argon2id d'un nouveau compte (défauts des apps Bitwarden).
+/// Argon2id settings of a new account (the Bitwarden apps' defaults).
 pub const ARGON2_ITERATIONS: u32 = 3;
 pub const ARGON2_MEMORY_MIB: u32 = 64;
 pub const ARGON2_PARALLELISM: u32 = 4;
 
-/// Identifiant de membre des invitations du panneau d'administration.
+/// Member id of the admin panel's invitations.
 const ADMIN_INVITE: &str = "00000000-0000-0000-0000-000000000000";
 
-/// Dérivation du mot de passe principal d'un nouveau compte.
+/// Master password derivation of a new account.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NewAccountKdf {
     Pbkdf2,
@@ -68,33 +67,33 @@ impl NewAccountKdf {
     }
 }
 
-/// Invitation à une organisation, lue dans le lien reçu par courriel.
+/// Invitation to an organization, read from the link received by email.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InviteLink {
-    /// Adresse du serveur (`DOMAIN` de Vaultwarden).
+    /// Server address (Vaultwarden's `DOMAIN`).
     pub server: String,
     pub email: String,
     pub organization_id: String,
     pub organization_user_id: String,
     pub organization_name: Option<String>,
-    /// Jeton signé par le serveur.
+    /// Token signed by the server.
     pub token: String,
 }
 
 impl InviteLink {
-    /// Invitation du panneau d'administration du serveur (pas d'une
-    /// organisation) : rien à accepter ensuite.
+    /// Invitation from the server's admin panel (not from an organization):
+    /// nothing to accept afterwards.
     pub fn is_server_invite(&self) -> bool {
         self.organization_user_id == ADMIN_INVITE
     }
 }
 
-/// Un lien reçu par courriel qui permet de créer son compte.
+/// A link received by email that lets one create their account.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SignupLink {
-    /// « Rejoindre l'organisation » (`#/accept-organization/`).
+    /// "Join organization" (`#/accept-organization/`).
     Invite(InviteLink),
-    /// « Vérifier l'adresse » (`#/finish-signup/`).
+    /// "Verify address" (`#/finish-signup/`).
     Verification {
         server: String,
         email: String,
@@ -118,9 +117,8 @@ impl SignupLink {
     }
 }
 
-/// Lit un lien d'invitation ou de vérification, tel que copié depuis le
-/// courriel (espaces, `&amp;` d'une copie du HTML et retours à la ligne
-/// tolérés).
+/// Reads an invitation or verification link, as copied from the email
+/// (spaces, `&amp;` from an HTML copy and line breaks tolerated).
 pub fn parse_link(text: &str) -> Result<SignupLink, Error> {
     let cleaned: String = text
         .trim()
@@ -131,7 +129,7 @@ pub fn parse_link(text: &str) -> Result<SignupLink, Error> {
         .collect();
     let invalid = || {
         Error::Invalid(
-            "lien non reconnu : collez le lien « Rejoindre » du courriel d'invitation".to_owned(),
+            "unrecognised link: paste the \"Join\" link from the invitation email".to_owned(),
         )
     };
     let (server, route) = cleaned.split_once("/#/").ok_or_else(invalid)?;
@@ -168,22 +166,21 @@ pub fn parse_link(text: &str) -> Result<SignupLink, Error> {
     }
 }
 
-/// Ce que l'utilisateur a saisi pour créer son compte.
+/// What the user typed to create their account.
 pub struct NewAccount {
     pub server: String,
     pub email: String,
-    /// Nom affiché aux autres membres.
+    /// Name shown to the other members.
     pub name: Option<String>,
     pub password: SecretString,
-    /// Indice du mot de passe (en clair sur le serveur).
+    /// Password hint (in clear on the server).
     pub hint: Option<String>,
     pub kdf: NewAccountKdf,
     pub link: Option<SignupLink>,
 }
 
 impl NewAccount {
-    /// L'adresse comme les clients Bitwarden la salent : sans espaces, en
-    /// minuscules.
+    /// The address as Bitwarden clients salt it: without spaces, lower-case.
     fn salt(&self) -> String {
         self.email.trim().to_lowercase()
     }
@@ -191,11 +188,11 @@ impl NewAccount {
     fn check(&self) -> Result<(), Error> {
         let email = self.salt();
         if !email.contains('@') {
-            return Err(Error::Invalid("adresse e-mail invalide".to_owned()));
+            return Err(Error::Invalid("invalid email address".to_owned()));
         }
         if self.password.expose().chars().count() < MIN_PASSWORD_LENGTH {
             return Err(Error::Invalid(format!(
-                "le mot de passe principal doit faire au moins {MIN_PASSWORD_LENGTH} caractères"
+                "the master password must be at least {MIN_PASSWORD_LENGTH} characters long"
             )));
         }
         if self
@@ -204,14 +201,14 @@ impl NewAccount {
             .is_some_and(|hint| hint.trim() == self.password.expose())
         {
             return Err(Error::Invalid(
-                "l'indice ne doit pas être le mot de passe".to_owned(),
+                "the hint must not be the password".to_owned(),
             ));
         }
         if let Some(link) = &self.link
             && link.email() != email
         {
             return Err(Error::Invalid(format!(
-                "ce lien est destiné à {} : utilisez cette adresse",
+                "this link is meant for {}: use this address",
                 link.email()
             )));
         }
@@ -219,8 +216,8 @@ impl NewAccount {
     }
 }
 
-/// Le corps de `register/finish`, sans le jeton (clés déjà chiffrées par le
-/// SDK). Le mot de passe ne sort pas de cette fonction.
+/// The body of `register/finish`, without the token (keys already encrypted
+/// by the SDK). The password doesn't leave this function.
 fn finish_body(account: &NewAccount) -> Result<Value, Error> {
     let email = account.salt();
     let kdf = account.kdf.kdf();
@@ -267,8 +264,8 @@ fn finish_body(account: &NewAccount) -> Result<Value, Error> {
     }))
 }
 
-/// Crée le compte sur le serveur. Il reste ensuite à se connecter (et à
-/// accepter l'invitation d'une organisation, s'il y en a une).
+/// Creates the account on the server. What remains is to log in (and to
+/// accept an organization's invitation, if there is one).
 pub async fn register(account: &NewAccount) -> Result<(), Error> {
     account.check()?;
     let api = Api::new(&account.server)?;
@@ -299,8 +296,8 @@ pub async fn register(account: &NewAccount) -> Result<(), Error> {
     Err(registration_error(&body))
 }
 
-/// Jeton de vérification de l'adresse, quand le serveur le donne sans
-/// courriel. S'il l'envoie par courriel, il faut coller le lien reçu.
+/// Address verification token, when the server gives it without email. If
+/// it sends it by email, the received link must be pasted.
 async fn verification_token(api: &Api, email: &str, name: Option<&str>) -> Result<String, Error> {
     let response = api
         .http
@@ -315,8 +312,8 @@ async fn verification_token(api: &Api, email: &str, name: Option<&str>) -> Resul
     let status = response.status();
     if status == reqwest::StatusCode::NO_CONTENT {
         return Err(Error::Invalid(
-            "le serveur vous a envoyé un courriel de vérification : collez ici le lien qu'il \
-             contient"
+            "the server sent you a verification email: paste the link it contains \
+             here"
                 .to_owned(),
         ));
     }
@@ -325,11 +322,11 @@ async fn verification_token(api: &Api, email: &str, name: Option<&str>) -> Resul
         let body: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
         return Err(registration_error(&body));
     }
-    // JSON (une chaîne) si on le demande, texte brut sinon.
+    // JSON (a string) if asked for, plain text otherwise.
     let token = serde_json::from_str::<String>(&text).unwrap_or(text);
     let token = token.trim().to_owned();
     if token.is_empty() {
-        return Err(Error::Server("jeton de vérification absent".to_owned()));
+        return Err(Error::Server("verification token missing".to_owned()));
     }
     Ok(token)
 }
@@ -338,23 +335,23 @@ fn registration_error(body: &Value) -> Error {
     let message = error_message(body);
     if message.contains("Registration not allowed") {
         Error::Invalid(
-            "ce serveur n'accepte pas d'inscription pour cette adresse : collez le lien \
-             d'invitation reçu par e-mail (ou le compte existe déjà : connectez-vous)"
+            "this server does not accept signups for this address: paste the invitation \
+             link received by email (or the account already exists: log in)"
                 .to_owned(),
         )
     } else if message.contains("does not match") {
-        Error::Invalid("ce lien ne correspond pas à cette adresse e-mail".to_owned())
+        Error::Invalid("this link does not match this email address".to_owned())
     } else if message.contains("ExpiredSignature") || message.contains("Invalid claim") {
         Error::Invalid(
-            "lien expiré ou invalide : demandez qu'on vous renvoie l'invitation".to_owned(),
+            "expired or invalid link: ask for the invitation to be sent again".to_owned(),
         )
     } else {
         Error::Server(message)
     }
 }
 
-/// Robustesse d'un mot de passe principal (0 à 4, zxcvbn par le SDK, comme
-/// les apps Bitwarden), en tenant compte de l'adresse et du nom.
+/// Strength of a master password (0 to 4, zxcvbn through the SDK, like the
+/// Bitwarden apps), taking the address and the name into account.
 pub fn password_strength(password: &str, email: &str, name: Option<&str>) -> u8 {
     let mut inputs: Vec<String> = Vec::new();
     if let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) {
@@ -368,39 +365,39 @@ pub fn password_strength(password: &str, email: &str, name: Option<&str>) -> u8 
 }
 
 impl Connection {
-    /// « Rejoindre une organisation » avec un compte existant : le lien
-    /// d'invitation collé (il porte le jeton signé par le serveur) est
-    /// accepté, puis le coffre resynchronisé. Rend le nom de l'organisation.
-    /// Un administrateur doit encore confirmer le membre (empreinte) avant
-    /// qu'il reçoive la clé de l'organisation.
+    /// "Join an organization" with an existing account: the pasted
+    /// invitation link (it carries the server-signed token) is accepted,
+    /// then the vault resynced. Returns the organization's name. An
+    /// administrator still has to confirm the member (fingerprint) before
+    /// they receive the organization key.
     pub async fn join_organization(&mut self, link: &str) -> Result<(String, Decrypted), Error> {
         let SignupLink::Invite(invite) = parse_link(link)? else {
             return Err(Error::Invalid(
-                "ce lien n'est pas une invitation à une organisation".to_owned(),
+                "this link is not an invitation to an organization".to_owned(),
             ));
         };
         if invite.is_server_invite() {
             return Err(Error::Invalid(
-                "ce lien invite à créer un compte sur le serveur, pas à rejoindre une organisation"
+                "this link invites you to create an account on the server, not to join an organization"
                     .to_owned(),
             ));
         }
-        let access = self.require_online("Rejoindre une organisation").await?;
+        let access = self.require_online("Joining an organization").await?;
         self.accept_invitation(&invite).await?;
         let vault = self.sync_with(&access).await?;
         let name = invite
             .organization_name
-            .unwrap_or_else(|| "l'organisation".to_owned());
+            .unwrap_or_else(|| "the organization".to_owned());
         Ok((name, vault))
     }
 
-    /// Accepte l'invitation d'une organisation (lien reçu par courriel),
-    /// une fois connecté avec le compte invité. Il faudra ensuite qu'un
-    /// administrateur confirme le membre.
+    /// Accepts an organization's invitation (link received by email), once
+    /// logged in with the invited account. An administrator will then have
+    /// to confirm the member.
     pub async fn accept_invitation(&mut self, invite: &InviteLink) -> Result<(), Error> {
         if !invite.email.eq_ignore_ascii_case(&self.account.email) {
             return Err(Error::Invalid(format!(
-                "cette invitation est destinée à {}",
+                "this invitation is meant for {}",
                 invite.email
             )));
         }
@@ -422,8 +419,8 @@ impl Connection {
             .map(drop)
             .map_err(|error| match error {
                 Error::Server(message) if message.contains("Reset password key") => Error::Invalid(
-                    "cette organisation exige l'inscription à la récupération du compte : \
-                         acceptez l'invitation depuis le coffre web"
+                    "this organization requires enrolment in account recovery: \
+                         accept the invitation from the web vault"
                         .to_owned(),
                 ),
                 other => other,
@@ -443,7 +440,7 @@ mod tests {
     #[test]
     fn invite_links_are_parsed() {
         let SignupLink::Invite(invite) = parse_link(INVITE).unwrap() else {
-            panic!("invitation attendue");
+            panic!("expected an invitation");
         };
         assert_eq!(invite.server, "http://localhost:8120");
         assert_eq!(invite.email, "lea@exemple.fr");
@@ -455,7 +452,7 @@ mod tests {
         assert_eq!(invite.token, "eyJ0eXAi.eyJuYmYi.sig");
         assert!(!invite.is_server_invite());
 
-        // Copié depuis le HTML du courriel, coupé en deux lignes.
+        // Copied from the email's HTML, split over two lines.
         let pasted = format!(
             "  <{}>\n",
             INVITE.replace('&', "&amp;").replacen("token", "to\nken", 1)
@@ -535,7 +532,11 @@ mod tests {
         assert_eq!(body["kdfIterations"], ARGON2_ITERATIONS);
         assert_eq!(body["kdfMemory"], ARGON2_MEMORY_MIB);
         assert_eq!(body["kdfParallelism"], ARGON2_PARALLELISM);
-        assert_eq!(body["masterPasswordHint"], Value::Null, "indice vide omis");
+        assert_eq!(
+            body["masterPasswordHint"],
+            Value::Null,
+            "empty hint omitted"
+        );
         assert!(body["userSymmetricKey"].as_str().unwrap().starts_with("2."));
         assert!(
             body["userAsymmetricKeys"]["encryptedPrivateKey"]
@@ -545,7 +546,7 @@ mod tests {
         );
         assert!(!body.to_string().contains("cheval"));
 
-        // Même empreinte que celle de la connexion (sel = adresse normalisée).
+        // Same hash as the login's (salt = normalised address).
         let auth = bitwarden_core::key_management::MasterPasswordAuthenticationData::derive(
             "cheval correct pile agrafe",
             &NewAccountKdf::Argon2id.kdf(),

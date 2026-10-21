@@ -1,17 +1,16 @@
-//! Fusion de doublons : un identifiant gardé reçoit ce que les autres ont
-//! de plus, puis les autres partent à la corbeille (restaurables 30 jours).
+//! Merging duplicates: a kept login receives what the others have in
+//! addition, then the others go to the trash (restorable for 30 days).
 //!
-//! Reporté sur l'élément gardé : les sites d'hôtes absents (et les adresses
-//! d'app), l'identifiant et le code à usage unique s'il n'en a pas, les
-//! notes (à la suite, avec le titre d'origine), les champs personnalisés
-//! absents, les autres mots de passe dans l'historique. Le mot de passe le
-//! plus récemment changé devient le mot de passe actuel : fusionner ne
-//! remet jamais en service un mot de passe périmé.
+//! Carried over to the kept item: the sites of missing hosts (and app
+//! addresses), the username and the one-time code if it has none, the
+//! notes (appended, with the original title), the missing custom fields,
+//! the other passwords into the history. The most recently changed password
+//! becomes the current password: merging never brings a stale password
+//! back into use.
 //!
-//! Même chemin d'écriture qu'une modification : date de révision envoyée
-//! (une copie périmée est refusée par le serveur), file hors ligne. Les
-//! pièces jointes et les passkeys ne se déplacent pas : un élément qui en a
-//! se garde, il ne se fusionne pas dans un autre.
+//! Same write path as an edit: revision date sent (a stale copy is refused
+//! by the server), offline queue. Attachments and passkeys don't move: an
+//! item that has some is kept, it isn't merged into another.
 
 use bitwarden_vault::{
     CipherType, CipherView, FieldType, FieldView, LoginUriView, PasswordHistoryView,
@@ -23,32 +22,32 @@ use verrou_core::template;
 use crate::edit::MAX_PASSWORD_HISTORY;
 use crate::{Connection, Decrypted, Error};
 
-/// Ce que la fusion a reporté sur l'élément gardé.
+/// What the merge carried over to the kept item.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MergeSummary {
     pub uris: usize,
     pub username: bool,
     pub totp: bool,
-    /// Notes ajoutées à la suite.
+    /// Notes appended.
     pub notes: usize,
     pub fields: usize,
-    /// Mots de passe ajoutés à l'historique.
+    /// Passwords added to the history.
     pub history: usize,
-    /// Le mot de passe actuel vient d'un autre élément, plus récent.
+    /// The current password comes from another, more recent item.
     pub newer_password: bool,
 }
 
 pub struct MergeOutcome {
     pub summary: MergeSummary,
-    /// Éléments mis à la corbeille (ou en attente, hors ligne).
+    /// Items moved to the trash (or pending, offline).
     pub trashed: usize,
     pub vault: Decrypted,
 }
 
 impl Connection {
-    /// Fusionne `others` dans `keep`, puis met `others` à la corbeille.
-    /// L'élément gardé est écrit d'abord : si la suite échoue, rien n'est
-    /// perdu (les autres restent dans le coffre).
+    /// Merges `others` into `keep`, then moves `others` to the trash. The
+    /// kept item is written first: if the rest fails, nothing is lost (the
+    /// others stay in the vault).
     pub async fn merge_duplicates(
         &mut self,
         keep: &str,
@@ -63,7 +62,7 @@ impl Connection {
         others.sort();
         others.dedup();
         if others.is_empty() {
-            return Err(Error::Invalid("rien à fusionner".to_owned()));
+            return Err(Error::Invalid("nothing to merge".to_owned()));
         }
         let access = self.online().await?;
         let mut ids = vec![keep.clone()];
@@ -82,18 +81,18 @@ impl Connection {
     }
 }
 
-/// Seulement des identifiants d'un même coffre ; rien qui ne se déplace pas.
+/// Only logins of the same vault; nothing that doesn't move.
 pub(crate) fn check(kept: &CipherView, others: &[CipherView]) -> Result<(), Error> {
     for view in std::iter::once(kept).chain(others) {
         if view.r#type != CipherType::Login || view.login.is_none() {
             return Err(Error::Invalid(format!(
-                "« {} » n'est pas un identifiant : seuls des identifiants se fusionnent",
+                "\"{}\" is not a login: only logins can be merged",
                 view.name
             )));
         }
         if view.organization_id != kept.organization_id {
             return Err(Error::Invalid(format!(
-                "« {} » n'est pas dans le même coffre",
+                "\"{}\" is not in the same vault",
                 view.name
             )));
         }
@@ -106,7 +105,7 @@ pub(crate) fn check(kept: &CipherView, others: &[CipherView]) -> Result<(), Erro
                 .is_some_and(|a| !a.is_empty());
         if attachments {
             return Err(Error::Invalid(format!(
-                "« {} » a des pièces jointes : gardez-le plutôt, ou déplacez-les d'abord",
+                "\"{}\" has attachments: keep it instead, or move them first",
                 view.name
             )));
         }
@@ -117,7 +116,7 @@ pub(crate) fn check(kept: &CipherView, others: &[CipherView]) -> Result<(), Erro
             .is_some_and(|c| !c.is_empty());
         if passkeys {
             return Err(Error::Invalid(format!(
-                "« {} » a une passkey : gardez-le plutôt",
+                "\"{}\" has a passkey: keep it instead",
                 view.name
             )));
         }
@@ -125,8 +124,8 @@ pub(crate) fn check(kept: &CipherView, others: &[CipherView]) -> Result<(), Erro
     Ok(())
 }
 
-/// Date du mot de passe actuel : son dernier changement, sinon la dernière
-/// modification de l'élément.
+/// Date of the current password: its last change, otherwise the item's last
+/// modification.
 fn password_date(view: &CipherView) -> DateTime<Utc> {
     view.login
         .as_ref()
@@ -150,14 +149,14 @@ fn is_reserved(field: &FieldView) -> bool {
     field.name.as_deref().is_some_and(template::is_reserved)
 }
 
-/// Reporte `others` sur `kept` (voir l'en-tête du module).
+/// Carries `others` over to `kept` (see the module header).
 pub(crate) fn merge_views(
     kept: &mut CipherView,
     others: &[CipherView],
     now: DateTime<Utc>,
 ) -> MergeSummary {
     let mut summary = MergeSummary::default();
-    // Les autres, le mot de passe le plus récent d'abord.
+    // The others, the most recent password first.
     let mut sorted: Vec<&CipherView> = others.iter().collect();
     sorted.sort_by_key(|v| std::cmp::Reverse(password_date(v)));
 
@@ -212,7 +211,7 @@ pub(crate) fn merge_views(
                 Some(existing) if existing.contains(notes) => {}
                 Some(existing) => {
                     kept.notes = Some(format!(
-                        "{}\n\n— Fusionné depuis « {} » —\n{notes}",
+                        "{}\n\n— Merged from \"{}\" —\n{notes}",
                         existing.trim_end(),
                         other.name
                     ));
@@ -232,7 +231,7 @@ pub(crate) fn merge_views(
             let same_name = fields.iter().find(|f| f.name == field.name);
             match same_name {
                 Some(f) if f.value == field.value && f.r#type == field.r#type => continue,
-                // Un champ lié du même nom désigne le même champ de l'élément.
+                // A linked field with the same name designates the same field of the item.
                 Some(f) if field.r#type == FieldType::Linked && f.r#type == FieldType::Linked => {
                     continue;
                 }
@@ -240,7 +239,7 @@ pub(crate) fn merge_views(
                     let mut renamed = field.clone();
                     renamed.name = Some(format!(
                         "{} ({})",
-                        field.name.as_deref().unwrap_or("Champ"),
+                        field.name.as_deref().unwrap_or("Field"),
                         other.name
                     ));
                     fields.push(renamed);
@@ -254,8 +253,8 @@ pub(crate) fn merge_views(
     summary
 }
 
-/// Le mot de passe le plus récent devient l'actuel ; les autres (et les
-/// historiques des autres) rejoignent l'historique, sans doublon.
+/// The most recent password becomes the current one; the others (and the
+/// others' histories) join the history, without duplicates.
 fn merge_passwords(
     kept: &mut CipherView,
     sorted: &[&CipherView],
@@ -267,7 +266,7 @@ fn merge_passwords(
         return;
     };
     let current = present(login.password.as_ref()).cloned();
-    // (mot de passe, date), le plus récent d'abord ; l'actuel gagne à égalité.
+    // (password, date), most recent first; the current one wins a tie.
     let mut candidates: Vec<(String, DateTime<Utc>)> = Vec::new();
     if let Some(password) = &current {
         candidates.push((password.clone(), kept_date));
@@ -419,17 +418,17 @@ mod tests {
                 "https://connect.maif.fr",
                 "iosapp://fr.maif.app"
             ],
-            "un site par hôte, une app une fois"
+            "one site per host, an app once"
         );
         let login = kept.login.as_ref().unwrap();
         assert_eq!(login.totp.as_deref(), Some("JBSWY3DPEHPK3PXP"));
         assert_eq!(login.username.as_deref(), Some("camille@exemple.fr"));
         assert_eq!(login.password.as_deref(), Some("lilas"));
-        assert!(kept.password_history.is_none(), "même mot de passe");
+        assert!(kept.password_history.is_none(), "same password");
         assert_eq!(
             kept.notes.as_deref(),
             Some(
-                "Contrat habitation\n\n— Fusionné depuis « MAIF - Espace sociétaire » —\nContrat auto"
+                "Contrat habitation\n\n— Merged from \"MAIF - Espace sociétaire\" —\nContrat auto"
             )
         );
         let names: Vec<_> = kept
@@ -498,7 +497,7 @@ mod tests {
             .collect();
         assert_eq!(history, ["ancien", "autre", "très-ancien"]);
         assert!(summary.newer_password);
-        assert_eq!(summary.history, 2, "l'ancien actuel et « autre »");
+        assert_eq!(summary.history, 2, "the former current one and \"autre\"");
     }
 
     #[test]
@@ -510,7 +509,7 @@ mod tests {
         merge_views(&mut kept, &others, date(28));
         let history = kept.password_history.unwrap();
         assert_eq!(history.len(), MAX_PASSWORD_HISTORY);
-        assert_eq!(history[0].password, "vieux-8", "le plus récent d'abord");
+        assert_eq!(history[0].password, "vieux-8", "the most recent first");
     }
 
     #[test]

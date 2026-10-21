@@ -1,7 +1,7 @@
-//! PRF des passkeys (fournisseur du système) contre un vrai Vaultwarden :
-//! la passkey créée par l'extension, relue par une autre session (autre
-//! processus, autre appareil), donne les mêmes sorties. Sans
-//! `VERROU_TEST_SERVER`, le test ne fait rien.
+//! Passkey PRF (system provider) against a real Vaultwarden: the passkey
+//! created by the extension, read back by another session (another
+//! process, another device), gives the same outputs. Without
+//! `VERROU_TEST_SERVER`, the test does nothing.
 
 mod common;
 
@@ -39,7 +39,7 @@ async fn prf_outputs_survive_the_server_round_trip() {
         .await
         .unwrap();
 
-    // Juste après la création (PRF demandée à la création).
+    // Right after creation (PRF requested at creation).
     let prf = |session: &VaultSession, first: &[u8], second: Option<&[u8]>| {
         session.passkey_prf(
             "localhost".to_owned(),
@@ -53,7 +53,7 @@ async fn prf_outputs_survive_the_server_round_trip() {
     assert_eq!(at_creation.first.len(), 32);
     assert_ne!(Some(&at_creation.first), at_creation.second.as_ref());
 
-    // Sans vérification de l'utilisateur : refusé.
+    // Without user verification: refused.
     assert!(
         extension
             .passkey_prf(
@@ -65,7 +65,7 @@ async fn prf_outputs_survive_the_server_round_trip() {
             )
             .is_err()
     );
-    // Autre site : introuvable.
+    // Another site: not found.
     assert!(
         extension
             .passkey_prf(
@@ -78,8 +78,8 @@ async fn prf_outputs_survive_the_server_round_trip() {
             .is_err()
     );
 
-    // Un autre appareil (nouveau dossier, synchronisé depuis le serveur) :
-    // mêmes sorties, au format de Bitwarden relu.
+    // Another device (new folder, synced from the server): same outputs,
+    // from the Bitwarden format read back.
     let other_dir = std::env::temp_dir().join(format!("verrou-prf-{}", uuid::Uuid::new_v4()));
     let other = VaultSession::with_storage(other_dir.display().to_string());
     other

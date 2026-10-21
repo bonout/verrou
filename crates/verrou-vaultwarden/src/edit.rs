@@ -1,16 +1,16 @@
-//! Écriture dans le coffre : créer, modifier, mettre à la corbeille.
+//! Writing to the vault: create, modify, move to the trash.
 //!
-//! Même répartition que pour la lecture : le SDK chiffre (`CipherView` →
-//! `Cipher` → requête d'API), Verrou envoie la requête. Une modification part
-//! de l'élément tel que le cache le connaît, déchiffré, et ne touche qu'aux
-//! champs que Verrou sait éditer : le reste (passkeys, pièces jointes,
-//! historique, champs réservés `verrou:…`) repart intact. La date de
-//! révision envoyée permet au serveur de refuser une modification faite sur
-//! une copie périmée.
+//! Same split as for reading: the SDK encrypts (`CipherView` →
+//! `Cipher` → API request), Verrou sends the request. A modification starts
+//! from the item as the cache knows it, decrypted, and only touches the
+//! fields Verrou can edit: the rest (passkeys, attachments,
+//! history, reserved `verrou:…` fields) goes back intact. The revision
+//! date sent lets the server refuse a modification made on
+//! a stale copy.
 //!
-//! Rien n'attend le réseau : l'écriture, chiffrée, rejoint la file
-//! (`outbox`), appliquée tout de suite au coffre affiché ; l'envoi suit en
-//! arrière-plan (`sync_shared`), ou au retour du réseau.
+//! Nothing waits for the network: the write, encrypted, joins the queue
+//! (`outbox`), applied right away to the displayed vault; sending follows in
+//! the background (`sync_shared`), or when the network comes back.
 
 use std::collections::HashMap;
 
@@ -27,12 +27,12 @@ use verrou_core::{SecretString, UriMatch};
 use crate::outbox::{Action, request_of};
 use crate::{Connection, Decrypted, Error};
 
-/// Anciens mots de passe gardés par élément, comme les apps Bitwarden.
+/// Old passwords kept per item, like the Bitwarden apps.
 pub(crate) const MAX_PASSWORD_HISTORY: usize = 5;
 
-/// Ce que l'écran d'édition modifie. Un brouillon avec `login` crée un
-/// identifiant, avec `card` une carte, avec `identity` une identité ; sans
-/// aucun des trois, une note sécurisée.
+/// What the edit screen modifies. A draft with `login` creates a
+/// login, with `card` a card, with `identity` an identity; with
+/// none of the three, a secure note.
 #[derive(Clone, Debug, Default)]
 pub struct Draft {
     pub name: String,
@@ -40,19 +40,19 @@ pub struct Draft {
     pub favorite: bool,
     pub notes: Option<SecretString>,
     pub login: Option<LoginDraft>,
-    /// Champs personnalisés, dans l'ordre, hors champs réservés `verrou:…`
-    /// (jamais montrés, toujours conservés). `None` : ne pas y toucher.
+    /// Custom fields, in order, excluding reserved `verrou:…` fields
+    /// (never shown, always kept). `None`: leave them alone.
     pub fields: Option<Vec<CustomFieldDraft>>,
-    /// Modèle (Wi-Fi, passeport…) : posé à la création, ensuite conservé.
+    /// Template (Wi-Fi, passport…): set at creation, kept afterwards.
     pub template: Option<Template>,
-    /// Carte bancaire : ses champs (ignoré pour un autre type).
+    /// Payment card: its fields (ignored for another type).
     pub card: Option<CardDraft>,
-    /// Identité : ses champs (ignoré pour un autre type).
+    /// Identity: its fields (ignored for another type).
     pub identity: Option<IdentityDraft>,
 }
 
-/// Les champs d'une carte bancaire, ceux de Bitwarden. Le numéro et le
-/// cryptogramme sont des secrets.
+/// The fields of a payment card, Bitwarden's. The number and the
+/// security code are secrets.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CardDraft {
     pub cardholder_name: Option<String>,
@@ -63,8 +63,8 @@ pub struct CardDraft {
     pub code: Option<SecretString>,
 }
 
-/// Les champs d'une identité, ceux de Bitwarden. Numéros de sécurité
-/// sociale, de passeport et de permis : des secrets.
+/// The fields of an identity, Bitwarden's. Social security,
+/// passport and license numbers: secrets.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct IdentityDraft {
     pub title: Option<String>,
@@ -159,17 +159,17 @@ impl IdentityDraft {
     }
 }
 
-/// Nature d'un champ personnalisé, celle de Bitwarden.
+/// Kind of a custom field, Bitwarden's.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CustomFieldKind {
     #[default]
     Text,
-    /// Masqué à l'écran.
+    /// Hidden on screen.
     Hidden,
-    /// Case à cocher (`"true"` ou `"false"`).
+    /// Checkbox (`"true"` or `"false"`).
     Boolean,
-    /// Renvoie à un champ de l'élément (identifiant, mot de passe…) : n'a pas
-    /// de valeur propre, se déplace ou se supprime mais ne se modifie pas.
+    /// Refers to a field of the item (username, password…): has no
+    /// value of its own, can be moved or deleted but not modified.
     Linked,
 }
 
@@ -178,8 +178,8 @@ pub struct CustomFieldDraft {
     pub name: String,
     pub value: Option<SecretString>,
     pub kind: CustomFieldKind,
-    /// Champ désigné par un champ lié (numérotation de Bitwarden : 100
-    /// identifiant, 101 mot de passe…).
+    /// Field a linked field points to (Bitwarden numbering: 100
+    /// username, 101 password…).
     pub linked_id: Option<u32>,
 }
 
@@ -189,21 +189,21 @@ pub struct LoginDraft {
     pub password: Option<SecretString>,
     pub totp: Option<SecretString>,
     pub uris: Vec<String>,
-    /// Règle de correspondance de chaque site, dans l'ordre de `uris`
-    /// (`None` dans la liste : règle par défaut). `None` : chaque site
-    /// gardé garde sa règle (brouillons qui ne la montrent pas).
+    /// Match rule of each site, in the order of `uris`
+    /// (`None` in the list: default rule). `None`: each kept site
+    /// keeps its rule (drafts that don't show it).
     pub uri_matches: Option<Vec<Option<UriMatch>>>,
 }
 
 impl Connection {
-    /// Brouillon prérempli pour modifier un élément.
+    /// Prefilled draft to modify an item.
     pub async fn draft(&self, id: &str) -> Result<Draft, Error> {
         self.editable_view(&self.resolve(id)).await.map(draft_of)
     }
 
-    /// Crée l'élément dans le coffre personnel, sous un identifiant
-    /// provisoire (celui du serveur le remplace à l'envoi, voir `resolve`) ;
-    /// rend cet identifiant et le coffre affiché.
+    /// Creates the item in the personal vault, under a provisional
+    /// id (the server's replaces it when sent, see `resolve`);
+    /// returns that id and the displayed vault.
     pub async fn create(&mut self, draft: Draft) -> Result<(String, Decrypted), Error> {
         let view = new_view(draft, Utc::now())?;
         self.queue_save(None, view).await
@@ -216,10 +216,10 @@ impl Connection {
         Ok(self.queue_save(Some(&id), view).await?.1)
     }
 
-    /// Remplace, dans un identifiant existant, ce qui est fourni : le mot de
-    /// passe (l'ancien rejoint l'historique), la graine TOTP, et l'identifiant
-    /// seulement s'il n'y en a pas. Le reste de l'élément repart intact.
-    /// C'est l'écriture de l'extension de navigateur.
+    /// Replaces, in an existing login, what is provided: the
+    /// password (the old one joins the history), the TOTP seed, and the username
+    /// only if there is none. The rest of the item goes back intact.
+    /// This is the browser extension's write.
     pub async fn amend_login(
         &mut self,
         id: &str,
@@ -230,9 +230,7 @@ impl Connection {
     ) -> Result<Decrypted, Error> {
         let mut draft = self.draft(id).await?;
         let Some(login) = draft.login.as_mut() else {
-            return Err(Error::Invalid(
-                "cet élément n'est pas un identifiant".to_owned(),
-            ));
+            return Err(Error::Invalid("this item is not a login".to_owned()));
         };
         if login.username.as_deref().is_none_or(str::is_empty) && username.is_some() {
             login.username = username;
@@ -249,16 +247,16 @@ impl Connection {
         self.update(id, draft).await
     }
 
-    /// Corbeille du serveur : l'élément se restaure depuis le coffre web
-    /// pendant 30 jours (réglage de Vaultwarden).
+    /// Server trash: the item can be restored from the web vault
+    /// for 30 days (Vaultwarden setting).
     pub async fn trash(&mut self, id: &str) -> Result<Decrypted, Error> {
         let id = self.resolve(id);
         let view = self.editable_view(&id).await?;
         self.queue_action(&id, view.name, Action::Trash).await
     }
 
-    /// Archive l'élément (ou le sort des archives) : il quitte la liste
-    /// principale et le remplissage, sans être supprimé.
+    /// Archives the item (or takes it out of the archive): it leaves the main
+    /// list and autofill, without being deleted.
     pub async fn set_archived(&mut self, id: &str, archived: bool) -> Result<Decrypted, Error> {
         let id = self.resolve(id);
         let view = self.editable_view(&id).await?;
@@ -270,7 +268,7 @@ impl Connection {
         self.queue_action(&id, view.name, action).await
     }
 
-    /// Sort l'élément de la corbeille.
+    /// Takes the item out of the trash.
     pub async fn restore(&mut self, id: &str) -> Result<Decrypted, Error> {
         let id = self.resolve(id);
         let title = self.cached_title(&id).await?;
@@ -284,16 +282,16 @@ impl Connection {
         Ok(self.queue_save(Some(&id), view).await?.1)
     }
 
-    /// L'élément tel que le coffre affiché le connaît (cache et modifications
-    /// hors ligne), déchiffré, s'il peut être modifié.
+    /// The item as the displayed vault knows it (cache and offline
+    /// modifications), decrypted, if it can be modified.
     pub(crate) async fn editable_view(&self, id: &str) -> Result<CipherView, Error> {
         let mut views = self.editable_views(&[id.to_owned()]).await?;
         views.pop().ok_or(Error::NotFound)
     }
 
-    /// Plusieurs éléments, dans l'ordre demandé, en ne lisant le cache
-    /// qu'une fois. Un seul introuvable ou en lecture seule, et rien n'est
-    /// rendu.
+    /// Several items, in the requested order, reading the cache
+    /// only once. A single one missing or read-only, and nothing is
+    /// returned.
     pub(crate) async fn editable_views(&self, ids: &[String]) -> Result<Vec<CipherView>, Error> {
         let mut ciphers: HashMap<String, _> = self
             .cached_ciphers()?
@@ -327,7 +325,7 @@ pub(crate) fn folder_id(id: Option<String>) -> Result<Option<FolderId>, Error> {
     id.filter(|f| !f.is_empty())
         .map(|f| {
             f.parse()
-                .map_err(|_| Error::Storage(format!("dossier inconnu ({f})")))
+                .map_err(|_| Error::Storage(format!("unknown folder ({f})")))
         })
         .transpose()
 }
@@ -351,10 +349,10 @@ fn uris(
         .map(|(i, u)| (i, u.trim().to_owned()))
         .filter(|(_, u)| !u.is_empty())
         .map(|(index, uri)| {
-            // La règle choisie dans l'éditeur ; sinon, un site gardé garde
-            // la sienne. Une nouvelle adresse d'app (`macapp://`) ne
-            // correspond jamais à une page web dans les extensions
-            // Bitwarden : règle « jamais ».
+            // The rule chosen in the editor; otherwise, a kept site keeps
+            // its own. A new app address (`macapp://`) never
+            // matches a web page in the Bitwarden
+            // extensions: rule "never".
             let chosen = matches.map(|m| {
                 m.get(index)
                     .copied()
@@ -382,7 +380,7 @@ fn uris(
     (!uris.is_empty()).then_some(uris)
 }
 
-/// Le champ réservé qui désigne le modèle.
+/// The reserved field that names the template.
 fn marker(template: Template) -> FieldView {
     FieldView {
         name: Some(template::MARKER.to_owned()),
@@ -399,7 +397,7 @@ fn is_reserved(field: &FieldView) -> bool {
 pub(crate) fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
     if template::is_reserved(field.name.trim()) {
         return Err(Error::Invalid(format!(
-            "« {} » est un nom réservé à Verrou",
+            "\"{}\" is a name reserved for Verrou",
             field.name.trim()
         )));
     }
@@ -414,10 +412,10 @@ pub(crate) fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
         CustomFieldKind::Linked => {
             let id = field
                 .linked_id
-                .ok_or_else(|| Error::Invalid("champ lié sans cible".to_owned()))?;
+                .ok_or_else(|| Error::Invalid("linked field without a target".to_owned()))?;
             let linked = id
                 .try_into()
-                .map_err(|_| Error::Invalid(format!("champ lié inconnu ({id})")))?;
+                .map_err(|_| Error::Invalid(format!("unknown linked field ({id})")))?;
             (FieldType::Linked, None, Some(linked))
         }
     };
@@ -429,8 +427,8 @@ pub(crate) fn field_view(field: CustomFieldDraft) -> Result<FieldView, Error> {
     })
 }
 
-/// Les champs du brouillon, suivis des champs réservés de l'élément (repris
-/// tels quels) et du champ du modèle s'il manque.
+/// The draft's fields, followed by the item's reserved fields (taken
+/// as is) and the template field if missing.
 fn merge_fields(
     drafted: Vec<CustomFieldDraft>,
     previous: Option<Vec<FieldView>>,
@@ -469,7 +467,7 @@ fn custom_field(field: FieldView) -> CustomFieldDraft {
 pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, Error> {
     let name = draft.name.trim().to_owned();
     if name.is_empty() {
-        return Err(Error::Invalid("le titre est obligatoire".to_owned()));
+        return Err(Error::Invalid("the title is required".to_owned()));
     }
     let mut card = None;
     let mut identity = None;
@@ -540,7 +538,7 @@ pub(crate) fn new_view(draft: Draft, now: DateTime<Utc>) -> Result<CipherView, E
     })
 }
 
-/// Ce que l'écran d'édition montre d'un élément.
+/// What the edit screen shows of an item.
 pub(crate) fn draft_of(view: CipherView) -> Draft {
     let template = view
         .fields
@@ -587,12 +585,12 @@ pub(crate) fn draft_of(view: CipherView) -> Draft {
     }
 }
 
-/// Reporte le brouillon sur l'élément. Un mot de passe remplacé rejoint
-/// l'historique de l'élément.
+/// Applies the draft to the item. A replaced password joins
+/// the item's history.
 pub(crate) fn apply(view: &mut CipherView, draft: Draft, now: DateTime<Utc>) -> Result<(), Error> {
     let name = draft.name.trim().to_owned();
     if name.is_empty() {
-        return Err(Error::Invalid("le titre est obligatoire".to_owned()));
+        return Err(Error::Invalid("the title is required".to_owned()));
     }
     view.name = name;
     view.folder_id = folder_id(draft.folder_id)?;
@@ -677,7 +675,7 @@ mod tests {
         let uris = view.login.as_ref().unwrap().uris.clone().unwrap();
         assert_eq!(uris[0].r#match, None);
         assert_eq!(uris[1].r#match, Some(UriMatchType::Never));
-        // Une règle choisie ailleurs pour cette adresse est gardée.
+        // A rule chosen elsewhere for this address is kept.
         let previous = vec![LoginUriView {
             uri: Some("macapp://com.tinyspeck.slackmacgap".to_owned()),
             r#match: Some(UriMatchType::Exact),
@@ -716,7 +714,7 @@ mod tests {
         assert!(view.secure_note.is_none() && view.login.is_none());
         let mut draft = draft_of(view.clone());
         assert_eq!(draft.card.as_ref(), Some(&card));
-        // Modifier : le cryptogramme effacé disparaît, le reste est gardé.
+        // Modify: the erased security code disappears, the rest is kept.
         draft.card.as_mut().unwrap().code = Some(SecretString::new("  "));
         draft.card.as_mut().unwrap().exp_year = Some("2031".to_owned());
         apply(&mut view, draft, now).unwrap();
@@ -825,7 +823,7 @@ mod tests {
         let draft = draft_of(view);
         assert_eq!(draft.template, Some(Template::Wifi));
         let drafted = draft.fields.unwrap();
-        assert_eq!(drafted.len(), 3, "le champ réservé n'est pas modifiable");
+        assert_eq!(drafted.len(), 3, "the reserved field is not editable");
         assert_eq!(drafted[1].kind, CustomFieldKind::Hidden);
         assert_eq!(drafted[1].value.as_ref().unwrap().expose(), "lilas");
     }
@@ -847,7 +845,7 @@ mod tests {
         let mut fields = draft.fields.take().unwrap();
         assert_eq!(fields[1].kind, CustomFieldKind::Linked);
         assert_eq!(fields[1].linked_id, Some(101));
-        // Renommer, réordonner, ajouter.
+        // Rename, reorder, add.
         "Port SSH".clone_into(&mut fields[0].name);
         fields.swap(0, 1);
         fields.push(field("Clé", "abc", CustomFieldKind::Hidden));
@@ -862,7 +860,7 @@ mod tests {
         assert_eq!(fields[0].linked_id.map(u32::from), Some(101));
         assert_eq!(fields[3].value.as_deref(), Some("server"));
 
-        // Tout supprimer garde le champ réservé ; `None` ne touche à rien.
+        // Deleting everything keeps the reserved field; `None` touches nothing.
         let mut draft = login_draft("un");
         draft.fields = Some(Vec::new());
         apply(&mut view, draft, now).unwrap();
@@ -889,10 +887,7 @@ mod tests {
         let now = Utc::now();
         let mut view = new_view(login_draft("ancien"), now).unwrap();
         apply(&mut view, login_draft("ancien"), now).unwrap();
-        assert!(
-            view.password_history.is_none(),
-            "inchangé : pas d'historique"
-        );
+        assert!(view.password_history.is_none(), "unchanged: no history");
         for n in 0..7 {
             apply(&mut view, login_draft(&format!("nouveau-{n}")), now).unwrap();
         }

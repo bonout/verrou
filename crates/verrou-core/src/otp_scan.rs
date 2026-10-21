@@ -1,16 +1,15 @@
-//! Contenu d'un QR code de double authentification : lien `otpauth://totp`,
-//! export de Google Authenticator (`otpauth-migration://offline?data=…`,
-//! protobuf) ou graine Base32 nue.
+//! Content of a two-factor authentication QR code: an `otpauth://totp` link,
+//! a Google Authenticator export (`otpauth-migration://offline?data=…`,
+//! protobuf) or a bare Base32 seed.
 //!
-//! Chaque compte lu est validé (graine Base32, paramètres pris en charge par
-//! [`Totp`]) puis réécrit en un lien `otpauth://totp` canonique : c'est ce lien
-//! qui part dans le brouillon chiffré de l'élément. Les graines décodées sont
-//! effacées à la libération.
+//! Each account read is validated (Base32 seed, parameters supported by
+//! [`Totp`]) then rewritten as a canonical `otpauth://totp` link: that link
+//! is what goes into the item's encrypted draft. Decoded seeds are wiped on
+//! drop.
 //!
-//! Les codes HOTP (à compteur) ne sont pas pris en charge : Bitwarden ne
-//! stocke que des TOTP. Un lien `otpauth://hotp` est refusé avec un message
-//! clair ; dans un export Google Authenticator, ces comptes sont écartés et
-//! comptés.
+//! HOTP (counter) codes are not supported: Bitwarden only stores TOTP. An
+//! `otpauth://hotp` link is refused with a clear message; in a Google
+//! Authenticator export, those accounts are skipped and counted.
 
 use data_encoding::{BASE32_NOPAD, BASE64, BASE64URL};
 use url::Url;
@@ -22,12 +21,12 @@ use crate::search::fold;
 use crate::totp::{Algorithm, Totp, TotpError};
 use crate::vault::Vault;
 
-/// Un compte prêt à enregistrer.
+/// An account ready to save.
 #[derive(Clone, Debug)]
 pub struct OtpAccount {
-    /// Service (`GitHub`), s'il est connu.
+    /// Service (`GitHub`), if known.
     pub issuer: Option<String>,
-    /// Compte chez ce service (`camille@exemple.fr`), s'il est connu.
+    /// Account at that service (`camille@exemple.fr`), if known.
     pub account: Option<String>,
     secret: Zeroizing<Vec<u8>>,
     pub algorithm: Algorithm,
@@ -35,27 +34,27 @@ pub struct OtpAccount {
     pub period: u64,
 }
 
-/// Résultat de la lecture d'un QR code.
+/// Result of reading a QR code.
 #[derive(Clone, Debug)]
 pub struct OtpScan {
     pub accounts: Vec<OtpAccount>,
-    /// Comptes HOTP d'un export Google Authenticator, écartés.
+    /// HOTP accounts of a Google Authenticator export, skipped.
     pub skipped: usize,
-    /// Export en plusieurs QR codes : (rang à partir de 0, nombre total).
+    /// Export across several QR codes: (index from 0, total count).
     pub batch: Option<(u32, u32)>,
 }
 
 impl OtpAccount {
-    /// Générateur de codes de ce compte.
+    /// Code generator for this account.
     pub fn totp(&self) -> Totp {
-        // Le lien canonique se relit toujours : les paramètres ont été validés.
-        Totp::parse(&self.uri()).expect("lien otpauth canonique")
+        // The canonical link always parses back: the parameters were validated.
+        Totp::parse(&self.uri()).expect("canonical otpauth link")
     }
 
-    /// Lien `otpauth://totp` canonique, graine comprise : la valeur du champ
-    /// « code à usage unique » de l'élément.
+    /// Canonical `otpauth://totp` link, seed included: the value of the item's
+    /// "one-time code" field.
     pub fn uri(&self) -> String {
-        let mut uri = Url::parse("otpauth://totp/").expect("URL fixe");
+        let mut uri = Url::parse("otpauth://totp/").expect("fixed URL");
         let label = match (&self.issuer, &self.account) {
             (Some(issuer), Some(account)) => format!("{issuer}:{account}"),
             (Some(only), None) | (None, Some(only)) => only.clone(),
@@ -92,16 +91,16 @@ impl OtpAccount {
         uri.to_string()
     }
 
-    /// Titre proposé pour un nouvel identifiant.
+    /// Title suggested for a new login.
     pub fn suggested_title(&self) -> String {
         self.issuer
             .clone()
             .or_else(|| self.account.clone())
-            .unwrap_or_else(|| "Code à usage unique".to_owned())
+            .unwrap_or_else(|| "One-time code".to_owned())
     }
 }
 
-/// Lit le texte d'un QR code (ou un texte collé).
+/// Reads the text of a QR code (or pasted text).
 pub fn parse_scan(input: &str) -> Result<OtpScan, TotpError> {
     let input = input.trim();
     if input.is_empty() {
@@ -119,7 +118,7 @@ pub fn parse_scan(input: &str) -> Result<OtpScan, TotpError> {
     if lower.starts_with("otpauth://") {
         return parse_otpauth(input).map(single);
     }
-    // Autre lien, Wi-Fi, texte : pas une graine Base32.
+    // Other link, Wi-Fi, text: not a Base32 seed.
     if lower.contains("://")
         || !input
             .chars()
@@ -127,7 +126,7 @@ pub fn parse_scan(input: &str) -> Result<OtpScan, TotpError> {
     {
         return Err(TotpError::NotOtp);
     }
-    // Graine nue : validée comme le ferait le champ de l'éditeur.
+    // Bare seed: validated as the editor's field would.
     let totp = Totp::parse(input)?;
     Ok(single(OtpAccount {
         issuer: None,
@@ -144,8 +143,8 @@ fn non_empty(value: &str) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
-/// Sépare l'étiquette `Service:compte` ; le paramètre `issuer`, s'il est
-/// présent, l'emporte sur le préfixe.
+/// Splits the `Service:account` label; the `issuer` parameter, when
+/// present, wins over the prefix.
 fn split_label(label: &str, issuer_param: Option<String>) -> (Option<String>, Option<String>) {
     let (prefix, account) = match label.split_once(':') {
         Some((prefix, account)) => (non_empty(prefix), non_empty(account)),
@@ -154,7 +153,7 @@ fn split_label(label: &str, issuer_param: Option<String>) -> (Option<String>, Op
     (issuer_param.or(prefix), account)
 }
 
-/// Décodage `%XX` d'un chemin (un `+` y reste un `+`).
+/// `%XX` decoding of a path (a `+` stays a `+` there).
 fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -182,7 +181,7 @@ fn parse_otpauth(input: &str) -> Result<OtpAccount, TotpError> {
         Some("hotp") => return Err(TotpError::Hotp),
         other => return Err(TotpError::Unsupported(other.unwrap_or("").to_owned())),
     }
-    // Paramètres et graine validés par l'analyse existante.
+    // Parameters and seed validated by the existing parser.
     let totp = Totp::parse(input)?;
     let label = percent_decode(uri.path().trim_start_matches('/'));
     let issuer = uri
@@ -200,7 +199,7 @@ fn parse_otpauth(input: &str) -> Result<OtpAccount, TotpError> {
     })
 }
 
-// MARK: Export de Google Authenticator
+// MARK: Google Authenticator export
 
 fn parse_migration(input: &str) -> Result<OtpScan, TotpError> {
     let uri = Url::parse(input).map_err(|_| TotpError::InvalidMigration)?;
@@ -239,8 +238,8 @@ fn parse_migration(input: &str) -> Result<OtpScan, TotpError> {
     })
 }
 
-/// Base64 standard ou « URL », avec ou sans remplissage. Un `+` devenu
-/// espace au décodage du lien redevient `+`.
+/// Standard or "URL" Base64, with or without padding. A `+` turned into a
+/// space by link decoding becomes `+` again.
 fn decode_base64(data: &str) -> Result<Vec<u8>, TotpError> {
     let cleaned: String = data
         .chars()
@@ -255,8 +254,8 @@ fn decode_base64(data: &str) -> Result<Vec<u8>, TotpError> {
         .map_err(|_| TotpError::InvalidMigration)
 }
 
-/// Un `OtpParameters` du protobuf de Google Authenticator ; `None` pour un
-/// compte écarté (HOTP, MD5).
+/// An `OtpParameters` of the Google Authenticator protobuf; `None` for a
+/// skipped account (HOTP, MD5).
 fn migration_account(bytes: &[u8]) -> Result<Option<OtpAccount>, TotpError> {
     let mut secret = Zeroizing::new(Vec::new());
     let (mut name, mut issuer) = (String::new(), String::new());
@@ -273,7 +272,7 @@ fn migration_account(bytes: &[u8]) -> Result<Option<OtpAccount>, TotpError> {
             _ => {}
         }
     }
-    // Type : 0 non précisé (TOTP), 1 HOTP, 2 TOTP.
+    // Type: 0 unspecified (TOTP), 1 HOTP, 2 TOTP.
     if kind == 1 {
         return Ok(None);
     }
@@ -281,7 +280,7 @@ fn migration_account(bytes: &[u8]) -> Result<Option<OtpAccount>, TotpError> {
         0 | 1 => Algorithm::Sha1,
         2 => Algorithm::Sha256,
         3 => Algorithm::Sha512,
-        // MD5 (4) : aucun service sérieux, et Bitwarden ne le connaît pas.
+        // MD5 (4): no serious service, and Bitwarden does not know it.
         _ => return Ok(None),
     };
     let digits = match digits {
@@ -292,7 +291,7 @@ fn migration_account(bytes: &[u8]) -> Result<Option<OtpAccount>, TotpError> {
     if secret.is_empty() {
         return Err(TotpError::InvalidSecret);
     }
-    // Le nom porte souvent le service en préfixe (`GitHub:camille`).
+    // The name often carries the service as a prefix (`GitHub:camille`).
     let issuer_field = non_empty(&issuer);
     let (issuer, account) = match name.split_once(':') {
         Some((prefix, rest)) if issuer_field.as_deref().is_none_or(|i| prefix.trim() == i) => {
@@ -316,8 +315,9 @@ enum Value<'a> {
     Fixed,
 }
 
-/// Lecteur protobuf minimal : varints, champs de longueur, entiers fixes
-/// (ignorés). Assez pour le format d'export, sans dépendance de plus.
+/// Minimal protobuf reader: varints, length-delimited fields, fixed
+/// integers (ignored). Enough for the export format, without one more
+/// dependency.
 struct Proto<'a> {
     bytes: &'a [u8],
     at: usize,
@@ -378,32 +378,32 @@ impl<'a> Proto<'a> {
     }
 }
 
-// MARK: Identifiants correspondants
+// MARK: Matching logins
 
-/// Forme comparable d'un nom de service : sans accents, casse, espaces ni
-/// ponctuation (`Free Mobile` → `freemobile`).
+/// Comparable form of a service name: without accents, case, spaces or
+/// punctuation (`Free Mobile` → `freemobile`).
 fn compact(text: &str) -> String {
     fold(text).chars().filter(|c| c.is_alphanumeric()).collect()
 }
 
-/// Nom du domaine enregistrable sans son suffixe (`github.com` → `github`).
+/// Name of the registrable domain without its suffix (`github.com` → `github`).
 fn domain_name(url: &str) -> Option<String> {
     let domain = registrable_domain(url)?;
     let name = domain.split('.').next()?;
     Some(compact(name))
 }
 
-/// Identifiants actifs et modifiables, sans code à usage unique, auxquels ce
-/// compte peut s'ajouter : même service (titre ou domaine enregistrable d'un
-/// site), ou, sans service connu, même identifiant. Les plus probables
-/// d'abord (service et identifiant à la fois).
+/// Active, writable logins without a one-time code that this account can be
+/// added to: same service (title or registrable domain of a site), or, with
+/// no known service, same username. Most likely first (both service and
+/// username).
 pub fn matching_logins<'v>(vault: &'v Vault, account: &OtpAccount) -> Vec<&'v Item> {
     let issuer = account
         .issuer
         .as_deref()
         .map(compact)
         .filter(|s| !s.is_empty());
-    // Un service écrit comme un domaine (`github.com`) se compare aussi par domaine.
+    // A service written as a domain (`github.com`) is also compared by domain.
     let issuer_domain = account
         .issuer
         .as_deref()
@@ -451,15 +451,15 @@ mod tests {
     use super::*;
     use crate::model::{Field, ItemState, Sharing};
 
-    /// Exemple publié de Google Authenticator : graine « Hello!\xde\xad\xbe\xef ».
+    /// Published Google Authenticator example: seed "Hello!\xde\xad\xbe\xef".
     const GOOGLE_EXAMPLE: &str =
         "otpauth://totp/Example:alice@google.com?secret=JBSWY3DPEHPK3PXP&issuer=Example";
-    /// Le même compte, exporté par Google Authenticator (vecteur connu des
-    /// outils d'extraction).
+    /// The same account, exported by Google Authenticator (vector known to
+    /// extraction tools).
     const GOOGLE_MIGRATION: &str = "otpauth-migration://offline?data=CjEKCkhlbGxvId6tvu8SGEV4YW1wbGU6YWxpY2VAZ29vZ2xlLmNvbRoHRXhhbXBsZTAC";
-    /// Export de trois comptes, lot 1 sur 2 : graine de la RFC 6238 (SHA-1,
-    /// 8 chiffres), graine SHA-256 de la RFC (6 chiffres, nom accentué),
-    /// et un compte HOTP à écarter. Construit octet par octet d'après
+    /// Export of three accounts, batch 1 of 2: RFC 6238 seed (SHA-1,
+    /// 8 digits), the RFC's SHA-256 seed (6 digits, accented name),
+    /// and an HOTP account to skip. Built byte by byte from
     /// `google_auth.proto`.
     const MULTI_MIGRATION: &str = "otpauth-migration://offline?data=CjcKFDEyMzQ1Njc4OTAxMjM0NTY3ODkwEg9yZmNAZXhhbXBsZS5jb20aCFJGQyA2MjM4IAEoAjACCkIKIDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDEyEg%2FDiXF1aXBlOmNhbWlsbGUaB8OJcXVpcGUgAigBMAIKMAoKSGVsbG8h3q2%2B7xIQaG90cEBleGFtcGxlLmNvbRoIQ29tcHRldXIgASgBMAE4BxABGAIgACjAxAc%3D";
 
@@ -490,7 +490,7 @@ mod tests {
         let account = &scan.accounts[0];
         assert_eq!(account.issuer.as_deref(), Some("Free Mobile"));
         assert_eq!(account.account.as_deref(), Some("camille+pro@exemple.fr"));
-        // Le lien canonique se relit à l'identique.
+        // The canonical link parses back identically.
         let again = parse_scan(&account.uri()).unwrap();
         assert_eq!(again.accounts[0].issuer, account.issuer);
         assert_eq!(again.accounts[0].account, account.account);
@@ -498,7 +498,7 @@ mod tests {
         let bare = parse_scan("otpauth://totp/?secret=JBSWY3DPEHPK3PXP").unwrap();
         assert_eq!(bare.accounts[0].issuer, None);
         assert_eq!(bare.accounts[0].account, None);
-        assert_eq!(bare.accounts[0].suggested_title(), "Code à usage unique");
+        assert_eq!(bare.accounts[0].suggested_title(), "One-time code");
     }
 
     #[test]
@@ -517,7 +517,7 @@ mod tests {
                 .uri()
                 .contains("algorithm=SHA256&digits=8&period=60")
         );
-        // RFC 6238, SHA-256, t = 59 s (période de 60 s : même compteur que t = 0..59).
+        // RFC 6238, SHA-256, t = 59 s (60 s period: same counter as t = 0..59).
         assert_eq!(
             Totp::parse(&account.uri()).unwrap().generate(59).code.len(),
             8
@@ -602,14 +602,14 @@ mod tests {
     fn google_migration_several_accounts() {
         let scan = parse_scan(MULTI_MIGRATION).unwrap();
         assert_eq!(scan.accounts.len(), 2);
-        assert_eq!(scan.skipped, 1, "le compte HOTP est écarté");
+        assert_eq!(scan.skipped, 1, "the HOTP account is skipped");
         assert_eq!(scan.batch, Some((0, 2)));
 
         let rfc = &scan.accounts[0];
         assert_eq!(rfc.issuer.as_deref(), Some("RFC 6238"));
         assert_eq!(rfc.account.as_deref(), Some("rfc@example.com"));
         assert_eq!((rfc.algorithm, rfc.digits), (Algorithm::Sha1, 8));
-        // Vecteurs de la RFC 6238, annexe B.
+        // RFC 6238 vectors, appendix B.
         assert_eq!(rfc.totp().generate(59).code, "94287082");
         assert_eq!(rfc.totp().generate(1_111_111_109).code, "07081804");
 
@@ -618,7 +618,7 @@ mod tests {
         assert_eq!(
             team.account.as_deref(),
             Some("camille"),
-            "préfixe du service retiré du nom"
+            "service prefix removed from the name"
         );
         assert_eq!((team.algorithm, team.digits), (Algorithm::Sha256, 6));
         assert_eq!(team.totp().generate(59).code, "119246");
@@ -730,20 +730,20 @@ mod tests {
                 .map(|i| i.id.clone())
                 .collect::<Vec<_>>()
         };
-        // Service et identifiant d'abord, puis le domaine seul ; jamais un
-        // élément qui a déjà un code, à la corbeille ou en lecture seule.
+        // Service and username first, then the domain alone; never an item
+        // that already has a code, is in the trash or is read-only.
         assert_eq!(
             ids(&account(Some("GitHub"), Some("camille@exemple.fr"))),
             ["gh", "gh-other"]
         );
         assert_eq!(ids(&account(Some("github.com"), None)), ["gh-other"]);
         assert_eq!(ids(&account(Some("Free"), Some("camille"))), ["free"]);
-        // Un service inconnu ne se rattache pas à un identifiant partagé.
+        // An unknown service does not attach to a shared username.
         assert_eq!(
             ids(&account(Some("Inconnu"), Some("camille@exemple.fr"))),
             Vec::<String>::new()
         );
-        // Sans service : l'identifiant seul.
+        // Without a service: the username alone.
         assert_eq!(
             ids(&account(None, Some("CAMILLE@exemple.fr"))),
             ["bank", "gh"]

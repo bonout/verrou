@@ -1,9 +1,9 @@
-//! Passkeys dans le coffre : ajout, compteur, suppression.
+//! Passkeys in the vault: adding, counter, deletion.
 //!
-//! Elles vivent dans `login.fido2Credentials` d'un identifiant, chiffrées
-//! champ par champ par le SDK comme le reste de l'élément : les apps
-//! Bitwarden et le coffre web les relisent. Comme Bitwarden, un identifiant
-//! porte une passkey : en enregistrer une nouvelle remplace l'ancienne.
+//! They live in a login's `login.fido2Credentials`, encrypted field by field
+//! by the SDK like the rest of the item: the Bitwarden apps and the web
+//! vault read them back. As in Bitwarden, a login carries one passkey:
+//! saving a new one replaces the old one.
 
 use bitwarden_vault::Fido2CredentialView;
 use chrono::{DateTime, Utc};
@@ -12,7 +12,7 @@ use verrou_core::Passkey;
 use crate::edit::{Draft, LoginDraft, new_view};
 use crate::{Connection, Decrypted, Error};
 
-/// Au format de Bitwarden : tout en texte, la clé en PKCS#8 base64url.
+/// In Bitwarden's format: everything as text, the key as PKCS#8 base64url.
 fn credential(passkey: &Passkey) -> Fido2CredentialView {
     Fido2CredentialView {
         credential_id: passkey.credential_id.clone(),
@@ -32,9 +32,9 @@ fn credential(passkey: &Passkey) -> Fido2CredentialView {
 }
 
 impl Connection {
-    /// Enregistre `passkey` dans l'identifiant `item` (sa passkey précédente
-    /// est remplacée), ou dans un nouvel identifiant (`title`, `uri`,
-    /// `username`). Rend l'identifiant de l'élément et le coffre resynchronisé.
+    /// Saves `passkey` in the login `item` (its previous passkey is
+    /// replaced), or in a new login (`title`, `uri`, `username`). Returns the
+    /// item's id and the resynced vault.
     pub async fn save_passkey(
         &mut self,
         item: Option<&str>,
@@ -43,16 +43,14 @@ impl Connection {
         username: Option<String>,
         passkey: &Passkey,
     ) -> Result<(String, Decrypted), Error> {
-        // Sur le serveur avant de répondre au site (en ligne) : une passkey
-        // que le site enregistre doit exister dans le coffre.
+        // On the server before answering the site (online): a passkey the
+        // site registers must exist in the vault.
         let access = self.online().await?;
         let item = item.map(|id| self.resolve(id));
         let mut view = if let Some(id) = &item {
             let mut view = self.editable_view(id).await?;
             let Some(login) = view.login.as_mut() else {
-                return Err(Error::Invalid(
-                    "cet élément n'est pas un identifiant".to_owned(),
-                ));
+                return Err(Error::Invalid("this item is not a login".to_owned()));
             };
             if login.username.as_deref().is_none_or(str::is_empty) {
                 login.username = username.filter(|u| !u.trim().is_empty());
@@ -80,7 +78,7 @@ impl Connection {
         self.save_cipher(item.as_deref(), view, access).await
     }
 
-    /// Nouveau compteur d'une passkey, après une authentification.
+    /// New counter of a passkey, after an authentication.
     pub async fn set_passkey_counter(
         &mut self,
         item: &str,
@@ -100,7 +98,7 @@ impl Connection {
         Ok(self.save_cipher(Some(&item), view, access).await?.1)
     }
 
-    /// Retire une passkey de l'identifiant ; le reste de l'élément est gardé.
+    /// Removes a passkey from the login; the rest of the item is kept.
     pub async fn delete_passkey(
         &mut self,
         item: &str,

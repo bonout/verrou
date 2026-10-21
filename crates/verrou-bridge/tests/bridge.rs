@@ -1,5 +1,5 @@
-//! Le pont de bout en bout, côté Verrou : un client qui fait ce que fait
-//! l'extension (ou le terminal), sur une vraie connexion TCP.
+//! The bridge end to end, on Verrou's side: a client that does what
+//! the extension (or the terminal) does, over a real TCP connection.
 
 use std::io::{Read as _, Write as _};
 use std::net::TcpStream;
@@ -24,10 +24,10 @@ struct FakeBackend {
     vault: Mutex<Vault>,
     unlocked: AtomicBool,
     unlock_requested: AtomicBool,
-    /// L'utilisateur a confirmé les éléments protégés (Touch ID).
+    /// The user confirmed the protected items (Touch ID).
     confirmed: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
-    /// Réponse de l'« utilisateur » aux demandes d'accord.
+    /// The "user"'s answer to approval requests.
     approve: AtomicBool,
     confirmations: Mutex<Vec<Confirmation>>,
 }
@@ -147,7 +147,7 @@ fn me() -> Item {
     item
 }
 
-/// Un identifiant « redemander le mot de passe principal ».
+/// A login with "master password re-prompt".
 fn protected_bank() -> Item {
     let mut item = github();
     "banque".clone_into(&mut item.id);
@@ -314,12 +314,12 @@ impl Client {
         serde_json::from_slice(&body).unwrap()
     }
 
-    /// Demande d'appairage ; rend le code calculé de notre côté.
+    /// Pairing request; returns the code computed on our side.
     fn begin_pairing(&mut self) -> String {
         self.begin_pairing_with(&json!({ "name": "Brave" }))
     }
 
-    /// `extra` : le nom, et la nature du client s'il l'annonce.
+    /// `extra`: the name, and the client's kind if it announces one.
     fn begin_pairing_with(&mut self, extra: &Value) -> String {
         let ours = KeyPair::generate();
         let mut message = extra.clone();
@@ -382,7 +382,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
     let (bridge, backend, pairings, file) = start();
     let mut client = Client::connect(bridge.port());
 
-    // Appairage : Verrou montre le même code que l'extension.
+    // Pairing: Verrou shows the same code as the extension.
     let code = client.begin_pairing();
     let request = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(request.code, code);
@@ -406,7 +406,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
     assert_eq!(filled["result"], "credentials");
     assert_eq!(filled["password"], "hunter2");
 
-    // Un autre site, ou HTTP : refusé.
+    // Another site, or HTTP: refused.
     let other =
         client.request(&json!({ "cmd": "fill", "url": "https://evil.example/", "item": "github" }));
     assert_eq!(other["result"], "denied");
@@ -414,7 +414,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
         client.request(&json!({ "cmd": "fill", "url": "http://github.com/", "item": "github" }));
     assert_eq!(http["result"], "denied");
 
-    // Après l'envoi d'un formulaire : connu, mise à jour, nouveau.
+    // After a form is submitted: known, update, new.
     let check = |client: &mut Client, username: &str, password: &str| {
         client.request(&json!({ "cmd": "check", "url": "https://github.com/login",
             "username": username, "password": password }))
@@ -425,17 +425,17 @@ fn pairing_then_fill_for_the_matching_site_only() {
     assert_eq!(update["item"]["id"], "github");
     assert_eq!(check(&mut client, "dominique", "x")["action"], "new");
 
-    // Enregistrer : le nouveau mot de passe remplit ensuite le formulaire.
+    // Save: the new password then fills the form.
     let saved = client.request(&json!({ "cmd": "save", "url": "https://github.com/login",
         "username": "camille", "password": "hunter3", "item": "github" }));
     assert_eq!(saved["result"], "saved");
     assert_eq!(check(&mut client, "camille", "hunter3")["action"], "known");
-    // Pas pour un élément d'un autre site.
+    // Not for an item of another site.
     let elsewhere = client.request(&json!({ "cmd": "save", "url": "https://evil.example/",
         "username": "camille", "password": "x", "item": "github" }));
     assert_eq!(elsewhere["result"], "denied");
 
-    // QR code de double authentification : la graine rejoint l'élément.
+    // Two-factor QR code: the seed joins the item.
     let totp = client.request(
         &json!({ "cmd": "set_totp", "url": "https://github.com/settings",
         "totp": "otpauth://totp/GitHub:camille?secret=JBSWY3DPEHPK3PXP", "item": "github" }),
@@ -447,7 +447,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
 
     forms_and_site_linking(&mut client, &backend);
 
-    // Élément protégé : Verrou demande confirmation, puis livre.
+    // Protected item: Verrou asks for confirmation, then releases it.
     let protected =
         client.request(&json!({ "cmd": "fill", "url": "https://banque.fr/", "item": "banque" }));
     assert_eq!(protected["result"], "confirm");
@@ -457,11 +457,11 @@ fn pairing_then_fill_for_the_matching_site_only() {
         client.request(&json!({ "cmd": "fill", "url": "https://banque.fr/", "item": "banque" }));
     assert_eq!(confirmed["result"], "credentials");
 
-    // Requête rejouée trop tard : refusée.
+    // Request replayed too late: refused.
     let stale = client.request_at(&json!({ "cmd": "status" }), now_ms() - 10 * 60 * 1000);
     assert_eq!(stale["code"], "bad_request");
 
-    // Coffre verrouillé : rien ne sort ; l'extension peut demander le déverrouillage.
+    // Vault locked: nothing leaves; the extension can ask for unlocking.
     backend.unlocked.store(false, Ordering::SeqCst);
     let locked =
         client.request(&json!({ "cmd": "fill", "url": "https://github.com/", "item": "github" }));
@@ -476,7 +476,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
     assert_eq!(save_locked["result"], "locked");
     backend.unlocked.store(true, Ordering::SeqCst);
 
-    // L'appairage survit à un redémarrage de Verrou…
+    // The pairing survives a restart of Verrou…
     let id = client.id.clone();
     drop(bridge);
     let restarted = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -485,7 +485,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
     again.key = client.key.take();
     assert_eq!(again.request(&json!({ "cmd": "status" }))["unlocked"], true);
 
-    // … jusqu'à la révocation.
+    // … until revocation.
     restarted.revoke(&id);
     assert_eq!(
         again.request(&json!({ "cmd": "status" }))["code"],
@@ -509,7 +509,7 @@ fn refused_or_forged_clients_get_nothing() {
         "unknown_client"
     );
 
-    // Un client qui invente sa clé, pour un identifiant existant ou non.
+    // A client that makes up its key, for an existing identifier or not.
     let mut forger = Client::connect(bridge.port());
     forger.id = request.id;
     forger.key = Some(ChannelKey::from_bytes([1; 32]));
@@ -518,13 +518,13 @@ fn refused_or_forged_clients_get_nothing() {
         "unknown_client"
     );
 
-    // Une seconde demande d'appairage aussitôt après : refusée (anti-harcèlement).
+    // A second pairing request right after: refused (anti-harassment).
     let mut spammer = Client::connect(bridge.port());
     spammer
         .send(&json!({ "type": "pair", "name": "x", "key": KeyPair::generate().public_base64() }));
     assert_eq!(spammer.receive()["code"], "busy");
 
-    // Du bruit : la connexion répond « bad_request » sans tomber.
+    // Noise: the connection answers "bad_request" without dropping.
     spammer.send(&json!({ "type": "n'importe quoi" }));
     assert_eq!(spammer.receive()["code"], "bad_request");
     let _ = std::fs::remove_file(file);
@@ -535,13 +535,13 @@ fn status_announces_the_bundled_extension_version() {
     let (bridge, _backend, pairings, file) = start();
     let mut client = paired(&bridge, &pairings, "browser");
 
-    // Sans extension livrée (tests, terminal) : rien d'annoncé.
+    // No shipped extension (tests, terminal): nothing announced.
     let status = client.request(&json!({ "cmd": "status" }));
     assert_eq!(status["result"], "status");
     assert!(status.get("extension_version").is_none());
 
-    // La version du manifeste livré, relue à chaque fois : une mise à jour
-    // de l'app se voit sans redémarrer le pont.
+    // The version of the shipped manifest, read again each time: an app
+    // update shows without restarting the bridge.
     let manifest =
         std::env::temp_dir().join(format!("verrou-manifest-{}.json", uuid::Uuid::new_v4()));
     std::fs::write(
@@ -561,7 +561,7 @@ fn status_announces_the_bundled_extension_version() {
     let status = client.request(&json!({ "cmd": "status" }));
     assert_eq!(status["extension_version"], "0.3.0.4321");
 
-    // Un manifeste illisible ou une version invalide : rien plutôt que n'importe quoi.
+    // An unreadable manifest or an invalid version: nothing rather than anything.
     std::fs::write(&manifest, r#"{ "version": "1.2.3.4.5" }"#).unwrap();
     assert!(
         client
@@ -579,7 +579,7 @@ fn status_announces_the_bundled_extension_version() {
     let _ = std::fs::remove_file(file);
 }
 
-/// Appaire un client qui annonce `kind`, accepté d'office.
+/// Pairs a client that announces `kind`, accepted automatically.
 fn paired(bridge: &Bridge, pairings: &mpsc::Receiver<PairingRequest>, kind: &str) -> Client {
     let mut client = Client::connect(bridge.port());
     let code = client.begin_pairing_with(&json!({ "name": "verrou", "kind": kind }));
@@ -591,7 +591,7 @@ fn paired(bridge: &Bridge, pairings: &mpsc::Receiver<PairingRequest>, kind: &str
 }
 
 #[test]
-#[allow(clippy::too_many_lines)] // un parcours complet, lisible d'un trait
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
 fn terminal_searches_without_secrets_and_reveals_with_consent() {
     let (bridge, backend, pairings, file) = start();
     {
@@ -609,14 +609,14 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
     assert_eq!(cli.receive()["type"], "paired");
     assert_eq!(bridge.clients()[0].kind, ClientKind::Cli);
 
-    // Les commandes de l'extension lui sont refusées.
+    // The extension's commands are refused to it.
     let filled =
         cli.request(&json!({ "cmd": "fill", "url": "https://github.com/", "item": "github" }));
     assert_eq!(filled["result"], "denied");
     let suggest = cli.request(&json!({ "cmd": "suggest", "url": "https://github.com/" }));
     assert_eq!(suggest["result"], "denied");
 
-    // Recherche et élément : aucun secret.
+    // Search and item: no secrets.
     let found = cli.request(&json!({ "cmd": "vault_search", "query": "banq" }));
     assert_eq!(found["result"], "items");
     assert_eq!(found["items"][0]["id"], "banque");
@@ -641,12 +641,12 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
     assert_eq!(item["item"]["fields"][1]["secret"], true);
     assert!(item["item"]["fields"][1].get("value").is_none());
 
-    // Un champ non secret sort sans demande.
+    // A non-secret field leaves without asking.
     let username = cli.request(&json!({ "cmd": "reveal", "item": "banque", "field": "username" }));
     assert_eq!(username["value"], "camille");
     assert!(backend.confirmations.lock().unwrap().is_empty());
 
-    // Un secret attend l'accord : refusé, puis accordé (et gardé).
+    // A secret awaits approval: refused, then granted (and kept).
     let reveal = json!({ "cmd": "reveal", "item": "banque", "field": "password" });
     assert_eq!(cli.request(&reveal)["result"], "denied");
     backend.approve.store(true, Ordering::SeqCst);
@@ -667,14 +667,14 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
     assert_eq!(totp["code"].as_str().unwrap().len(), 6);
     assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
 
-    // L'accord vaut pour cet élément seulement…
+    // The approval holds for this item only…
     let other = cli.request(&json!({ "cmd": "reveal", "item": "github", "field": "password" }));
     assert_eq!(other["result"], "denied");
     assert_eq!(backend.confirmations.lock().unwrap().len(), 3);
-    // … et se perd au verrouillage.
+    // … and is lost on locking.
     bridge.forget_approvals();
     assert_eq!(cli.request(&reveal)["result"], "denied");
-    // Pas de code : refusé sans rien demander.
+    // No code: refused without asking anything.
     let none = cli.request(&json!({ "cmd": "totp", "item": "github" }));
     assert_eq!(none["result"], "denied");
     assert_eq!(backend.confirmations.lock().unwrap().len(), 4);
@@ -683,7 +683,7 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
         "denied"
     );
 
-    // Coffre verrouillé : rien, sinon la demande de déverrouillage.
+    // Vault locked: nothing, except the unlock request.
     backend.unlocked.store(false, Ordering::SeqCst);
     assert_eq!(
         cli.request(&json!({ "cmd": "vault_search", "query": "" }))["result"],
@@ -694,8 +694,8 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
     assert!(backend.unlock_requested.load(Ordering::SeqCst));
     backend.unlocked.store(true, Ordering::SeqCst);
 
-    // L'extension, elle, ne peut pas chercher dans le coffre.
-    // (Trois secondes au moins entre deux appairages.)
+    // The extension, for its part, cannot search the vault.
+    // (At least three seconds between two pairings.)
     std::thread::sleep(Duration::from_secs(3));
     let mut brave = paired(&bridge, &pairings, "browser");
     for command in [
@@ -709,7 +709,7 @@ fn terminal_searches_without_secrets_and_reveals_with_consent() {
         assert_eq!(brave.request(&command)["result"], "denied", "{command}");
     }
 
-    // `verrou unlink` : le terminal s'oublie lui-même.
+    // `verrou unlink`: the terminal forgets itself.
     assert_eq!(cli.request(&json!({ "cmd": "unlink" }))["result"], "done");
     assert_eq!(
         cli.request(&json!({ "cmd": "status" }))["code"],
@@ -764,12 +764,12 @@ fn ssh_agent_commands_sign_inside_verrou() {
         assert_eq!(asked[1].purpose, Purpose::Ssh);
         assert_eq!(asked[1].title, "Clé du N100");
     }
-    // Accord gardé pour cette clé : pas de nouvelle demande.
+    // Approval kept for this key: no new request.
     backend.approve.store(false, Ordering::SeqCst);
     assert_eq!(cli.request(&sign)["result"], "signature");
     assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
 
-    // Une clé inconnue, ou une requête illisible : refusées sans demande.
+    // An unknown key, or an unreadable request: refused without asking.
     let other = PrivateKey::random(
         &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
         Algorithm::Ed25519,
@@ -783,7 +783,7 @@ fn ssh_agent_commands_sign_inside_verrou() {
     assert_eq!(cli.request(&garbled)["result"], "denied");
     assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
 
-    // Coffre verrouillé : ni clés, ni signature.
+    // Vault locked: neither keys nor signature.
     backend.unlocked.store(false, Ordering::SeqCst);
     assert_eq!(
         cli.request(&json!({ "cmd": "ssh_keys" }))["result"],
@@ -793,8 +793,8 @@ fn ssh_agent_commands_sign_inside_verrou() {
     let _ = std::fs::remove_file(file);
 }
 
-/// Cartes, identités, et rattachement d'un site à un identifiant. Une carte
-/// et un site rattaché demandent l'accord de l'utilisateur dans Verrou.
+/// Cards, identities, and linking a site to a login. A card
+/// and a linked site require the user's approval in Verrou.
 fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
     let purposes = |backend: &FakeBackend| {
         backend
@@ -805,8 +805,8 @@ fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
             .map(|c| (c.purpose, c.title.clone()))
             .collect::<Vec<_>>()
     };
-    // Formulaires de paiement et d'adresse : propositions sans secret, puis
-    // les champs de l'élément choisi.
+    // Payment and address forms: suggestions without secrets, then
+    // the fields of the chosen item.
     let forms =
         client.request(&json!({ "cmd": "forms", "url": "https://boutique.example/paiement" }));
     assert_eq!(forms["cards"][0]["id"], "visa");
@@ -814,7 +814,7 @@ fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
     assert_eq!(forms["identities"][0]["id"], "moi");
     let fill_card =
         json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": "visa" });
-    // Refusé dans Verrou : rien ne sort.
+    // Refused in Verrou: nothing leaves.
     let refused = client.request(&fill_card);
     assert_eq!(refused["result"], "denied");
     assert!(refused.get("number").is_none());
@@ -836,7 +836,7 @@ fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
         json!([])
     );
 
-    // Un site sans identifiant : l'utilisateur rattache GitHub, qui s'y propose ensuite.
+    // A site without a login: the user links GitHub, which is then offered there.
     let found = client.request(&json!({ "cmd": "search_logins", "query": "git" }));
     assert_eq!(found["items"][0]["id"], "github");
     assert!(found["items"][0].get("password").is_none());
@@ -846,12 +846,17 @@ fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
     assert_eq!(linked["result"], "saved");
     assert_eq!(
         purposes(backend).last(),
-        Some(&(
-            Purpose::LinkSite,
-            "le site github.example à « GitHub »".to_owned()
-        ))
+        Some(&(Purpose::LinkSite, "GitHub".to_owned()))
     );
-    // Refusé dans Verrou : le site n'est pas ajouté.
+    let last = backend
+        .confirmations
+        .lock()
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(last.site, "github.example");
+    // Refused in Verrou: the site is not added.
     backend.approve.store(false, Ordering::SeqCst);
     let elsewhere = json!({ "cmd": "link_site", "url": "https://evil.example/", "item": "github" });
     assert_eq!(client.request(&elsewhere)["result"], "denied");
@@ -865,9 +870,9 @@ fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
     assert_eq!(again["result"], "denied");
 }
 
-/// Une clé d'appairage volée affirme l'adresse qu'elle veut : au-delà de
-/// quelques éléments différents en peu de temps, chaque élément de plus
-/// demande l'accord de l'utilisateur.
+/// A stolen pairing key asserts whatever address it wants: beyond
+/// a few different items in a short time, each further item
+/// requires the user's approval.
 #[test]
 fn many_items_in_a_row_need_approval() {
     let items = (0..12)
@@ -895,7 +900,7 @@ fn many_items_in_a_row_need_approval() {
         );
     }
     assert!(backend.confirmations.lock().unwrap().is_empty());
-    // Le neuvième : refusé dans Verrou.
+    // The ninth: refused in Verrou.
     let ninth = fill_site(&mut client, 8);
     assert_eq!(ninth["result"], "denied");
     assert!(ninth.get("password").is_none());
@@ -903,9 +908,9 @@ fn many_items_in_a_row_need_approval() {
         backend.confirmations.lock().unwrap()[0].purpose,
         Purpose::Bulk
     );
-    // Un élément déjà livré reste disponible sans accord.
+    // An item already released stays available without approval.
     assert_eq!(fill_site(&mut client, 3)["result"], "credentials");
-    // Accordé : livré.
+    // Granted: released.
     backend.approve.store(true, Ordering::SeqCst);
     assert_eq!(fill_site(&mut client, 8)["result"], "credentials");
     let _ = std::fs::remove_file(file);

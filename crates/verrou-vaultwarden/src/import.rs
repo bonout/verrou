@@ -1,16 +1,15 @@
-//! Écritures en masse : import d'un export (Apple, 1Password, Proton Pass)
-//! et corbeille de plusieurs éléments.
+//! Bulk writes: import of an export (Apple, 1Password, Proton Pass) and
+//! trashing of several items.
 //!
-//! Créer des centaines d'éléments un par un synchroniserait le coffre à
-//! chaque fois. L'import passe donc par `POST /api/ciphers/import`, celui du
-//! coffre web : chaque élément est chiffré par le SDK comme une création,
-//! puis tout part en une requête (par lot de 500), suivie d'une seule
-//! synchronisation. Les éléments déjà présents qu'on complète (nouveau mot de
-//! passe, code à usage unique) passent par la modification habituelle, sans
-//! synchronisation entre deux. Les éléments qui portent des fichiers
-//! (1Password, Proton Pass) sont créés un par un, chacun suivi de ses
-//! pièces jointes (`attachments`). La corbeille en masse utilise
-//! `PUT /api/ciphers/delete`, restaurable comme la corbeille d'un élément.
+//! Creating hundreds of items one by one would sync the vault each time.
+//! The import therefore goes through `POST /api/ciphers/import`, the web
+//! vault's: each item is encrypted by the SDK like a creation, then
+//! everything goes in one request (in batches of 500), followed by a single
+//! sync. Existing items being completed (new password, one-time code) go
+//! through the usual edit, without a sync in between. Items carrying files
+//! (1Password, Proton Pass) are created one by one, each followed by its
+//! attachments (`attachments`). Bulk trashing uses
+//! `PUT /api/ciphers/delete`, restorable like a single item's trash.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -27,59 +26,59 @@ use verrou_core::template;
 use crate::edit::{apply, draft_of, new_view};
 use crate::{Connection, CustomFieldDraft, CustomFieldKind, Decrypted, Draft, Error, LoginDraft};
 
-/// Éléments par requête : bien en deçà de la limite de taille des requêtes
-/// de Vaultwarden (20 Mo).
+/// Items per request: well below Vaultwarden's request size limit
+/// (20 MB).
 pub(crate) const BATCH: usize = 500;
 
-/// Longueur maximale des notes chiffrées, imposée par Vaultwarden.
+/// Maximum length of encrypted notes, enforced by Vaultwarden.
 const MAX_ENCRYPTED_NOTES: usize = 10_000;
 
-/// Où ranger les éléments créés par un import.
+/// Where to put the items created by an import.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Destination {
-    /// Aucun dossier.
+    /// No folder.
     None,
-    /// Ce dossier, créé s'il n'existe pas.
+    /// This folder, created if it doesn't exist.
     Folder(String),
-    /// Le dossier (ou coffre) de chaque élément dans l'application d'origine,
-    /// créé s'il n'existe pas.
+    /// Each item's folder (or vault) in the original application, created if
+    /// it doesn't exist.
     Original,
 }
 
-/// Ce qu'un import écrit.
+/// What an import writes.
 #[derive(Clone, Debug)]
 pub struct ImportPlan {
-    /// Éléments à créer.
+    /// Items to create.
     pub create: Vec<ImportedItem>,
-    /// Éléments du coffre à compléter (identifiant de l'élément, élément
-    /// importé) : nouveau mot de passe (l'ancien rejoint l'historique), code
-    /// à usage unique et notes s'ils manquent, sites d'autres hôtes.
+    /// Vault items to complete (item id, imported item): new password (the
+    /// old one joins the history), one-time code and notes if missing, sites
+    /// on other hosts.
     pub update: Vec<(String, ImportedItem)>,
     pub destination: Destination,
 }
 
-/// Bilan d'un import.
+/// Outcome of an import.
 pub struct ImportReport {
     pub created: usize,
     pub updated: usize,
-    /// Titre de chaque élément non écrit, et pourquoi.
+    /// Title of each item not written, and why.
     pub failures: Vec<(String, String)>,
-    /// Le coffre resynchronisé.
+    /// The resynced vault.
     pub vault: Decrypted,
 }
 
 impl Connection {
-    /// Importe les éléments du plan, puis synchronise une fois.
+    /// Imports the plan's items, then syncs once.
     ///
-    /// Rend une erreur seulement si rien n'a été écrit ; ensuite, chaque
-    /// échec est noté dans le bilan et l'import continue.
+    /// Returns an error only if nothing was written; after that, each
+    /// failure is recorded in the report and the import goes on.
     pub async fn import(&mut self, plan: ImportPlan) -> Result<ImportReport, Error> {
-        // Les éléments à compléter partent de leur version du serveur.
-        self.require_online("L'import").await?;
+        // The items to complete start from their server version.
+        self.require_online("Importing").await?;
         let now = Utc::now();
         let mut failures = Vec::new();
 
-        // Tout chiffrer avant d'écrire quoi que ce soit.
+        // Encrypt everything before writing anything.
         let mut ciphers: Vec<(Option<String>, CipherRequestModel)> = Vec::new();
         let mut with_files: Vec<(Option<String>, &ImportedItem)> = Vec::new();
         for item in &plan.create {
@@ -90,7 +89,7 @@ impl Connection {
             }
             .filter(|f| !f.is_empty());
             if !item.attachments.is_empty() {
-                // Avec des fichiers : créé à part, pour connaître son identifiant.
+                // With files: created separately, to know its id.
                 with_files.push((folder, item));
                 continue;
             }
@@ -102,7 +101,7 @@ impl Connection {
             {
                 failures.push((
                     item.title.clone(),
-                    "notes trop longues pour Vaultwarden".to_owned(),
+                    "notes too long for Vaultwarden".to_owned(),
                 ));
                 continue;
             }
@@ -128,13 +127,13 @@ impl Connection {
                     return Err(error);
                 }
                 Err(error) => {
-                    failures.push((format!("{} élément(s)", batch.len()), error.to_string()));
+                    failures.push((format!("{} item(s)", batch.len()), error.to_string()));
                 }
             }
         }
 
-        // Éléments avec pièces jointes : un par un, l'élément puis ses
-        // fichiers ; si un fichier ne part pas, l'élément est retiré.
+        // Items with attachments: one by one, the item then its files; if a
+        // file doesn't go through, the item is removed.
         for (folder, item) in with_files {
             let mut view = import_view(item, now)?;
             view.folder_id = folder
@@ -163,10 +162,10 @@ impl Connection {
         })
     }
 
-    /// Met plusieurs éléments à la corbeille du serveur (restaurables depuis
-    /// le coffre web), puis synchronise une fois. Les éléments que le compte
-    /// ne peut pas modifier sont refusés avant tout envoi. Hors ligne, chacun
-    /// attend le serveur dans la file.
+    /// Moves several items to the server's trash (restorable from the web
+    /// vault), then syncs once. Items the account can't edit are refused
+    /// before anything is sent. Offline, each one waits for the server in
+    /// the queue.
     pub async fn trash_many(&mut self, ids: &[String]) -> Result<Decrypted, Error> {
         let access = self.online().await?;
         let mut ids: Vec<String> = ids.iter().map(|id| self.resolve(id)).collect();
@@ -183,7 +182,7 @@ impl Connection {
             }
             match sent {
                 Ok(()) => return self.sync_with(&access).await,
-                // Rien n'est parti (premier lot) : tout attend dans la file.
+                // Nothing went out (first batch): everything waits in the queue.
                 Err(Error::Network(_)) if ids.len() <= BATCH => self.mark_offline(),
                 Err(error) => return Err(error),
             }
@@ -197,8 +196,8 @@ impl Connection {
         self.decrypt_cache().await
     }
 
-    /// Les éléments à compléter, rechiffrés. Un élément devenu introuvable
-    /// ou en lecture seule est noté parmi les échecs.
+    /// The items to complete, re-encrypted. An item that can no longer be
+    /// found or became read-only is recorded among the failures.
     async fn merged(
         &self,
         updates: &[(String, ImportedItem)],
@@ -219,7 +218,7 @@ impl Connection {
             if !complete(&mut draft, item) {
                 failures.push((
                     item.title.clone(),
-                    "l'élément du coffre n'est pas un identifiant".to_owned(),
+                    "the vault item is not a login".to_owned(),
                 ));
                 continue;
             }
@@ -229,8 +228,8 @@ impl Connection {
         Ok(merged)
     }
 
-    /// Identifiant et nom chiffré de chaque dossier voulu (par nom) : celui
-    /// qui existe déjà, sinon un dossier créé.
+    /// Id and encrypted name of each wanted folder (by name): the existing
+    /// one, otherwise a created folder.
     pub(crate) async fn ensure_folders(
         &self,
         access: &str,
@@ -246,9 +245,9 @@ impl Connection {
             .collect();
         let mut ids = HashMap::new();
         for name in wanted {
-            // Le nom ne part que chiffré, même pour un dossier existant.
-            // Comme pour la lecture, la méthode « de haut niveau » du SDK :
-            // Verrou n'utilise pas son stockage d'état.
+            // The name only goes out encrypted, even for an existing folder.
+            // As for reading, the SDK's "high-level" method: Verrou doesn't
+            // use its state storage.
             #[allow(deprecated)]
             let encrypted = self
                 .sdk
@@ -272,10 +271,10 @@ impl Connection {
     }
 }
 
-/// Reporte un élément importé sur le brouillon d'un identifiant du coffre :
-/// mot de passe (l'ancien rejoindra l'historique), identifiant, code à usage
-/// unique et notes s'ils manquent, sites d'hôtes absents. `false` si l'élément du
-/// coffre n'est pas un identifiant.
+/// Carries an imported item over to the draft of a vault login: password
+/// (the old one will join the history), username, one-time code and notes
+/// if missing, sites on missing hosts. `false` if the vault item is not a
+/// login.
 fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     let Some(login) = draft.login.as_mut() else {
         return false;
@@ -283,7 +282,7 @@ fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     if item.password.is_some() {
         login.password.clone_from(&item.password);
     }
-    // Un doublon probable sans identifiant dans le coffre : l'import le donne.
+    // A likely duplicate without a username in the vault: the import gives it.
     if login
         .username
         .as_deref()
@@ -306,8 +305,8 @@ fn complete(draft: &mut Draft, item: &ImportedItem) -> bool {
     true
 }
 
-/// L'élément à créer, déchiffré : identifiant, note sécurisée, carte ou
-/// identité, avec le champ de son modèle s'il en a un.
+/// The item to create, decrypted: login, secure note, card or identity,
+/// with its template's field if it has one.
 fn import_view(
     item: &ImportedItem,
     now: DateTime<Utc>,
@@ -323,8 +322,8 @@ fn import_view(
         .fields
         .iter()
         .map(|f| CustomFieldDraft {
-            // Un nom réservé à Verrou venu d'ailleurs ne doit pas passer
-            // pour un modèle.
+            // A name reserved for Verrou coming from elsewhere must not pass
+            // for a template.
             name: if template::is_reserved(&f.name) {
                 format!("({})", f.name)
             } else {
@@ -395,8 +394,8 @@ fn import_view(
     Ok(view)
 }
 
-/// Une requête d'import : les éléments, et les dossiers (existants,
-/// désignés par leur identifiant) où les ranger.
+/// An import request: the items, and the folders (existing, designated by
+/// their id) to put them in.
 fn import_request(
     batch: &[(Option<String>, CipherRequestModel)],
     folders: &HashMap<String, (String, String)>,
@@ -420,8 +419,8 @@ fn import_request(
         });
     }
     ImportCiphersRequestModel {
-        // Vaultwarden range dans un dossier existant quand son identifiant
-        // est donné (le nom, chiffré, ne sert alors pas).
+        // Vaultwarden files into an existing folder when its id is given
+        // (the encrypted name is then not used).
         folders: Some(
             used.iter()
                 .map(|(id, name)| FolderWithIdRequestModel {

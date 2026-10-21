@@ -4,15 +4,14 @@ import Observation
 import SwiftUI
 import UIKit
 
-/// État de l'app iPhone : compte, verrouillage, navigation, écritures.
+/// The iPhone app's state: account, locking, navigation, writes.
 ///
-/// Même principe que sur le Mac : les résumés des éléments (titres,
-/// identifiants affichés, sites) arrivent une fois au déverrouillage, puis
-/// après chaque synchronisation ; chaque frappe de recherche interroge le
-/// cœur Rust, qui rend des positions dans ce tableau. Un secret ne traverse
-/// la frontière que quand l'utilisateur l'affiche ou le copie. L'ouverture
-/// du coffre passe par `VaultAccess` (partagé avec la future extension de
-/// remplissage automatique).
+/// Same principle as on the Mac: the item summaries (titles, displayed
+/// usernames, sites) arrive once on unlock, then after each sync; each
+/// search keystroke queries the Rust core, which returns positions in this
+/// array. A secret only crosses the boundary when the user shows or copies
+/// it. Opening the vault goes through `VaultAccess` (shared with the future
+/// AutoFill extension).
 @MainActor
 @Observable
 final class PhoneModel {
@@ -22,7 +21,7 @@ final class PhoneModel {
         case unlocked
     }
 
-    /// `demo` : coffre fictif (`VERROU_MOCK=1`).
+    /// `demo`: demo vault (`VERROU_MOCK=1`).
     enum Mode {
         case demo
         case vaultwarden
@@ -31,7 +30,7 @@ final class PhoneModel {
     enum SyncState: Equatable {
         case idle
         case syncing
-        /// Serveur injoignable : le coffre affiché est le cache.
+        /// Server unreachable: the vault shown is the cache.
         case offline
         case failed(String)
     }
@@ -40,34 +39,34 @@ final class PhoneModel {
         case vault
         case generator
         case settings
-        /// Recherche dans tout le coffre (onglet à part, rôle « search »).
+        /// Search across the whole vault (separate tab, "search" role).
         case search
     }
 
-    /// Écrans empilés dans l'onglet Coffre.
+    /// Screens stacked in the Vault tab.
     enum Route: Hashable {
         case list(SidebarFilter)
         case item(String)
         case audit
-        /// Un coffre partagé : ses collections, ses membres, ses groupes.
+        /// A shared vault: its collections, its members, its groups.
         case organization(String)
         case members(String)
         case groups(String)
-        /// Envois (Bitwarden Send).
+        /// Sends (Bitwarden Send).
         case sends
     }
 
     struct Editor: Identifiable {
         let id = UUID()
-        /// `nil` : création.
+        /// `nil`: creation.
         let itemID: String?
         let draft: ItemDraft
-        /// Création directe dans une collection partagée.
+        /// Direct creation in a shared collection.
         var destination: SharedDestination?
     }
 
-    /// Demande du mot de passe principal pour un élément protégé, quand Face
-    /// ID n'est pas disponible ou que l'utilisateur l'a écarté.
+    /// Master password prompt for a protected item, when Face ID is not
+    /// available or the user dismissed it.
     struct RepromptRequest: Identifiable {
         let id = UUID()
         let itemID: String
@@ -75,20 +74,20 @@ final class PhoneModel {
         fileprivate let answer: (Bool) -> Void
     }
 
-    /// QR code d'un réseau Wi-Fi affiché.
+    /// QR code of a Wi-Fi network shown.
     struct QRSheet: Identifiable {
         let id = UUID()
         let title: String
         let image: CGImage
     }
 
-    /// Fichier déchiffré à partager (pièce jointe).
+    /// Decrypted file to share (attachment).
     struct SharedFile: Identifiable {
         let id = UUID()
         let url: URL
     }
 
-    /// « Déplacer vers un dossier » ouvert pour ces éléments.
+    /// "Move to folder" open for these items.
     struct MoveRequest: Identifiable {
         let id = UUID()
         let itemIDs: [String]
@@ -107,47 +106,47 @@ final class PhoneModel {
     private(set) var organizations: [OrganizationView] = []
     private(set) var folders: [FolderOption] = []
     private(set) var syncState: SyncState = .idle
-    /// Modifications faites hors ligne qui attendent le serveur.
+    /// Changes made offline that are waiting for the server.
     private(set) var pendingChanges = 0
     private(set) var biometricEnrolled = false
-    /// Change à chaque rechargement du coffre : les listes se recalculent.
+    /// Changes on each vault reload: the lists are recomputed.
     private(set) var revision = 0
     var unlockError: String?
 
-    // Connexion
-    /// `nil` : étape identifiants ; sinon les méthodes de second facteur.
+    // Sign-in
+    /// `nil`: credentials step; otherwise the second factor methods.
     private(set) var twoFactorOptions: [TwoFactorOption]?
     private(set) var loginBusy = false
     var loginError: String?
     var loginServer = "https://"
     var loginEmail = ""
-    /// La session a expiré : il faut se reconnecter.
+    /// The session has expired: signing in again is needed.
     private(set) var reloginRequired = false
 
-    // Navigation et feuilles
+    // Navigation and sheets
     var tab: Tab = .vault {
         didSet {
             if tab == .search, oldValue != .search { searchChosenAt = .now }
         }
     }
-    /// Choix de l'onglet Rechercher : mesure du délai jusqu'au clavier.
+    /// Choosing the Search tab: measures the delay until the keyboard.
     @ObservationIgnored var searchChosenAt: ContinuousClock.Instant?
     var vaultPath: [Route] = [] {
         didSet { forgetClosedItems() }
     }
-    /// Écrans empilés dans l'onglet Réglages.
+    /// Screens stacked in the Settings tab.
     var settingsPath: [SettingsRoute] = []
     enum SettingsRoute: Hashable {
-        /// Tri, liste au déverrouillage, règles de correspondance.
+        /// Sorting, list on unlock, match rules.
         case filling
     }
-    /// Écrans empilés dans l'onglet Rechercher.
+    /// Screens stacked in the Search tab.
     var searchPath: [Route] = [] {
         didSet { forgetClosedItems() }
     }
-    /// Recherche dans tout le coffre (onglet Rechercher).
+    /// Search across the whole vault (Search tab).
     var searchQuery = ""
-    /// Copies faites : chacune déclenche un retour haptique (`sensoryFeedback`).
+    /// Copies made: each one triggers a haptic (`sensoryFeedback`).
     private(set) var copies = 0
     var editor: Editor?
     var editorBusy = false
@@ -155,42 +154,42 @@ final class PhoneModel {
     var toast: Toast?
     var reprompt: RepromptRequest?
     var qrSheet: QRSheet?
-    /// Lecture d'un QR code de double authentification (feuille ouverte).
+    /// Reading a two-factor authentication QR code (sheet open).
     var otpScan: OTPScanFlow?
-    /// Compte scanné à reporter dans l'écran de modification ouvert.
+    /// Scanned account to carry over into the open edit screen.
     var otpFormFill: OTPFormFill?
     #if DEBUG
-    /// Pilote de bout en bout : enregistre l'écran de modification ouvert,
-    /// comme le bouton « Créer » (brouillon de la vue compris).
+    /// End-to-end driver: saves the open edit screen, like the "Create"
+    /// button (the view's draft included).
     var e2eSaveEditor = 0
     #endif
     var moveRequest: MoveRequest?
-    /// « Retirer du partage… » en attente de confirmation.
+    /// "Remove from sharing…" awaiting confirmation.
     var unshareRequest: UnshareRequest?
-    /// Retrait du partage en cours.
+    /// Removal from sharing in progress.
     var unshareBusy = false
-    /// Ordre des listes, gardé sur cet iPhone.
+    /// Order of the lists, kept on this iPhone.
     var sortOrder: ResultOrder = DevicePreferences.sort {
         didSet { DevicePreferences.sort = sortOrder }
     }
-    /// Liste ouverte au déverrouillage, gardée sur cet iPhone.
+    /// List opened on unlock, kept on this iPhone.
     var defaultFilter: DefaultFilter = DevicePreferences.defaultFilter {
         didSet { DevicePreferences.defaultFilter = defaultFilter }
     }
-    /// Règles de correspondance de cet iPhone et domaines équivalents du compte.
+    /// This iPhone's match rules and the account's equivalent domains.
     var matchSettings: MatchSettingsView?
-    /// Pièce jointe déchiffrée montrée par Quick Look (fichier temporaire).
+    /// Decrypted attachment shown by Quick Look (temporary file).
     var preview: URL? {
         didSet { if let oldValue, oldValue != preview { Attachments.discard(oldValue) } }
     }
     var sharedFile: SharedFile?
-    /// Pièces jointes chargées, par élément.
+    /// Loaded attachments, per item.
     private(set) var attachments: [String: [AttachmentEntry]] = [:]
-    /// Téléchargement ou envoi en cours.
+    /// Download or upload in progress.
     private(set) var attachmentActivity: String?
 
-    /// Champs révélés, par élément ; effacés quand on quitte la fiche et au
-    /// verrouillage.
+    /// Revealed fields, per item; erased when leaving the item page and on
+    /// lock.
     private(set) var revealed: [String: [String: String]] = [:]
 
     // Audit
@@ -198,40 +197,40 @@ final class PhoneModel {
     private(set) var breaches: [BreachedPassword]?
     private(set) var checkingBreaches = false
     var breachError: String?
-    /// « Passkey possible » (`PasskeyUpgrade.swift`).
+    /// "Passkey possible" (`PasskeyUpgrade.swift`).
     let passkeyAudit = PhonePasskeyAudit()
 
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
-    /// Partage avec d'autres comptes (organisations, collections, membres).
+    /// Sharing with other accounts (organizations, collections, members).
     let sharing = PhoneSharingModel()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
-    /// Mises à jour en direct du serveur, au premier plan.
+    /// Live updates from the server, in the foreground.
     @ObservationIgnored let live = LiveUpdates()
-    /// Notification touchée coffre verrouillé : ouverte après le déverrouillage.
+    /// Notification tapped with the vault locked: opened after the unlock.
     @ObservationIgnored var pendingActivityRoute: ActivityRoute?
-    /// La prochaine synchronisation est la première après le déverrouillage :
-    /// on mesure le plus long blocage du fil principal pendant qu'elle tourne.
+    /// The next sync is the first after the unlock: we measure the longest
+    /// main thread stall while it runs.
     @ObservationIgnored private var watchFirstSync = false
-    /// Synchronisations terminées depuis le lancement (mesures).
+    /// Syncs finished since launch (measurements).
     @ObservationIgnored private(set) var syncsFinished = 0
     @ObservationIgnored private var identitiesTask: Task<Void, Never>?
-    /// Verrou est choisi comme fournisseur de remplissage automatique
-    /// (`nil` : pas encore demandé au système).
+    /// Verrou is chosen as the AutoFill provider (`nil`: not asked of the
+    /// system yet).
     private(set) var autofillEnabled: Bool?
-    /// Synchronisations en cours (le cœur Rust les regroupe) : la dernière
-    /// qui se termine donne l'état affiché.
+    /// Syncs in progress (the Rust core batches them): the last one to
+    /// finish gives the state shown.
     @ObservationIgnored private var syncsInFlight = 0
-    /// Rechargements de la liste : une lecture faite hors du fil principal
-    /// n'écrase pas une écriture locale plus récente.
+    /// List reloads: a read done off the main thread doesn't overwrite a
+    /// more recent local write.
     @ObservationIgnored private var reloads = 0
     @ObservationIgnored private var backgroundedAt: Date?
     @ObservationIgnored private var lastBiometricPrompt: Date?
-    /// La dernière demande de Face ID a été interrompue par le système.
+    /// The last Face ID prompt was interrupted by the system.
     @ObservationIgnored private var interruptedPrompt = false
-    /// Face ID demandé de lui-même sur l'écran verrouillé (pas pendant les
-    /// parcours scriptés).
+    /// Face ID requested on its own on the lock screen (not during scripted
+    /// runs).
     @ObservationIgnored private let autoFaceID: Bool
     @ObservationIgnored let mockSize: UInt32
 
@@ -246,7 +245,7 @@ final class PhoneModel {
         autoFaceID = environment["VERROU_E2E_SERVER"] == nil && environment["VERROU_MOCK"] == nil
         var location = VerrouStorage.accountLocation()
         #if DEBUG
-        // Parcours de bout en bout : un compte jetable, jamais le vrai.
+        // End-to-end run: a throwaway account, never the real one.
         if environment["VERROU_E2E_SERVER"] != nil {
             let directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-data")
             try? FileManager.default.removeItem(at: directory)
@@ -271,10 +270,10 @@ final class PhoneModel {
         }
         Attachments.purge()
         Biometrics.refresh()
-        Perf.mark("modèle prêt à +\(Perf.msSinceLaunch) ms du lancement")
+        Perf.mark("model ready at +\(Perf.msSinceLaunch) ms from launch")
     }
 
-    /// Pas de compte sur cet iPhone, ou session expirée : écran de connexion.
+    /// No account on this iPhone, or session expired: sign-in screen.
     var needsLogin: Bool {
         mode == .vaultwarden && (account == nil || reloginRequired)
     }
@@ -285,26 +284,26 @@ final class PhoneModel {
 
     var canEdit: Bool { (mode == .vaultwarden || showcase) && lockState == .unlocked }
 
-    /// Vitrine (builds Debug, `VERROU_SHOWCASE=1`) : sur le coffre fictif, les
-    /// boutons de modification sont affichés pour les captures d'écran.
+    /// Showcase (Debug builds, `VERROU_SHOWCASE=1`): on the demo vault, the
+    /// edit buttons are shown for screenshots.
     @ObservationIgnored let showcase: Bool
 
-    // MARK: Réglages
+    // MARK: Settings
 
-    /// Délai de verrouillage une fois l'app en arrière-plan, en secondes ;
-    /// 0 : aussitôt ; -1 : jamais (seulement à la fermeture de l'app).
+    /// Lock delay once the app is in the background, in seconds; 0: right
+    /// away; -1: never (only when the app is closed).
     var autoLockSeconds: Int {
         get { access(keyPath: \.autoLockSeconds); return UserDefaults.standard.object(forKey: "autoLockSeconds") as? Int ?? 60 }
         set { withMutation(keyPath: \.autoLockSeconds) { UserDefaults.standard.set(newValue, forKey: "autoLockSeconds") } }
     }
 
-    /// Durée de vie d'un secret copié dans le presse-papiers, en secondes.
+    /// Lifetime of a secret copied to the clipboard, in seconds.
     var clipboardSeconds: Int {
         get { access(keyPath: \.clipboardSeconds); return UserDefaults.standard.object(forKey: "clipboardSeconds") as? Int ?? 90 }
         set { withMutation(keyPath: \.clipboardSeconds) { UserDefaults.standard.set(newValue, forKey: "clipboardSeconds") } }
     }
 
-    /// Proposer Face ID après un déverrouillage par mot de passe.
+    /// Offer Face ID after an unlock with the password.
     var biometricsWanted: Bool {
         get { access(keyPath: \.biometricsWanted); return UserDefaults.standard.object(forKey: "faceIDWanted") as? Bool ?? true }
         set {
@@ -318,7 +317,7 @@ final class PhoneModel {
         }
     }
 
-    /// Icônes des sites, demandées au serveur du compte.
+    /// Site icons, requested from the account's server.
     var showSiteIcons: Bool {
         get { access(keyPath: \.showSiteIcons); return UserDefaults.standard.object(forKey: "showSiteIcons") as? Bool ?? true }
         set {
@@ -332,7 +331,7 @@ final class PhoneModel {
         siteIcons.server = wanted ? account?.server : nil
     }
 
-    // MARK: Connexion
+    // MARK: Sign-in
 
     func signIn(password: String) async {
         guard !loginBusy else { return }
@@ -360,8 +359,8 @@ final class PhoneModel {
         }
     }
 
-    /// Clé de sécurité (FIDO2) : la page de connexion du serveur, dans une
-    /// session Safari éphémère ; la YubiKey répond en NFC ou en USB-C.
+    /// Security key (FIDO2): the server's sign-in page, in an ephemeral
+    /// Safari session; the YubiKey answers over NFC or USB-C.
     func useSecurityKey(challenge: String) async {
         guard !loginBusy else { return }
         loginError = nil
@@ -369,12 +368,12 @@ final class PhoneModel {
             let token = try await SecurityKeySignIn().sign(server: normalizedServer, challenge: challenge)
             await answerTwoFactor(.securityKey(challenge: challenge), token: token)
         } catch SecurityKeySignIn.Failure.cancelled {
-            // Feuille fermée : rien à dire.
+            // Sheet closed: nothing to say.
         } catch {
             loginError = ErrorText.describe(error)
         }
         if loginError != nil, twoFactorOptions != nil {
-            // Le serveur ne laisse qu'une tentative par défi : on en redemande un.
+            // The server only allows one attempt per challenge: we ask for another.
             if case .twoFactorRequired(let options)? = try? await session.restartTwoFactor() {
                 twoFactorOptions = options
             }
@@ -384,7 +383,7 @@ final class PhoneModel {
     func sendEmailCode() async {
         do {
             try await session.sendEmailCode()
-            toast = Toast(message: "Code envoyé", detail: "Consultez votre boîte de réception")
+            toast = Toast(message: String(localized: "Code sent"), detail: String(localized: "Check your inbox"))
         } catch {
             loginError = ErrorText.describe(error)
         }
@@ -409,7 +408,7 @@ final class PhoneModel {
             twoFactorOptions = nil
             reloginRequired = false
             account = session.account()
-            // Une reconnexion change la clé du coffre : l'ancien Face ID ne vaut plus.
+            // Signing in again changes the vault key: the old Face ID is no longer valid.
             vault.removeBiometrics()
             biometricEnrolled = false
             didUnlock(failures: failures)
@@ -417,13 +416,13 @@ final class PhoneModel {
         }
     }
 
-    /// Session expirée, mais on veut quand même consulter le cache.
+    /// Session expired, but we still want to look at the cache.
     func continueOffline() {
         reloginRequired = false
         loginError = nil
     }
 
-    /// Oublie le compte : cache, file hors ligne, Face ID. Le serveur garde tout.
+    /// Forgets the account: cache, offline queue, Face ID. The server keeps everything.
     func logout() {
         lock()
         identitiesTask?.cancel()
@@ -439,14 +438,14 @@ final class PhoneModel {
         tab = .vault
     }
 
-    // MARK: Verrouillage
+    // MARK: Locking
 
-    /// Écran verrouillé affiché ou app revenue au premier plan : Face ID
-    /// directement, sans passer par le bouton.
+    /// Lock screen shown or app back in the foreground: Face ID directly,
+    /// without going through the button.
     ///
-    /// Au lancement, l'écran verrouillé apparaît avant que l'app ne soit
-    /// active (jusqu'à 300 ms plus tôt) : Face ID est demandé dès ce moment ;
-    /// si le système l'interrompt, il est redemandé à l'activation.
+    /// At launch, the lock screen appears before the app is active (up to
+    /// 300 ms earlier): Face ID is requested right then; if the system
+    /// interrupts it, it is requested again on activation.
     func promptBiometricsIfPossible() async {
         guard autoFaceID, mode == .vaultwarden, canUseBiometrics, lockState == .locked, !needsLogin,
               UIApplication.shared.applicationState != .background else { return }
@@ -454,12 +453,12 @@ final class PhoneModel {
         await unlockWithBiometrics()
     }
 
-    /// Face ID reconnu, coffre en cours de déchiffrement : l'écran verrouillé
-    /// s'ouvre déjà (le coffre vide est construit dessous), sans attendre.
+    /// Face ID recognized, vault being decrypted: the lock screen already
+    /// opens (the empty vault is built underneath), without waiting.
     private(set) var opening = false
-    /// Face ID demandé par l'app : l'inactivité qui suit vient de la feuille
-    /// du système, pas du sélecteur d'apps. Levé au retour au premier plan
-    /// (ou en arrière-plan).
+    /// Face ID requested by the app: the inactivity that follows comes from
+    /// the system sheet, not the app switcher. Cleared on return to the
+    /// foreground (or in the background).
     private(set) var biometricPrompt = false
 
     func unlockWithBiometrics() async {
@@ -473,7 +472,7 @@ final class PhoneModel {
         unlockError = nil
         biometricPrompt = true
         if mode == .demo {
-            switch await Biometrics.authenticate(reason: "déverrouiller votre coffre") {
+            switch await Biometrics.authenticate(reason: String(localized: "unlock your vault")) {
             case .success: openMockVault()
             case .fallback: lockState = .locked
             case .failure(let message):
@@ -483,8 +482,8 @@ final class PhoneModel {
             return
         }
         do {
-            let failures = try await Perf.measure("\(Biometrics.name) + déchiffrement du coffre") {
-                try await vault.unlockWithBiometrics(reason: "déverrouiller votre coffre") { [weak self] in
+            let failures = try await Perf.measure("\(Biometrics.name) + vault decryption") {
+                try await vault.unlockWithBiometrics(reason: String(localized: "unlock your vault")) { [weak self] in
                     self?.opening = true
                 }
             }
@@ -492,24 +491,24 @@ final class PhoneModel {
         } catch BiometricVault.Failure.cancelled {
             lockState = .locked
         } catch BiometricVault.Failure.interrupted {
-            // Pas un refus : redemandé à la prochaine activation, sans délai.
+            // Not a refusal: asked again at the next activation, without delay.
             lockState = .locked
             interruptedPrompt = true
         } catch BiometricVault.Failure.unavailable {
-            unlockError = "\(Biometrics.name) n'est pas disponible : saisissez votre mot de passe principal."
+            unlockError = String(localized: "\(Biometrics.name) is not available: enter your master password.")
             lockState = .locked
         } catch {
-            // Visages ou empreintes changés, ou clé périmée : retour au mot de passe.
+            // Faces or fingerprints changed, or stale key: back to the password.
             vault.removeBiometrics()
             biometricEnrolled = false
-            unlockError = "\(Biometrics.name) doit être réactivé : saisissez votre mot de passe principal."
+            unlockError = String(localized: "\(Biometrics.name) needs to be turned on again: enter your master password.")
             lockState = .locked
         }
     }
 
     func unlock(masterPassword: String) async {
         guard !masterPassword.isEmpty else {
-            unlockError = "Saisissez votre mot de passe principal."
+            unlockError = String(localized: "Enter your master password.")
             return
         }
         if mode == .demo {
@@ -519,10 +518,10 @@ final class PhoneModel {
         lockState = .unlocking
         unlockError = nil
         do {
-            let failures = try await Perf.measure("déverrouillage par mot de passe") {
+            let failures = try await Perf.measure("password unlock") {
                 try await vault.unlock(masterPassword: masterPassword)
             }
-            Perf.unlockSucceeded("le mot de passe")
+            Perf.unlockSucceeded("the password")
             didUnlock(failures: failures)
             await enrollBiometricsIfWanted()
         } catch {
@@ -531,24 +530,24 @@ final class PhoneModel {
         }
     }
 
-    /// Coffre fictif (démonstration).
+    /// Demo vault (demonstration).
     func openMockVault() {
         session.unlockMock(size: mockSize, seed: 42)
-        Perf.unlockSucceeded("l'ouverture du coffre fictif")
+        Perf.unlockSucceeded("opening the demo vault")
         didUnlock(failures: 0)
     }
 
     private func didUnlock(failures: UInt32) {
         reloadVault()
-        // La liste choisie dans les réglages s'ouvre d'elle-même.
+        // The list chosen in the settings opens by itself.
         if defaultFilter != .all, vaultPath.isEmpty, !showcase {
             vaultPath = [.list(defaultFilter.filter)]
         }
         lockState = .unlocked
         updateSiteIcons()
         if failures > 0 {
-            toast = Toast(message: "\(failures) élément\(failures > 1 ? "s" : "") illisible\(failures > 1 ? "s" : "")",
-                          detail: "Le SDK Bitwarden n'a pas pu les déchiffrer", failure: true)
+            toast = Toast(message: failures > 1 ? String(localized: "\(failures) unreadable items") : String(localized: "\(failures) unreadable item"),
+                          detail: String(localized: "The Bitwarden SDK could not decrypt them"), failure: true)
         }
         watchFirstSync = true
         startSyncLoop()
@@ -596,13 +595,13 @@ final class PhoneModel {
         updateSiteIcons()
     }
 
-    // MARK: Premier plan, arrière-plan
+    // MARK: Foreground, background
 
-    /// Verrouillage automatique et synchronisation au retour au premier plan.
+    /// Auto-lock and sync on return to the foreground.
     func scenePhaseChanged(to phase: ScenePhase) {
-        Perf.mark("scène \(String(describing: phase)) à +\(Perf.msSinceLaunch) ms du lancement (\(String(describing: lockState)))")
-        // Au lancement, la scène devient active juste après la demande, avant
-        // la feuille de Face ID : on ne lève qu'une fois la demande close.
+        Perf.mark("scene \(String(describing: phase)) at +\(Perf.msSinceLaunch) ms from launch (\(String(describing: lockState)))")
+        // At launch, the scene becomes active right after the prompt, before
+        // the Face ID sheet: we only clear it once the prompt is closed.
         if phase == .background || (phase == .active && lockState != .unlocking) { biometricPrompt = false }
         switch phase {
         case .background:
@@ -613,8 +612,8 @@ final class PhoneModel {
             if lockState == .unlocked, autoLockSeconds == 0 { lock() }
             scheduleBackgroundCheck()
         case .active:
-            // Retour de l'arrière-plan (pas d'un simple état inactif) : le
-            // réseau est réveillé pendant Face ID ou avant la synchronisation.
+            // Back from the background (not from a mere inactive state): the
+            // network is woken up during Face ID or before the sync.
             if backgroundedAt != nil, mode == .vaultwarden, let server = account?.server {
                 NetworkWake.nudge(server: server)
             }
@@ -625,10 +624,10 @@ final class PhoneModel {
             backgroundedAt = nil
             Biometrics.refresh()
             if lockState == .unlocked {
-                // Retour de l'arrière-plan : la boucle avait été arrêtée.
-                // Simple retour de l'état inactif (Face ID, centre de
-                // contrôle) : elle tourne encore, et la relancer doublerait
-                // la synchronisation du déverrouillage.
+                // Back from the background: the loop had been stopped. Mere
+                // return from the inactive state (Face ID, Control Center):
+                // it is still running, and restarting it would double the
+                // unlock sync.
                 if syncLoop == nil { startSyncLoop() }
                 Task { await refreshAutofillStatus() }
             } else {
@@ -639,10 +638,10 @@ final class PhoneModel {
         }
     }
 
-    // MARK: Synchronisation
+    // MARK: Sync
 
-    /// Synchronise tout de suite, puis toutes les 5 minutes tant que l'app
-    /// est au premier plan (30 s si des modifications attendent le serveur).
+    /// Syncs right away, then every 5 minutes while the app is in the
+    /// foreground (30 s if changes are waiting for the server).
     private func startSyncLoop() {
         guard mode == .vaultwarden else { return }
         syncLoop?.cancel()
@@ -653,8 +652,8 @@ final class PhoneModel {
                 try? await Task.sleep(for: .seconds(waiting ? 30 : 5 * 60))
             }
         }
-        // Au premier plan, le canal des mises à jour en direct : un partage
-        // ou une confirmation arrive en quelques secondes.
+        // In the foreground, the live updates channel: a share or a
+        // confirmation arrives within a few seconds.
         live.start(session: session) { [weak self] in
             await self?.syncNow()
         } expired: { [weak self] in
@@ -664,14 +663,14 @@ final class PhoneModel {
         }
     }
 
-    // MARK: Arrière-plan : nouveautés du partage
+    // MARK: Background: sharing news
 
-    /// Identifiant de la tâche d'arrière-plan (Info.plist,
+    /// Identifier of the background task (Info.plist,
     /// `BGTaskSchedulerPermittedIdentifiers`).
     static let activityTaskID = "app.verrou.activite"
 
-    /// Demande à iOS un réveil dans 30 minutes au plus tôt (iOS choisit le
-    /// moment, ou ne réveille pas l'app du tout).
+    /// Asks iOS for a wake-up in 30 minutes at the earliest (iOS picks the
+    /// moment, or doesn't wake the app at all).
     func scheduleBackgroundCheck() {
         guard mode == .vaultwarden, account != nil, ActivityNotifier.enabled, !ActivityNotifier.shared.silent else {
             return
@@ -681,15 +680,15 @@ final class PhoneModel {
         try? BGTaskScheduler.shared.submit(request)
     }
 
-    /// Réveil en arrière-plan (`BGAppRefreshTask`) : un examen léger, qui ne
-    /// déchiffre rien et ne garde aucune clé plus longtemps que prévu.
-    /// - Délai de verrouillage dépassé : on verrouille d'abord (la clé n'a
-    ///   plus rien à faire en mémoire).
-    /// - Coffre encore ouvert (dans le délai) : synchronisation et examen
-    ///   comme au premier plan, avec la clé déjà en mémoire.
-    /// - Verrouillé : seulement le cache déjà téléchargé, sans clé ni réseau
-    ///   (le jeton de renouvellement est chiffré par la clé de
-    ///   l'utilisateur) ; voir SECURITY.md.
+    /// Background wake-up (`BGAppRefreshTask`): a light check, which decrypts
+    /// nothing and keeps no key longer than planned.
+    /// - Lock delay exceeded: we lock first (the key has nothing more to do
+    ///   in memory).
+    /// - Vault still open (within the delay): sync and check as in the
+    ///   foreground, with the key already in memory.
+    /// - Locked: only the already downloaded cache, without key or network
+    ///   (the refresh token is encrypted with the user's key); see
+    ///   SECURITY.md.
     func backgroundActivityCheck() async {
         scheduleBackgroundCheck()
         guard mode == .vaultwarden, account != nil, ActivityNotifier.enabled else { return }
@@ -704,17 +703,16 @@ final class PhoneModel {
         }
     }
 
-    /// Envoie en arrière-plan ce qui vient d'être écrit (voir `outbox.rs`),
-    /// puis synchronise : l'interface n'attend pas le serveur.
+    /// Sends in the background what was just written (see `outbox.rs`),
+    /// then syncs: the interface doesn't wait for the server.
     func pushChanges() {
         guard mode == .vaultwarden else { return }
         Task { await syncNow(afterWrite: true) }
     }
 
-    /// `afterWrite` : juste après une écriture locale ; hors ligne il y a
-    /// peu, le cœur ne retente pas tout de suite (la synchronisation
-    /// périodique s'en charge). Les demandes simultanées sont regroupées par
-    /// le cœur Rust.
+    /// `afterWrite`: right after a local write; offline a moment ago, the
+    /// core doesn't retry right away (the periodic sync takes care of it).
+    /// Simultaneous requests are batched by the Rust core.
     func syncNow(afterWrite: Bool = false, awaitActivity: Bool = false) async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         syncsInFlight += 1
@@ -731,19 +729,18 @@ final class PhoneModel {
         defer {
             syncsFinished += 1
             if let watch {
-                Perf.mark("plus long blocage du fil principal pendant la première synchro : \(watch.stop()) ms")
+                Perf.mark("longest main thread stall during the first sync: \(watch.stop()) ms")
             }
         }
         do {
-            let outcome = try await Perf.measure("synchronisation") {
+            let outcome = try await Perf.measure("sync") {
                 try await afterWrite ? session.pushChanges() : session.sync()
             }
             guard lockState == .unlocked else { return }
             account = session.account()
-            // Invitations en attente et membres à confirmer : à chaque
-            // synchronisation périodique (pas après chaque écriture).
-            // En arrière-plan, l'examen est attendu : iOS peut suspendre
-            // l'app dès la fin de la tâche.
+            // Pending invitations and members to confirm: at each periodic
+            // sync (not after each write). In the background, the check is
+            // awaited: iOS may suspend the app as soon as the task ends.
             if awaitActivity {
                 await refreshSharingStatus()
             } else if !afterWrite {
@@ -752,11 +749,11 @@ final class PhoneModel {
             }
             guard outcome.changed else { return }
             await reloadVaultAfterSync()
-            if outcome.failures > 0 { result = .failed("\(outcome.failures) élément(s) illisible(s)") }
+            if outcome.failures > 0 { result = .failed(String(localized: "\(outcome.failures) unreadable item(s)")) }
         } catch VerrouError.Locked {
             result = .idle
         } catch VerrouError.SessionExpired {
-            result = .failed("Session expirée")
+            result = .failed(String(localized: "Session expired"))
             reloginRequired = true
             lock()
         } catch VerrouError.Network {
@@ -772,34 +769,34 @@ final class PhoneModel {
 
     var pendingLabel: String? {
         guard pendingChanges > 0 else { return nil }
-        return pendingChanges == 1 ? "1 modification en attente" : "\(pendingChanges) modifications en attente"
+        return pendingChanges == 1 ? String(localized: "1 pending change") : String(localized: "\(pendingChanges) pending changes")
     }
 
-    /// Toast d'une écriture, aussitôt faite (l'envoi suit en arrière-plan) ;
-    /// hors ligne, elle attend le serveur.
+    /// Toast for a write, as soon as it is done (sending follows in the
+    /// background); offline, it waits for the server.
     private func writeToast(_ message: String, detail: String? = nil) -> Toast {
         guard syncState == .offline else { return Toast(message: message, detail: detail) }
-        return Toast(message: message, detail: "Hors ligne : synchronisé dès que le serveur répondra")
+        return Toast(message: message, detail: String(localized: "Offline: synced as soon as the server responds"))
     }
 
-    /// Bilan des modifications hors ligne envoyées : conflits et refus
-    /// d'abord, puis les réussites.
+    /// Report of the sent offline changes: conflicts and refusals first,
+    /// then the successes.
     func showSyncReport() async {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         let report = await session.takeSyncReport()
         if !report.conflicts.isEmpty {
             let count = report.conflicts.count
-            toast = Toast(message: count == 1 ? "Conflit : version locale gardée en copie"
-                                              : "\(count) conflits : versions locales gardées en copie",
-                          detail: report.conflicts.map { "« \($0) »" }.joined(separator: ", "), failure: true, seconds: 4)
+            toast = Toast(message: count == 1 ? String(localized: "Conflict: local version kept as a copy")
+                                              : String(localized: "\(count) conflicts: local versions kept as copies"),
+                          detail: report.conflicts.map { String(localized: "“\($0)”") }.joined(separator: ", "), failure: true, seconds: 4)
         } else if !report.rejected.isEmpty {
-            // Retirée de la file : le coffre affiché est revenu à la version du serveur.
-            toast = Toast(message: report.rejected.count == 1 ? "Modification refusée par le serveur, annulée"
-                                                              : "\(report.rejected.count) modifications refusées par le serveur, annulées",
+            // Removed from the queue: the vault shown is back to the server's version.
+            toast = Toast(message: report.rejected.count == 1 ? String(localized: "Change refused by the server, cancelled")
+                                                              : String(localized: "\(report.rejected.count) changes refused by the server, cancelled"),
                           detail: report.rejected.joined(separator: "\n"), failure: true, seconds: 6)
         } else if report.sent > 0 {
-            toast = Toast(message: report.sent == 1 ? "Modification hors ligne synchronisée"
-                                                    : "\(report.sent) modifications hors ligne synchronisées", detail: nil)
+            toast = Toast(message: report.sent == 1 ? String(localized: "Offline change synced")
+                                                    : String(localized: "\(report.sent) offline changes synced"), detail: nil)
         }
     }
 
@@ -812,18 +809,18 @@ final class PhoneModel {
             try await vault.enrollBiometrics()
             biometricEnrolled = true
         } catch {
-            Perf.log.error("enrôlement \(Biometrics.name, privacy: .public) impossible : \(String(describing: error), privacy: .public)")
+            Perf.log.error("\(Biometrics.name, privacy: .public) enrollment failed: \(String(describing: error), privacy: .public)")
             #if DEBUG
-            print("E2E_INFO enrôlement Face ID impossible : \(error)")
+            print("E2E_INFO Face ID enrollment failed: \(error)")
             #endif
             biometricEnrolled = false
         }
     }
 
-    // MARK: Coffre
+    // MARK: Vault
 
-    /// Résumés, compteurs et coffres partagés lus d'un coup (hors du fil
-    /// principal après une synchronisation).
+    /// Summaries, counters and shared vaults read in one go (off the main
+    /// thread after a sync).
     private struct LoadedVault: @unchecked Sendable {
         let summaries: [ItemSummary]
         let counts: SidebarCounts?
@@ -831,8 +828,8 @@ final class PhoneModel {
         let folders: [FolderOption]
     }
 
-    /// Recharge la liste depuis le coffre local (après une écriture : il est
-    /// déjà à jour, sans attendre le serveur).
+    /// Reloads the list from the local vault (after a write: it is already
+    /// up to date, without waiting for the server).
     private func reloadVault(_ loaded: LoadedVault? = nil) {
         reloads += 1
         let start = ContinuousClock.now
@@ -848,13 +845,13 @@ final class PhoneModel {
             refreshPasskeyAudit()
         }
         refreshPending()
-        // Un élément créé a reçu son identifiant du serveur : la fiche ouverte
-        // suit ; un élément disparu (écriture refusée, annulée) la ferme.
+        // A created item received its ID from the server: the open item page
+        // follows; an item that disappeared (write refused, cancelled) closes it.
         vaultPath = resolved(vaultPath)
         searchPath = resolved(searchPath)
         revision += 1
         publishAutofillIdentities()
-        Perf.mark("rechargement de la liste (\(self.summaries.count) éléments) : \(Perf.ms(since: start)) ms")
+        Perf.mark("list reload (\(self.summaries.count) items): \(Perf.ms(since: start)) ms")
     }
 
     private func resolved(_ path: [Route]) -> [Route] {
@@ -865,10 +862,10 @@ final class PhoneModel {
         }
     }
 
-    // MARK: Remplissage automatique
+    // MARK: AutoFill
 
-    /// Sites, noms d'utilisateur et passkeys pour les suggestions du
-    /// système (jamais un secret), un instant après le dernier changement.
+    /// Sites, user names and passkeys for the system's suggestions (never a
+    /// secret), a moment after the last change.
     func publishAutofillIdentities() {
         guard mode == .vaultwarden, session.isUnlocked() else { return }
         identitiesTask?.cancel()
@@ -880,14 +877,14 @@ final class PhoneModel {
         }
     }
 
-    /// Demande au système si Verrou est choisi (Réglages), et republie.
+    /// Asks the system whether Verrou is chosen (Settings), and republishes.
     func refreshAutofillStatus() async {
         autofillEnabled = await CredentialIdentities.isEnabled()
         if autofillEnabled == true { publishAutofillIdentities() }
     }
 
-    /// Ouvre la page des réglages où choisir Verrou (iOS 18), sinon les
-    /// réglages de l'app.
+    /// Opens the settings page where to choose Verrou (iOS 18), otherwise the
+    /// app's settings.
     func openAutofillSettings() {
         if #available(iOS 18.0, *) {
             Task { try? await ASSettingsHelper.openCredentialProviderAppSettings() }
@@ -896,9 +893,8 @@ final class PhoneModel {
         }
     }
 
-    /// Après une synchronisation : la lecture se fait hors du fil principal,
-    /// puis tout est publié d'un coup ; une écriture locale plus récente
-    /// l'emporte.
+    /// After a sync: reading is done off the main thread, then everything is
+    /// published at once; a more recent local write wins.
     private func reloadVaultAfterSync() async {
         let session = session
         let generation = reloads
@@ -910,7 +906,7 @@ final class PhoneModel {
         reloadVault(loaded)
     }
 
-    /// Résultats d'une recherche (cœur Rust, quelques millisecondes).
+    /// Search results (Rust core, a few milliseconds).
     func rows(query: String, filter: SidebarFilter, order: ResultOrder = .relevance) -> [ResultRow] {
         guard lockState == .unlocked else { return [] }
         let effective = query.isEmpty && order == .relevance ? ResultOrder.title : order
@@ -938,14 +934,14 @@ final class PhoneModel {
         return session.passkeys(id: itemID)
     }
 
-    /// Ouvre la fiche d'un élément dans l'onglet Coffre.
+    /// Opens an item's page in the Vault tab.
     func open(_ itemID: String) {
         tab = .vault
         vaultPath.append(.item(itemID))
     }
 
-    /// Une fiche qui n'est plus dans aucune pile perd ses secrets révélés,
-    /// sans attendre la fin de l'animation (ni compter sur `onDisappear`).
+    /// An item page that is no longer in any stack loses its revealed
+    /// secrets, without waiting for the end of the animation (nor relying on `onDisappear`).
     private func forgetClosedItems() {
         guard !revealed.isEmpty else { return }
         var open = Set<String>()
@@ -953,7 +949,7 @@ final class PhoneModel {
         for id in revealed.keys where !open.contains(id) { revealed[id] = nil }
     }
 
-    /// La fiche est quittée : ses secrets révélés sont oubliés.
+    /// The item page is left: its revealed secrets are forgotten.
     func forgetRevealed(of itemID: String) {
         revealed[itemID] = nil
     }
@@ -966,28 +962,28 @@ final class PhoneModel {
         organizations.filter(\.writable)
     }
 
-    // MARK: Éléments protégés
+    // MARK: Protected items
 
-    /// Élément protégé pas encore confirmé : demande la confirmation, puis
-    /// rejoue `retry`. Rend `true` si l'action doit attendre.
+    /// Protected item not confirmed yet: asks for confirmation, then replays
+    /// `retry`. Returns `true` if the action must wait.
     func awaitsConfirmation(_ itemID: String, retry: @escaping @MainActor () -> Void) -> Bool {
         guard session.needsConfirmation(id: itemID) else { return false }
-        let title = summary(id: itemID)?.title ?? "cet élément"
+        let title = summary(id: itemID)?.title ?? String(localized: "this item")
         Task {
             if await confirmAccess(itemID: itemID, title: title) { retry() }
         }
         return true
     }
 
-    /// Face ID, sinon le mot de passe principal ; la confirmation vaut
-    /// 5 minutes pour cet élément (côté Rust, effacée au verrouillage).
+    /// Face ID, otherwise the master password; the confirmation lasts 5
+    /// minutes for this item (on the Rust side, erased on lock).
     func confirmAccess(itemID: String, title: String) async -> Bool {
         guard mode == .vaultwarden else {
             session.authorizeItem(id: itemID)
             return true
         }
         if Biometrics.isAvailable {
-            switch await Biometrics.authenticate(reason: "afficher « \(title) »") {
+            switch await Biometrics.authenticate(reason: String(localized: "show “\(title)”")) {
             case .success:
                 session.authorizeItem(id: itemID)
                 return true
@@ -1006,7 +1002,7 @@ final class PhoneModel {
         return confirmed
     }
 
-    /// Réponse à la demande du mot de passe principal (`nil` : annulée).
+    /// Answer to the master password prompt (`nil`: cancelled).
     func answerReprompt(password: String?) async {
         guard let request = reprompt else { return }
         reprompt = nil
@@ -1016,14 +1012,14 @@ final class PhoneModel {
         }
         do {
             guard try await session.verifyMasterPassword(password: password) else {
-                toast = Toast(message: "Mot de passe principal incorrect", detail: nil, failure: true)
+                toast = Toast(message: String(localized: "Incorrect master password"), detail: nil, failure: true)
                 request.answer(false)
                 return
             }
             session.authorizeItem(id: request.itemID)
             request.answer(true)
         } catch {
-            toast = Toast(message: "Confirmation impossible", detail: ErrorText.describe(error), failure: true)
+                toast = Toast(message: String(localized: "Could not confirm"), detail: ErrorText.describe(error), failure: true)
             request.answer(false)
         }
     }
@@ -1049,7 +1045,7 @@ final class PhoneModel {
         revealed[itemID, default: [:]][fieldID] = value
     }
 
-    /// Code à usage unique du moment, s'il est accessible sans confirmation.
+    /// Current one-time code, if it is accessible without confirmation.
     func totpCode(of itemID: String, at date: Date = Date()) -> TotpView? {
         vault.currentCode(of: itemID, at: date)
     }
@@ -1058,17 +1054,17 @@ final class PhoneModel {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyCode(of: itemID) }) { return }
         guard let code = totpCode(of: itemID) else { return }
         session.recordItemUse(id: itemID)
-        copy(code.code, label: "Code", secret: true)
+        copy(code.code, label: String(localized: "Code"), secret: true)
     }
 
     func copy(_ value: String, label: String, secret: Bool) {
         let seconds = secret ? clipboardSeconds : 0
         clipboard.copy(value, expiresIn: seconds > 0 ? TimeInterval(seconds) : nil)
         copies += 1
-        // Pas d'animation ici : la notification anime son arrivée elle-même
-        // (ToastHost), sans entraîner les autres vues du modèle.
-        toast = Toast(message: "\(label) copié",
-                      detail: secret && seconds > 0 ? "Effacé du presse-papiers dans \(Self.durationLabel(seconds))" : nil)
+        // No animation here: the notification animates its own arrival
+        // (ToastHost), without dragging the model's other views along.
+        toast = Toast(message: String(localized: "\(label) copied"),
+                      detail: secret && seconds > 0 ? String(localized: "Cleared from the clipboard in \(Self.durationLabel(seconds))") : nil)
     }
 
     func copyField(_ field: FieldView, of itemID: String) {
@@ -1077,41 +1073,41 @@ final class PhoneModel {
             return
         }
         if field.hidden {
-            toast = Toast(message: "Champ masqué", detail: "L'organisation le cache à votre compte", failure: true)
+            toast = Toast(message: String(localized: "Hidden field"), detail: String(localized: "The organization hides it from your account"), failure: true)
             return
         }
         if field.secret,
            awaitsConfirmation(itemID, retry: { [weak self] in self?.copyField(field, of: itemID) }) { return }
         let value = field.secret ? reveal(field.id, of: itemID) : field.value
         guard let value else { return }
-        // Le numéro de carte se copie sans espaces : c'est ce qu'attendent les formulaires.
+        // The card number is copied without spaces: that's what forms expect.
         let copied = field.fieldType == .cardNumber ? value.replacingOccurrences(of: " ", with: "") : value
-        // Un secret révélé est déjà noté par le cœur ; un champ en clair, ici.
+        // A revealed secret is already recorded by the core; a plain field, here.
         if !field.secret { session.recordItemUse(id: itemID) }
         copy(copied, label: field.label, secret: field.secret)
     }
 
     func copyUsername(of itemID: String) {
-        guard let field = detail(id: itemID)?.fields.first(where: { $0.fieldType == .username || $0.id == "username" }) else { return }
+        guard let field = detail(id: itemID)?.displayFields.first(where: { $0.fieldType == .username || $0.id == "username" }) else { return }
         copyField(field, of: itemID)
     }
 
     func copyPassword(of itemID: String) {
         if summary(id: itemID)?.sharing?.hidePasswords == true {
-            toast = Toast(message: "Mot de passe masqué", detail: "L'organisation le cache à votre compte", failure: true)
+            toast = Toast(message: String(localized: "Hidden password"), detail: String(localized: "The organization hides it from your account"), failure: true)
             return
         }
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyPassword(of: itemID) }) { return }
         guard let value = try? session.reveal(id: itemID, fieldId: "password") else { return }
-        copy(value, label: "Mot de passe", secret: true)
+        copy(value, label: String(localized: "Password"), secret: true)
     }
 
-    /// QR code d'un réseau Wi-Fi : le mot de passe passe par la même
-    /// confirmation que les autres secrets, et seule l'image reste.
+    /// QR code of a Wi-Fi network: the password goes through the same
+    /// confirmation as the other secrets, and only the image remains.
     func showWifiQRCode(of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.showWifiQRCode(of: itemID) }) { return }
         guard let payload = try? session.wifiQrCode(id: itemID), let image = QRCode.cgImage(payload) else {
-            toast = Toast(message: "QR code impossible", detail: nil, failure: true)
+            toast = Toast(message: String(localized: "Could not create QR code"), detail: nil, failure: true)
             return
         }
         qrSheet = QRSheet(title: summary(id: itemID)?.title ?? "Wi-Fi", image: image)
@@ -1126,7 +1122,7 @@ final class PhoneModel {
         }
     }
 
-    // MARK: Édition
+    // MARK: Editing
 
     enum NewItemKind: Hashable {
         case login
@@ -1167,17 +1163,17 @@ final class PhoneModel {
     func edit(_ itemID: String) async {
         guard canEdit else { return }
         if session.needsConfirmation(id: itemID) {
-            guard await confirmAccess(itemID: itemID, title: summary(id: itemID)?.title ?? "cet élément") else { return }
+            guard await confirmAccess(itemID: itemID, title: summary(id: itemID)?.title ?? String(localized: "this item")) else { return }
         }
         editorError = nil
         do {
             editor = Editor(itemID: itemID, draft: try await session.editDraft(id: itemID))
         } catch {
-            toast = Toast(message: "Modification impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not edit"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
-    /// Enregistre l'écran de modification ; rend `true` s'il peut se fermer.
+    /// Saves the edit screen; returns `true` if it can close.
     @discardableResult
     func saveEditor(_ draft: ItemDraft, destination: SharedDestination? = nil) async -> Bool {
         guard let editor, !editorBusy else { return false }
@@ -1195,15 +1191,15 @@ final class PhoneModel {
             } else {
                 id = try await session.createItem(draft: draft)
             }
-            // Écrit localement : la feuille se ferme tout de suite, l'envoi suit.
+            // Written locally: the sheet closes right away, sending follows.
             self.editor = nil
             afterWrite()
             if editor.itemID == nil { open(session.resolveItemId(id: id)) }
-            toast = writeToast(editor.itemID == nil ? "Élément créé" : "Enregistré")
+            toast = writeToast(editor.itemID == nil ? String(localized: "Item created") : String(localized: "Saved"))
             pushChanges()
             return true
         } catch VerrouError.Conflict {
-            editorError = "L'élément a changé ailleurs entre-temps. Verrou vient de le recharger : rouvrez-le pour refaire la modification."
+            editorError = String(localized: "The item changed elsewhere in the meantime. Verrou just reloaded it: reopen it to redo the change.")
             await syncNow()
         } catch {
             editorError = ErrorText.describe(error)
@@ -1212,7 +1208,7 @@ final class PhoneModel {
     }
 
     func trash(_ itemID: String) async {
-        await perform("Mis à la corbeille", detail: "Restaurable depuis la corbeille") {
+        await perform(String(localized: "Moved to the trash"), detail: String(localized: "Can be restored from the trash")) {
             try await self.session.trashItem(id: itemID)
         }
         editor = nil
@@ -1220,23 +1216,23 @@ final class PhoneModel {
     }
 
     func restore(_ itemID: String) async {
-        await perform("Restauré") { try await self.session.restoreItem(id: itemID) }
+        await perform(String(localized: "Restored")) { try await self.session.restoreItem(id: itemID) }
     }
 
     func setFavorite(_ itemID: String, _ favorite: Bool) async {
-        await perform(favorite ? "Ajouté aux favoris" : "Retiré des favoris") {
+        await perform(favorite ? String(localized: "Added to favorites") : String(localized: "Removed from favorites")) {
             try await self.session.setFavorite(id: itemID, favorite: favorite)
         }
     }
 
     func setArchived(_ itemID: String, _ archived: Bool) async {
-        await perform(archived ? "Archivé" : "Sorti des archives", detail: archived ? "Retrouvez-le dans Archives" : nil) {
+        await perform(archived ? String(localized: "Archived") : String(localized: "Unarchived"), detail: archived ? String(localized: "Find it in Archived items") : nil) {
             try await self.session.setArchived(id: itemID, archived: archived)
         }
     }
 
     func deletePasskey(itemID: String, credentialID: String) async {
-        await perform("Passkey supprimée") {
+        await perform(String(localized: "Passkey deleted")) {
             try await self.session.deletePasskey(id: itemID, credentialId: credentialID)
         }
     }
@@ -1251,22 +1247,21 @@ final class PhoneModel {
             toast = writeToast(done, detail: detail)
             pushChanges()
         } catch {
-            toast = Toast(message: "Action impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Action failed"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
-    /// Écriture appliquée au coffre local (l'envoi suit, `pushChanges`) :
-    /// la liste se met à jour tout de suite, les éléments en attente portent
-    /// leur marque.
+    /// Write applied to the local vault (sending follows, `pushChanges`):
+    /// the list updates right away, the pending items carry their mark.
     func afterWrite() {
         guard lockState == .unlocked else { return }
         revealed = [:]
         reloadVault()
     }
 
-    // MARK: Actions groupées
+    // MARK: Bulk actions
 
-    /// Applique l'action aux éléments, en une fois (voir `bulk.rs`).
+    /// Applies the action to the items, in one go (see `bulk.rs`).
     func performBulk(_ action: BulkItemAction, on ids: [String], folderName: String? = nil) async {
         guard canEdit, !editorBusy, !ids.isEmpty else { return }
         editorBusy = true
@@ -1277,7 +1272,7 @@ final class PhoneModel {
             toast = bulkToast(result, action: action, folderName: folderName)
             pushChanges()
         } catch {
-            toast = Toast(message: "Action impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Action failed"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
@@ -1287,38 +1282,38 @@ final class PhoneModel {
             let folder = try await session.createFolder(name: name)
             await performBulk(.moveToFolder(folderId: folder), on: ids, folderName: name.trimmingCharacters(in: .whitespaces))
         } catch {
-            toast = Toast(message: "Dossier impossible à créer", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not create folder"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
     private func bulkToast(_ result: BulkResult, action: BulkItemAction, folderName: String?) -> Toast {
         let n = Int(result.done)
-        let s = n > 1 ? "s" : ""
+        let plural = n > 1
         var message: String
         switch action {
-        case .archive: message = "\(n) archivé\(s)"
-        case .unarchive: message = "\(n) sorti\(s) des archives"
-        case .trash: message = "\(n) mis à la corbeille"
-        case .restore: message = "\(n) restauré\(s)"
-        case .favorite(let favorite): message = favorite ? "\(n) ajouté\(s) aux favoris" : "\(n) retiré\(s) des favoris"
+        case .archive: message = plural ? String(localized: "\(n) items archived") : String(localized: "\(n) item archived")
+        case .unarchive: message = plural ? String(localized: "\(n) items unarchived") : String(localized: "\(n) item unarchived")
+        case .trash: message = plural ? String(localized: "\(n) items moved to the trash") : String(localized: "\(n) item moved to the trash")
+        case .restore: message = plural ? String(localized: "\(n) items restored") : String(localized: "\(n) item restored")
+        case .favorite(let favorite): message = favorite ? (plural ? String(localized: "\(n) items added to favorites") : String(localized: "\(n) item added to favorites")) : (plural ? String(localized: "\(n) items removed from favorites") : String(localized: "\(n) item removed from favorites"))
         case .moveToFolder(let folder):
-            message = folder == nil ? "\(n) retiré\(s) de leur dossier"
-                : "\(n) déplacé\(s) vers « \(folderName ?? folders.first { $0.id == folder }?.name ?? "dossier") »"
+            let name = folderName ?? folders.first { $0.id == folder }?.name ?? String(localized: "folder")
+            message = folder == nil ? (plural ? String(localized: "\(n) items removed from their folder") : String(localized: "\(n) item removed from its folder")) : (plural ? String(localized: "\(n) items moved to “\(name)”") : String(localized: "\(n) item moved to “\(name)”"))
         }
         var ignored: [String] = []
-        if result.readOnly > 0 { ignored.append("\(result.readOnly) ignoré\(result.readOnly > 1 ? "s" : "") (lecture seule)") }
-        if result.inTrash > 0 { ignored.append("\(result.inTrash) ignoré\(result.inTrash > 1 ? "s" : "") (dans la corbeille)") }
-        if result.notFound > 0 { ignored.append("\(result.notFound) introuvable\(result.notFound > 1 ? "s" : "")") }
+        if result.readOnly > 0 { ignored.append(result.readOnly > 1 ? String(localized: "\(result.readOnly) skipped items (read-only)") : String(localized: "\(result.readOnly) skipped item (read-only)")) }
+        if result.inTrash > 0 { ignored.append(result.inTrash > 1 ? String(localized: "\(result.inTrash) skipped items (in the trash)") : String(localized: "\(result.inTrash) skipped item (in the trash)")) }
+        if result.notFound > 0 { ignored.append(result.notFound > 1 ? String(localized: "\(result.notFound) items not found") : String(localized: "\(result.notFound) item not found")) }
         if !ignored.isEmpty { message += ", " + ignored.joined(separator: ", ") }
         if !result.failures.isEmpty {
-            return Toast(message: message + ", \(result.failures.count) refusé\(result.failures.count > 1 ? "s" : "")",
+            return Toast(message: message + ", " + (result.failures.count > 1 ? String(localized: "\(result.failures.count) refused items") : String(localized: "\(result.failures.count) refused item")),
                          detail: result.failures.joined(separator: "\n"), failure: true, seconds: 5)
         }
-        let detail = result.queued > 0 && syncState == .offline ? "Hors ligne : synchronisé dès que le serveur répondra" : nil
+        let detail = result.queued > 0 && syncState == .offline ? String(localized: "Offline: synced as soon as the server responds") : nil
         return Toast(message: message, detail: detail, seconds: ignored.isEmpty ? 2.2 : 4)
     }
 
-    // MARK: Pièces jointes
+    // MARK: Attachments
 
     func loadAttachments(of itemID: String) async {
         let entries = (try? await session.attachments(itemId: itemID)) ?? []
@@ -1326,7 +1321,7 @@ final class PhoneModel {
         attachments[itemID] = entries
     }
 
-    /// Ouvre la pièce jointe dans Quick Look (téléchargée et déchiffrée).
+    /// Opens the attachment in Quick Look (downloaded and decrypted).
     func openAttachment(_ entry: AttachmentEntry, of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.openAttachment(entry, of: itemID) }) { return }
         Task {
@@ -1335,7 +1330,7 @@ final class PhoneModel {
         }
     }
 
-    /// Partage une copie déchiffrée (Fichiers, AirDrop, autre app).
+    /// Shares a decrypted copy (Files, AirDrop, another app).
     func shareAttachment(_ entry: AttachmentEntry, of itemID: String) {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.shareAttachment(entry, of: itemID) }) { return }
         Task {
@@ -1346,14 +1341,14 @@ final class PhoneModel {
 
     private func decryptedFile(_ entry: AttachmentEntry, of itemID: String) async -> URL? {
         guard attachmentActivity == nil else { return nil }
-        attachmentActivity = "Téléchargement de « \(entry.fileName) »…"
+        attachmentActivity = String(localized: "Downloading “\(entry.fileName)”…")
         defer { attachmentActivity = nil }
         do {
             let content = try await session.downloadAttachment(itemId: itemID, attachmentId: entry.id)
             guard lockState == .unlocked else { return nil }
             return try Attachments.temporaryFile(named: content.fileName, data: content.data)
         } catch {
-            toast = Toast(message: "Pièce jointe illisible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not read attachment"), detail: ErrorText.describe(error), failure: true)
             return nil
         }
     }
@@ -1363,36 +1358,36 @@ final class PhoneModel {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         guard let data = try? Data(contentsOf: url) else {
-            toast = Toast(message: "Fichier illisible", detail: url.lastPathComponent, failure: true)
+            toast = Toast(message: String(localized: "Could not read file"), detail: url.lastPathComponent, failure: true)
             return
         }
         guard data.count <= Attachments.maxSize else {
-            toast = Toast(message: "Fichier trop volumineux", detail: "100 Mo au plus", failure: true)
+            toast = Toast(message: String(localized: "File too large"), detail: String(localized: "100 MB at most"), failure: true)
             return
         }
-        attachmentActivity = "Envoi de « \(url.lastPathComponent) »…"
+        attachmentActivity = String(localized: "Uploading “\(url.lastPathComponent)”…")
         defer { attachmentActivity = nil }
         do {
             try await session.addAttachment(itemId: itemID, fileName: url.lastPathComponent, data: data)
             afterWrite()
             await loadAttachments(of: itemID)
-            toast = Toast(message: "Pièce jointe ajoutée", detail: url.lastPathComponent)
+            toast = Toast(message: String(localized: "Attachment added"), detail: url.lastPathComponent)
         } catch {
-            toast = Toast(message: "Envoi impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not upload"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
     func deleteAttachment(_ entry: AttachmentEntry, of itemID: String) async {
         guard canEdit, attachmentActivity == nil else { return }
-        attachmentActivity = "Suppression…"
+        attachmentActivity = String(localized: "Deleting…")
         defer { attachmentActivity = nil }
         do {
             try await session.deleteAttachment(itemId: itemID, attachmentId: entry.id)
             afterWrite()
             await loadAttachments(of: itemID)
-            toast = Toast(message: "Pièce jointe supprimée", detail: entry.fileName)
+            toast = Toast(message: String(localized: "Attachment deleted"), detail: entry.fileName)
         } catch {
-            toast = Toast(message: "Suppression impossible", detail: ErrorText.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Could not delete"), detail: ErrorText.describe(error), failure: true)
         }
     }
 
@@ -1410,7 +1405,7 @@ final class PhoneModel {
         refreshPasskeyAudit()
     }
 
-    /// Have I Been Pwned, par k-anonymat (5 caractères d'empreinte par mot de passe).
+    /// Have I Been Pwned, by k-anonymity (5 hash characters per password).
     func checkBreaches() async {
         guard !checkingBreaches, lockState == .unlocked, mode == .vaultwarden else { return }
         checkingBreaches = true
@@ -1424,14 +1419,14 @@ final class PhoneModel {
     }
 }
 
-/// Où ranger un élément partagé : une organisation et ses collections.
+/// Where to store a shared item: an organization and its collections.
 struct SharedDestination: Equatable, Hashable {
     var organizationID: String
     var collectionIDs: [String]
 }
 
-/// Les actions groupées de l'iPhone n'affichent pas d'avancement : une
-/// requête par lot de 500, l'attente est courte.
+/// The iPhone's bulk actions show no progress: one request per batch of
+/// 500, the wait is short.
 final class NoBulkProgress: BulkProgress, @unchecked Sendable {
     func progress(done: UInt32, total: UInt32) {}
 }

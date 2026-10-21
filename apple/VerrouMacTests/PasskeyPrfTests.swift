@@ -1,8 +1,8 @@
 import Foundation
 import XCTest
 
-/// Entrées PRF du système : `evalByCredential` prioritaire pour la passkey
-/// choisie, sinon `eval`, sinon pas de PRF.
+/// System PRF inputs: `evalByCredential` takes priority for the chosen
+/// passkey, otherwise `eval`, otherwise no PRF.
 final class PasskeyPrfTests: XCTestCase {
     private let a = Data([1, 2, 3])
     private let b = Data([4, 5])

@@ -1,8 +1,8 @@
-//! Exports CSV : Mots de passe d'Apple, 1Password, Proton Pass.
+//! CSV exports: Apple Passwords, 1Password, Proton Pass.
 //!
-//! Les colonnes sont retrouvées par leur nom (l'ordre change d'une version à
-//! l'autre) ; guillemets, retours à la ligne et virgules dans les champs sont
-//! l'affaire du crate `csv`.
+//! Columns are found by name (the order changes from one version to the
+//! next); quotes, line breaks and commas inside fields are handled by the
+//! `csv` crate.
 
 use std::collections::HashMap;
 
@@ -12,7 +12,7 @@ use super::{
     Format, ImportError, ImportKind, ImportedItem, Parsed, append_lines, secret, text, timestamp_of,
 };
 
-/// En-tête d'un CSV, en minuscules, et ses lignes.
+/// A CSV's header, lowercased, and its rows.
 struct Table {
     columns: HashMap<String, usize>,
     rows: Vec<StringRecord>,
@@ -35,7 +35,7 @@ impl Table {
         let mut rows = Vec::new();
         for record in reader.records() {
             let record = record.map_err(|e| ImportError::Unreadable(format!("CSV ({e})")))?;
-            // Ligne vide en fin de fichier.
+            // Empty line at the end of the file.
             if record.iter().all(|v| v.trim().is_empty()) {
                 continue;
             }
@@ -48,7 +48,7 @@ impl Table {
         self.columns.contains_key(name)
     }
 
-    /// Valeur brute de la première colonne présente parmi `names`.
+    /// Raw value of the first column present among `names`.
     fn get<'r>(&self, row: &'r StringRecord, names: &[&str]) -> Option<&'r str> {
         names
             .iter()
@@ -57,7 +57,7 @@ impl Table {
     }
 }
 
-/// Reconnaît un CSV d'après son en-tête.
+/// Recognizes a CSV from its header.
 pub(super) fn detect(bytes: &[u8]) -> Option<Format> {
     let mut reader = csv::ReaderBuilder::new().flexible(true).from_reader(bytes);
     let header: Vec<String> = reader
@@ -106,8 +106,8 @@ pub(super) fn apple(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportError
     Ok(())
 }
 
-/// `Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes`, dans
-/// un ordre qui varie selon la version de 1Password.
+/// `Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes`, in
+/// an order that varies with the 1Password version.
 pub(super) fn onepassword(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportError> {
     let table = Table::read(bytes)?;
     require(&table, &["title", "password"], parsed.format)?;
@@ -119,7 +119,7 @@ pub(super) fn onepassword(bytes: &[u8], parsed: &mut Parsed) -> Result<(), Impor
                 .is_some_and(|v| matches!(v.trim().to_lowercase().as_str(), "true" | "1" | "yes"))
         };
         if flag("archived") {
-            parsed.skip(title, "archivé dans 1Password");
+            parsed.skip(title, "archived in 1Password");
             continue;
         }
         let mut item = ImportedItem::new(ImportKind::Login, title);
@@ -160,7 +160,7 @@ pub(super) fn proton(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportErro
                     && Some(&email) != item.username.as_ref()
                 {
                     item.fields.push(super::ExtraField {
-                        name: "E-mail".to_owned(),
+                        name: "Email".to_owned(),
                         value: email.into(),
                         hidden: false,
                     });
@@ -171,16 +171,16 @@ pub(super) fn proton(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportErro
                 item.totp = secret(table.get(row, &["totp"]));
             }
             "alias" => {
-                parsed.skip(title, "alias e-mail de Proton Pass (sans mot de passe)");
+                parsed.skip(title, "Proton Pass email alias (no password)");
                 continue;
             }
             "note" => {}
             other => {
-                // Identité, carte… : le CSV n'en donne guère que la note.
+                // Identity, card…: the CSV gives little more than the note.
                 let lines: Vec<(String, String)> = [
-                    ("E-mail", table.get(row, &["email"])),
-                    ("Identifiant", table.get(row, &["username"])),
-                    ("Mot de passe", table.get(row, &["password"])),
+                    ("Email", table.get(row, &["email"])),
+                    ("Username", table.get(row, &["username"])),
+                    ("Password", table.get(row, &["password"])),
                     ("Site", table.get(row, &["url"])),
                 ]
                 .into_iter()
@@ -188,7 +188,7 @@ pub(super) fn proton(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportErro
                 .collect();
                 append_lines(&mut item.notes, &lines);
                 if item.notes.is_none() {
-                    parsed.skip(title, &format!("type « {other} » vide dans le CSV"));
+                    parsed.skip(title, &format!("empty \"{other}\" type in the CSV"));
                     continue;
                 }
             }
@@ -198,8 +198,8 @@ pub(super) fn proton(bytes: &[u8], parsed: &mut Parsed) -> Result<(), ImportErro
     Ok(())
 }
 
-/// Plusieurs sites dans une même cellule, séparés par des virgules (Proton)
-/// ou des retours à la ligne.
+/// Several sites in one cell, separated by commas (Proton) or line
+/// breaks.
 fn split_urls(value: &str) -> Vec<String> {
     value
         .split([',', '\n'])
@@ -239,7 +239,7 @@ mod tests {
         );
         assert_eq!(github.urls, vec!["https://github.com/"]);
         assert!(parsed.items[1].username.is_none());
-        assert!(parsed.skipped.is_empty(), "la ligne vide est ignorée");
+        assert!(parsed.skipped.is_empty(), "the empty line is ignored");
     }
 
     const ONEPASSWORD: &str = "Notes,Title,Username,Password,Url,OTPAuth,Favorite,Archived,Tags\n\
@@ -257,11 +257,7 @@ mod tests {
         assert_eq!(bank.password.as_ref().unwrap().expose(), "b4nque!");
         assert_eq!(bank.urls, vec!["https://banque.fr"]);
         let note = &parsed.items[1];
-        assert_eq!(
-            note.kind,
-            ImportKind::SecureNote,
-            "sans identifiant : une note"
-        );
+        assert_eq!(note.kind, ImportKind::SecureNote, "no username: a note");
         assert_eq!(parsed.skipped.len(), 1);
         assert_eq!(parsed.skipped[0].title, "Vieux forum");
     }
@@ -284,7 +280,7 @@ mod tests {
         assert_eq!(doctolib.modified, Some(1_710_000_000));
         let forum = &parsed.items[1];
         assert_eq!(forum.username.as_deref(), Some("cam"));
-        assert_eq!(forum.fields[0].name, "E-mail");
+        assert_eq!(forum.fields[0].name, "Email");
         assert_eq!(parsed.items[2].kind, ImportKind::SecureNote);
         assert_eq!(parsed.skipped.len(), 1);
     }

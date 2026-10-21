@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Liste ouverte au déverrouillage, tri, règles de correspondance des sites
-/// (défaut de l'iPhone, dossiers) et domaines équivalents du compte.
+/// List opened on unlock, sorting, site match rules (the iPhone's default,
+/// folders) and the account's equivalent domains.
 struct FillingSettingsView: View {
     @Environment(PhoneModel.self) private var model
 
@@ -9,33 +9,33 @@ struct FillingSettingsView: View {
         @Bindable var model = model
         Form {
             Section {
-                Picker("Au déverrouillage", selection: $model.defaultFilter) {
+                Picker("On unlock", selection: $model.defaultFilter) {
                     ForEach(DefaultFilter.allCases) { filter in
                         Text(filter.label).tag(filter)
                     }
                 }
-                Picker("Trier les listes par", selection: $model.sortOrder) {
+                Picker("Sort lists by", selection: $model.sortOrder) {
                     ForEach(ResultOrder.menu, id: \.self) { order in
                         Text(order.label).tag(order)
                     }
                 }
             } header: {
-                SectionHeader("Coffre")
+                SectionHeader("Vault")
             } footer: {
-                Text("Gardés sur cet iPhone. « Dernière utilisation » suit ce que vous remplissez, copiez ou affichez ici : seulement des identifiants d'éléments et des dates, jamais envoyés au serveur.")
+                Text("Kept on this iPhone. “Last used” follows what you fill, copy or show here: only item IDs and dates, never sent to the server.")
             }
 
             Section {
-                Picker("Par défaut", selection: defaultRule) {
+                Picker("Default", selection: defaultRule) {
                     ForEach(UriMatchRule.all) { rule in
                         Text(rule.label).tag(rule)
                     }
                 }
                 .accessibilityIdentifier("default-match")
             } header: {
-                SectionHeader("Correspondance des sites")
+                SectionHeader("Site matching")
             } footer: {
-                Text("Pour les sites sans règle propre (à choisir en modifiant un identifiant). \(defaultRule.wrappedValue.explanation)")
+                Text("For sites without their own rule (chosen when editing a login). \(defaultRule.wrappedValue.explanation)")
             }
 
             Section {
@@ -45,10 +45,10 @@ struct FillingSettingsView: View {
                             Text(option.label).tag(option)
                         }
                     } label: {
-                        Label(rule.folderName.isEmpty ? "Dossier supprimé" : rule.folderName, systemImage: "folder.fill")
+                        Label(rule.folderName.isEmpty ? String(localized: "Deleted folder") : rule.folderName, systemImage: "folder.fill")
                     }
                     .swipeActions {
-                        Button("Retirer", systemImage: "minus.circle", role: .destructive) {
+                        Button("Remove", systemImage: "minus.circle", role: .destructive) {
                             model.setFolderMatchRule(rule.folderId, nil)
                         }
                     }
@@ -61,23 +61,23 @@ struct FillingSettingsView: View {
                         Button(folder.name) { model.setFolderMatchRule(folder.id, .host) }
                     }
                 } label: {
-                    Label("Règle pour un dossier…", systemImage: "plus.circle.fill")
+                    Label("Rule for a folder…", systemImage: "plus.circle.fill")
                 }
                 .disabled(free.isEmpty)
                 .accessibilityIdentifier("add-folder-rule")
             } header: {
-                SectionHeader("Par dossier")
+                SectionHeader("By folder")
             } footer: {
-                Text("Bitwarden n'a pas de règle par dossier : celle-ci reste sur cet iPhone et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail).")
+                Text("Bitwarden has no per-folder rule: this one stays on this iPhone and only applies to sites without their own rule (for example “Host” for the Work folder).")
             }
 
             Section {
                 let groups = model.matchSettings?.equivalentDomains ?? []
                 if groups.isEmpty {
-                    Text(model.mode == .vaultwarden ? "Lus à la prochaine synchronisation." : "Aucun dans le coffre fictif.")
+                    Text(model.mode == .vaultwarden ? "Read at the next sync." : "None in the demo vault.")
                         .foregroundStyle(.secondary)
                 } else {
-                    DisclosureGroup("\(groups.count) groupe\(groups.count > 1 ? "s" : "") de domaines") {
+                    DisclosureGroup(groups.count > 1 ? "\(groups.count) domain groups" : "\(groups.count) domain group") {
                         ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
                             Text(group.joined(separator: " · "))
                                 .font(.footnote)
@@ -86,12 +86,12 @@ struct FillingSettingsView: View {
                     }
                 }
             } header: {
-                SectionHeader("Domaines équivalents")
+                SectionHeader("Equivalent domains")
             } footer: {
-                Text("Réglages de votre compte, lus sur le serveur (coffre web → Paramètres → Domaines) : la règle « Domaine de base » propose aussi l'identifiant sur les domaines du même groupe.")
+                Text("Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.")
             }
         }
-        .navigationTitle("Coffre et remplissage")
+        .navigationTitle("Vault and filling")
         .navigationBarTitleDisplayMode(.inline)
     }
 

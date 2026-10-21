@@ -1,22 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Entrée de la barre latérale : le volet des envois remplace la liste.
+/// Sidebar entry: the sends pane replaces the list.
 struct SendsSidebarButton: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        SidebarPaneButton(title: "Envois", symbol: "paperplane", active: model.pane == .sends,
+        SidebarPaneButton(title: String(localized: "Sends"), symbol: "paperplane", active: model.pane == .sends,
                           badge: model.sends.loaded && !model.sends.items.isEmpty ? model.sends.items.count : nil,
-                          help: "Partager un texte ou un fichier par un lien chiffré (Bitwarden Send)") {
+                          help: String(localized: "Share a text or a file through an encrypted link (Bitwarden Send)")) {
             model.openSends()
         }
     }
 }
 
-/// Volet « Envois », dans la colonne centrale : les envois du compte, avec
-/// leurs accès et leur échéance. L'envoi sélectionné s'affiche à droite. Un
-/// fichier déposé sur la liste ouvre l'écran d'un nouvel envoi de fichier.
+/// "Sends" pane, in the middle column: the account's sends, with their
+/// accesses and their expiry. The selected send shows on the right. A file
+/// dropped on the list opens the screen of a new file send.
 struct SendsListView: View {
     @Environment(AppModel.self) private var model
     @State private var targeted = false
@@ -24,8 +24,8 @@ struct SendsListView: View {
     var body: some View {
         @Bindable var sends = model.sends
         VStack(spacing: 0) {
-            PaneHeader(title: "Envois",
-                       caption: "Un texte ou un fichier partagé par un lien, chiffré de bout en bout : la clé est dans le lien, jamais sur le serveur.",
+            PaneHeader(title: String(localized: "Sends"),
+                       caption: String(localized: "A text or a file shared through a link, end-to-end encrypted: the key is in the link, never on the server."),
                        busy: sends.busy, notice: sends.activity ?? sends.notice, error: sends.error) {
                 NewSendMenu()
                     .font(.caption)
@@ -33,9 +33,9 @@ struct SendsListView: View {
             Divider()
             if sends.items.isEmpty {
                 ContentUnavailableView {
-                    Label(sends.loaded ? "Aucun envoi" : "Chargement…", systemImage: "paperplane")
+                    Label(sends.loaded ? "No sends" : "Loading…", systemImage: "paperplane")
                 } description: {
-                    Text("Créez un envoi ici, déposez un fichier sur cette liste, ou partez d'un élément ou d'une pièce jointe : clic droit → « Envoyer de façon sécurisée… ».")
+                    Text("Create a send here, drop a file on this list, or start from an item or an attachment: right-click → “Send Securely…”.")
                 }
                 .frame(maxHeight: .infinity)
             } else {
@@ -49,7 +49,7 @@ struct SendsListView: View {
                         SendMenu(send: send)
                     }
                 } primaryAction: { ids in
-                    // Double clic : modifier l'envoi (les réglages, pour un fichier).
+                    // Double-click: edit the send (the settings, for a file).
                     if let send = sends.items.first(where: { ids.contains($0.id) }) {
                         Task { await model.editSend(send) }
                     }
@@ -67,7 +67,7 @@ struct SendsListView: View {
                 RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                     .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                     .background(Theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                    .overlay(Label("Déposer pour créer un envoi de fichier", systemImage: "doc.badge.arrow.up")
+                    .overlay(Label("Drop to create a file send", systemImage: "doc.badge.arrow.up")
                         .font(.headline).foregroundStyle(Theme.accent))
                     .padding(8)
                     .allowsHitTesting(false)
@@ -77,41 +77,41 @@ struct SendsListView: View {
     }
 }
 
-/// « Nouvel envoi » : un texte, ou un fichier choisi dans le Finder.
+/// "New Send": a text, or a file chosen in the Finder.
 struct NewSendMenu: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Menu {
-            Button("Texte", systemImage: "text.alignleft") { model.newSend() }
-            Button("Fichier…", systemImage: "doc") { model.newFileSend() }
+            Button("Text", systemImage: "text.alignleft") { model.newSend() }
+            Button("File…", systemImage: "doc") { model.newFileSend() }
         } label: {
-            Label("Nouvel envoi", systemImage: "plus")
+            Label("New Send", systemImage: "plus")
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
         .disabled(model.sends.busy)
-        .help("Créer un envoi de texte ou de fichier")
+        .help("Create a text or file send")
     }
 }
 
-/// Actions d'un envoi, pour le menu contextuel de la liste.
+/// Actions of a send, for the list's context menu.
 private struct SendMenu: View {
     @Environment(AppModel.self) private var model
     let send: SendSummary
 
     var body: some View {
-        Button("Copier le lien") { Task { await model.copySendLink(send) } }
-        Button("Modifier…") { Task { await model.editSend(send) } }
+        Button("Copy Link") { Task { await model.copySendLink(send) } }
+        Button("Edit…") { Task { await model.editSend(send) } }
         if send.hasPassword {
-            Button("Retirer le mot de passe") { Task { await model.removeSendPassword(send) } }
+            Button("Remove Password") { Task { await model.removeSendPassword(send) } }
         }
         Divider()
-        Button("Supprimer…", role: .destructive) { model.sends.confirmDelete = send }
+        Button("Delete…", role: .destructive) { model.sends.confirmDelete = send }
     }
 }
 
-/// Colonne de droite du volet « Envois » : l'envoi sélectionné.
+/// Right column of the "Sends" pane: the selected send.
 struct SendDetailView: View {
     @Environment(AppModel.self) private var model
     let send: SendSummary
@@ -121,37 +121,37 @@ struct SendDetailView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 HStack(spacing: 10) {
-                    Button("Copier le lien", systemImage: "link") { Task { await model.copySendLink(send) } }
+                    Button("Copy Link", systemImage: "link") { Task { await model.copySendLink(send) } }
                         .buttonStyle(.borderedProminent)
-                    Button("Modifier…", systemImage: "pencil") { Task { await model.editSend(send) } }
+                    Button("Edit…", systemImage: "pencil") { Task { await model.editSend(send) } }
                     if send.hasPassword {
-                        Button("Retirer le mot de passe", systemImage: "lock.open") {
+                        Button("Remove Password", systemImage: "lock.open") {
                             Task { await model.removeSendPassword(send) }
                         }
                     }
                     Spacer()
-                    Button("Supprimer…", systemImage: "trash", role: .destructive) {
+                    Button("Delete…", systemImage: "trash", role: .destructive) {
                         model.sends.confirmDelete = send
                     }
                 }
                 .disabled(model.sends.busy)
 
-                SectionTitle("Accès")
+                SectionTitle(String(localized: "Access"))
                 FieldCard {
-                    line("Ouvertures", send.maxAccessCount.map { "\(send.accessCount) sur \($0) au plus" }
+                    line("Opens", send.maxAccessCount.map { String(localized: "\(Int(send.accessCount)) of \(Int($0)) at most") }
                         ?? "\(send.accessCount)")
                     if let expiry = send.expirationDate {
                         Divider().padding(.leading, 14)
-                        line(date(expiry) < Date() ? "Expiré" : "Expiration", formatted(expiry))
+                        line(date(expiry) < Date() ? "Expired" : "Expiration", formatted(expiry))
                     }
                     Divider().padding(.leading, 14)
-                    line("Suppression", formatted(send.deletionDate))
+                    line("Deletion", formatted(send.deletionDate))
                     if let file = send.fileName {
                         Divider().padding(.leading, 14)
-                        line("Fichier", send.fileSize.map { "\(file) · \(SendFileSize.text($0))" } ?? file)
+                        line("File", send.fileSize.map { "\(file) · \(SendFileSize.text($0))" } ?? file)
                     }
                 }
-                Text("Modifié \(date(send.revisionDate).formatted(.relative(presentation: .named))).")
+                Text("Modified \(date(send.revisionDate).formatted(.relative(presentation: .named))).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -176,17 +176,17 @@ struct SendDetailView: View {
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 HStack(spacing: 8) {
-                    Chip(text: send.content == .file ? "Fichier" : "Texte", symbol: "paperplane", tint: Theme.accent)
+                    Chip(text: send.content == .file ? String(localized: "File") : String(localized: "Text"), symbol: "paperplane", tint: Theme.accent)
                     if !send.available {
-                        Chip(text: send.disabled ? "Désactivé" : "Lien inactif", symbol: "exclamationmark.circle",
+                        Chip(text: send.disabled ? String(localized: "Disabled") : String(localized: "Inactive link"), symbol: "exclamationmark.circle",
                              tint: .orange)
-                            .help("Le lien ne mène plus au contenu : désactivé, expiré ou nombre d'accès atteint")
+                            .help("The link no longer leads to the content: disabled, expired or access count reached")
                     }
                     if send.hasPassword {
-                        Chip(text: "Mot de passe", symbol: "key.fill", tint: .secondary)
+                        Chip(text: String(localized: "Password"), symbol: "key.fill", tint: .secondary)
                     }
                     if send.hideEmail {
-                        Chip(text: "E-mail masqué", symbol: "eye.slash", tint: .secondary)
+                        Chip(text: String(localized: "Email hidden"), symbol: "eye.slash", tint: .secondary)
                     }
                 }
             }
@@ -195,9 +195,9 @@ struct SendDetailView: View {
         .padding(.bottom, 4)
     }
 
-    private func line(_ label: String, _ value: String) -> some View {
-        // Libellé à gauche, valeur à droite : hors d'un `Form`, `LabeledContent`
-        // les collait l'un à l'autre au milieu de la carte.
+    private func line(_ label: LocalizedStringKey, _ value: String) -> some View {
+        // Label on the left, value on the right: outside a `Form`, `LabeledContent`
+        // stuck them to each other in the middle of the card.
         HStack(alignment: .firstTextBaseline) {
             Text(label).foregroundStyle(.secondary)
             Spacer(minLength: 12)
@@ -218,8 +218,8 @@ struct SendDetailView: View {
     }
 }
 
-/// Feuilles et confirmations des envois, posées sur la fenêtre principale :
-/// « Envoyer de façon sécurisée… » les ouvre aussi depuis la liste des éléments.
+/// Sheets and confirmations of sends, attached to the main window: "Send
+/// Securely…" also opens them from the item list.
 struct SendsPresentations: ViewModifier {
     @Environment(AppModel.self) private var model
 
@@ -230,18 +230,18 @@ struct SendsPresentations: ViewModifier {
                 SendEditorView(composer: composer)
                     .environment(model)
             }
-            .confirmationDialog("Supprimer « \(sends.confirmDelete?.name ?? "") » ?",
+            .confirmationDialog("Delete “\(sends.confirmDelete?.name ?? "")”?",
                                 isPresented: Binding(get: { sends.confirmDelete != nil },
                                                      set: { if !$0 { sends.confirmDelete = nil } }),
                                 presenting: sends.confirmDelete) { send in
-                Button("Supprimer", role: .destructive) { Task { await model.deleteSend(send) } }
+                Button("Delete", role: .destructive) { Task { await model.deleteSend(send) } }
             } message: { _ in
-                Text("Le lien ne mènera plus à rien. Cette suppression est définitive.")
+                Text("The link will no longer lead anywhere. This deletion is permanent.")
             }
     }
 }
 
-/// Taille lisible d'un fichier (« 1,4 Mo »).
+/// Readable size of a file ("1.4 MB").
 enum SendFileSize {
     static func text(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
@@ -262,11 +262,11 @@ struct SendRow: View {
                     Text(send.name).lineLimit(1)
                     if send.hasPassword {
                         Image(systemName: "key.fill").font(.caption).foregroundStyle(.secondary)
-                            .help("Protégé par un mot de passe")
+                            .help("Protected by a password")
                     }
                     if send.hideEmail {
                         Image(systemName: "eye.slash").font(.caption).foregroundStyle(.secondary)
-                            .help("Adresse e-mail masquée")
+                            .help("Email address hidden")
                     }
                 }
                 Text(status)
@@ -283,19 +283,20 @@ struct SendRow: View {
     private var status: String {
         var parts: [String] = []
         if send.disabled {
-            parts.append("Désactivé")
+            parts.append(String(localized: "Disabled"))
         }
         if let file = send.fileName {
             parts.append(send.fileSize.map { "\(file) (\(SendFileSize.text($0)))" } ?? file)
         }
-        let accesses = send.maxAccessCount.map { "\(send.accessCount)/\($0) accès" }
-            ?? "\(send.accessCount) accès"
+        let accesses = send.maxAccessCount.map { String(localized: "\(Int(send.accessCount))/\(Int($0)) accesses") }
+            ?? String(localized: "\(Int(send.accessCount)) accesses")
         parts.append(accesses)
         let now = Date()
         if let expiry = send.expirationDate.map(date) {
-            parts.append(expiry < now ? "expiré" : "expire \(expiry.formatted(.relative(presentation: .named)))")
+            parts.append(expiry < now ? String(localized: "expired")
+                                        : String(localized: "expires \(expiry.formatted(.relative(presentation: .named)))"))
         }
-        parts.append("supprimé \(date(send.deletionDate).formatted(.relative(presentation: .named)))")
+        parts.append(String(localized: "deleted \(date(send.deletionDate).formatted(.relative(presentation: .named)))"))
         return parts.joined(separator: " · ")
     }
 
@@ -304,9 +305,8 @@ struct SendRow: View {
     }
 }
 
-/// Création ou modification d'un envoi de texte ou de fichier. Le fichier
-/// d'un envoi existant ne se remplace pas (comme dans Bitwarden) : seuls les
-/// réglages changent.
+/// Creation or edit of a text or file send. The file of an existing send
+/// can't be replaced (as in Bitwarden): only the settings change.
 struct SendEditorView: View {
     @Environment(AppModel.self) private var model
     let composer: SendsModel.Composer
@@ -319,8 +319,8 @@ struct SendEditorView: View {
     init(composer: SendsModel.Composer) {
         self.composer = composer
         _fields = State(initialValue: composer.fields)
-        // Prérempli depuis un élément : le secret reste masqué jusqu'à ce
-        // qu'on demande à le voir.
+        // Prefilled from an item: the secret stays hidden until asked to see
+        // it.
         _showText = State(initialValue: composer.source == nil)
         _expires = State(initialValue: composer.fields.expirationDate != nil)
         _limited = State(initialValue: composer.fields.maxAccessCount != nil)
@@ -335,15 +335,15 @@ struct SendEditorView: View {
             Form {
                 if let source = composer.source {
                     Section {
-                        Label("Prérempli depuis « \(source) ». Vérifiez les réglages, puis créez l'envoi : le lien sera copié.",
+                        Label("Prefilled from “\(source)”. Check the settings, then create the send: the link will be copied.",
                               systemImage: "info.circle")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                 }
                 Section {
-                    TextField("Nom", text: $fields.name,
-                              prompt: Text(isFile ? "Nom vu par le destinataire" : "Wi-Fi du chalet, code de la porte…"))
+                    TextField("Name", text: $fields.name,
+                              prompt: Text(isFile ? "Name seen by the recipient" : "Cabin Wi-Fi, door code…"))
                     if let file = composer.file {
                         fileRow(file)
                     } else if showText {
@@ -353,50 +353,50 @@ struct SendEditorView: View {
                             .scrollContentBackground(.hidden)
                     } else {
                         HStack {
-                            Text("Texte").foregroundStyle(.secondary)
+                            Text("Text").foregroundStyle(.secondary)
                             Spacer()
                             MaskedText()
-                            Button("Afficher") { showText = true }
+                            Button("Show") { showText = true }
                                 .buttonStyle(.borderless)
                         }
                     }
                     if !isFile {
-                        Toggle("Masquer le texte chez le destinataire", isOn: $fields.hidden)
+                        Toggle("Hide the text from the recipient", isOn: $fields.hidden)
                     }
                 }
 
-                Section("Durée de vie") {
-                    DatePicker("Suppression", selection: dateBinding(\.deletionDate), in: dateRange,
+                Section("Lifetime") {
+                    DatePicker("Deletion", selection: dateBinding(\.deletionDate), in: dateRange,
                                displayedComponents: [.date, .hourAndMinute])
-                    Toggle("Expire avant la suppression", isOn: $expires.animation())
+                    Toggle("Expires before deletion", isOn: $expires.animation())
                     if expires {
                         DatePicker("Expiration", selection: expiryBinding, in: Date()...date(fields.deletionDate),
                                    displayedComponents: [.date, .hourAndMinute])
                     }
-                    Toggle("Limiter le nombre d'accès", isOn: $limited.animation())
+                    Toggle("Limit the number of accesses", isOn: $limited.animation())
                     if limited {
                         Stepper(value: accessBinding, in: 1...1000) {
-                            Text("\(fields.maxAccessCount ?? 1) accès au plus")
+                            Text("\(Int(fields.maxAccessCount ?? 1)) accesses at most")
                         }
                     }
                 }
 
                 Section("Protection") {
-                    SecureField(isNew || !composer.hasPassword ? "Mot de passe" : "Nouveau mot de passe",
+                    SecureField(isNew || !composer.hasPassword ? "Password" : "New password",
                                 text: $password,
-                                prompt: Text(isNew || !composer.hasPassword ? "facultatif" : "laisser vide pour garder l'actuel"))
+                                prompt: Text(isNew || !composer.hasPassword ? "optional" : "leave empty to keep the current one"))
                     if !isNew, composer.hasPassword {
-                        Text("Pour retirer le mot de passe : « Retirer le mot de passe » sur la fiche de l'envoi.")
+                        Text("To remove the password: “Remove Password” on the send's detail.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    Toggle("Masquer mon adresse e-mail", isOn: $fields.hideEmail)
+                    Toggle("Hide my email address", isOn: $fields.hideEmail)
                     if !isNew {
-                        Toggle("Désactiver cet envoi", isOn: $fields.disabled)
+                        Toggle("Disable this send", isOn: $fields.disabled)
                     }
                 }
 
-                Section("Notes privées") {
-                    TextField("Notes", text: notesBinding, prompt: Text("visibles de vous seul"), axis: .vertical)
+                Section("Private notes") {
+                    TextField("Notes", text: notesBinding, prompt: Text("visible to you only"), axis: .vertical)
                         .labelsHidden()
                 }
 
@@ -417,9 +417,9 @@ struct SendEditorView: View {
                     }
                 }
                 Spacer()
-                Button("Annuler") { model.sends.composer = nil }
+                Button("Cancel") { model.sends.composer = nil }
                     .keyboardShortcut(.cancelAction)
-                Button(isNew ? "Créer et copier le lien" : "Enregistrer") { save() }
+                Button(isNew ? "Create and Copy Link" : "Save") { save() }
                     .keyboardShortcut("s", modifiers: .command)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
@@ -428,7 +428,7 @@ struct SendEditorView: View {
         }
         .frame(width: 520)
         .frame(minHeight: 560)
-        .navigationTitle(isNew ? (isFile ? "Nouvel envoi de fichier" : "Nouvel envoi") : "Modifier l'envoi")
+        .navigationTitle(isNew ? (isFile ? "New File Send" : "New Send") : "Edit Send")
         .onAppear { model.sends.error = nil }
     }
 
@@ -455,8 +455,8 @@ struct SendEditorView: View {
                 Spacer()
             }
             Text(isNew
-                 ? "Le fichier et son nom sont chiffrés avant l'envoi ; seul le lien permet de les ouvrir."
-                 : "Le fichier d'un envoi ne peut pas être remplacé : créez un nouvel envoi pour un autre fichier.")
+                 ? "The file and its name are encrypted before upload; only the link can open them."
+                 : "The file of a send can't be replaced: create a new send for another file.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -1,10 +1,10 @@
-//! Temps ressenti d'une écriture, à travers l'interface de l'app, contre un
-//! vrai Vaultwarden : de « Enregistrer » (ou d'un clic sur favori,
-//! archiver…) à la liste qui montre le changement (`summaries()`, ce que
-//! l'app recharge avant de fermer la feuille). Mesuré directement, puis
-//! derrière un mandataire qui ajoute 300 ms à chaque aller-retour.
+//! Perceived time of a write, through the app interface, against a real
+//! Vaultwarden: from "Save" (or a click on favorite, archive…) to the list
+//! showing the change (`summaries()`, what the app reloads before closing
+//! the sheet). Measured directly, then behind a proxy that adds 300 ms to
+//! every round trip.
 //!
-//! Mesure, pas un test : ignoré par défaut. Pour le lancer :
+//! A measurement, not a test: ignored by default. To run it:
 //!
 //! ```sh
 //! VERROU_TEST_SERVER=http://localhost:8099 cargo test --release -p verrou-ffi \
@@ -21,7 +21,7 @@ use verrou_ffi::{
     ImportChoice, ImportDestination, ImportFormat, ResultOrder, SidebarFilter, VaultSession,
 };
 
-/// Taille du coffre mesuré (celui de l'utilisateur en a plus de 825).
+/// Size of the measured vault (the user's has more than 825).
 const ITEMS: usize = 900;
 const ROUNDS: usize = 5;
 
@@ -30,21 +30,21 @@ fn median(mut samples: Vec<Duration>) -> f64 {
     samples[samples.len() / 2].as_secs_f64() * 1000.0
 }
 
-/// Ce que fait l'app après une écriture : recharger les résumés.
+/// What the app does after a write: reload the summaries.
 fn shows(session: &VaultSession, check: impl Fn(&verrou_ffi::ItemSummary) -> bool) -> bool {
     session.summaries().unwrap().iter().any(check)
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "mesure de performance, à lancer à la main"]
+#[ignore = "performance measurement, run by hand"]
 async fn write_latency() {
     let Ok(server) = std::env::var("VERROU_TEST_SERVER") else {
-        eprintln!("VERROU_TEST_SERVER absent : mesure ignorée");
+        eprintln!("VERROU_TEST_SERVER not set: measurement skipped");
         return;
     };
     let email = register(&server).await;
 
-    // Un coffre de la taille de celui de l'utilisateur, par l'import.
+    // A vault the size of the user's, through the import.
     let seed = signed_in(server.clone(), &email).await;
     let mut csv = String::from("Title,URL,Username,Password,Notes,OTPAuth\n");
     for n in 0..ITEMS {
@@ -84,7 +84,7 @@ async fn write_latency() {
         let (mut save, mut favorite, mut create, mut confirmed) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for round in 0..ROUNDS {
-            // « Enregistrer » dans l'éditeur.
+            // "Save" in the editor.
             let id = ids[round].clone();
             let mut draft = session.edit_draft(id.clone()).await.unwrap();
             let title = format!("Modifié {round}");
@@ -94,14 +94,14 @@ async fn write_latency() {
             assert!(shows(&session, |s| s.id == id && s.title == title));
             save.push(start.elapsed());
 
-            // Un clic sur l'étoile.
+            // A click on the star.
             let id = ids[ROUNDS + round].clone();
             let start = Instant::now();
             session.set_favorite(id.clone(), true).await.unwrap();
             assert!(shows(&session, |s| s.id == id && s.favorite));
             favorite.push(start.elapsed());
 
-            // « Créer ».
+            // "Create".
             let mut draft = session
                 .edit_draft(ids[2 * ROUNDS + round].clone())
                 .await
@@ -113,17 +113,17 @@ async fn write_latency() {
             assert!(shows(&session, |s| s.title == title));
             create.push(start.elapsed());
 
-            // Jusqu'à la confirmation du serveur (synchronisation comprise).
+            // Until the server's confirmation (sync included).
             session.sync().await.unwrap();
             let created = session.resolve_item_id(created);
             assert!(shows(&session, |s| s.id == created && !s.pending_sync));
             confirmed.push(start.elapsed());
         }
         if delay == 0 {
-            // Après une synchronisation, l'app relit résumés, compteurs et
-            // organisations (hors du fil principal), puis cherche (sur le
-            // fil principal) : leur coût dans le cœur, sans la conversion
-            // en Swift.
+            // After a sync, the app rereads summaries, counts and
+            // organizations (off the main thread), then searches (on the
+            // main thread): their cost in the core, without the conversion
+            // to Swift.
             let start = Instant::now();
             let count = session.summaries().unwrap().len();
             session.counts().unwrap();
@@ -134,14 +134,14 @@ async fn write_latency() {
                 .search(String::new(), SidebarFilter::All, ResultOrder::Title)
                 .unwrap();
             println!(
-                "rechargement de la liste ({count} éléments) : lecture {:.1} ms, recherche {:.1} ms",
+                "list reload ({count} items): read {:.1} ms, search {:.1} ms",
                 read.as_secs_f64() * 1000.0,
                 start.elapsed().as_secs_f64() * 1000.0
             );
         }
         println!(
-            "latence ajoutée {delay} ms, {ITEMS} éléments : enregistrer {:.0} ms, favori {:.0} ms, \
-             créer {:.0} ms, créer jusqu'à la confirmation du serveur {:.0} ms (médianes sur {ROUNDS})",
+            "added latency {delay} ms, {ITEMS} items: save {:.0} ms, favorite {:.0} ms, \
+             create {:.0} ms, create until server confirmation {:.0} ms (medians over {ROUNDS})",
             median(save),
             median(favorite),
             median(create),

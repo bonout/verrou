@@ -1,10 +1,10 @@
 import SwiftUI
 
-// Briques d'interface communes au Mac et à l'iPhone : thème, libellés des
-// types d'éléments, textes surlignés ou colorés, codes à usage unique,
-// notifications éphémères.
+// Interface building blocks shared by the Mac and the iPhone: theme, item
+// type labels, highlighted or colored text, one-time codes, transient
+// notifications.
 
-// MARK: Thème
+// MARK: Theme
 
 enum Theme {
     static let accent = Color("AccentColor")
@@ -12,8 +12,8 @@ enum Theme {
     static let digit = Color(red: 0.20, green: 0.48, blue: 0.98)
     static let symbol = Color(red: 0.93, green: 0.36, blue: 0.27)
 
-    /// Teinte stable par site ou par titre : la même icône d'un lancement à
-    /// l'autre, quand le serveur n'a pas d'icône pour le site.
+    /// Stable hue per site or title: the same icon from one launch to the
+    /// next, when the server has no icon for the site.
     static func hue(for key: String) -> Double {
         var hash: UInt64 = 1469598103934665603
         for byte in key.utf8 {
@@ -26,21 +26,21 @@ enum Theme {
 extension ItemCategory {
     var label: String {
         switch self {
-        case .login: "Identifiants"
-        case .card: "Cartes bancaires"
-        case .identity: "Identités"
-        case .secureNote: "Notes sécurisées"
-        case .sshKey: "Clés SSH"
+        case .login: String(localized: "Logins")
+        case .card: String(localized: "Cards")
+        case .identity: String(localized: "Identities")
+        case .secureNote: String(localized: "Secure notes")
+        case .sshKey: String(localized: "SSH keys")
         }
     }
 
     var singular: String {
         switch self {
-        case .login: "Identifiant"
-        case .card: "Carte bancaire"
-        case .identity: "Identité"
-        case .secureNote: "Note sécurisée"
-        case .sshKey: "Clé SSH"
+        case .login: String(localized: "Login")
+        case .card: String(localized: "Card")
+        case .identity: String(localized: "Identity")
+        case .secureNote: String(localized: "Secure note")
+        case .sshKey: String(localized: "SSH key")
         }
     }
 
@@ -65,25 +65,25 @@ extension ItemCategory {
     }
 }
 
-// MARK: Icône d'élément
+// MARK: Item icon
 
-/// Icône d'un élément : celle du site (fournie par l'app), sinon
-/// l'initiale sur une teinte stable, sinon le symbole du type.
+/// An item's icon: the site's (provided by the app), otherwise the initial
+/// on a stable hue, otherwise the type's symbol.
 struct ItemIconContent: View {
     let summary: ItemSummary
-    /// Icône du site, déjà chargée (`SiteIcons`).
+    /// Site icon, already loaded (`SiteIcons`).
     let image: PlatformImage?
     var size: CGFloat = 32
-    /// Ombre légère sous l'initiale ; sans, sur l'iPhone : une ombre de texte
-    /// par ligne coûte un rendu hors écran pendant le défilement.
+    /// Light shadow under the initial; without it, on the iPhone: one text
+    /// shadow per row costs an offscreen render while scrolling.
     var initialShadow = true
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
         ZStack {
             if summary.category == .login, summary.template == nil, let image {
-                // Fond blanc : beaucoup d'icônes sont transparentes et
-                // disparaîtraient en mode sombre.
+                // White background: many icons are transparent and would
+                // disappear in dark mode.
                 shape.fill(.white)
                 Image(platformImage: image)
                     .resizable()
@@ -123,14 +123,14 @@ struct ItemIconContent: View {
     }
 }
 
-// MARK: Texte surligné
+// MARK: Highlighted text
 
-/// Titre dont les caractères trouvés par la recherche sont mis en évidence.
+/// Title whose characters found by the search are highlighted.
 struct HighlightedText: View {
     let text: String
     let highlights: [UInt32]
-    /// `nil` sur fond d'accent (ligne sélectionnée) : la couleur d'accent y
-    /// disparaîtrait, les caractères trouvés sont alors soulignés.
+    /// `nil` on an accent background (selected row): the accent color would
+    /// disappear there, so the found characters are underlined.
     var tint: Color? = Theme.accent
 
     var body: some View {
@@ -156,15 +156,15 @@ struct HighlightedText: View {
     }
 }
 
-// MARK: Mot de passe coloré
+// MARK: Colored password
 
-/// Mot de passe révélé : chiffres et symboles colorés, police à chasse fixe,
-/// pour distinguer `O` de `0` et `l` de `1` en un coup d'œil.
+/// Revealed password: digits and symbols colored, monospaced font, to tell
+/// `O` from `0` and `l` from `1` at a glance.
 struct PasswordText: View {
     let value: String
     var size: CGFloat = 15
-    /// Texte sélectionnable. Faux sous un TextRenderer (effet « déchiffré » de
-    /// l'iPhone) : la sélection passe par un autre rendu, qui l'ignorerait.
+    /// Selectable text. False under a TextRenderer (the iPhone's "decrypted"
+    /// effect): selection goes through another render, which would ignore it.
     var selectable = true
 
     var body: some View {
@@ -201,11 +201,11 @@ struct MaskedText: View {
         Text(String(repeating: "•", count: count))
             .font(.system(size: 15, design: .monospaced))
             .foregroundStyle(.secondary)
-            .accessibilityLabel("masqué")
+            .accessibilityLabel("hidden")
     }
 }
 
-// MARK: Code à usage unique
+// MARK: One-time code
 
 struct TotpCodeView: View {
     let code: TotpView
@@ -216,7 +216,7 @@ struct TotpCodeView: View {
             Text(grouped)
                 .font(.system(size: size, weight: .semibold, design: .monospaced))
                 .contentTransition(.numericText())
-                // Les chiffres roulent quand le code change.
+                // The digits roll when the code changes.
                 .animation(.snappy, value: code.code)
             CountdownRing(remaining: code.remaining, period: code.period)
                 .frame(width: size * 0.9, height: size * 0.9)
@@ -230,9 +230,8 @@ struct TotpCodeView: View {
     }
 }
 
-/// Décompte du code : l'anneau se vide, puis passe à l'orange et bat à
-/// chaque seconde pendant les 5 dernières (un fondu avec « Réduire les
-/// animations »).
+/// The code's countdown: the ring empties, then turns orange and pulses
+/// every second during the last 5 (a fade with "Reduce Motion").
 struct CountdownRing: View {
     let remaining: UInt64
     let period: UInt64
@@ -257,7 +256,7 @@ struct CountdownRing: View {
                 .monospacedDigit()
         }
         .animation(.easeInOut(duration: 0.3), value: urgent)
-        // Un battement par seconde, seulement à la fin du décompte.
+        // One pulse per second, only at the end of the countdown.
         .keyframeAnimator(initialValue: 1.0, trigger: urgent ? remaining : 0) { content, pulse in
             content
                 .scaleEffect(urgent && !reduceMotion ? pulse : 1)
@@ -266,11 +265,11 @@ struct CountdownRing: View {
             CubicKeyframe(1.18, duration: 0.14)
             CubicKeyframe(1.0, duration: 0.36)
         }
-        .accessibilityLabel("\(remaining) secondes restantes")
+        .accessibilityLabel("\(remaining) seconds remaining")
     }
 }
 
-// MARK: Notification éphémère
+// MARK: Transient notification
 
 struct ToastView: View {
     let toast: Toast
@@ -296,20 +295,20 @@ struct ToastView: View {
 }
 
 
-/// Une ligne de résultat : le résumé de l'élément et les caractères du titre
-/// trouvés par la recherche.
+/// A result row: the item's summary and the title characters found by the
+/// search.
 struct ResultRow: Identifiable {
     let summary: ItemSummary
     let highlights: [UInt32]
     var id: String { summary.id }
 }
 
-/// Notification éphémère (copie, enregistrement, erreur).
+/// Transient notification (copy, save, error).
 struct Toast: Equatable, Identifiable {
     let id = UUID()
     let message: String
     let detail: String?
     var failure = false
-    /// Durée d'affichage.
+    /// Display duration.
     var seconds = 2.2
 }

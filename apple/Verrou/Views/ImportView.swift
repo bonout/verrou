@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Revue d'un import : ce qui est nouveau, déjà présent, en conflit, ignoré ;
-/// un choix par conflit ; le dossier où ranger les éléments créés. Aucun
-/// secret n'est affiché : titres, identifiants et sites seulement.
+/// Review of an import: what is new, already present, in conflict, skipped;
+/// one choice per conflict; the folder where the created items go. No
+/// secret is shown: titles, usernames and sites only.
 struct ImportView: View {
     @Environment(AppModel.self) private var model
     @Bindable var flow: ImportFlow
@@ -19,7 +19,7 @@ struct ImportView: View {
         .frame(width: 640, height: 620)
     }
 
-    // MARK: En-tête et pied
+    // MARK: Header and footer
 
     private var header: some View {
         HStack(spacing: 12) {
@@ -27,10 +27,10 @@ struct ImportView: View {
                 .font(.system(size: 26))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
-                Text(flow.review.map { "Importer depuis \($0.source)" } ?? "Importer des mots de passe")
+                Text(flow.review.map { String(localized: "Import from \($0.source)") } ?? String(localized: "Import Passwords"))
                     .font(.title3.weight(.semibold))
                     .layoutMark("sheet-title")
-                Text(flow.url.lastPathComponent + (flow.review.map { " · \($0.formatLabel)" } ?? ""))
+                Text(flow.url.lastPathComponent + (flow.review.map { " · \(CoreText.localized($0.formatLabel))" } ?? ""))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -44,30 +44,30 @@ struct ImportView: View {
         .padding(16)
     }
 
-    /// Relire le fichier dans un autre format (détection trompée).
+    /// Read the file again in another format (detection fooled).
     private var formatMenu: some View {
         Menu("Format") {
             ForEach(ImportFlow.formats, id: \.self) { format in
-                Button(importFormatLabel(format: format)) {
+                Button(CoreText.localized(importFormatLabel(format: format))) {
                     flow.format = format
                     Task { await model.readImport(flow) }
                 }
             }
         }
         .fixedSize()
-        .help("Relire le fichier dans un autre format")
+        .help("Read the file again in another format")
     }
 
     private var footer: some View {
         HStack(spacing: 10) {
             switch flow.stage {
             case .review:
-                Text("Le fichier d'export contient vos mots de passe en clair : supprimez-le après l'import.")
+                Text("The export file contains your passwords in the clear: delete it after the import.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
-                Button("Annuler") { model.closeImport() }
+                Button("Cancel") { model.closeImport() }
                     .keyboardShortcut(.cancelAction)
                 Button(importLabel) { Task { await model.commitImport(flow) } }
                     .keyboardShortcut(.defaultAction)
@@ -75,18 +75,18 @@ struct ImportView: View {
                     .layoutMark("sheet-primary")
                     .disabled(flow.writeCount == 0)
             case .done:
-                Button("Afficher le fichier dans le Finder") {
+                Button("Show the File in the Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([flow.url])
                 }
                 Spacer()
-                Button("Terminé") { model.closeImport() }
+                Button("Done") { model.closeImport() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
             case .importing:
                 Spacer()
             case .reading, .failed:
                 Spacer()
-                Button("Annuler") { model.closeImport() }
+                Button("Cancel") { model.closeImport() }
                     .keyboardShortcut(.cancelAction)
             }
         }
@@ -95,18 +95,18 @@ struct ImportView: View {
 
     private var importLabel: String {
         let n = flow.writeCount
-        return "Importer \(n) élément\(n > 1 ? "s" : "")"
+        return n > 1 ? String(localized: "Import \(n) Items") : String(localized: "Import \(n) Item")
     }
 
-    // MARK: Contenu
+    // MARK: Content
 
     @ViewBuilder
     private var content: some View {
         switch flow.stage {
         case .reading:
-            ProgressView("Lecture du fichier…")
+            ProgressView("Reading the file…")
         case .importing(let count):
-            ProgressView("Chiffrement et envoi de \(count) élément\(count > 1 ? "s" : "")…")
+            ProgressView(count > 1 ? "Encrypting and uploading \(count) items…" : "Encrypting and uploading \(count) item…")
         case .failed(let message):
             FailedImportView(flow: flow, message: message)
         case .review(let review):
@@ -117,7 +117,7 @@ struct ImportView: View {
     }
 }
 
-/// Lecture impossible : le message, et le format à choisir à la main.
+/// Couldn't read: the message, and the format to choose by hand.
 private struct FailedImportView: View {
     @Environment(AppModel.self) private var model
     @Bindable var flow: ImportFlow
@@ -132,11 +132,11 @@ private struct FailedImportView: View {
             HStack {
                 Picker("Format", selection: $format) {
                     ForEach(ImportFlow.formats, id: \.self) { format in
-                        Text(importFormatLabel(format: format)).tag(format)
+                        Text(CoreText.localized(importFormatLabel(format: format))).tag(format)
                     }
                 }
                 .fixedSize()
-                Button("Relire") {
+                Button("Read Again") {
                     flow.format = format
                     Task { await model.readImport(flow) }
                 }
@@ -147,21 +147,20 @@ private struct FailedImportView: View {
     }
 }
 
-/// Bilan : éléments écrits, et ceux qui ne l'ont pas été.
+/// Report: items written, and those that weren't.
 private struct ImportDoneView: View {
     let outcome: ImportOutcome
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Label("\(outcome.created) créé\(outcome.created > 1 ? "s" : ""), \(outcome.updated) complété\(outcome.updated > 1 ? "s" : "")",
-                      systemImage: "checkmark.circle.fill")
+                Label(createdText + ", " + updatedText, systemImage: "checkmark.circle.fill")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(.green)
-                Text("Le fichier d'export contient vos mots de passe en clair. Supprimez-le, puis videz la corbeille du Finder.")
+                Text("The export file contains your passwords in the clear. Delete it, then empty the Finder's trash.")
                     .foregroundStyle(.secondary)
                 if !outcome.failures.isEmpty {
-                    Text("Non importés").font(.headline).padding(.top, 6)
+                    Text("Not imported").font(.headline).padding(.top, 6)
                     ForEach(Array(outcome.failures.enumerated()), id: \.offset) { _, failure in
                         SkippedRow(skipped: failure)
                     }
@@ -171,6 +170,16 @@ private struct ImportDoneView: View {
             .padding(20)
         }
     }
+
+    private var createdText: String {
+        let n = Int(outcome.created)
+        return n > 1 ? String(localized: "\(n) items created") : String(localized: "\(n) item created")
+    }
+
+    private var updatedText: String {
+        let n = Int(outcome.updated)
+        return n > 1 ? String(localized: "\(n) items completed") : String(localized: "\(n) item completed")
+    }
 }
 
 private struct SkippedRow: View {
@@ -178,15 +187,15 @@ private struct SkippedRow: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text(skipped.title).lineLimit(1)
+            Text(CoreText.title(skipped.title)).lineLimit(1)
             Spacer()
-            Text(skipped.reason).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            Text(CoreText.message(skipped.reason)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
         }
         .padding(.vertical, 2)
     }
 }
 
-/// La revue : bilan, conflits à trancher, listes repliées, destination.
+/// The review: report, conflicts to settle, collapsed lists, destination.
 private struct ReviewList: View {
     @Bindable var flow: ImportFlow
     let review: ImportReview
@@ -202,12 +211,12 @@ private struct ReviewList: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
-                    CountTile(count: fresh.count, label: "nouveaux", tint: .green)
-                    CountTile(count: present.count, label: "déjà présents", tint: .secondary)
+                    CountTile(count: fresh.count, label: "new", tint: .green)
+                    CountTile(count: present.count, label: "already present", tint: .secondary)
                     CountTile(count: indices([.newPassword, .conflictInFile]).count,
-                              label: "mot de passe différent", tint: .orange)
-                    CountTile(count: indices([.addsCode, .similar]).count, label: "à compléter", tint: .teal)
-                    CountTile(count: review.skipped.count, label: "ignorés", tint: .secondary)
+                              label: "different password", tint: .orange)
+                    CountTile(count: indices([.addsCode, .similar]).count, label: "to complete", tint: .teal)
+                    CountTile(count: review.skipped.count, label: "skipped", tint: .secondary)
                 }
 
                 if let error = flow.error {
@@ -215,8 +224,8 @@ private struct ReviewList: View {
                 }
 
                 if !conflicts.isEmpty {
-                    Text("À décider").font(.headline)
-                    Text("Ressemble à un élément existant (même site ou même titre, même identifiant). Remplacer garde l'ancien mot de passe dans l'historique de l'élément.")
+                    Text("To decide").font(.headline)
+                    Text("Looks like an existing item (same site or same title, same username). Replace keeps the old password in the item's history.")
                         .font(.caption).foregroundStyle(.secondary)
                     ForEach(conflicts, id: \.self) { index in
                         ConflictRow(entry: review.entries[index], choice: $flow.choices[index])
@@ -226,7 +235,7 @@ private struct ReviewList: View {
                 destination
 
                 if !fresh.isEmpty {
-                    DisclosureGroup("Nouveaux (\(fresh.count))") {
+                    DisclosureGroup("New (\(fresh.count))") {
                         ForEach(fresh, id: \.self) { index in
                             Toggle(isOn: Binding(
                                 get: { flow.choices[index] == .create },
@@ -239,14 +248,14 @@ private struct ReviewList: View {
                     }
                 }
                 if !present.isEmpty {
-                    DisclosureGroup("Déjà présents, ignorés (\(present.count))") {
+                    DisclosureGroup("Already present, skipped (\(present.count))") {
                         ForEach(present, id: \.self) { index in
                             EntryLabel(entry: review.entries[index])
                         }
                     }
                 }
                 if !review.skipped.isEmpty {
-                    DisclosureGroup("Non importables (\(review.skipped.count))") {
+                    DisclosureGroup("Can't be imported (\(review.skipped.count))") {
                         ForEach(Array(review.skipped.enumerated()), id: \.offset) { _, skipped in
                             SkippedRow(skipped: skipped)
                         }
@@ -259,18 +268,18 @@ private struct ReviewList: View {
 
     private var destination: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Ranger les éléments créés").font(.headline)
-            Picker("Ranger les éléments créés", selection: $flow.placement) {
-                Text("Dans le dossier").tag(ImportFlow.Placement.folder)
+            Text("Put the created items").font(.headline)
+            Picker("Put the created items", selection: $flow.placement) {
+                Text("In the folder").tag(ImportFlow.Placement.folder)
                 if review.hasFolders {
-                    Text("Dans les dossiers (coffres) de \(review.source)").tag(ImportFlow.Placement.originalFolders)
+                    Text("In the folders (vaults) of \(review.source)").tag(ImportFlow.Placement.originalFolders)
                 }
-                Text("Sans dossier").tag(ImportFlow.Placement.none)
+                Text("Without a folder").tag(ImportFlow.Placement.none)
             }
             .pickerStyle(.radioGroup)
             .labelsHidden()
             if flow.placement == .folder {
-                TextField("Nom du dossier", text: $flow.folderName)
+                TextField("Folder name", text: $flow.folderName)
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 280)
             }
@@ -280,7 +289,7 @@ private struct ReviewList: View {
 
 private struct CountTile: View {
     let count: Int
-    let label: String
+    let label: LocalizedStringKey
     let tint: Color
 
     var body: some View {
@@ -293,7 +302,7 @@ private struct CountTile: View {
     }
 }
 
-/// Titre, identifiant et site d'une ligne (jamais le mot de passe).
+/// Title, username and site of a row (never the password).
 private struct EntryLabel: View {
     let entry: ImportEntry
 
@@ -303,26 +312,26 @@ private struct EntryLabel: View {
                 .foregroundStyle(entry.category.tint)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
-                Text(entry.title).lineLimit(1)
+                Text(CoreText.title(entry.title)).lineLimit(1)
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             if entry.hasTotp {
                 Image(systemName: "clock.badge.checkmark").font(.caption).foregroundStyle(.teal)
-                    .help("Code à usage unique")
+                    .help("One-time code")
             }
         }
         .padding(.vertical, 2)
     }
 
     private var detail: String {
-        [entry.username, entry.host ?? "", entry.folder.map { "dossier \($0)" } ?? ""]
+        [entry.username, entry.host ?? "", entry.folder.map { String(localized: "folder \($0)") } ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: " · ")
     }
 }
 
-/// Un conflit : l'élément, celui qu'il rappelle, et le choix.
+/// A conflict: the item, the one it recalls, and the choice.
 private struct ConflictRow: View {
     let entry: ImportEntry
     @Binding var choice: ImportChoice
@@ -333,7 +342,7 @@ private struct ConflictRow: View {
                 EntryLabel(entry: entry)
                 Text(explanation).font(.caption).foregroundStyle(.secondary)
             }
-            Picker("Choix", selection: $choice) {
+            Picker("Choice", selection: $choice) {
                 ForEach(options, id: \.self) { option in
                     Text(label(option)).tag(option)
                 }
@@ -345,16 +354,17 @@ private struct ConflictRow: View {
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
-    private var existing: String { entry.existingTitle.map { "« \($0) »" } ?? "un élément" }
+    private var existing: String { entry.existingTitle.map { String(localized: "“\($0)”") } ?? String(localized: "an item") }
 
     private var explanation: String {
         let base = switch entry.status {
-        case .addsCode: "Comme \(existing) du coffre, qui n'a pas de code à usage unique."
-        case .conflictInFile: "Comme \(existing), plus haut dans le fichier."
-        case .similar: "Ressemble à \(existing) du coffre."
-        default: "Autre mot de passe que \(existing) du coffre."
+        case .addsCode: String(localized: "Like \(existing) in the vault, which has no one-time code.")
+        case .conflictInFile: String(localized: "Like \(existing), higher up in the file.")
+        case .similar: String(localized: "Looks like \(existing) in the vault.")
+        default: String(localized: "Different password from \(existing) in the vault.")
         }
-        return entry.reason.isEmpty ? base : "\(base) \(entry.reason.prefix(1).uppercased())\(entry.reason.dropFirst())."
+        let reason = CoreText.duplicateReason(entry.reason)
+        return reason.isEmpty ? base : "\(base) \(reason.prefix(1).uppercased())\(reason.dropFirst())."
     }
 
     private var options: [ImportChoice] {
@@ -363,12 +373,12 @@ private struct ConflictRow: View {
 
     private func label(_ option: ImportChoice) -> String {
         switch (option, entry.status) {
-        case (.update, .addsCode): "Ajouter le code"
-        case (.update, .similar): "Compléter l'existant"
-        case (.update, _): "Remplacer le mot de passe"
-        case (.skip, .conflictInFile): "Ignorer"
-        case (.skip, _): "Garder l'existant"
-        case (.create, _): "Importer à part"
+        case (.update, .addsCode): String(localized: "Add the Code")
+        case (.update, .similar): String(localized: "Complete the Existing One")
+        case (.update, _): String(localized: "Replace the Password")
+        case (.skip, .conflictInFile): String(localized: "Skip")
+        case (.skip, _): String(localized: "Keep the Existing One")
+        case (.create, _): String(localized: "Import Separately")
         }
     }
 }

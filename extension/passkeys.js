@@ -1,28 +1,29 @@
-// Passkeys dans la page (cadre principal) : reçoit de passkey-page.js les
-// demandes de `navigator.credentials`, propose les passkeys de Verrou pour
-// ce site, ou d'en enregistrer une nouvelle, et rend la réponse à la page.
+// Passkeys in the page (main frame): receives the `navigator.credentials`
+// requests from passkey-page.js, offers Verrou's passkeys for this site, or
+// to save a new one, and gives the answer back to the page.
 //
-// La fenêtre vit dans un shadow DOM fermé et n'obéit qu'aux clics réels
-// (`isTrusted`) : la page peut demander, jamais choisir à la place de
-// l'utilisateur. Le service worker ajoute l'adresse de l'onglet ; Verrou
-// vérifie le site (`rpId`), signe, et garde la clé privée.
+// The window lives in a closed shadow DOM and only obeys real clicks
+// (`isTrusted`): the page can ask, never choose on behalf of the user. The
+// service worker adds the tab's address; Verrou checks the site (`rpId`),
+// signs, and keeps the private key.
 //
-// Remplissage automatique (`mediation: "conditional"`) : la demande reste en
-// attente, et la pastille de content.js (même monde isolé, hors de portée de
-// la page) propose d'abord la passkey de Verrou pour ce site, par
-// `globalThis.__verrouPasskeyMenu`. Rien pour ce site, ou Verrou absent : la
-// demande passe au navigateur.
+// Autofill (`mediation: "conditional"`): the request stays pending, and the
+// pill of content.js (same isolated world, out of reach of the page) first
+// offers Verrou's passkey for this site, through
+// `globalThis.__verrouPasskeyMenu`. Nothing for this site, or Verrou absent:
+// the request goes to the browser.
 //
-// Quand une demande explicite (create, get) part au navigateur parce que
-// Verrou ne peut pas la prendre (injoignable, extension non reliée ou
-// périmée, type de clé non géré), un avis discret le dit : jamais de repli
-// silencieux.
+// When an explicit request (create, get) goes to the browser because Verrou
+// can't take it (unreachable, extension not linked or outdated, key type
+// not supported), a discreet notice says so: never a silent fallback.
 
 (() => {
   if (window !== top || globalThis.__verrouPasskeyMenu) return;
-  // API d'extension : `browser` (Firefox), sinon `chrome` (Brave). Le test sur
-  // `runtime.id` écarte un élément de la page nommé « browser » (voir browser.js).
+  // Extension API: `browser` (Firefox), otherwise `chrome` (Brave). The test on
+  // `runtime.id` rules out a page element named "browser" (see browser.js).
   const ext = globalThis.browser?.runtime?.id ? globalThis.browser : globalThis.chrome;
+  // Text of the interface in the browser's language (extension/_locales).
+  const t = (name, ...substitutions) => ext.i18n.getMessage(name, substitutions.map(String));
 
   const origin = location.origin;
   const RETRY_MS = 1000;
@@ -34,14 +35,14 @@
     try {
       return await ext.runtime.sendMessage(message);
     } catch {
-      // Extension rechargée (mise à jour) : ce script est orphelin, la page
-      // doit être rechargée pour retrouver Verrou.
+      // Extension reloaded (update): this script is orphaned, the page must
+      // be reloaded to get Verrou back.
       return { state: ext?.runtime?.id ? "offline" : "outdated" };
     }
   }
 
-  // La demande explicite en cours (une à la fois, comme le navigateur), et la
-  // demande de remplissage automatique, qui attend un choix dans la pastille.
+  // The explicit request in progress (one at a time, like the browser), and
+  // the autofill request, which waits for a choice in the pill.
   let current = null;
   let conditional = null;
   const listeners = new Set();
@@ -51,7 +52,7 @@
       try {
         listener();
       } catch {
-        // Un abonné en erreur n'empêche pas les autres.
+        // A failing subscriber doesn't stop the others.
       }
     }
   }
@@ -72,9 +73,8 @@
     const data = event.data;
     if (data?.verrouPasskey === "request" && typeof data.id === "string"
       && ["create", "get", "conditional"].includes(data.kind) && data.request && typeof data.request === "object") {
-      // Une copie à nous : dans Firefox, les objets de la page ne se voient
-      // qu'à travers des « Xray » ; la requête (chaînes, nombres, listes) se
-      // copie sans perte.
+      // Our own copy: in Firefox, the page's objects are only seen through
+      // "Xrays"; the request (strings, numbers, lists) copies without loss.
       let copy;
       try {
         copy = JSON.parse(JSON.stringify(data.request));
@@ -82,8 +82,7 @@
         return;
       }
       const request = { id: data.id, kind: data.kind, request: copy, done: false };
-      // Une nouvelle demande remplace le remplissage automatique en attente,
-      // comme dans le navigateur.
+      // A new request replaces the pending autofill, as in the browser.
       if (conditional) answer(conditional, "cancelled");
       if (data.kind === "conditional") {
         conditional = request;
@@ -97,8 +96,8 @@
       current = request;
       (data.kind === "get" ? signIn : register)(current);
     } else if (data?.verrouPasskey === "cancel") {
-      // Annulée par la page (AbortSignal) : rien à répondre, la page a déjà
-      // rejeté sa promesse.
+      // Cancelled by the page (AbortSignal): nothing to answer, the page has
+      // already rejected its promise.
       for (const request of [current, conditional]) {
         if (request?.id !== data.id) continue;
         request.done = true;
@@ -114,7 +113,7 @@
     }
   });
 
-  // MARK: Fenêtre
+  // MARK: Window
 
   const STYLE = `
     :host { all: initial; position: fixed; top: 12px; right: 12px; z-index: 2147483647; }
@@ -164,7 +163,7 @@
     return node;
   }
 
-  // N'obéit qu'aux vrais clics.
+  // Only obeys real clicks.
   function onTrustedClick(node, action) {
     node.addEventListener("click", (event) => {
       event.preventDefault();
@@ -199,7 +198,7 @@
     host: null,
     root: null,
     timer: null,
-    // La demande dont la fenêtre montre l'avancement (remplissage automatique).
+    // The request whose progress the window shows (autofill).
     owner: null,
 
     show(...nodes) {
@@ -227,7 +226,7 @@
 
   const siteOf = (request) => request.request.rp_id || location.hostname;
 
-  // Laisser faire le navigateur (ou une clé de sécurité, un téléphone…).
+  // Let the browser do it (or a security key, a phone…).
   function toBrowser(request) {
     panel.close();
     answer(request, "browser");
@@ -241,71 +240,70 @@
   function failure(request, title, reason) {
     if (request.done) return;
     panel.show(
-      head(title, reason || "Verrou ne répond pas"),
+      head(title, reason || t("verrouNotResponding")),
       actions(
-        button("Fermer", "", () => cancel(request)),
-        button("Utiliser le navigateur", "primary", () => toBrowser(request)),
+        button(t("close"), "", () => cancel(request)),
+        button(t("passkeyUseBrowser"), "primary", () => toBrowser(request)),
       ),
     );
   }
 
-  // MARK: Avis de repli vers le navigateur
+  // MARK: Notice of fallback to the browser
 
+  // Read once, now: once the extension is reloaded ("outdated"), this
+  // orphaned script may no longer reach its messages.
   const NOTICES = {
-    offline: ["Verrou n'est pas joignable : la passkey est laissée au navigateur",
-      "Ouvrez Verrou, et activez « Brave, Firefox et le terminal » dans ses réglages."],
-    unpaired: ["L'extension n'est pas reliée à Verrou : la passkey est laissée au navigateur",
-      "Reliez l'extension depuis son icône dans la barre d'outils."],
-    outdated: ["Verrou vient d'être mis à jour : la passkey est laissée au navigateur",
-      "Rechargez la page pour utiliser les passkeys de Verrou."],
-    algorithm: ["Verrou ne gère pas ce type de clé : la passkey est laissée au navigateur",
-      "Le site n'accepte pas les clés ES256, les seules que Verrou sait créer."],
+    offline: [t("passkeyOfflineTitle"), t("passkeyOfflineHint", t("settingBridge"))],
+    unpaired: [t("passkeyUnpairedTitle"), t("passkeyUnpairedHint")],
+    outdated: [t("passkeyOutdatedTitle"), t("passkeyOutdatedHint")],
+    algorithm: [t("passkeyAlgorithmTitle"), t("passkeyAlgorithmHint")],
   };
+  const OTHER_NOTICE = t("passkeyOtherTitle");
+  const NOT_RESPONDING = t("verrouNotResponding");
+  const OK = t("ok");
 
-  // Avis discret, qui ne bloque rien et s'efface seul.
+  // Discreet notice, which blocks nothing and goes away by itself.
   function notice(kind, reason) {
-    const [title, hint] = NOTICES[kind]
-      ?? ["Verrou n'a pas pu prendre la demande : la passkey est laissée au navigateur", reason || "Verrou ne répond pas"];
+    const [title, hint] = NOTICES[kind] ?? [OTHER_NOTICE, reason || NOT_RESPONDING];
     panel.owner = null;
-    panel.show(head(title, hint), actions(button("OK", "", () => panel.close())));
+    panel.show(head(title, hint), actions(button(OK, "", () => panel.close())));
     panel.close(8000);
   }
 
-  // Repli vers le navigateur parce que Verrou ne peut pas prendre la demande :
-  // le dire.
+  // Fallback to the browser because Verrou can't take the request: say so.
   function fallback(request, state, reason) {
     answer(request, "browser");
     notice(state, reason);
   }
 
-  // Verrou verrouillé : proposer de le déverrouiller, puis reprendre.
+  // Verrou locked: offer to unlock it, then resume.
   function locked(request, resume) {
     panel.show(
-      head("Passkey : Verrou est verrouillé", siteOf(request)),
+      head(t("passkeyLockedTitle"), siteOf(request)),
       actions(
-        button("Utiliser le navigateur", "quiet", () => toBrowser(request)),
-        button("Annuler", "", () => cancel(request)),
-        button("Déverrouiller", "primary", async () => {
+        button(t("passkeyUseBrowser"), "quiet", () => toBrowser(request)),
+        button(t("cancel"), "", () => cancel(request)),
+        button(t("unlock"), "primary", async () => {
           await send({ kind: "unlock" });
-          panel.show(head("Déverrouillez Verrou…", "Touch ID ou mot de passe principal"));
+          panel.show(head(t("unlockWait"), t("unlockHint")));
           resume(0);
         }),
       ),
     );
   }
 
-  // Réessaie `attempt` tant que Verrou est verrouillé ou attend une
-  // confirmation (élément protégé), une minute et demie au plus.
+  // Tries `attempt` again while Verrou is locked or waits for a
+  // confirmation (protected item), a minute and a half at most.
   function retryLater(request, attempt, tries) {
     if (request.done) return;
     if (tries >= RETRIES) {
-      failure(request, "Verrou n'a pas répondu à temps", siteOf(request));
+      failure(request, t("passkeyTimedOut"), siteOf(request));
       return;
     }
     setTimeout(() => attempt(tries + 1), RETRY_MS);
   }
 
-  // MARK: Se connecter (navigator.credentials.get)
+  // MARK: Sign in (navigator.credentials.get)
 
   async function signIn(request, tries = 0) {
     const { rp_id, allow } = request.request;
@@ -316,12 +314,12 @@
       else retryLater(request, (t) => signIn(request, t), tries);
       return;
     }
-    // Rien dans Verrou pour ce site : le navigateur, sans détour.
+    // Nothing in Verrou for this site: the browser, straight away.
     if (list.state === "unlocked" && !list.items?.length) {
       toBrowser(request);
       return;
     }
-    // Verrou absent, non relié… : le navigateur, en le disant.
+    // Verrou absent, not linked…: the browser, saying so.
     if (list.state !== "unlocked") {
       fallback(request, list.state, list.reason);
       return;
@@ -335,11 +333,11 @@
       rows.append(onTrustedClick(row, () => use(request, item)));
     }
     panel.show(
-      head("Se connecter avec une passkey de Verrou ?", siteOf(request)),
+      head(t("passkeySignInTitle"), siteOf(request)),
       rows,
       actions(
-        button("Autre appareil ou navigateur", "quiet", () => toBrowser(request)),
-        button("Annuler", "", () => cancel(request)),
+        button(t("passkeyOtherDevice"), "quiet", () => toBrowser(request)),
+        button(t("cancel"), "", () => cancel(request)),
       ),
     );
   }
@@ -348,7 +346,7 @@
     if (request.done) return;
     if (tries === 0) {
       panel.owner = request;
-      panel.show(head("Connexion…", `${item.user_name || item.title} · ${siteOf(request)}`));
+      panel.show(head(t("passkeySigningIn"), `${item.user_name || item.title} · ${siteOf(request)}`));
     }
     const { rp_id, challenge, uv, prf } = request.request;
     const reply = await send({ kind: "passkeyGet", rp_id, item: item.item, credential: item.credential, challenge, uv, prf });
@@ -357,19 +355,19 @@
       panel.close();
       answer(request, "credential", reply.credential);
     } else if (reply.state === "confirm" || reply.state === "locked") {
-      // Élément protégé : Verrou demande la confirmation ; on réessaie.
-      if (tries === 0) panel.show(head("Confirmez dans Verrou…", item.title));
+      // Protected item: Verrou asks for confirmation; we try again.
+      if (tries === 0) panel.show(head(t("confirmInVerrouWait"), item.title));
       retryLater(request, (t) => use(request, item, t), tries);
     } else {
-      failure(request, "Connexion impossible", reply.reason);
+      failure(request, t("passkeySignInFailed"), reply.reason);
     }
   }
 
-  // MARK: Enregistrer (navigator.credentials.create)
+  // MARK: Register (navigator.credentials.create)
 
   async function register(request, tries = 0) {
     const { rp_id, exclude, algorithms } = request.request;
-    // Verrou ne crée que des clés ES256.
+    // Verrou only creates ES256 keys.
     if (algorithms?.length && !algorithms.includes(-7)) {
       fallback(request, "algorithm");
       return;
@@ -388,23 +386,23 @@
     const user = request.request.user_name || request.request.user_display_name || "";
     if (targets.excluded) {
       panel.show(
-        head("Cette passkey est déjà dans Verrou", `${user} · ${siteOf(request)}`),
-        actions(button("Fermer", "primary", () => {
+        head(t("passkeyExists"), `${user} · ${siteOf(request)}`),
+        actions(button(t("close"), "primary", () => {
           panel.close();
           answer(request, "exists");
         })),
       );
       return;
     }
-    // Où l'enregistrer : l'identifiant du site au même nom d'utilisateur,
-    // sinon un nouvel identifiant.
+    // Where to save it: the site's login with the same username, otherwise
+    // a new login.
     const choices = [
       ...targets.logins.map((login) => ({
         item: login.id,
         title: login.title,
-        subtitle: [login.username, login.has_passkey ? "remplace sa passkey" : ""].filter(Boolean).join(" · "),
+        subtitle: [login.username, login.has_passkey ? t("passkeyReplaces") : ""].filter(Boolean).join(" · "),
       })),
-      { item: null, title: "Nouvel identifiant", subtitle: siteOf(request) },
+      { item: null, title: t("newLogin"), subtitle: siteOf(request) },
     ];
     let selected = choices.findIndex((c) => c.item && targets.logins
       .find((l) => l.id === c.item)?.username.toLowerCase() === user.toLowerCase());
@@ -422,12 +420,12 @@
         }));
       });
       panel.show(
-        head("Enregistrer une passkey dans Verrou ?", `${user || "sans nom"} · ${siteOf(request)}`),
+        head(t("passkeySaveTitle"), `${user || t("passkeyNoName")} · ${siteOf(request)}`),
         rows,
         actions(
-          button("Utiliser le navigateur", "quiet", () => toBrowser(request)),
-          button("Annuler", "", () => cancel(request)),
-          button("Enregistrer", "primary", () => save(request, choices[selected])),
+          button(t("passkeyUseBrowser"), "quiet", () => toBrowser(request)),
+          button(t("cancel"), "", () => cancel(request)),
+          button(t("save"), "primary", () => save(request, choices[selected])),
         ),
       );
     };
@@ -436,27 +434,27 @@
 
   async function save(request, choice) {
     if (request.done) return;
-    panel.show(head("Enregistrement…", siteOf(request)));
+    panel.show(head(t("saving"), siteOf(request)));
     const reply = await send({ kind: "passkeyCreate", ...request.request, item: choice.item });
     if (request.done) return;
     if (reply.ok) {
       answer(request, "credential", reply.credential);
-      panel.show(head("Passkey enregistrée dans Verrou", choice.item ? choice.title : siteOf(request)));
+      panel.show(head(t("passkeySaved"), choice.item ? choice.title : siteOf(request)));
       panel.close(2500);
     } else if (reply.state === "exists") {
       panel.close();
       answer(request, "exists");
     } else {
-      failure(request, "Enregistrement impossible", reply.state === "locked" ? "Verrou est verrouillé" : reply.reason);
+      failure(request, t("saveFailed"), reply.state === "locked" ? t("verrouLocked") : reply.reason);
     }
   }
 
-  // MARK: Remplissage automatique (mediation: "conditional")
+  // MARK: Autofill (mediation: "conditional")
 
-  // Les passkeys de Verrou pour la demande en attente : `ready` (avec
-  // `items`), `locked` (Verrou à déverrouiller d'abord) ou `none`. Rien pour
-  // ce site, ou Verrou injoignable : la demande passe au navigateur, dont le
-  // remplissage reprend la main (sans avis : l'utilisateur n'a rien demandé).
+  // Verrou's passkeys for the pending request: `ready` (with `items`),
+  // `locked` (Verrou to unlock first) or `none`. Nothing for this site, or
+  // Verrou unreachable: the request goes to the browser, whose autofill
+  // takes over (no notice: the user asked for nothing).
   async function conditionalEntries(request) {
     if (!request || request.done) return { state: "none" };
     const { rp_id, allow } = request.request;
@@ -476,13 +474,13 @@
     if (entries.state !== "none") changed();
   }
 
-  // Pour la pastille de content.js (même monde isolé : la page n'y a pas accès).
+  // For the pill of content.js (same isolated world: the page has no access to it).
   globalThis.__verrouPasskeyMenu = Object.freeze({
-    // Les passkeys à proposer dans la pastille (relues : Verrou a pu être
-    // déverrouillé entre-temps).
+    // The passkeys to offer in the pill (read again: Verrou may have been
+    // unlocked in the meantime).
     entries: () => conditionalEntries(conditional),
-    // Choisie dans la pastille, d'un vrai clic ou d'une vraie touche : la même
-    // signature qu'une connexion explicite (Touch ID, élément protégé…).
+    // Chosen in the pill, with a real click or a real key: the same
+    // signature as an explicit sign-in (Touch ID, protected item…).
     choose(credential) {
       const request = conditional;
       const item = request?.items?.find((i) => i.credential === credential);
@@ -490,7 +488,7 @@
       use(request, item);
       return true;
     },
-    // Appelé quand la demande en attente arrive, change ou se termine.
+    // Called when the pending request arrives, changes or ends.
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);

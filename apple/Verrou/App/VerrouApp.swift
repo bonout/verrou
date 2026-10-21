@@ -1,8 +1,8 @@
 import ServiceManagement
 import SwiftUI
 
-/// Point d'entrée : l'app, ou (builds Debug, `VERROU_REVIEW=1`) la revue
-/// visuelle hors écran, qui n'ouvre aucune scène SwiftUI ni aucune fenêtre.
+/// Entry point: the app, or (Debug builds, `VERROU_REVIEW=1`) the offscreen
+/// visual review, which opens no SwiftUI scene and no window.
 @main
 enum VerrouMain {
     static func main() {
@@ -30,68 +30,68 @@ struct VerrouApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .commands {
             CommandGroup(replacing: .appSettings) {
-                SettingsLink { Text("Réglages…") }
+                SettingsLink { Text("Settings…") }
                     .keyboardShortcut(",", modifiers: .command)
             }
             CommandGroup(replacing: .newItem) {
-                Button("Nouvel identifiant") { delegate.model.newItem(login: true) }
+                Button("New Login") { delegate.model.newItem(login: true) }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(!delegate.model.canEdit)
-                Button("Nouvelle note sécurisée") { delegate.model.newItem(login: false) }
+                Button("New Secure Note") { delegate.model.newItem(login: false) }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
-                Button("Nouveau document…") { delegate.model.newDocument() }
+                Button("New Document…") { delegate.model.newDocument() }
                     .disabled(!delegate.model.canEdit)
                 Divider()
-                Button("Importer…") { delegate.model.startImport() }
+                Button("Import…") { delegate.model.startImport() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
             }
-            CommandMenu("Coffre") {
-                Button("Accès rapide") { delegate.quickAccess?.toggle() }
+            CommandMenu("Vault") {
+                Button("Quick Access") { delegate.quickAccess?.toggle() }
                     .keyboardShortcut(.space, modifiers: [.command, .shift])
                 Divider()
-                Button("Synchroniser") { Task { await delegate.model.syncNow() } }
+                Button("Sync") { Task { await delegate.model.syncNow() } }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(delegate.model.lockState != .unlocked || delegate.model.mode == .demo)
-                Button("Nettoyer les doublons…") { delegate.model.openDuplicates() }
+                Button("Clean Up Duplicates…") { delegate.model.openDuplicates() }
                     .disabled(delegate.model.lockState != .unlocked)
-                // Volets de la fenêtre principale, comme dans la barre latérale.
+                // Panes of the main window, as in the sidebar.
                 Divider()
-                Button("Audit de sécurité") {
+                Button("Security Audit") {
                     delegate.model.showMainWindow()
                     delegate.model.openAudit()
                 }
                 .disabled(delegate.model.lockState != .unlocked)
                 if delegate.model.mode == .vaultwarden {
-                    Button("Envois") { delegate.model.openSends() }
+                    Button("Sends") { delegate.model.openSends() }
                         .disabled(!delegate.model.sendsAvailable)
-                    Button("Nouvel envoi…") {
+                    Button("New Send…") {
                         delegate.model.showMainWindow()
                         delegate.model.newSend()
                     }
                     .disabled(!delegate.model.sendsAvailable)
-                    Button("Nouvel envoi de fichier…") {
+                    Button("New File Send…") {
                         delegate.model.showMainWindow()
                         delegate.model.newFileSend()
                     }
                     .disabled(!delegate.model.sendsAvailable)
-                    Button("Accès d'urgence") { delegate.model.openEmergency() }
+                    Button("Emergency Access") { delegate.model.openEmergency() }
                         .disabled(!delegate.model.emergencyAvailable)
                     Divider()
-                    Button("Nouvelle organisation…") {
+                    Button("New Organization…") {
                         delegate.model.showMainWindow()
                         delegate.model.openNewOrganization()
                     }
                     .disabled(!delegate.model.canEdit)
-                    Button("Rejoindre une organisation…") {
+                    Button("Join an Organization…") {
                         delegate.model.showMainWindow()
                         delegate.model.openJoin()
                     }
                     .disabled(!delegate.model.canEdit)
                 }
                 Divider()
-                Button("Verrouiller") { delegate.model.lock() }
+                Button("Lock") { delegate.model.lock() }
                     .keyboardShortcut("l", modifiers: [.command, .control])
                     .disabled(delegate.model.lockState != .unlocked)
             }
@@ -112,13 +112,13 @@ struct VerrouApp: App {
     }
 }
 
-/// Icône de la barre des menus : cadenas fermé ou ouvert, selon le coffre.
+/// Menu bar icon: padlock closed or open, depending on the vault.
 struct MenuBarIcon: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Image(systemName: model.lockState == .unlocked ? "lock.open.fill" : "lock.fill")
-            .accessibilityLabel(model.lockState == .unlocked ? "Verrou, déverrouillé" : "Verrou, verrouillé")
+            .accessibilityLabel(model.lockState == .unlocked ? "Verrou, unlocked" : "Verrou, locked")
     }
 }
 
@@ -130,30 +130,30 @@ struct MenuBarMenu: View {
     var body: some View {
         Text(status)
         Divider()
-        Button("Accès rapide", action: quickAccess)
+        Button("Quick Access", action: quickAccess)
             .keyboardShortcut(.space, modifiers: [.command, .shift])
-        Button("Ouvrir Verrou", action: showMainWindow)
+        Button("Open Verrou", action: showMainWindow)
         Divider()
         if model.lockState == .unlocked {
             if model.mode == .vaultwarden {
-                Button("Synchroniser") { Task { await model.syncNow() } }
+                Button("Sync") { Task { await model.syncNow() } }
             }
-            Button("Verrouiller") { model.lock() }
+            Button("Lock") { model.lock() }
         } else {
-            // La fenêtre principale demande Touch ID d'elle-même.
-            Button("Déverrouiller…", action: showMainWindow)
+            // The main window asks for Touch ID by itself.
+            Button("Unlock…", action: showMainWindow)
         }
         Divider()
-        SettingsLink { Text("Réglages…") }
-        Button("Quitter Verrou") { NSApp.terminate(nil) }
+        SettingsLink { Text("Settings…") }
+        Button("Quit Verrou") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
 
     private var status: String {
         switch model.lockState {
-        case .unlocked: model.account.map { "Déverrouillé · \($0.email)" } ?? "Déverrouillé"
-        case .unlocking: "Déverrouillage…"
-        case .locked: model.needsLogin ? "Non connecté" : "Verrouillé"
+        case .unlocked: model.account.map { String(localized: "Unlocked · \($0.email)") } ?? String(localized: "Unlocked")
+        case .unlocking: String(localized: "Unlocking…")
+        case .locked: model.needsLogin ? String(localized: "Not logged in") : String(localized: "Locked")
         }
     }
 
@@ -163,10 +163,10 @@ struct MenuBarMenu: View {
     }
 }
 
-/// Ouverture de Verrou à l'ouverture de session (élément de connexion).
+/// Opening Verrou at login (login item).
 enum LaunchAtLogin {
     static var isEnabled: Bool { SMAppService.mainApp.status == .enabled }
-    /// macOS attend l'accord de l'utilisateur dans Réglages Système.
+    /// macOS waits for the user's approval in System Settings.
     static var needsApproval: Bool { SMAppService.mainApp.status == .requiresApproval }
 
     static func set(_ enabled: Bool) throws {
@@ -177,7 +177,7 @@ enum LaunchAtLogin {
         }
     }
 
-    /// Lancé par macOS à l'ouverture de session (et non par l'utilisateur).
+    /// Launched by macOS at login (and not by the user).
     static var launchedAtLogin: Bool {
         guard let event = NSAppleEventManager.shared().currentAppleEvent else { return false }
         return event.eventID == kAEOpenApplication
@@ -187,11 +187,10 @@ enum LaunchAtLogin {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    /// La fenêtre du coffre est construite une fois, derrière l'écran
-    /// verrouillé (vide : le verrouillage efface tout ce qu'elle affiche), et
-    /// gardée : déverrouiller la découvre au lieu de la reconstruire. Elle
-    /// se construit juste après le premier affichage de l'écran verrouillé,
-    /// pendant que Touch ID attend le doigt.
+    /// The vault window is built once, behind the lock screen (empty:
+    /// locking clears everything it displays), and kept: unlocking reveals
+    /// it instead of rebuilding it. It is built right after the lock screen
+    /// first shows, while Touch ID waits for the finger.
     @State private var vaultMounted = false
 
     private var unlocked: Bool { model.lockState == .unlocked }
@@ -229,7 +228,7 @@ struct RootView: View {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     private(set) var quickAccess: QuickAccessController?
-    /// Remplissage dans les apps (⌘\), à travers l'accès rapide.
+    /// Filling in apps (⌘\), through quick access.
     private(set) var autofill: UniversalAutofill?
     private var demo: DemoDriver?
     #if DEBUG
@@ -239,22 +238,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var bench: BenchDriver?
     #endif
 
-    /// À relire avant la fin du lancement : l'événement d'ouverture n'est
-    /// plus « courant » ensuite.
+    /// To read before launch finishes: the open event is no longer
+    /// "current" afterwards.
     private var launchedAtLogin = false
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         launchedAtLogin = LaunchAtLogin.launchedAtLogin
-        // Notifications du partage : avant la fin du lancement, pour
-        // recevoir le toucher qui a lancé l'app. Rien de réel en
-        // démonstration ni pendant un parcours de test.
+        // Sharing notifications: before launch finishes, to receive the tap
+        // that launched the app. Nothing real in the demo or during a test
+        // run.
         let environment = ProcessInfo.processInfo.environment
         let notifier = ActivityNotifier.shared
         notifier.silent = model.mode != .vaultwarden || environment["VERROU_E2E_SERVER"] != nil
         notifier.install()
         notifier.setHandler { [weak model] route in model?.openActivity(route) }
-        // Infobulles des boutons (barre d'outils, icônes) au bout de 0,3 s
-        // au lieu d'environ une seconde : le survol répond tout de suite.
+        // Button tooltips (toolbar, icons) after 0.3 s instead of about a
+        // second: hovering responds right away.
         UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 300])
     }
 
@@ -270,8 +269,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             bridge.apply()
         }
         if launchedAtLogin {
-            // Ouverture de session : Verrou attend discrètement, dans la barre
-            // des menus et derrière ⌘⇧Espace, sans fenêtre ni Touch ID.
+            // Login: Verrou waits quietly, in the menu bar and behind ⌘⇧Space,
+            // with no window and no Touch ID.
             DispatchQueue.main.async {
                 NSApp.windows.filter { $0.identifier?.rawValue == "main" }.forEach { $0.close() }
             }
