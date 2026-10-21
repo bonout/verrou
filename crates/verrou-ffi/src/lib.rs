@@ -2334,6 +2334,14 @@ pub enum AccessPurpose {
     Passkey,
     /// Signer un commit git avec la clé SSH de l'élément.
     GitSign,
+    /// Le navigateur : associer un site à un identifiant. `title` dit lequel
+    /// à lequel (« le site exemple.fr à « GitHub » »).
+    LinkSite,
+    /// Le navigateur : remplir un formulaire avec une carte bancaire.
+    Card,
+    /// Le navigateur : un élément de plus, après beaucoup d'éléments
+    /// demandés en peu de temps.
+    Bulk,
 }
 
 impl From<Purpose> for AccessPurpose {
@@ -2343,6 +2351,9 @@ impl From<Purpose> for AccessPurpose {
             Purpose::Ssh => Self::Ssh,
             Purpose::Passkey => Self::Passkey,
             Purpose::GitSign => Self::GitSign,
+            Purpose::LinkSite => Self::LinkSite,
+            Purpose::Card => Self::Card,
+            Purpose::Bulk => Self::Bulk,
         }
     }
 }

@@ -522,6 +522,54 @@ test("les clics inventés par la page ne remplissent rien", async () => {
   assert.doesNotMatch(page.pillText(), /MAIF pro/);
 });
 
+// Un vrai clic de souris (`detail` : nombre de clics), au point (10, 10).
+const mouseClick = (page, label) => page.fire(page.button(label), "click", { detail: 1, clientX: 10, clientY: 10 });
+
+test("pastille rendue invisible par la page (opacité, découpe, masque sur <html>) : un clic ne remplit rien", async () => {
+  const background = fakeBackground();
+  const page = openPage(loginForm, background);
+  await eventually(() => page.pillNode(), "pastille");
+  await sleep(350);
+  const visible = page.context.getComputedStyle;
+  for (const hidden of [{ opacity: "0.01" }, { clipPath: "inset(0 0 100% 0)" }, { maskImage: "linear-gradient(transparent, transparent)" }, { filter: "opacity(0)" }]) {
+    page.context.getComputedStyle = (node) => (node === page.document.documentElement ? { ...visible(node), ...hidden } : visible(node));
+    mouseClick(page, "Se connecter");
+    await sleep(30);
+    assert.equal(background.sent("fill").length, 0, JSON.stringify(hidden));
+  }
+  page.context.getComputedStyle = visible;
+  mouseClick(page, "Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage une fois visible");
+});
+
+test("pastille recouverte par la page : un clic ne remplit rien", async () => {
+  const background = fakeBackground();
+  const page = openPage(loginForm, background);
+  await eventually(() => page.pillNode(), "pastille");
+  await sleep(350);
+  const decoy = page.h("div", { id: "leurre" });
+  page.document.body.append(decoy);
+  page.document.elementFromPoint = () => decoy;
+  mouseClick(page, "Se connecter");
+  await sleep(30);
+  assert.equal(background.sent("fill").length, 0, "un leurre est au premier plan");
+  page.document.elementFromPoint = () => page.host("verrou-pill");
+  mouseClick(page, "Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage, la pastille au premier plan");
+});
+
+test("clic aussitôt la pastille apparue : ignoré (la page ne peut pas la glisser sous le pointeur)", async () => {
+  const background = fakeBackground();
+  const page = openPage(loginForm, background);
+  await eventually(() => page.pillNode(), "pastille");
+  mouseClick(page, "Se connecter");
+  await sleep(30);
+  assert.equal(background.sent("fill").length, 0, "trop tôt");
+  await sleep(350);
+  mouseClick(page, "Se connecter");
+  await eventually(() => page.byId("password").value, "remplissage après un instant");
+});
+
 test("remplissage depuis la fenêtre de l'extension : seulement pour l'adresse remplie", async () => {
   const page = openPage(loginForm, fakeBackground({ items: [] }));
   const credentials = { username: "camille@exemple.fr", password: "secret" };

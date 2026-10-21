@@ -95,13 +95,16 @@ impl Backend for Fake {
         true
     }
 
-    /// Accord d'office, annoncé (`CONFIRM reveal|ssh|passkey|git <titre>`).
+    /// Accord d'office, annoncé (`CONFIRM reveal|ssh|passkey|git|link|card|bulk <titre>`).
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         let purpose = match request.purpose {
             Purpose::Reveal => "reveal",
             Purpose::Ssh => "ssh",
             Purpose::Passkey => "passkey",
             Purpose::GitSign => "git",
+            Purpose::LinkSite => "link",
+            Purpose::Card => "card",
+            Purpose::Bulk => "bulk",
         };
         println!("CONFIRM {purpose} {}", request.title);
         let _ = std::io::stdout().flush();

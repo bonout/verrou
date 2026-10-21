@@ -540,8 +540,60 @@
     return node;
   }
 
+  // Clickjacking : la page peut rendre la pastille invisible (opacité,
+  // filtre, découpe ou masque sur <html>, que la pastille, posée sous <html>,
+  // ne peut pas annuler), la recouvrir d'un leurre, ou glisser son champ sous
+  // le pointeur juste avant un clic. Un clic de souris ne compte que sur une
+  // pastille affichée depuis un instant, visible, et au premier plan sous le
+  // pointeur. Chrome et Brave disent en plus si quoi que ce soit la recouvre
+  // (IntersectionObserver v2) ; Firefox ne le sait pas : Verrou demande de
+  // toute façon Touch ID pour une carte.
+  const MIN_SHOWN_MS = 300;
+  const shownAt = new WeakMap();
+  const reallyVisible = new WeakMap();
+  let visibilityObserver;
+
+  // Pose la pastille (`host`) dans la page et note quand.
+  function attach(host) {
+    if (host.isConnected) return;
+    document.documentElement.append(host);
+    shownAt.set(host, Date.now());
+    if (typeof IntersectionObserver !== "function" || typeof IntersectionObserverEntry !== "function"
+      || !("isVisible" in IntersectionObserverEntry.prototype)) return;
+    visibilityObserver ??= new IntersectionObserver((entries) => {
+      for (const entry of entries) reallyVisible.set(entry.target, entry.isVisible);
+    }, { trackVisibility: true, delay: 100 });
+    visibilityObserver.observe(host);
+  }
+
+  // Valeur calculée d'une propriété, ou celle par défaut si le navigateur ne
+  // la donne pas.
+  function computed(style, name, fallback) {
+    const value = style?.[name];
+    return value === undefined || value === "" ? fallback : String(value);
+  }
+
+  function seenByTheUser(button, event) {
+    const host = button.getRootNode()?.host;
+    if (!host) return false;
+    const page = getComputedStyle(document.documentElement);
+    if (computed(page, "opacity", "1") !== "1" || computed(page, "visibility", "visible") !== "visible"
+      || computed(page, "filter", "none") !== "none" || computed(page, "clipPath", "none") !== "none"
+      || computed(page, "maskImage", computed(page, "webkitMaskImage", "none")) !== "none") return false;
+    const own = getComputedStyle(host);
+    if (computed(own, "opacity", "1") !== "1" || computed(own, "visibility", "visible") !== "visible") return false;
+    if (reallyVisible.get(host) === false) return false;
+    // Clavier (Entrée, Espace sur le bouton) : pas de pointeur, et la page
+    // ne peut pas taper dans la pastille.
+    if (!(event.detail > 0)) return true;
+    if (Date.now() - (shownAt.get(host) ?? 0) < MIN_SHOWN_MS) return false;
+    return typeof document.elementFromPoint !== "function"
+      || document.elementFromPoint(event.clientX, event.clientY) === host;
+  }
+
   // Un bouton qui n'obéit qu'aux vrais clics (souris, ou Entrée et Espace
-  // sur le bouton, que le navigateur transforme en clic réel).
+  // sur le bouton, que le navigateur transforme en clic réel), sur une
+  // pastille que l'utilisateur voit.
   function trustedButton(label, className, action) {
     const button = document.createElement("button");
     button.setAttribute("type", "button");
@@ -550,7 +602,7 @@
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (event.isTrusted) action();
+      if (event.isTrusted && seenByTheUser(button, event)) action();
     });
     return button;
   }
@@ -617,7 +669,7 @@
         ...HOST_STYLES, position: "fixed", top: "16px", left: "0", right: "0", bottom: "auto",
         width: "auto", "pointer-events": "none",
       });
-      if (!this.host.isConnected) document.documentElement.append(this.host);
+      attach(this.host);
     },
 
     // Plus rien à montrer : l'hôte quitte la page.
@@ -1115,7 +1167,7 @@
       this.ensure();
       this.input = input;
       if (!this.place()) return;
-      if (!this.host.isConnected) document.documentElement.append(this.host);
+      attach(this.host);
     },
 
     // Au bord droit du champ, centrée verticalement ; trop petit : rien.

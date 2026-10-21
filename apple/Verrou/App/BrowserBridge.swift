@@ -152,13 +152,19 @@ final class BrowserBridge {
     /// Élément protégé (« redemander le mot de passe principal ») : la même
     /// confirmation que dans l'app (Touch ID ou mot de passe principal).
     fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String) {
+        // Le nom annoncé à l'appairage (« Brave », « Firefox »).
+        let browser = clientName.isEmpty ? "le navigateur" : clientName
         let reason = switch purpose {
         case .reveal: "autoriser le terminal à lire « \(title) »"
         case .ssh: "autoriser ssh à utiliser la clé « \(title) »"
-        // Le nom annoncé à l'appairage (« Brave », « Firefox »).
-        case .passkey: "autoriser \(clientName.isEmpty ? "le navigateur" : clientName) à utiliser une passkey pour « \(title) »"
+        case .passkey: "autoriser \(browser) à utiliser une passkey pour « \(title) »"
         // `ssh-keygen -Y sign -n git` : git signe un commit (ou une étiquette).
         case .gitSign: "signer un commit git avec la clé « \(title) »"
+        // `title` : « le site exemple.fr à « GitHub » ».
+        case .linkSite: "autoriser \(browser) à associer \(title)"
+        case .card: "autoriser \(browser) à remplir la carte « \(title) »"
+        // Beaucoup d'éléments demandés en peu de temps : peut-être pas vous.
+        case .bulk: "\(browser) demande beaucoup d'éléments en peu de temps : autoriser « \(title) »"
         }
         Task {
             let approved = if model.session.needsConfirmation(id: item) {
