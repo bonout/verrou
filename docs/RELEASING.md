@@ -35,6 +35,9 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 3. Approve the `release` environment in the run (Actions tab): the signing jobs
    wait for it.
 
+A release created by hand in GitHub's interface for the tag is fine: the
+files are attached to it and its notes are kept.
+
 The first job fails if the tag and the two versions differ. Running the
 workflow by hand (Actions › Release › Run workflow) builds everything and
 publishes nothing: a dry run.
