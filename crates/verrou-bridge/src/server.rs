@@ -26,7 +26,8 @@ use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
-use verrou_core::Vault;
+use url::Url;
+use verrou_core::{ItemKind, Vault};
 use zeroize::Zeroize as _;
 
 use crate::access::{self, Write};
@@ -55,6 +56,13 @@ const PAIRING_INTERVAL: Duration = Duration::from_secs(3);
 pub const APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
 /// Le temps laissé à l'utilisateur pour répondre à une demande d'accord.
 const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(90);
+/// Extension : au-delà de `BULK_ITEMS` éléments différents livrés à un
+/// client en `BULK_WINDOW`, chaque élément de plus demande l'accord de
+/// l'utilisateur ([`Purpose::Bulk`]). Le client affirme lui-même l'adresse de
+/// la page : une clé d'appairage volée pourrait réclamer chaque identifiant
+/// pour son propre site, et vider le coffre en silence sans cette limite.
+const BULK_ITEMS: usize = 8;
+const BULK_WINDOW: Duration = Duration::from_secs(10 * 60);
 
 /// Ce que l'app fournit au pont.
 pub trait Backend: Send + Sync + 'static {
@@ -120,6 +128,15 @@ pub enum Purpose {
     /// (`ssh-keygen -Y sign -n git`). Accord distinct de [`Purpose::Ssh`] :
     /// accepter une connexion ne vaut pas accord pour signer, ni l'inverse.
     GitSign,
+    /// Extension : associer le site de la page à un identifiant (écrit dans
+    /// le coffre et synchronisé). `item` porte aussi le site : l'accord ne
+    /// vaut que pour ce site-là.
+    LinkSite,
+    /// Extension : remplir un formulaire avec une carte bancaire.
+    Card,
+    /// Extension : livrer un élément de plus, au-delà de `BULK_ITEMS` en peu
+    /// de temps.
+    Bulk,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -141,6 +158,8 @@ struct Shared {
     pending: Mutex<Option<(String, oneshot::Sender<bool>)>>,
     last_pairing: Mutex<Option<Instant>>,
     approvals: Mutex<Approvals>,
+    /// Extension : éléments livrés récemment, par client ([`within_limits`]).
+    releases: Mutex<HashMap<String, Vec<(String, Instant)>>>,
     /// `manifest.json` de l'extension livrée avec l'app : relu à chaque
     /// `status`, pour annoncer sa version à l'extension.
     extension_manifest: Mutex<Option<PathBuf>>,
@@ -166,6 +185,7 @@ impl Bridge {
             pending: Mutex::new(None),
             last_pairing: Mutex::new(None),
             approvals: Mutex::new(HashMap::new()),
+            releases: Mutex::new(HashMap::new()),
             extension_manifest: Mutex::new(None),
         });
         let (shutdown, mut stop) = oneshot::channel::<()>();
@@ -422,16 +442,11 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
             None => ReplyResult::Locked,
             Some(items) => ReplyResult::Suggestions { items },
         },
-        Command::Fill { url, item } => match backend.credentials(&item, &url) {
-            None => ReplyResult::Locked,
-            Some(Ok(credentials)) => ReplyResult::Credentials(credentials),
-            Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
-            Some(Err(reason)) => ReplyResult::Denied { reason },
-        },
+        Command::Fill { url, item } => fill(shared, &info, &url, &item).await,
         command @ (Command::Forms { .. }
         | Command::FillForm { .. }
         | Command::LinkSite { .. }
-        | Command::SearchLogins { .. }) => forms(&**backend, command).await,
+        | Command::SearchLogins { .. }) => forms(shared, &info, command).await,
         command @ (Command::PasskeyList(_)
         | Command::PasskeyGet(_)
         | Command::PasskeyTargets(_)
@@ -525,6 +540,59 @@ async fn approved(
         lock(&shared.approvals).insert(entry, Instant::now());
     }
     granted
+}
+
+/// L'identifiant `item` pour la page `url` (l'extension), dans la limite
+/// des éléments livrés en peu de temps ([`within_limits`]).
+async fn fill(shared: &Shared, client: &ClientInfo, url: &str, item: &str) -> ReplyResult {
+    let backend = &*shared.backend;
+    match backend.credentials(item, url) {
+        None => ReplyResult::Locked,
+        Some(Ok(credentials)) => {
+            if within_limits(shared, client, item, &title_of(backend, item)).await {
+                ReplyResult::Credentials(credentials)
+            } else {
+                refused()
+            }
+        }
+        Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
+        Some(Err(reason)) => ReplyResult::Denied { reason },
+    }
+}
+
+/// Titre de l'élément, pour une demande d'accord (vide s'il a disparu).
+fn title_of(backend: &dyn Backend, item: &str) -> String {
+    read(backend, |v| v.get(item).map(|i| i.title.clone()))
+        .flatten()
+        .unwrap_or_default()
+}
+
+/// L'extension peut-elle recevoir `item` ? Oui s'il fait partie des éléments
+/// livrés à ce client depuis `BULK_WINDOW`, ou s'il en reste de la place ;
+/// au-delà, l'utilisateur doit l'accorder dans Verrou ([`Purpose::Bulk`]).
+async fn within_limits(shared: &Shared, client: &ClientInfo, item: &str, title: &str) -> bool {
+    let room = {
+        let mut releases = lock(&shared.releases);
+        let recent = releases.entry(client.id.clone()).or_default();
+        recent.retain(|(_, at)| at.elapsed() < BULK_WINDOW);
+        if recent.iter().any(|(id, _)| id == item) {
+            return true;
+        }
+        recent.len() < BULK_ITEMS
+    };
+    if !room && !approved(shared, client, Purpose::Bulk, item, title).await {
+        return false;
+    }
+    released(shared, client, item);
+    true
+}
+
+/// Note l'élément parmi ceux livrés à ce client ([`within_limits`]).
+fn released(shared: &Shared, client: &ClientInfo, item: &str) {
+    lock(&shared.releases)
+        .entry(client.id.clone())
+        .or_default()
+        .push((item.to_owned(), Instant::now()));
 }
 
 fn refused() -> ReplyResult {
@@ -669,37 +737,89 @@ fn written(outcome: Option<Result<String, String>>) -> ReplyResult {
 }
 
 /// Cartes, identités et rattachement d'un site (navigateur).
-async fn forms(backend: &dyn Backend, command: Command) -> ReplyResult {
+/// Cartes, identités et rattachement d'un site (l'extension). Une carte, ou
+/// un site ajouté à un identifiant, demande toujours l'accord de
+/// l'utilisateur dans Verrou.
+async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
+    let backend = &*shared.backend;
     match command {
         Command::Forms { url } => match read(backend, |v| access::form_suggestions(v, &url)) {
             None => ReplyResult::Locked,
             Some((cards, identities)) => ReplyResult::Forms { cards, identities },
         },
         Command::FillForm { url, item } => {
-            let outcome = read(backend, |v| {
-                access::form_data(v, &item, &url).and_then(|data| {
-                    let allowed = v.get(&item).is_some_and(|i| backend.gate(i));
-                    if allowed {
-                        Ok(data)
-                    } else {
-                        Err(CONFIRM_IN_APP.to_owned())
-                    }
+            let found = read(backend, |v| {
+                access::form_data(v, &item, &url).map(|data| {
+                    let found = v.get(&item);
+                    let card = found.is_some_and(|i| i.kind == ItemKind::Card);
+                    (
+                        data,
+                        card,
+                        found.map(|i| i.title.clone()).unwrap_or_default(),
+                    )
                 })
             });
-            match outcome {
+            let (data, card, title) = match found {
+                None => return ReplyResult::Locked,
+                Some(Err(reason)) => return ReplyResult::Denied { reason },
+                Some(Ok(found)) => found,
+            };
+            // L'accord d'une carte confirme aussi un élément protégé (l'app
+            // l'autorise) : une seule demande.
+            let allowed = if card {
+                let ok = approved(shared, client, Purpose::Card, &item, &title).await;
+                if ok {
+                    released(shared, client, &item);
+                }
+                ok
+            } else {
+                within_limits(shared, client, &item, &title).await
+            };
+            if !allowed {
+                return refused();
+            }
+            match read(backend, |v| v.get(&item).is_some_and(|i| backend.gate(i))) {
                 None => ReplyResult::Locked,
-                Some(Ok(data)) => ReplyResult::Form(Box::new(data)),
-                Some(Err(reason)) if reason == CONFIRM_IN_APP => ReplyResult::Confirm,
-                Some(Err(reason)) => ReplyResult::Denied { reason },
+                Some(false) => ReplyResult::Confirm,
+                Some(true) => ReplyResult::Form(Box::new(data)),
             }
         }
-        Command::LinkSite { url, item } => written(
-            backend
-                .write(Box::new(move |vault| {
-                    access::plan_link_site(vault, &url, &item)
-                }))
-                .await,
-        ),
+        Command::LinkSite { url, item } => {
+            // Vérifié d'abord : pas de demande d'accord pour une écriture
+            // qui serait refusée.
+            let checked = read(backend, |v| {
+                access::plan_link_site(v, &url, &item)
+                    .map(|_| v.get(&item).map(|i| i.title.clone()).unwrap_or_default())
+            });
+            let title = match checked {
+                None => return ReplyResult::Locked,
+                Some(Err(reason)) => return ReplyResult::Denied { reason },
+                Some(Ok(title)) => title,
+            };
+            let host = Url::parse(&url)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_owned))
+                .unwrap_or_default();
+            let what = format!("le site {host} à « {title} »");
+            if !approved(
+                shared,
+                client,
+                Purpose::LinkSite,
+                &format!("{item} {host}"),
+                &what,
+            )
+            .await
+            {
+                return refused();
+            }
+            written(
+                backend
+                    .write(Box::new(move |vault| {
+                        access::plan_link_site(vault, &url, &item)
+                    }))
+                    .await,
+            )
+        }
         Command::SearchLogins { query } => {
             match read(backend, |v| access::search_logins(v, &query)) {
                 None => ReplyResult::Locked,
@@ -746,7 +866,11 @@ async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> Repl
                 if !approved(shared, client, Purpose::Passkey, &item, &title).await {
                     return refused();
                 }
+                released(shared, client, &item);
             } else {
+                if !within_limits(shared, client, &item, &title).await {
+                    return refused();
+                }
                 match read(backend, |v| v.get(&item).is_some_and(|i| backend.gate(i))) {
                     None => return ReplyResult::Locked,
                     Some(false) => return ReplyResult::Confirm,

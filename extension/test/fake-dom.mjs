@@ -130,6 +130,10 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
       return node;
     }
 
+    getRootNode() {
+      return this.rootNode;
+    }
+
     get isConnected() {
       const root = this.rootNode;
       return root === document.documentElement || Boolean(root.host?.isConnected);

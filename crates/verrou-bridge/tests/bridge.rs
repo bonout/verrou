@@ -251,9 +251,20 @@ fn start() -> (
     mpsc::Receiver<PairingRequest>,
     std::path::PathBuf,
 ) {
+    start_with(vec![github(), protected_bank(), visa(), me()])
+}
+
+fn start_with(
+    items: Vec<Item>,
+) -> (
+    Bridge,
+    Arc<FakeBackend>,
+    mpsc::Receiver<PairingRequest>,
+    std::path::PathBuf,
+) {
     let (sender, receiver) = mpsc::channel();
     let backend = Arc::new(FakeBackend {
-        vault: Mutex::new(Vault::new(vec![github(), protected_bank(), visa(), me()])),
+        vault: Mutex::new(Vault::new(items)),
         unlocked: AtomicBool::new(true),
         unlock_requested: AtomicBool::new(false),
         confirmed: AtomicBool::new(false),
@@ -434,7 +445,7 @@ fn pairing_then_fill_for_the_matching_site_only() {
         client.request(&json!({ "cmd": "suggest", "url": "https://github.com/login" }));
     assert_eq!(suggestions["items"][0]["has_totp"], true);
 
-    forms_and_site_linking(&mut client);
+    forms_and_site_linking(&mut client, &backend);
 
     // Élément protégé : Verrou demande confirmation, puis livre.
     let protected =
@@ -782,8 +793,18 @@ fn ssh_agent_commands_sign_inside_verrou() {
     let _ = std::fs::remove_file(file);
 }
 
-/// Cartes, identités, et rattachement d'un site à un identifiant.
-fn forms_and_site_linking(client: &mut Client) {
+/// Cartes, identités, et rattachement d'un site à un identifiant. Une carte
+/// et un site rattaché demandent l'accord de l'utilisateur dans Verrou.
+fn forms_and_site_linking(client: &mut Client, backend: &FakeBackend) {
+    let purposes = |backend: &FakeBackend| {
+        backend
+            .confirmations
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|c| (c.purpose, c.title.clone()))
+            .collect::<Vec<_>>()
+    };
     // Formulaires de paiement et d'adresse : propositions sans secret, puis
     // les champs de l'élément choisi.
     let forms =
@@ -791,9 +812,15 @@ fn forms_and_site_linking(client: &mut Client) {
     assert_eq!(forms["cards"][0]["id"], "visa");
     assert!(forms["cards"][0].get("number").is_none());
     assert_eq!(forms["identities"][0]["id"], "moi");
-    let card = client.request(
-        &json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": "visa" }),
-    );
+    let fill_card =
+        json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": "visa" });
+    // Refusé dans Verrou : rien ne sort.
+    let refused = client.request(&fill_card);
+    assert_eq!(refused["result"], "denied");
+    assert!(refused.get("number").is_none());
+    assert_eq!(purposes(backend), [(Purpose::Card, "Visa".to_owned())]);
+    backend.approve.store(true, Ordering::SeqCst);
+    let card = client.request(&fill_card);
     assert_eq!(card["result"], "form");
     assert_eq!(card["number"], "4242424242424242");
     assert_eq!(
@@ -817,10 +844,69 @@ fn forms_and_site_linking(client: &mut Client) {
         &json!({ "cmd": "link_site", "url": "https://github.example/login", "item": "github" }),
     );
     assert_eq!(linked["result"], "saved");
+    assert_eq!(
+        purposes(backend).last(),
+        Some(&(
+            Purpose::LinkSite,
+            "le site github.example à « GitHub »".to_owned()
+        ))
+    );
+    // Refusé dans Verrou : le site n'est pas ajouté.
+    backend.approve.store(false, Ordering::SeqCst);
+    let elsewhere = json!({ "cmd": "link_site", "url": "https://evil.example/", "item": "github" });
+    assert_eq!(client.request(&elsewhere)["result"], "denied");
+    let found = client.request(&json!({ "cmd": "suggest", "url": "https://evil.example/" }));
+    assert_eq!(found["items"], json!([]));
     let found = client.request(&json!({ "cmd": "suggest", "url": "https://github.example/login" }));
     assert_eq!(found["items"][0]["id"], "github");
     let again = client.request(
         &json!({ "cmd": "link_site", "url": "https://github.example/", "item": "github" }),
     );
     assert_eq!(again["result"], "denied");
+}
+
+/// Une clé d'appairage volée affirme l'adresse qu'elle veut : au-delà de
+/// quelques éléments différents en peu de temps, chaque élément de plus
+/// demande l'accord de l'utilisateur.
+#[test]
+fn many_items_in_a_row_need_approval() {
+    let items = (0..12)
+        .map(|n| {
+            let mut item = github();
+            item.id = format!("site{n}");
+            item.title = format!("Site {n}");
+            item.urls = vec![format!("https://site{n}.example")];
+            item
+        })
+        .collect();
+    let (bridge, backend, pairings, file) = start_with(items);
+    let mut client = paired(&bridge, &pairings, "browser");
+    let fill_site = |client: &mut Client, n: u32| {
+        client.request(
+            &json!({ "cmd": "fill", "url": format!("https://site{n}.example/"),
+            "item": format!("site{n}") }),
+        )
+    };
+    for n in 0..8 {
+        assert_eq!(
+            fill_site(&mut client, n)["result"],
+            "credentials",
+            "site{n}"
+        );
+    }
+    assert!(backend.confirmations.lock().unwrap().is_empty());
+    // Le neuvième : refusé dans Verrou.
+    let ninth = fill_site(&mut client, 8);
+    assert_eq!(ninth["result"], "denied");
+    assert!(ninth.get("password").is_none());
+    assert_eq!(
+        backend.confirmations.lock().unwrap()[0].purpose,
+        Purpose::Bulk
+    );
+    // Un élément déjà livré reste disponible sans accord.
+    assert_eq!(fill_site(&mut client, 3)["result"], "credentials");
+    // Accordé : livré.
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(fill_site(&mut client, 8)["result"], "credentials");
+    let _ = std::fs::remove_file(file);
 }

@@ -6,11 +6,13 @@
 //!
 //! **Extension** : un mot de passe ne sort que pour un identifiant qui
 //! correspond à la page demandée (même domaine enregistrable, comme
-//! Bitwarden), et seulement vers une page en HTTPS. Une extension appairée
-//! ne peut donc pas vider le coffre : elle ne voit que ce que la page en
-//! cours justifie. Écrire suit la même règle : l'extension n'enregistre un
-//! identifiant, ou n'en modifie un, que pour le site de la page, après un
-//! clic de l'utilisateur dans le bandeau de Verrou.
+//! Bitwarden), et seulement vers une page en HTTPS. L'adresse de la page,
+//! c'est l'extension qui l'affirme : contre une clé d'appairage volée, le
+//! serveur du pont demande l'accord de l'utilisateur au-delà de quelques
+//! éléments en peu de temps, pour chaque carte et pour chaque site ajouté à
+//! un identifiant (`server.rs`). Écrire suit la même règle : l'extension
+//! n'enregistre un identifiant, ou n'en modifie un, que pour le site de la
+//! page, après un clic de l'utilisateur dans le bandeau de Verrou.
 //!
 //! **Terminal** : il cherche dans tout le coffre, mais les résultats et les
 //! éléments ne portent aucun secret ([`item_view`]). Un secret (champ

@@ -248,7 +248,17 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   domaine enregistrable, comme Bitwarden — et si la page est en HTTPS (HTTP
   seulement vers `localhost`). L'adresse vient du navigateur (`sender.url`),
   jamais de la page. Coffre verrouillé : rien, sinon la demande de
-  déverrouillage. Une extension appairée ne peut donc pas vider le coffre.
+  déverrouillage.
+- **Si la clé d'appairage est volée** : c'est l'extension qui affirme
+  l'adresse de la page. Un programme qui lirait la clé dans le profil du
+  navigateur (même utilisateur macOS) pourrait réclamer chaque identifiant
+  pour son propre site. Verrou rend ce pillage visible : au-delà de 8
+  éléments différents livrés à un client en 10 minutes (identifiants,
+  identités, passkeys), chaque élément de plus demande l'accord dans Verrou
+  (Touch ID), gardé 5 minutes pour cet élément ; une carte et un site
+  ajouté à un identifiant le demandent toujours. L'identifiant de
+  l'extension n'est pas une preuve (la clé publique du manifeste fixe cet
+  identifiant pour qui la copie) : seul l'appairage l'est.
 - **Ce que l'extension écrit** : après l'envoi d'un formulaire, l'identifiant
   et le mot de passe saisis attendent la réponse de l'utilisateur deux minutes
   au plus, dans `chrome.storage.session` (en mémoire, hors de portée des
@@ -272,7 +282,8 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   4242 ») ; les champs ne sortent qu'au choix d'un élément, vers une page en
   HTTPS, et un élément protégé attend la confirmation dans Verrou. Une carte
   n'étant liée à aucun site, toute page sûre peut la proposer : c'est
-  l'utilisateur qui choisit de la remplir.
+  l'utilisateur qui choisit de la remplir, et Verrou demande Touch ID pour
+  chaque carte (accord gardé 5 minutes pour cette carte).
 - **Relier un site à un identifiant** : seulement depuis la fenêtre de
   l'extension, jamais depuis une page. « Remplir avec un autre
   identifiant… » de la pastille (vrai clic) ne fait que l'ouvrir sur ce choix,
@@ -281,7 +292,8 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   l'extension hors d'un clic sur son icône, c'est alors une petite fenêtre de
   l'extension. La recherche n'y montre que titres et identifiants ; choisir un
   élément lui ajoute l'origine du cadre (après un avertissement sur
-  l'hameçonnage), et le remplissage suit la règle habituelle du même site.
+  l'hameçonnage, puis l'accord dans Verrou, Touch ID, qui nomme le site et
+  l'élément), et le remplissage suit la règle habituelle du même site.
 - **Remplissage demandé par la fenêtre de l'extension** : les identifiants
   partent vers le cadre visé avec l'origine pour laquelle Verrou les a
   donnés ; `content.js` ne remplit que si son cadre est toujours à cette
@@ -295,7 +307,16 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   style de la page ne les cache ni ne les déplace ; un script de la page peut
   toujours les retirer ou dessiner une imitation, mais une imitation ne
   remplit rien. La pastille ne prend pas le focus ; elle ne montre que le
-  site, les titres et les identifiants. Les secrets n'arrivent qu'au
+  site, les titres et les identifiants.
+- **Clickjacking** : la page peut rendre la pastille invisible sans toucher
+  à ses styles (opacité, filtre, découpe ou masque sur `<html>`), la
+  recouvrir d'un leurre, ou glisser le champ sous le pointeur. Un clic de
+  souris ne compte que si `<html>` n'est ni transparent, ni filtré, ni
+  découpé, ni masqué, si la pastille est l'élément sous le pointeur
+  (`elementFromPoint`), et si elle est affichée depuis 300 ms au moins.
+  Chrome et Brave signalent en plus tout ce qui la recouvre, même sans
+  capter les clics (`IntersectionObserver` v2, `trackVisibility`) ; Firefox
+  ne le sait pas, d'où Touch ID pour les cartes. Les secrets n'arrivent qu'au
   remplissage, pour l'élément choisi. Le bandeau d'enregistrement ne reçoit
   pas le mot de passe.
 - **Envoi après le remplissage** : seulement pour une connexion
