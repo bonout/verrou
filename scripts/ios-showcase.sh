@@ -6,7 +6,8 @@
 #   scripts/ios-showcase.sh                 # screenshots in target/ios-showcase/{clair,sombre}
 #   RECORD=docs/media/ios-app.mp4 scripts/ios-showcase.sh   # the video only
 #
-# Variables: OUT, SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
+# Variables: OUT, SHOWCASE_LANG (simulator language, default en-US; fr-FR
+# gives the French UI and demo vault), SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
 # SIM_RUNTIME, APPEARANCES (default "light dark"), RECORD (video of
 # testRecording, with pauses of RECORD_PAUSE seconds, default 1;
 # RECORD_TEST picks another test, for example testMotionUnlock).
@@ -53,12 +54,13 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
     ARCHS="$(uname -m)" build-for-testing -quiet
 fi
 
-# Windowless simulator, in English, fixed time and status bar.
+# Windowless simulator, in SHOWCASE_LANG, fixed time and status bar.
 DEV="$(xcrun simctl create "Verrou Showcase" "$SIM_DEVICE_TYPE" "$SIM_RUNTIME")"
 xcrun simctl boot "$DEV"
 xcrun simctl bootstatus "$DEV" -b >/dev/null
-xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array en-US
-xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string en_US
+LANG_CODE="${SHOWCASE_LANG:-en-US}"
+xcrun simctl spawn "$DEV" defaults write -g AppleLanguages -array "$LANG_CODE"
+xcrun simctl spawn "$DEV" defaults write -g AppleLocale -string "${LANG_CODE/-/_}"
 xcrun simctl spawn "$DEV" defaults write com.apple.Preferences DidShowContinuousPathIntroduction -bool true
 xcrun simctl shutdown "$DEV"
 xcrun simctl boot "$DEV"
