@@ -662,7 +662,8 @@ struct SettingsLabel: View {
         self.tint = tint
     }
 
-    init<S: StringProtocol>(_ title: S, symbol: String, tint: Color) {
+    // Disfavored, as in Text: a literal goes to the LocalizedStringKey init.
+    @_disfavoredOverload init<S: StringProtocol>(_ title: S, symbol: String, tint: Color) {
         self.title = Text(title)
         self.symbol = symbol
         self.tint = tint

@@ -300,7 +300,8 @@ struct TintedSymbol: View {
 struct SectionHeader: View {
     let title: Text
     init(_ title: LocalizedStringKey) { self.title = Text(title) }
-    init<S: StringProtocol>(_ title: S) { self.title = Text(title) }
+    // Disfavored, as in Text: a literal goes to the LocalizedStringKey init.
+    @_disfavoredOverload init<S: StringProtocol>(_ title: S) { self.title = Text(title) }
     var body: some View {
         title
             .font(.footnote.weight(.semibold))
