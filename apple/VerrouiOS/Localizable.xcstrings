@@ -1951,6 +1951,16 @@
         }
       }
     },
+    "Back to sign-in. The demo vault is sample data, kept in memory only.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retour à la connexion. Le coffre fictif contient des données de démonstration, gardées en mémoire uniquement."
+          }
+        }
+      }
+    },
     "Bank": {
       "localizations": {
         "fr": {
@@ -4547,6 +4557,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quitter l'organisation…"
+          }
+        }
+      }
+    },
+    "Leave the Demo Vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter le coffre fictif"
           }
         }
       }
@@ -8327,6 +8347,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Corbeille vide"
+          }
+        }
+      }
+    },
+    "Try the Demo Vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Essayer le coffre fictif"
           }
         }
       }

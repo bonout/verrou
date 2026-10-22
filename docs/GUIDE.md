@@ -343,6 +343,9 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   second factor (authenticator code, e-mail code, YubiKey OTP typed in).
   Security keys over NFC are not supported yet: the screen says so and
   offers the other methods. Same Rust sign-in as the Mac.
+- **Try the Demo Vault** (sign-in screen, no account yet): the demo vault,
+  in memory, read-only, without a server; locking (or *Leave the Demo
+  Vault* in Settings) goes back to sign-in. It is how App Review sees the app.
 - **Unlock** with Face ID (or Touch ID) or the master password. Face ID uses
   the same Secure Enclave sealing as Touch ID on the Mac; changing enrolled
   faces sends you back to the master password. The lock screen asks for

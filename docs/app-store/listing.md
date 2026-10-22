@@ -13,6 +13,17 @@ with Dynamic Island (medium display)" slot) and `6.9in/` (1320×2868).
 
 Category: Productivity. App Privacy: Data Not Collected. Age rating: 4+.
 
+**App Review Information**: untick *Sign-in required*, attach a screen recording
+of a real sign-in (server address and account blurred), and paste in *Notes*:
+
+```
+Verrou is a client for self-hosted Vaultwarden servers: it has no server or accounts of its own, so there is no demo account to give.
+
+To review the app without a server, tap "Try the Demo Vault" on the sign-in screen. It opens a vault of sample data (logins, cards, one-time codes, passkeys, folders), kept in memory on the device; nothing is sent over the network. Locking the app, or Settings › Leave the Demo Vault, goes back to the sign-in screen.
+
+The attached video shows signing in to a real Vaultwarden server, with the second factor, then AutoFill in Safari.
+```
+
 ## English (U.S.)
 
 **Name** (29/30)
