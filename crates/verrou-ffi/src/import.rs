@@ -634,7 +634,7 @@ mod tests {
             assert!(insurer.members[1].preselected && !insurer.members[3].preselected);
             let debug = format!("{groups:?}");
             for secret in [password, "JBSWY3DPEHPK3PXP", "4242 4242"] {
-                assert!(!debug.contains(secret), "{secret}");
+                assert!(!debug.contains(secret));
             }
         }
     }
