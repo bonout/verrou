@@ -140,6 +140,12 @@ struct SettingsTab: View {
                     } footer: {
                         Text("Erases the account, the encrypted cache and \(Biometrics.name) from this iPhone. Your vault stays on the server.")
                     }
+                } else if model.isTryingDemo {
+                    Section {
+                        Button("Leave the Demo Vault") { model.lock() }
+                    } footer: {
+                        Text("Back to sign-in. The demo vault is sample data, kept in memory only.")
+                    }
                 }
             }
             .navigationTitle("Settings")

@@ -21,7 +21,8 @@ final class PhoneModel {
         case unlocked
     }
 
-    /// `demo`: demo vault (`VERROU_MOCK=1`).
+    /// `demo`: demo vault (`VERROU_MOCK=1`, or *Try the Demo Vault* on the
+    /// sign-in screen).
     enum Mode {
         case demo
         case vaultwarden
@@ -93,8 +94,12 @@ final class PhoneModel {
         let itemIDs: [String]
     }
 
-    let mode: Mode
-    let vault: VaultAccess
+    private(set) var mode: Mode
+    private(set) var vault: VaultAccess
+    /// Demo vault opened from the sign-in screen: the account's vault, set
+    /// aside until the demo is left (on lock).
+    @ObservationIgnored private var signInVault: VaultAccess?
+    var isTryingDemo: Bool { signInVault != nil }
     var session: VaultSession { vault.session }
     var dataDirectory: URL { vault.directory }
 
@@ -537,6 +542,17 @@ final class PhoneModel {
         didUnlock(failures: 0)
     }
 
+    /// Sign-in screen, no account on this iPhone: opens the demo vault in
+    /// memory (nothing written, no server). Locking goes back to sign-in.
+    func tryDemo() {
+        guard mode == .vaultwarden, account == nil, lockState == .locked else { return }
+        signInVault = vault
+        vault = VaultAccess(mockAt: vault.location)
+        mode = .demo
+        loginError = nil
+        openMockVault()
+    }
+
     private func didUnlock(failures: UInt32) {
         reloadVault()
         // The list chosen in the settings opens by itself.
@@ -592,6 +608,12 @@ final class PhoneModel {
         clipboard.clearIfOurs()
         lockState = .locked
         revision += 1
+        if let signInVault {
+            vault = signInVault
+            self.signInVault = nil
+            mode = .vaultwarden
+            tab = .vault
+        }
         updateSiteIcons()
     }
 

@@ -111,6 +111,12 @@ private struct CredentialsStep: View {
                                 .frame(maxWidth: .infinity)
                                 .controlSize(.large)
                                 .glassButton()
+                        } else if model.account == nil {
+                            Button("Try the Demo Vault") { model.tryDemo() }
+                                .frame(maxWidth: .infinity)
+                                .controlSize(.large)
+                                .glassButton()
+                                .accessibilityIdentifier("try-demo")
                         }
                     }
                 }
