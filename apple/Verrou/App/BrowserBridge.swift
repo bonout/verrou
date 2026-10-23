@@ -1,5 +1,6 @@
 import AppKit
 import LocalAuthentication
+import os
 import Observation
 
 /// Brave, Firefox and the terminal: the extension talks to Verrou through the
@@ -125,6 +126,10 @@ final class BrowserBridge {
         guard model.lockState == .locked else { return }
         // Away from the Mac, the terminal waits for the iPhone (the window
         // stays locked).
+        if kind == .cli, let remote = model.remote {
+            Logger(subsystem: "app.verrou", category: "remote-approval")
+                .notice("terminal unlock: from the iPhone \(remote.canUnlock), away \(remote.isAway)")
+        }
         if kind == .cli, let remote = model.remote, remote.canUnlock, remote.isAway {
             Task { await model.unlockFromPhone(client: String(localized: "the terminal")) }
             return

@@ -110,15 +110,15 @@ enum RemoteCloud {
     // MARK: Subscriptions
 
     /// iPhone: an alert notification for each new request in its zone. The
-    /// text is the app's (`remote.approval.title` / `.body`): nothing of the
-    /// request appears in it.
-    static func subscribeToRequests(phone: String) async throws {
+    /// text is the app's, in the iPhone's language: nothing of the request
+    /// appears in it.
+    static func subscribeToRequests(phone: String, title: String, body: String) async throws {
         let subscription = CKQuerySubscription(recordType: RecordType.request, predicate: NSPredicate(value: true),
                                                subscriptionID: "requests-\(phone)", options: [.firesOnRecordCreation])
         subscription.zoneID = zone(phone: phone)
         let info = CKSubscription.NotificationInfo()
-        info.titleLocalizationKey = "remote.approval.title"
-        info.alertLocalizationKey = "remote.approval.body"
+        info.title = title
+        info.alertBody = body
         info.soundName = "default"
         info.category = RemoteCloud.notificationCategory
         subscription.notificationInfo = info

@@ -1,8 +1,22 @@
 import QuickLook
 import SwiftUI
 
+/// The push token's answer (iCloud notifications of the Mac's requests).
+final class PhoneAppDelegate: NSObject, UIApplicationDelegate {
+    static var pushRegistered: ((Error?) -> Void)?
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Self.pushRegistered?(nil)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        Self.pushRegistered?(error)
+    }
+}
+
 @main
 struct VerrouPhoneApp: App {
+    @UIApplicationDelegateAdaptor(PhoneAppDelegate.self) private var delegate
     @State private var model = PhoneModel()
     @Environment(\.scenePhase) private var scenePhase
     #if DEBUG
@@ -37,6 +51,7 @@ struct VerrouPhoneApp: App {
                     ActivityNotifier.shared.setHandler { [weak model] route in model?.openActivity(route) }
                     // A request from the Mac (iCloud notification): fetched
                     // and shown above everything.
+                    PhoneAppDelegate.pushRegistered = { [weak model] error in model?.remote.pushRegistered(error) }
                     ActivityNotifier.shared.setApprovalHandler { [weak model] in
                         Task { await model?.remote.refresh() }
                     }

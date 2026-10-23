@@ -36,6 +36,10 @@ final class RemoteApprovals {
     }
 
     private struct Stored: Codable {
+        /// 2: signing key usable with the screen locked (1 wasn't: pair
+        /// again).
+        static let current = 2
+        var version: Int?
         let mac: String
         /// The Secure Enclave signing key (opaque, usable on this Mac only).
         let signingKey: Data
@@ -90,11 +94,13 @@ final class RemoteApprovals {
     @ObservationIgnored private var poked = false
     @ObservationIgnored private var screenLocked = false
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
+    @ObservationIgnored private var deciding: [String: Task<Outcome, Never>] = [:]
     private let log = Logger(subsystem: "app.verrou", category: "remote-approval")
 
     init(directory: URL) {
         file = directory.appending(path: "remote-approval.json")
-        if let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(Stored.self, from: data) {
+        if let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(Stored.self, from: data),
+           stored.version == Stored.current {
             self.stored = stored
             phones = stored.phones
         }
@@ -134,12 +140,14 @@ final class RemoteApprovals {
 
     // MARK: Identity
 
+    /// The signing key works with the screen locked (that is when the
+    /// iPhone is asked); it never leaves this Mac and opens nothing.
     private func identity() throws -> Stored {
-        if let stored { return stored }
+        if let stored, stored.version == Stored.current { return stored }
         let key = try SecureEnclave.P256.Signing.PrivateKey(
-            accessControl: SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            accessControl: SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                                                            .privateKeyUsage, nil)!)
-        let created = Stored(mac: UUID().uuidString, signingKey: key.dataRepresentation, phones: [])
+        let created = Stored(version: Stored.current, mac: UUID().uuidString, signingKey: key.dataRepresentation, phones: [])
         try persist(created)
         return created
     }
@@ -235,12 +243,16 @@ final class RemoteApprovals {
     /// After an unlock: the vault key sealed for the iPhones. `local`: on the
     /// Mac (12 more hours); otherwise the iPhone's (same end, new K).
     func prepareEscrow(userKey: String, local: Bool) {
-        guard unlockEnabled, isReady, let mac = stored?.mac else { return }
+        guard unlockEnabled, isReady, let mac = stored?.mac else {
+            log.notice("no unlock from the iPhone (setting \(self.unlockEnabled), ready \(self.isReady))")
+            return
+        }
         let keys = phones.reduce(into: [String: P256.KeyAgreement.PublicKey]()) { keys, phone in
             keys[phone.id] = try? P256.KeyAgreement.PublicKey(x963Representation: phone.key)
         }
         guard let vault = try? RemoteApproval.escrow(userKey: userKey, mac: mac, phones: keys) else { return }
         self.vault = vault
+        log.notice("unlock from the iPhone prepared for \(vault.escrows.count) iPhone(s)")
         if local || escrowUntil == nil { escrowUntil = Date().addingTimeInterval(Self.escrowLifetime) }
     }
 
@@ -267,10 +279,18 @@ final class RemoteApprovals {
 
     /// Away from the Mac: screen locked, or no input for a minute.
     var isAway: Bool {
-        if screenLocked { return true }
+        if isScreenLocked { return true }
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState,
                                                            eventType: CGEventType(rawValue: ~0)!)
         return idle >= Self.idleThreshold
+    }
+
+    /// The notification, or the session's state (a notification missed
+    /// while the app was busy).
+    private var isScreenLocked: Bool {
+        if screenLocked { return true }
+        guard let session = CGSessionCopyCurrentDictionary() as? [String: Any] else { return false }
+        return session["CGSSessionScreenIsLocked"] as? Bool == true
     }
 
     enum Outcome {
@@ -289,14 +309,32 @@ final class RemoteApprovals {
     /// first.
     func decide(client: String, purpose: String, title: String, site: String,
                 local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
-        guard isReady else { return .local(await local(LAContext())) }
+        // The bridge may ask the same thing twice in a row: one request, one
+        // answer for both.
+        let key = [client, purpose, title, site].joined(separator: "\u{1F}")
+        if let running = deciding[key] { return await running.value }
+        let task = Task { await decideOnce(client: client, purpose: purpose, title: title, site: site, local: local) }
+        deciding[key] = task
+        defer { deciding[key] = nil }
+        return await task.value
+    }
+
+    private func decideOnce(client: String, purpose: String, title: String, site: String,
+                            local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
+        guard isReady else {
+            log.notice("approval on the Mac only (available: \(self.available), iPhones: \(self.phones.count))")
+            return .local(await local(LAContext()))
+        }
         let away = isAway
+        let locked = isScreenLocked
+        log.notice("approval: away \(away), screen locked \(locked)")
         let context = LAContext()
         return await withCheckedContinuation { continuation in
             let race = Race(continuation)
             // Screen locked: no one to answer on the Mac.
-            let localTask: Task<Void, Never>? = screenLocked ? nil : Task {
+            let localTask: Task<Void, Never>? = locked ? nil : Task {
                 let approved = await local(context)
+                self.log.notice("answered on the Mac: \(approved)")
                 race.finish(.local(approved))
             }
             let remoteTask = Task {
@@ -329,7 +367,14 @@ final class RemoteApprovals {
     /// The iPhone's answer for the Mac (nil: none in time, or withdrawn).
     private func ask(kind: RemoteApproval.Kind, client: String, purpose: String, title: String, site: String,
                      lifetime: TimeInterval, escrows: [String: RemoteApproval.Escrow]) async -> RemoteApproval.Response? {
-        guard let mac = stored?.mac, let signer = try? signer() else { return nil }
+        guard let mac = stored?.mac else { return nil }
+        let signingKey: SecureEnclave.P256.Signing.PrivateKey
+        do {
+            signingKey = try signer()
+        } catch {
+            log.error("request not signed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
         let id = "req-\(UUID().uuidString)"
         let expires = Date().addingTimeInterval(lifetime).wholeSeconds
         var waiting: [(phone: Phone, key: P256.KeyAgreement.PublicKey, ephemeral: P256.KeyAgreement.PrivateKey)] = []
@@ -339,7 +384,13 @@ final class RemoteApprovals {
             if kind == .unlock, escrows[phone.id] == nil { continue }
             let request = RemoteApproval.Request(id: id, mac: mac, kind: kind, client: client, purpose: purpose,
                                                  title: title, site: site, expires: expires, escrow: escrows[phone.id])
-            guard let (sealed, ephemeral) = try? RemoteApproval.seal(request, to: key, signer: signer) else { continue }
+            let sealed: RemoteApproval.Sealed, ephemeral: P256.KeyAgreement.PrivateKey
+            do {
+                (sealed, ephemeral) = try RemoteApproval.seal(request, to: key, signer: signingKey)
+            } catch {
+                log.error("request not sealed: \(error.localizedDescription, privacy: .public)")
+                continue
+            }
             records.append(RemoteCloud.record(sealed, phone: phone.id))
             waiting.append((phone, key, ephemeral))
         }

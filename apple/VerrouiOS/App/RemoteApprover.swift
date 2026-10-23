@@ -60,6 +60,9 @@ final class RemoteApprover {
     /// Requests waiting behind the current one.
     private(set) var queue: [Pending] = []
     private(set) var pairingBusy = false
+    /// Push notifications: nil while unknown, otherwise ready or the error.
+    private(set) var pushStatus: Result<Void, Error>?
+    @ObservationIgnored private var subscribed = false
 
     @ObservationIgnored private var stored: Stored?
     @ObservationIgnored private var context: (LAContext, Date)?
@@ -120,7 +123,7 @@ final class RemoteApprover {
         var identity = try identity()
         let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: identity.enclaveKey)
         try await RemoteCloud.ensureZone(RemoteCloud.zone(phone: identity.phone))
-        try await RemoteCloud.subscribeToRequests(phone: identity.phone)
+        try await subscribe(identity.phone)
         let offer = RemoteApproval.Offer(phone: identity.phone, name: UIDevice.current.name,
                                          key: key.publicKey.x963Representation)
         let (payload, proof) = try RemoteApproval.sealOffer(offer, for: invite)
@@ -147,6 +150,30 @@ final class RemoteApprover {
         let created = Stored(phone: UUID().uuidString, enclaveKey: key.dataRepresentation, macs: [])
         try persist(created)
         return created
+    }
+
+    /// The subscription, saved again at each launch (its text follows the
+    /// iPhone's language).
+    private func subscribe(_ phone: String) async throws {
+        do {
+            try await RemoteCloud.subscribeToRequests(phone: phone, title: String(localized: "remote.approval.title"),
+                                                      body: String(localized: "remote.approval.body"))
+            subscribed = true
+        } catch {
+            pushStatus = .failure(error)
+            log.error("subscription not saved: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+
+    /// The system's answer to `registerForRemoteNotifications`.
+    func pushRegistered(_ error: Error?) {
+        if let error {
+            pushStatus = .failure(error)
+            log.error("push registration failed: \(error.localizedDescription, privacy: .public)")
+        } else if subscribed || pushStatus == nil {
+            pushStatus = .success(())
+        }
     }
 
     func remove(_ mac: Mac) {
@@ -269,7 +296,12 @@ final class RemoteApprover {
         case .active:
             // iCloud's notifications reach the app once registered (each
             // launch: the system keeps the token).
-            if isPaired { UIApplication.shared.registerForRemoteNotifications() }
+            if isPaired {
+                UIApplication.shared.registerForRemoteNotifications()
+                if !subscribed, let phone = stored?.phone {
+                    Task { try? await subscribe(phone) }
+                }
+            }
             Task { await refresh() }
         default:
             break

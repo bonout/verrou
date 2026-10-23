@@ -39,6 +39,7 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>remote-notification</string>
 	</array>
 	<key>VerrouAppGroup</key>
 	<string>$(VERROU_APP_GROUP)</string>

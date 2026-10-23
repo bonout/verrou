@@ -183,7 +183,8 @@ targets:
         VerrouAppGroup: $(VERROU_APP_GROUP)
         # Background wake-up: sharing updates, notified locally
         # (PhoneModel.backgroundActivityCheck, see SECURITY.md).
-        UIBackgroundModes: [fetch]
+        # remote-notification: the Mac's requests (iCloud notifications).
+        UIBackgroundModes: [fetch, remote-notification]
         BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
         # Two-factor links: Verrou appears in Settings › General › AutoFill
         # & Passwords › Set Up Codes In (OTPScanFlow.Purpose.link).

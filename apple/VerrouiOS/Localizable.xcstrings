@@ -5741,6 +5741,26 @@
         }
       }
     },
+    "Notifications ready": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications prêtes"
+          }
+        }
+      }
+    },
+    "Notifications: waiting for iOS…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notifications : en attente d’iOS…"
+          }
+        }
+      }
+    },
     "Number": {
       "localizations": {
         "fr": {

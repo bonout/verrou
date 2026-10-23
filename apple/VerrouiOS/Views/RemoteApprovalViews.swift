@@ -153,6 +153,15 @@ struct RemoteApprovalSettingsView: View {
             if let message {
                 Section { Text(message) }
             }
+            if approver.isPaired {
+                Section {
+                    switch approver.pushStatus {
+                    case .success: Label("Notifications ready", systemImage: "checkmark.circle.fill")
+                    case .failure(let error): Label(error.localizedDescription, systemImage: "exclamationmark.triangle.fill")
+                    case nil: Label("Notifications: waiting for iOS…", systemImage: "hourglass")
+                    }
+                }
+            }
         }
         .navigationTitle("Approve from the Mac")
         .sheet(isPresented: $scanning) {
