@@ -2291,6 +2291,16 @@
         }
       }
     },
+    "Close the edit screen, then open the link again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermez l’écran de modification, puis rouvrez le lien."
+          }
+        }
+      }
+    },
     "Code": {
       "localizations": {
         "fr": {
@@ -7391,6 +7401,16 @@
         }
       }
     },
+    "Sign in to your Vaultwarden server to save one-time codes.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à votre serveur Vaultwarden pour enregistrer des codes à usage unique."
+          }
+        }
+      }
+    },
     "Sign out": {
       "localizations": {
         "fr": {
@@ -8251,6 +8271,16 @@
         }
       }
     },
+    "This link is too long to be a one-time code.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce lien est trop long pour être un code à usage unique."
+          }
+        }
+      }
+    },
     "This site doesn't accept ES256 keys: use another manager.": {
       "localizations": {
         "fr": {
@@ -8487,6 +8517,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Image illisible."
+          }
+        }
+      }
+    },
+    "Unreadable one-time code link": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lien de code à usage unique illisible"
           }
         }
       }

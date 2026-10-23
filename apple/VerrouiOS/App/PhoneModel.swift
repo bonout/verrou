@@ -215,6 +215,9 @@ final class PhoneModel {
     @ObservationIgnored let live = LiveUpdates()
     /// Notification tapped with the vault locked: opened after the unlock.
     @ObservationIgnored var pendingActivityRoute: ActivityRoute?
+    /// `otpauth://` link opened with the vault locked: read after the unlock,
+    /// if it is still recent (`OTPScanFlow.openLink`).
+    @ObservationIgnored var pendingOTPLink: (text: String, at: Date)?
     /// The next sync is the first after the unlock: we measure the longest
     /// main thread stall while it runs.
     @ObservationIgnored private var watchFirstSync = false
@@ -570,6 +573,10 @@ final class PhoneModel {
         if let route = pendingActivityRoute {
             pendingActivityRoute = nil
             openActivity(route)
+        }
+        if let link = pendingOTPLink {
+            pendingOTPLink = nil
+            if Date().timeIntervalSince(link.at) < OTPScanFlow.linkLifetime { openOTPLink(link.text) }
         }
     }
 

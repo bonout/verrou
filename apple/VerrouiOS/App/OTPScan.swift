@@ -27,6 +27,9 @@ final class OTPScanFlow: Identifiable {
         case editor(isNew: Bool)
         /// Page of a login without a code ("Add a code (QR)").
         case item(id: String, title: String)
+        /// `otpauth://` link opened by iOS: Verrou chosen in Settings ›
+        /// General › AutoFill & Passwords › Set Up Codes In, or a link tapped on a page.
+        case link
 
         var isEditor: Bool {
             if case .editor = self { return true }
@@ -196,11 +199,24 @@ final class OTPScanFlow: Identifiable {
                 chosen[index] = index == 0 ? .attach(id) : .skip
             case .editor where result.accounts.count == 1:
                 chosen[index] = .form
-            case .editor:
+            case .editor, .link:
                 chosen[index] = account.matches.first.map { .attach($0.id) } ?? .newLogin
             }
         }
         return chosen
+    }
+
+    // MARK: Links
+
+    /// The longest link read: a Google Authenticator export holds at most
+    /// a QR code's worth (under 3 KB).
+    static let maxLinkLength = 8192
+    /// A link opened with the vault locked is only read if the unlock
+    /// follows within this time.
+    static let linkLifetime: TimeInterval = 300
+
+    static func isOTPLink(_ url: URL) -> Bool {
+        ["otpauth", "otpauth-migration"].contains(url.scheme?.lowercased() ?? "")
     }
 
     static func describe(_ error: Error) -> String {
@@ -283,6 +299,46 @@ extension PhoneModel {
         otpScan = OTPScanFlow(purpose: purpose)
     }
 
+    /// `otpauth://` (or `otpauth-migration://`) link given by iOS. Any app or
+    /// page can open one: the link is only read, never saved, until the
+    /// user picks where each code goes in the sheet. Not logged.
+    func openOTPLink(_ url: URL) {
+        guard OTPScanFlow.isOTPLink(url) else { return }
+        openOTPLink(url.absoluteString)
+    }
+
+    func openOTPLink(_ text: String) {
+        guard text.utf8.count <= OTPScanFlow.maxLinkLength else {
+            toast = Toast(message: String(localized: "This link is too long to be a one-time code."), detail: nil, failure: true)
+            return
+        }
+        guard lockState == .unlocked else {
+            // Kept in memory only, until the unlock.
+            pendingOTPLink = (text, Date())
+            return
+        }
+        guard canEdit else {
+            toast = Toast(message: String(localized: "Sign in to your Vaultwarden server to save one-time codes."),
+                          detail: nil, failure: true)
+            return
+        }
+        // The edit screen presents its own sheets: its draft is not
+        // thrown away.
+        guard editor == nil else {
+            toast = Toast(message: String(localized: "Close the edit screen, then open the link again."), detail: nil, failure: true)
+            return
+        }
+        qrSheet = nil
+        moveRequest = nil
+        let flow = OTPScanFlow(purpose: .link)
+        flow.handle(text: text, session: session)
+        guard flow.result != nil else {
+            toast = Toast(message: String(localized: "Unreadable one-time code link"), detail: flow.error, failure: true)
+            return
+        }
+        otpScan = flow
+    }
+
     /// Saves the scanned accounts: added to an existing login, new login,
     /// or filling the open form. Returns the error to show in the sheet, if
     /// there is one.
@@ -341,7 +397,7 @@ extension PhoneModel {
         }
         let opened = attachedTo.first ?? created.first
         // From an item page, it is already shown.
-        if written == 1, purpose.isEditor, let opened, editor == nil {
+        if written == 1, purpose.isEditor || purpose == .link, let opened, editor == nil {
             open(session.resolveItemId(id: opened))
         }
         let message = written == 1

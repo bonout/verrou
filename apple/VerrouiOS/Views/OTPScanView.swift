@@ -29,7 +29,8 @@ struct OTPScanSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { model.otpScan = nil }
                 }
-                if flow.result != nil {
+                // From a link: no camera to go back to.
+                if flow.result != nil, flow.purpose != .link {
                     ToolbarItem(placement: .primaryAction) {
                         Button("Scan again", systemImage: "qrcode.viewfinder") { flow.rescan() }
                             .disabled(flow.busy)
@@ -445,6 +446,17 @@ private struct OTPPreviewView: View {
                 primary(String(localized: "Add to “\(title)”"), symbol: "plus.circle.fill") {
                     apply([(account, .attach(id))])
                 }
+            case .link:
+                ForEach(account.matches.prefix(3), id: \.id) { target in
+                    primary(String(localized: "Add to “\(target.title)”"), symbol: "plus.circle.fill",
+                            subtitle: target.subtitle.isEmpty ? nil : target.subtitle) {
+                        apply([(account, .attach(target.id))])
+                    }
+                }
+                primary(String(localized: "Create a new login"), symbol: "person.crop.circle.badge.plus",
+                        prominent: account.matches.isEmpty) {
+                    apply([(account, .newLogin)])
+                }
             case .editor(let isNew):
                 if isNew {
                     ForEach(account.matches.prefix(3), id: \.id) { target in
@@ -462,7 +474,7 @@ private struct OTPPreviewView: View {
                 }
             }
         } header: {
-            if flow.purpose == .editor(isNew: true), !account.matches.isEmpty {
+            if flow.purpose == .editor(isNew: true) || flow.purpose == .link, !account.matches.isEmpty {
                 SectionHeader("Login already in the vault")
             }
         }

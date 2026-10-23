@@ -182,6 +182,12 @@ targets:
         # (PhoneModel.backgroundActivityCheck, see SECURITY.md).
         UIBackgroundModes: [fetch]
         BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
+        # Two-factor links: Verrou appears in Settings › General › AutoFill
+        # & Passwords › Set Up Codes In (OTPScanFlow.Purpose.link).
+        CFBundleURLTypes:
+          - CFBundleURLName: app.verrou.ios.otpauth
+            CFBundleTypeRole: Editor
+            CFBundleURLSchemes: [otpauth, otpauth-migration]
     scheme:
       testTargets:
         - VerrouAutoFillUITests
