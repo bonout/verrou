@@ -2801,6 +2801,16 @@
         }
       }
     },
+    "Also unlock from the iPhone": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déverrouiller aussi depuis l’iPhone"
+          }
+        }
+      }
+    },
     "An administrator of %@ must confirm you: read them your fingerprint phrase": {
       "localizations": {
         "fr": {
@@ -2877,6 +2887,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Approuver"
+          }
+        }
+      }
+    },
+    "Approve from the iPhone": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approuver depuis l’iPhone"
           }
         }
       }
@@ -2991,6 +3011,26 @@
         }
       }
     },
+    "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. For 12 hours after an unlock on this Mac, the iPhone can also unlock the vault for the terminal: the window stays locked, the vault locks again 5 minutes after the last approval.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devant le Mac, Touch ID comme avant ; l’iPhone est sollicité après 15 s, ou tout de suite si l’écran est verrouillé ou inactif. Pendant 12 heures après un déverrouillage sur ce Mac, l’iPhone peut aussi déverrouiller le coffre pour le terminal : la fenêtre reste verrouillée, le coffre se reverrouille 5 minutes après la dernière approbation."
+          }
+        }
+      }
+    },
+    "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. The vault must be unlocked on the Mac.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Devant le Mac, Touch ID comme avant ; l’iPhone est sollicité après 15 s, ou tout de suite si l’écran est verrouillé ou inactif. Le coffre doit être déverrouillé sur le Mac."
+          }
+        }
+      }
+    },
     "Attachment added": {
       "localizations": {
         "fr": {
@@ -3077,6 +3117,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "En attente de confirmation"
+          }
+        }
+      }
+    },
+    "Away from the Mac, the terminal's requests (a secret, an SSH signature) go to Verrou on the iPhone: Face ID approves them. Through your iCloud account, sealed end to end.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loin du Mac, les demandes du terminal (un secret, une signature SSH) arrivent dans Verrou sur l’iPhone : Face ID les approuve. Par votre compte iCloud, chiffrées de bout en bout."
           }
         }
       }
@@ -7001,6 +7051,16 @@
         }
       }
     },
+    "In Verrou on the iPhone: Settings › Approve from the Mac › Pair with a Mac, then scan this code. Both devices must use the same iCloud account.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans Verrou sur l’iPhone : Réglages › Approuver depuis le Mac › Jumeler avec un Mac, puis scannez ce code. Les deux appareils doivent utiliser le même compte iCloud."
+          }
+        }
+      }
+    },
     "In the background, when iOS allows it, Verrou only looks at what the app has already downloaded if the vault is locked (no key, no network): news from the server arrives the next time you open it.": {
       "localizations": {
         "fr": {
@@ -8071,6 +8131,16 @@
         }
       }
     },
+    "Lock Now": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrouiller"
+          }
+        }
+      }
+    },
     "Lock after": {
       "localizations": {
         "fr": {
@@ -9061,6 +9131,16 @@
         }
       }
     },
+    "Needs the Verrou signed by its developer (the iCloud entitlement): this build is signed locally.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nécessite le Verrou signé par son développeur (droit iCloud) : cette version est signée localement."
+          }
+        }
+      }
+    },
     "Network": {
       "localizations": {
         "fr": {
@@ -9597,6 +9677,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aucun groupe."
+          }
+        }
+      }
+    },
+    "No iPhone answered in 5 minutes.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun iPhone n’a répondu en 5 minutes."
           }
         }
       }
@@ -10291,6 +10381,16 @@
         }
       }
     },
+    "Open for the terminal (approved on the iPhone) until %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvert pour le terminal (approuvé sur l’iPhone) jusqu’à %@"
+          }
+        }
+      }
+    },
     "Open in Safari": {
       "localizations": {
         "fr": {
@@ -10507,6 +10607,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "Page introuvable"
+          }
+        }
+      }
+    },
+    "Pair Another iPhone…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumeler un autre iPhone…"
+          }
+        }
+      }
+    },
+    "Pair an iPhone": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumeler un iPhone"
+          }
+        }
+      }
+    },
+    "Pair an iPhone…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumeler un iPhone…"
+          }
+        }
+      }
+    },
+    "Paired %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumelé le %@"
+          }
+        }
+      }
+    },
+    "Pairing QR code": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "QR code de jumelage"
           }
         }
       }
@@ -12881,6 +13031,16 @@
         }
       }
     },
+    "Sign in to iCloud on this Mac (the same account as the iPhone).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à iCloud sur ce Mac (le même compte que l’iPhone)."
+          }
+        }
+      }
+    },
     "Sign out": {
       "localizations": {
         "fr": {
@@ -13721,6 +13881,16 @@
         }
       }
     },
+    "The iPhone's answer doesn't match this QR code.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La réponse de l’iPhone ne correspond pas à ce QR code."
+          }
+        }
+      }
+    },
     "The item can be restored from the trash for 30 days.": {
       "localizations": {
         "fr": {
@@ -14357,6 +14527,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il ne verra plus les éléments de l'organisation. Vous pourrez restaurer son accès."
+          }
+        }
+      }
+    },
+    "This Mac has no Secure Enclave.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce Mac n’a pas de Secure Enclave."
           }
         }
       }
@@ -15027,6 +15207,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Graine illisible (Base32 ou lien otpauth:// attendu)"
+          }
+        }
+      }
+    },
+    "Update Verrou on the iPhone and on the Mac.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettez à jour Verrou sur l’iPhone et sur le Mac."
           }
         }
       }
@@ -16871,6 +17061,16 @@
         }
       }
     },
+    "pair an iPhone to approve the terminal's requests": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "jumeler un iPhone pour approuver les demandes du terminal"
+          }
+        }
+      }
+    },
     "partial registration with the browser (%@)": {
       "localizations": {
         "fr": {
@@ -17137,6 +17337,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "l'organisation"
+          }
+        }
+      }
+    },
+    "the terminal": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "le terminal"
           }
         }
       }

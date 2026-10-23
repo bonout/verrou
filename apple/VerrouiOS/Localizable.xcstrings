@@ -141,6 +141,16 @@
         }
       }
     },
+    "%@ wants to %@.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ veut %2$@."
+          }
+        }
+      }
+    },
     "%@ · %@ · %@": {
       "localizations": {
         "fr": {
@@ -1751,6 +1761,16 @@
         }
       }
     },
+    "Allow the camera in Settings to scan the Mac's code.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisez l’appareil photo dans Réglages pour scanner le code du Mac."
+          }
+        }
+      }
+    },
     "Allow the camera in Settings to scan, or choose a screenshot of the QR code.": {
       "localizations": {
         "fr": {
@@ -1807,6 +1827,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mots de passe d'Apple (CSV)"
+          }
+        }
+      }
+    },
+    "Approve": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approuver"
+          }
+        }
+      }
+    },
+    "Approve from the Mac": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approuver depuis le Mac"
+          }
+        }
+      }
+    },
+    "Approved": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approuvé"
           }
         }
       }
@@ -2287,6 +2337,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Effacé du presse-papiers dans %@"
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermer"
           }
         }
       }
@@ -3111,6 +3171,26 @@
         }
       }
     },
+    "Denied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refusé"
+          }
+        }
+      }
+    },
+    "Deny": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refuser"
+          }
+        }
+      }
+    },
     "Digits": {
       "localizations": {
         "fr": {
@@ -3491,12 +3571,62 @@
         }
       }
     },
+    "Expired": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expirée"
+          }
+        }
+      }
+    },
+    "Expires in %lld s": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expire dans %lld s"
+          }
+        }
+      }
+    },
     "Expiry date": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Date d'expiration"
+          }
+        }
+      }
+    },
+    "Face ID must be set up on this iPhone: it approves each request.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID doit être configuré sur cet iPhone : c’est lui qui approuve chaque demande."
+          }
+        }
+      }
+    },
+    "Face ID on this iPhone approves what the terminal asks the Mac while you are away.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID sur cet iPhone approuve ce que le terminal demande au Mac pendant votre absence."
+          }
+        }
+      }
+    },
+    "Face ID shows what is asked.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Face ID affiche ce qui est demandé."
           }
         }
       }
@@ -5561,6 +5691,16 @@
         }
       }
     },
+    "Not now": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus tard"
+          }
+        }
+      }
+    },
     "Notes": {
       "localizations": {
         "fr": {
@@ -5677,6 +5817,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Activé"
+          }
+        }
+      }
+    },
+    "On the Mac: Verrou › Settings › Security › Pair an iPhone, then scan the code. When you are away from the Mac, the terminal's requests (a secret, an SSH signature, the unlock) come here: Face ID opens them, you approve or deny. Through your iCloud account, sealed end to end; the vault of this iPhone is not involved.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sur le Mac : Verrou › Réglages › Sécurité › Jumeler un iPhone, puis scannez le code. Quand vous êtes loin du Mac, les demandes du terminal (un secret, une signature SSH, le déverrouillage) arrivent ici : Face ID les ouvre, vous approuvez ou refusez. Par votre compte iCloud, chiffrées de bout en bout ; le coffre de cet iPhone n’est pas concerné."
           }
         }
       }
@@ -5937,6 +6087,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Page introuvable"
+          }
+        }
+      }
+    },
+    "Pair with a Mac": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumeler avec un Mac"
+          }
+        }
+      }
+    },
+    "Paired %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumelé le %@"
+          }
+        }
+      }
+    },
+    "Paired with “%@”.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumelé avec « %@ »."
           }
         }
       }
@@ -6601,6 +6781,16 @@
         }
       }
     },
+    "Request from “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande de « %@ »"
+          }
+        }
+      }
+    },
     "Requires a connection to the server.": {
       "localizations": {
         "fr": {
@@ -6907,6 +7097,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rescanner"
+          }
+        }
+      }
+    },
+    "Scan the Mac's code": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanner le code du Mac"
           }
         }
       }
@@ -7381,6 +7581,16 @@
         }
       }
     },
+    "Show with Face ID": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher avec Face ID"
+          }
+        }
+      }
+    },
     "Sign in": {
       "localizations": {
         "fr": {
@@ -7397,6 +7607,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Reconnectez-vous pour reprendre la synchronisation."
+          }
+        }
+      }
+    },
+    "Sign in to iCloud on this iPhone (the same account as the Mac).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à iCloud sur cet iPhone (le même compte que le Mac)."
           }
         }
       }
@@ -7871,6 +8091,16 @@
         }
       }
     },
+    "The Mac's window stays locked; the vault locks again 5 minutes after the last approval.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La fenêtre du Mac reste verrouillée ; le coffre se reverrouille 5 minutes après la dernière approbation."
+          }
+        }
+      }
+    },
     "The clipboard contains neither an otpauth:// link nor a QR code image.": {
       "localizations": {
         "fr": {
@@ -8241,6 +8471,16 @@
         }
       }
     },
+    "This is not a Verrou pairing code.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce n’est pas un code de jumelage Verrou."
+          }
+        }
+      }
+    },
     "This item has no one-time code.": {
       "localizations": {
         "fr": {
@@ -8277,6 +8517,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ce lien est trop long pour être un code à usage unique."
+          }
+        }
+      }
+    },
+    "This request has expired.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cette demande a expiré."
           }
         }
       }
@@ -8531,12 +8781,32 @@
         }
       }
     },
+    "Unreadable request: Face ID changed since pairing? Pair this iPhone again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande illisible : Face ID a changé depuis le jumelage ? Jumelez à nouveau cet iPhone."
+          }
+        }
+      }
+    },
     "Unreadable seed (Base32 or otpauth:// link expected)": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "Graine illisible (Base32 ou lien otpauth:// attendu)"
+          }
+        }
+      }
+    },
+    "Update Verrou on the iPhone and on the Mac.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettez à jour Verrou sur l’iPhone et sur le Mac."
           }
         }
       }
@@ -9111,6 +9381,16 @@
         }
       }
     },
+    "access “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "accéder à « %@ »"
+          }
+        }
+      }
+    },
     "all": {
       "localizations": {
         "fr": {
@@ -9341,6 +9621,16 @@
         }
       }
     },
+    "fill the card “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "remplir la carte « %@ »"
+          }
+        }
+      }
+    },
     "fill with Verrou": {
       "localizations": {
         "fr": {
@@ -9531,6 +9821,16 @@
         }
       }
     },
+    "link the site %@ to “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "associer le site %1$@ à « %2$@ »"
+          }
+        }
+      }
+    },
     "never": {
       "localizations": {
         "fr": {
@@ -9621,12 +9921,32 @@
         }
       }
     },
+    "read “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lire « %@ »"
+          }
+        }
+      }
+    },
     "read-only": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
             "value": "lecture seule"
+          }
+        }
+      }
+    },
+    "release one more item: “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "libérer un élément de plus : « %@ »"
           }
         }
       }
@@ -9755,6 +10075,16 @@
         }
       }
     },
+    "see the request from “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "voir la demande de « %@ »"
+          }
+        }
+      }
+    },
     "seed or otpauth:// link": {
       "localizations": {
         "fr": {
@@ -9771,6 +10101,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "afficher « %@ »"
+          }
+        }
+      }
+    },
+    "sign a git commit with the key “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "signer un commit git avec la clé « %@ »"
           }
         }
       }
@@ -9875,6 +10215,26 @@
         }
       }
     },
+    "unlock the vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "déverrouiller le coffre"
+          }
+        }
+      }
+    },
+    "unlock the vault on “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "déverrouiller le coffre sur « %@ »"
+          }
+        }
+      }
+    },
     "unlock your vault": {
       "localizations": {
         "fr": {
@@ -9931,6 +10291,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "paramètre TOTP non pris en charge : %@"
+          }
+        }
+      }
+    },
+    "use a passkey for “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "utiliser une clé d’accès pour « %@ »"
+          }
+        }
+      }
+    },
+    "use the SSH key “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "utiliser la clé SSH « %@ »"
           }
         }
       }
