@@ -910,6 +910,73 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   command asks for it; a program running under the user's account can read
   what the CLI displays.
 
+## Approving from the iPhone
+
+Away from the Mac, the terminal's requests (a secret, an SSH or git
+signature, the unlock) can be approved with Face ID on the iPhone. Off by
+default: nothing happens until an iPhone is paired. Code:
+`apple/Shared/Remote/RemoteApproval.swift` (protocol, tested in
+`RemoteApprovalTests`), `RemoteCloud.swift` (transport),
+`Verrou/App/RemoteApprovals.swift` (Mac), `VerrouiOS/App/RemoteApprover.swift`
+(iPhone).
+
+- **Transport**: the private database of the user's iCloud account
+  (CloudKit, container `iCloud.app.verrou`, production environment); no
+  server of Verrou's. iCloud only ever sees sealed content, the Mac's
+  identifier and expiry dates; the notification text is the app's ("Request
+  from your Mac") and says nothing of the request. Records are erased once
+  answered, withdrawn or expired.
+- **Pairing**: Touch ID (or the session password) on the Mac, which then
+  shows a QR code: its random identifier, the public key it signs requests
+  with (P-256, in the Mac's Secure Enclave, without biometrics) and a
+  32-byte one-time secret. The iPhone answers in iCloud with its public key
+  — a P-256 key agreement key **in its Secure Enclave, usable only after
+  Face ID** (`.biometryCurrentSet`) — authenticated by an HMAC-SHA256 of the
+  secret. A key slipped in by someone who didn't see the QR code is
+  refused. The Mac keeps the paired iPhones' public keys in
+  `remote-approval.json` (account folder); Settings › Security removes them.
+- **Request**: for each request and each iPhone, the Mac draws an
+  ephemeral key; ECDH with the iPhone's key, HKDF-SHA256 (the request's
+  identifier as salt) gives one AES-256-GCM key per direction. The content
+  (who asks, what, which item, expiry) is sealed, and the Mac signs the
+  whole (ECDSA). The iPhone checks the signature and the expiry before
+  showing anything, then Face ID opens the content.
+- **Answer**: sealed with the other key of the same exchange, the request's
+  identifier as associated data. Only the iPhone's Secure Enclave, after
+  Face ID, can write it; it only answers that request (the Mac forgets the
+  ephemeral key as soon as it has an answer). A refusal is sealed too.
+- **Who answers**: at the Mac (screen unlocked, input in the last minute),
+  Touch ID as before, and the iPhone after 15 s without an answer; away
+  (screen locked or idle), the iPhone right away. The first answer decides,
+  the other request is withdrawn. A protected item approved on the iPhone
+  counts as confirmed for 5 minutes, as with Touch ID. Approvals last 5
+  minutes per client and item, as before.
+- **Unlock**: the Mac never sends the vault key. At each unlock **on the
+  Mac** (password, Touch ID, security key), it draws a key K, seals the
+  vault key with K (AES-GCM) and K for each iPhone (ECDH with an ephemeral
+  key), then forgets K: both boxes stay **in memory only**, for 12 hours.
+  When the terminal finds the vault locked while the user is away, the
+  request carries K's box: the iPhone opens it after Face ID and returns K
+  in its sealed answer. The iPhone never sees the vault key; K is useless
+  without the box in the Mac's memory, and is replaced after each use. The
+  vault opens for the bridge only (the window stays locked) and locks again
+  5 minutes after the last approval from the iPhone. Quitting Verrou,
+  restarting the Mac, logging out, removing an iPhone or turning the
+  setting off erases the boxes: the password or Touch ID is needed again.
+- **Speed**: about 0.8 s from the request to the iPhone's notification,
+  2 s for the round trip without the user (measured over 60 requests,
+  iPhone locked and unlocked). While a request waits, the Mac fetches the
+  answer by its identifier every 250 ms (then every second after 20 s), and
+  right away on iCloud's silent notification.
+- **Known limits**: the iPhone shows what the Mac says is asked, as Touch
+  ID does on the Mac; an attacker with the iCloud account can withhold or
+  erase requests (the Mac then refuses after 90 s) but can neither read nor
+  answer them. A program able to write the account folder of the Mac's
+  sandbox could add an iPhone key, as it could already add a terminal to
+  `bridge-clients.json`; macOS protects that container from other apps.
+  Needs the signed Mac app (iCloud entitlement): a locally signed build
+  hides the setting.
+
 ## Touch ID
 
 The user key is sealed by a P-256 key agreement key **created in the

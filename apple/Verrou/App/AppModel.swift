@@ -1,4 +1,5 @@
 import AppKit
+import LocalAuthentication
 import Observation
 import SwiftUI
 
@@ -221,6 +222,14 @@ final class AppModel {
 
     /// Filling in Brave and Firefox (absent in the demo and during scripted runs).
     var browserBridge: BrowserBridge?
+    /// Approving the terminal from the iPhone (Vaultwarden account only).
+    private(set) var remote: RemoteApprovals?
+    /// The vault was opened by the iPhone for the terminal, the window
+    /// staying locked: it locks again at this date (pushed back by each
+    /// approval).
+    private(set) var remoteSessionUntil: Date?
+    @ObservationIgnored private var remoteUnlocking = false
+    @ObservationIgnored private var remoteSessionTimer: Task<Void, Never>?
 
     let clipboard = Clipboard()
     let siteIcons = SiteIcons()
@@ -298,6 +307,7 @@ final class AppModel {
             session = VaultSession.withStorage(dataDir: dataDirectory.path)
             account = session.account()
             biometricEnrolled = BiometricVault.isEnrolled(in: dataDirectory)
+            remote = RemoteApprovals(directory: dataDirectory)
             unlockKeys = session.securityKeys()
             pendingChanges = Int(session.pendingChanges())
             if let account {
@@ -310,6 +320,7 @@ final class AppModel {
         if !Self.isReview { AttachmentsModel.purge() }
         // Warms up LocalAuthentication's answer before the first render.
         Biometrics.refresh()
+        remote?.escrowNeeded = { [weak self] in Task { await self?.prepareRemoteEscrow(local: true) } }
         Perf.log.notice("model ready at +\(Perf.msSinceLaunch) ms after launch")
     }
 
@@ -476,6 +487,8 @@ final class AppModel {
 
     func logout() {
         lock()
+        endRemoteSession(lock: true)
+        remote?.clearEscrow()
         try? session.logout()
         SystemAutofill.clear()
         BiometricVault.remove(in: dataDirectory)
@@ -574,8 +587,11 @@ final class AppModel {
         if !Self.isReview { filter = defaultFilter.filter }
         reloadVault()
         lockState = .unlocked
+        endRemoteSession(lock: false)
         updateSiteIcons()
         autoLock = AutoLock { [weak self] in self?.lock() }
+        // Unlocked on the Mac: the iPhone may unlock for 12 hours.
+        if mode == .vaultwarden { Task { await prepareRemoteEscrow(local: true) } }
         if failures > 0 {
             let count = Int(failures)
             toast = Toast(message: count > 1 ? String(localized: "\(count) unreadable items")
@@ -737,6 +753,7 @@ final class AppModel {
         autoLock = nil
         clipboard.clearIfOurs()
         lockState = .locked
+        endRemoteSession(lock: false)
         updateSiteIcons()
     }
 
@@ -834,6 +851,66 @@ final class AppModel {
                                                     : String(localized: "\(Int(report.sent)) offline changes synced"),
                           detail: nil)
         }
+    }
+
+    // MARK: Approving from the iPhone
+
+    /// The vault key sealed for the paired iPhones (`RemoteApprovals`).
+    /// `local`: unlocked on the Mac, the 12 hours start again.
+    func prepareRemoteEscrow(local: Bool) async {
+        // `local`: unlocked on the Mac, not just for the terminal.
+        guard let remote, remote.unlockEnabled, remote.isReady, session.isUnlocked(),
+              !local || lockState == .unlocked,
+              let key = try? await session.userKey() else { return }
+        remote.prepareEscrow(userKey: key, local: local)
+    }
+
+    /// The terminal found the vault locked while you are away: the iPhone
+    /// opens it for the terminal only. The window stays locked; the vault
+    /// locks again `remoteSessionLifetime` after the last approval.
+    func unlockFromPhone(client: String) async {
+        guard let remote, remote.canUnlock, lockState == .locked, !needsLogin, !remoteUnlocking,
+              !session.isUnlocked() else { return }
+        remoteUnlocking = true
+        defer { remoteUnlocking = false }
+        guard let key = await remote.unlock(client: client), lockState == .locked else { return }
+        do {
+            _ = try await Perf.measure("vault decryption (Rust, from the iPhone)") {
+                try await session.unlockWithUserKey(userKey: key)
+            }
+        } catch {
+            return
+        }
+        // Unlocked on the Mac meanwhile: nothing more to do.
+        guard lockState == .locked else { return }
+        extendRemoteSession()
+        // A new K: the one the iPhone just returned is spent.
+        await prepareRemoteEscrow(local: false)
+    }
+
+    /// An approval from the iPhone pushes back the lock of the vault it
+    /// opened.
+    func extendRemoteSession() {
+        guard lockState == .locked, session.isUnlocked() else { return }
+        remoteSessionUntil = Date().addingTimeInterval(RemoteApprovals.remoteSessionLifetime)
+        guard remoteSessionTimer == nil else { return }
+        remoteSessionTimer = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                guard let self, let until = self.remoteSessionUntil else { return }
+                if Date() >= until { self.endRemoteSession(lock: true) }
+            }
+        }
+    }
+
+    /// Back to the locked vault (`lock`), or the session continues on the
+    /// Mac (unlocked there).
+    func endRemoteSession(lock: Bool) {
+        remoteSessionTimer?.cancel()
+        remoteSessionTimer = nil
+        guard remoteSessionUntil != nil else { return }
+        remoteSessionUntil = nil
+        if lock, lockState == .locked { session.lock() }
     }
 
     // MARK: Touch ID
@@ -1203,9 +1280,9 @@ final class AppModel {
 
     /// Touch ID, otherwise the master password; the confirmation lasts
     /// 5 minutes for this item (on the Rust side, cleared on lock).
-    func confirmAccess(itemID: String, title: String) async -> Bool {
+    func confirmAccess(itemID: String, title: String, context: LAContext = LAContext()) async -> Bool {
         if mode == .vaultwarden, canUseTouchID {
-            switch await Biometrics.authenticate(reason: String(localized: "show “\(title)”")) {
+            switch await Biometrics.authenticate(reason: String(localized: "show “\(title)”"), context: context) {
             case .success:
                 session.authorizeItem(id: itemID)
                 return true

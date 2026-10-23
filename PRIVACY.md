@@ -7,8 +7,8 @@ operate no server, collect no data and have no access to your vault.
 ## What Verrou collects
 
 Nothing. Verrou has no account of its own, no analytics, no advertising, no
-crash reporting and no tracking. It does not use Apple's push notification
-service. The app's privacy manifests declare no collected data.
+crash reporting and no tracking. The app's privacy manifests declare no
+collected data.
 
 ## Where your data goes
 
@@ -19,6 +19,11 @@ service. The app's privacy manifests declare no collected data.
   breach check runs, only the first 5 characters of a password's SHA-1 hash
   are sent (k-anonymity), never the password or the full hash. The new
   password check can be turned off in Settings.
+- **Your iCloud account**, only if you pair an iPhone to approve the Mac's
+  requests: the requests and answers go through your own iCloud private
+  database (CloudKit), sealed end to end between your two devices, then are
+  erased; Apple's push notification service tells the iPhone a request is
+  waiting, without its content.
 - **The site of an item**, only when you tap "Change Password" or "Create a
   Passkey" for it: Verrou asks that site whether it publishes the standard
   addresses for those pages (`/.well-known/change-password`,

@@ -25,13 +25,21 @@ struct VerrouPhoneApp: App {
         WindowGroup {
             RootView()
                 .environment(model)
-                .onChange(of: scenePhase) { _, phase in model.scenePhaseChanged(to: phase) }
+                .onChange(of: scenePhase) { _, phase in
+                    model.scenePhaseChanged(to: phase)
+                    model.remote.sceneChanged(to: phase)
+                }
                 // `otpauth://` links: Verrou can be the app chosen to set up
                 // verification codes.
                 .onOpenURL { model.openOTPLink($0) }
                 .task {
                     if model.mode != .vaultwarden { ActivityNotifier.shared.silent = true }
                     ActivityNotifier.shared.setHandler { [weak model] route in model?.openActivity(route) }
+                    // A request from the Mac (iCloud notification): fetched
+                    // and shown above everything.
+                    ActivityNotifier.shared.setApprovalHandler { [weak model] in
+                        Task { await model?.remote.refresh() }
+                    }
                     #if DEBUG
                     if endToEnd == nil, let config = EndToEndDriver.Config(ProcessInfo.processInfo.environment) {
                         let driver = EndToEndDriver(model: model, config: config)

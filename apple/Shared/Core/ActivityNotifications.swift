@@ -3,7 +3,9 @@ import os
 import SwiftUI
 import UserNotifications
 
-// Local sharing notifications (never a remote notification service):
+// Local sharing notifications (never a remote notification service; the
+// one exception is the Mac's approval requests on the iPhone, an iCloud
+// notification whose text is the app's and says nothing of the request):
 // accepted invitation pending, access confirmed, members to confirm, new
 // shared items, emergency access. The Rust core says what is new
 // (`checkActivity`, each thing only once); here we compose the text and
@@ -106,6 +108,9 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
     var onOpen: ((ActivityRoute) -> Void)?
     /// Tapped before the app is ready (launched by the notification).
     private var pendingRoute: ActivityRoute?
+    /// iPhone: a request from the Mac (iCloud notification, `RemoteApprover`).
+    private var onApproval: (() -> Void)?
+    private var pendingApproval = false
 
     #if DEBUG
     /// What was posted (test hook: the content, not the banners).
@@ -127,6 +132,25 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
             pendingRoute = nil
             handler(route)
         }
+    }
+
+    /// The app is ready to show the Mac's requests.
+    func setApprovalHandler(_ handler: @escaping () -> Void) {
+        onApproval = handler
+        if pendingApproval {
+            pendingApproval = false
+            handler()
+        }
+    }
+
+    /// The Mac's requests come from CloudKit (`ck` in the payload); sharing
+    /// notifications are local.
+    private nonisolated static func isApproval(_ userInfo: [AnyHashable: Any]) -> Bool {
+        userInfo["ck"] != nil
+    }
+
+    private func approvalArrived() {
+        if let onApproval { onApproval() } else { pendingApproval = true }
     }
 
     /// Asks for authorization at the right moment (organizations present, or
@@ -191,12 +215,22 @@ final class ActivityNotifier: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions {
-        [.banner, .list]
+        // App in the foreground: the request shows right away, no banner.
+        if Self.isApproval(notification.request.content.userInfo) {
+            await MainActor.run { approvalArrived() }
+            return []
+        }
+        return [.banner, .list]
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
-        guard let route = ActivityRoute(userInfo: response.notification.request.content.userInfo) else { return }
+        let userInfo = response.notification.request.content.userInfo
+        if Self.isApproval(userInfo) {
+            await MainActor.run { approvalArrived() }
+            return
+        }
+        guard let route = ActivityRoute(userInfo: userInfo) else { return }
         await MainActor.run {
             if let onOpen { onOpen(route) } else { pendingRoute = route }
         }

@@ -102,7 +102,9 @@ targets:
       - path: VerrouAutoFill/Memory.swift
       - path: VerrouAutoFill/PasskeyPrf.swift
       - path: VerrouAutoFill/PasskeyPrfSystem.swift
+      # Approving from the iPhone is the app's business.
       - path: Shared
+        excludes: ["Remote/**"]
       - path: Verrou/Resources/Assets.xcassets
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
@@ -137,7 +139,7 @@ targets:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
 
   # Mac unit tests without a host app (nothing is shown): account migration
-  # to the app group, PRF input selection.
+  # to the app group, PRF input selection, the iPhone approval protocol.
   #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
   VerrouMacTests:
     type: bundle.unit-test
@@ -146,6 +148,7 @@ targets:
       - path: VerrouMacTests
       - path: Shared/Core/VerrouStorage.swift
       - path: VerrouAutoFill/PasskeyPrf.swift
+      - path: Shared/Remote/RemoteApproval.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests
@@ -227,6 +230,7 @@ targets:
     sources:
       - path: VerrouAutoFill
       - path: Shared
+        excludes: ["Remote/**"]
       - path: VerrouiOS/Resources/Assets.xcassets
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework

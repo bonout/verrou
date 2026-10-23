@@ -1,4 +1,5 @@
 import AppKit
+import LocalAuthentication
 import Observation
 
 /// Brave, Firefox and the terminal: the extension talks to Verrou through the
@@ -120,8 +121,14 @@ final class BrowserBridge {
         }
     }
 
-    fileprivate func unlockRequested() {
+    fileprivate func unlockRequested(kind: BridgeClientKind) {
         guard model.lockState == .locked else { return }
+        // Away from the Mac, the terminal waits for the iPhone (the window
+        // stays locked).
+        if kind == .cli, let remote = model.remote, remote.canUnlock, remote.isAway {
+            Task { await model.unlockFromPhone(client: String(localized: "the terminal")) }
+            return
+        }
         NSApp.activate()
         if model.canUseTouchID, !model.needsLogin {
             Task { await model.unlockWithBiometrics() }
@@ -168,12 +175,24 @@ final class BrowserBridge {
         case .bulk: String(localized: "\(browser) is requesting many items in a short time: allow “\(title)”")
         }
         Task {
-            let approved = if model.session.needsConfirmation(id: item) {
-                await model.confirmAccess(itemID: item, title: title)
-            } else {
-                await Biometrics.confirm(reason: reason)
+            let protected = model.session.needsConfirmation(id: item)
+            let local: @MainActor (LAContext) async -> Bool = { [model] context in
+                protected ? await model.confirmAccess(itemID: item, title: title, context: context)
+                          : await Biometrics.confirm(reason: reason, context: context)
             }
-            model.session.answerBridgeConfirmation(id: id, approved: approved)
+            // At the Mac: Touch ID; away: the paired iPhone (`RemoteApprovals`).
+            let outcome = if let remote = model.remote {
+                await remote.decide(client: clientName.isEmpty ? String(localized: "the terminal") : clientName,
+                                    purpose: purpose.wire, title: title, site: site, local: local)
+            } else {
+                RemoteApprovals.Outcome.local(await local(LAContext()))
+            }
+            if case .remote(true) = outcome {
+                // Face ID on the iPhone stands for Touch ID here.
+                if protected { model.session.authorizeItem(id: item) }
+                model.extendRemoteSession()
+            }
+            model.session.answerBridgeConfirmation(id: id, approved: outcome.approved)
         }
     }
 
@@ -276,9 +295,9 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         }
     }
 
-    func unlockRequested() {
+    func unlockRequested(kind: BridgeClientKind) {
         DispatchQueue.main.async { [weak bridge] in
-            MainActor.assumeIsolated { bridge?.unlockRequested() }
+            MainActor.assumeIsolated { bridge?.unlockRequested(kind: kind) }
         }
     }
 
@@ -291,6 +310,21 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
     func repromptRequested(item: String, title: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated { bridge?.repromptRequested(item: item, title: title) }
+        }
+    }
+}
+
+extension AccessPurpose {
+    /// The name the iPhone words (`RemoteApproval.Request.purpose`).
+    var wire: String {
+        switch self {
+        case .reveal: "reveal"
+        case .ssh: "ssh"
+        case .passkey: "passkey"
+        case .gitSign: "gitSign"
+        case .linkSite: "linkSite"
+        case .card: "card"
+        case .bulk: "bulk"
         }
     }
 }

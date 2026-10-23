@@ -209,6 +209,9 @@ final class PhoneModel {
     let siteIcons = SiteIcons()
     /// Sharing with other accounts (organizations, collections, members).
     let sharing = PhoneSharingModel()
+    /// Approving the Mac's requests (`RemoteApprover`): independent of this
+    /// iPhone's vault.
+    let remote = RemoteApprover()
 
     @ObservationIgnored private var syncLoop: Task<Void, Never>?
     /// Live updates from the server, in the foreground.

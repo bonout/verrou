@@ -217,7 +217,7 @@ private struct CameraArea: View {
 }
 
 /// Four rounded corners, like the Camera app.
-private struct ViewfinderFrame: View {
+struct ViewfinderFrame: View {
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
@@ -244,7 +244,7 @@ private struct ViewfinderFrame: View {
 
 /// VisionKit: QR codes only, the system's highlighting and guidance.
 /// No image is kept, only the code's text comes up.
-private struct DataScannerView: UIViewControllerRepresentable {
+struct DataScannerView: UIViewControllerRepresentable {
     let found: (String) -> Void
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
@@ -290,7 +290,7 @@ private struct DataScannerView: UIViewControllerRepresentable {
 
 /// AVFoundation fallback (devices without VisionKit): `AVCaptureMetadataOutput`
 /// only returns the QR codes' text, no image.
-private struct MetadataScannerView: UIViewControllerRepresentable {
+struct MetadataScannerView: UIViewControllerRepresentable {
     let found: (String) -> Void
 
     func makeUIViewController(context: Context) -> MetadataScannerController {

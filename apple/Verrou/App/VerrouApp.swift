@@ -295,6 +295,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// An answer from the iPhone (silent iCloud notification): read it
+    /// without waiting for the next poll.
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        if RemoteCloud.isApproval(userInfo) { model.remote?.poke() }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         model.lock()
     }

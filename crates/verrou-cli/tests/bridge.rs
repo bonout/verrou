@@ -59,7 +59,7 @@ impl Backend for Fake {
     }
 
     /// Like Touch ID succeeding a moment later.
-    fn request_unlock(&self) {
+    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind) {
         std::thread::sleep(Duration::from_millis(300));
         self.unlocked.store(true, Ordering::SeqCst);
     }

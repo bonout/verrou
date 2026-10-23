@@ -9631,6 +9631,40 @@
         }
       }
     },
+    "remote.approval.body": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Verrou to approve or deny it with Face ID."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez Verrou pour l’approuver ou la refuser avec Face ID."
+          }
+        }
+      }
+    },
+    "remote.approval.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request from your Mac"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande de votre Mac"
+          }
+        }
+      }
+    },
     "same app (%@)": {
       "localizations": {
         "fr": {

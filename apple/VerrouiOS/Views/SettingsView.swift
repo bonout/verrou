@@ -94,6 +94,15 @@ struct SettingsTab: View {
 
                 if model.mode == .vaultwarden {
                     AutoFillSection()
+                    Section {
+                        NavigationLink {
+                            RemoteApprovalSettingsView()
+                        } label: {
+                            SettingsLabel("Approve from the Mac", symbol: "laptopcomputer.and.iphone", tint: .indigo)
+                        }
+                    } footer: {
+                        Text("Face ID on this iPhone approves what the terminal asks the Mac while you are away.")
+                    }
                 }
 
                 Section {

@@ -83,8 +83,10 @@ pub trait Backend: Send + Sync + 'static {
     /// [`crate::access::plan_totp`]), then carries it out. `None`: vault
     /// locked; `Ok`: the identifier of the written item.
     fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>>;
-    /// The extension asks to unlock: bring Verrou to the foreground.
-    fn request_unlock(&self);
+    /// A client asks to unlock: bring Verrou to the foreground (the
+    /// browser), or ask the paired iPhone if the user is away from the Mac
+    /// (the terminal).
+    fn request_unlock(&self, kind: ClientKind);
     /// Pairing request: show `code` and ask for approval, then
     /// answer with [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
@@ -455,7 +457,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         | Command::PasskeyTargets(_)
         | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
         Command::Unlock => {
-            backend.request_unlock();
+            backend.request_unlock(info.kind);
             ReplyResult::Done
         }
         Command::Check {

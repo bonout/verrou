@@ -2405,7 +2405,9 @@ pub trait BridgeDelegate: Send + Sync {
         title: String,
         site: String,
     );
-    fn unlock_requested(&self);
+    /// A client found the vault locked. `kind`: the terminal may be
+    /// unlocked from the iPhone, the browser brings Verrou forward.
+    fn unlock_requested(&self, kind: BridgeClientKind);
     /// The extension saved a login (or a code): the vault was synced again,
     /// the app reloads its list. `title`: to announce it.
     fn vault_changed(&self, item: String, title: String);
@@ -2559,8 +2561,8 @@ impl Backend for SessionBackend {
         })
     }
 
-    fn request_unlock(&self) {
-        self.delegate.unlock_requested();
+    fn request_unlock(&self, kind: ClientKind) {
+        self.delegate.unlock_requested(kind.into());
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
@@ -2917,7 +2919,7 @@ mod tests {
         ) {
             self.0.answer(&id, true);
         }
-        fn unlock_requested(&self) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind) {}
         fn vault_changed(&self, _: String, _: String) {}
         fn reprompt_requested(&self, _: String, _: String) {}
     }
@@ -3126,7 +3128,7 @@ mod optimistic_tests {
             _: String,
         ) {
         }
-        fn unlock_requested(&self) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind) {}
         fn vault_changed(&self, item: String, _: String) {
             self.0.lock().unwrap().push(item);
         }

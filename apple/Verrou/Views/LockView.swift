@@ -26,6 +26,19 @@ struct LockView: View {
                         unlockMethods
                     }
 
+                    if let until = model.remoteSessionUntil {
+                        // Opened by the iPhone for the terminal.
+                        HStack(spacing: 8) {
+                            Label("Open for the terminal (approved on the iPhone) until \(until.formatted(date: .omitted, time: .shortened))",
+                                  systemImage: "iphone.radiowaves.left.and.right")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Lock Now") { model.endRemoteSession(lock: true) }
+                                .controlSize(.small)
+                        }
+                        .frame(maxWidth: 420)
+                    }
+
                     if let error = model.unlockError, !error.isEmpty {
                         Text(error)
                             .font(.caption)

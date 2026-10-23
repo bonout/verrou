@@ -156,6 +156,9 @@ private struct SecuritySettings: View {
                 }
 
                 SecurityKeysSection()
+                if let remote = model.remote {
+                    RemoteApprovalSection(remote: remote)
+                }
                 NewPasswordBreachSection()
             }
         }
