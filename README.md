@@ -14,7 +14,8 @@
 </p>
 
 <p align="center">
-  <a href="#install"><b>Install on your Mac</b></a> ·
+  <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
+  <a href="#install">Install</a> ·
   <a href="docs/GUIDE.md">Full guide</a> ·
   <a href="SECURITY.md">Security</a>
 </p>
@@ -102,6 +103,11 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
   that signs with the keys in your vault, and git commit signing. Each secret
   is approved with Touch ID.
+- **Approve from your iPhone**: away from the Mac (screen locked or idle),
+  the terminal's requests go to Verrou on the paired iPhone, where Face ID
+  approves them; it can also unlock the vault for the terminal, without the
+  vault key ever leaving the Mac. Through your own iCloud account, sealed
+  end to end ([details](SECURITY.md#approving-from-the-iphone)).
 
 ## Private
 
@@ -127,28 +133,75 @@ managers and cleared after 90 seconds. Details and known limits are in
 
 ## Install
 
-There is no download yet: you build Verrou on your own Mac, signed locally,
-with no Apple developer account.
+Every release is on the [Releases page](https://github.com/bonout/verrou/releases/latest),
+with `SHA256SUMS` and a build attestation for each file
+(`gh attestation verify <file> -R bonout/verrou`).
+
+### Mac app
+
+1. Download `Verrou-<version>-macos.dmg` (macOS 15 or later), open it and drag
+   Verrou to Applications. It is signed with a Developer ID and notarized by
+   Apple: it opens without a warning.
+2. Open Verrou and enter your server address, e-mail and master password,
+   then your second factor. Touch ID unlocks it from then on.
+
+Optional, from Verrou's Settings:
+
+- **Brave, Chrome or Firefox extension**: *Browsers and Terminal*, then follow
+  the steps shown there. The release also has `verrou-<version>-chromium.zip`
+  (load it unpacked) and `verrou-<version>-firefox.xpi`, signed by Mozilla:
+  open it in Firefox 128+ to install it for good
+  ([guide](docs/GUIDE.md#brave-extension)).
+- **Fill in any app** (⌘\\): allow Verrou in System Settings → Privacy &
+  Security → Accessibility ([guide](docs/GUIDE.md#fill-in-any-app)).
+- **Safari and Mac apps**: turn on Verrou in System Settings → General →
+  AutoFill & Passwords.
+
+### Command line and SSH agent
+
+Download the archive for your machine (`aarch64-apple-darwin` for Apple
+silicon, `x86_64-apple-darwin` for Intel Macs, `x86_64-unknown-linux-gnu`),
+then put `verrou` on your `PATH`:
+
+```sh
+v=0.2.0 t=aarch64-apple-darwin
+curl -LO https://github.com/bonout/verrou/releases/download/v$v/verrou-$v-$t.tar.gz
+tar -xzf verrou-$v-$t.tar.gz
+install -m 755 verrou-$v-$t/verrou ~/.local/bin/verrou   # or /usr/local/bin
+verrou link       # once: compare the code shown in Verrou, then accept
+```
+
+Downloaded with `curl`, the binary isn't quarantined; downloaded with a
+browser, macOS blocks it until you run
+`xattr -d com.apple.quarantine ~/.local/bin/verrou`. Then `verrou search`,
+`verrou get`, `verrou totp`, the SSH agent and git signing are in the
+[guide](docs/GUIDE.md#command-line-and-ssh-agent). With Rust installed,
+`cargo install --git https://github.com/bonout/verrou verrou-cli` works too.
+
+### iPhone
+
+There is no public iPhone build yet (releases go to TestFlight for internal
+testing only): build it yourself, see [iPhone](#iphone) below. Once both apps
+are installed, pair them for approvals: on the Mac, Settings → Security →
+*Pair an iPhone*; on the iPhone, Settings → *Approve from the Mac*, then scan
+the code. Both devices must use the same iCloud account.
+
+### Build it yourself
+
+No Apple developer account needed for the Mac app: it is then signed
+locally on your Mac.
 
 1. Install [Rust](https://rustup.rs), Xcode 26 and xcodegen
    (`brew install xcodegen`).
 2. Clone this repository and run `scripts/install-macos.sh`. It builds the
-   app and copies it to `/Applications`.
-3. Open Verrou and enter your server address, e-mail and master password,
-   then your second factor.
+   app and copies it to `/Applications`; `cargo install --path
+   crates/verrou-cli` installs the command line.
 
-Optional:
-
-- **Brave extension**: Settings → *Browsers and Terminal*, then follow the
-  steps shown there ([guide](docs/GUIDE.md#brave-extension)).
-- **Firefox extension** (Firefox 128+): same settings, *Firefox extension*.
-  Unsigned, it loads as a temporary add-on (gone when Firefox quits); for a
-  permanent install, use Developer Edition/Nightly or have it signed by
-  Mozilla ([guide](docs/GUIDE.md#firefox-extension)).
-- **Command line and SSH agent**: `cargo install --path crates/verrou-cli`,
-  then `verrou link` ([guide](docs/GUIDE.md#command-line-and-ssh-agent)).
-- **Fill in any app**: allow Verrou in System Settings → Privacy & Security →
-  Accessibility ([guide](docs/GUIDE.md#fill-in-any-app)).
+A locally signed build has no Safari and Mac apps provider: it needs an
+entitlement Apple only grants to builds signed by a developer team
+(`VERROU_MAC_TEAM=<team> scripts/install-macos.sh`). Approvals from the
+iPhone use the `iCloud.app.verrou` container, which only the released apps
+can open.
 
 ## Using it
 
