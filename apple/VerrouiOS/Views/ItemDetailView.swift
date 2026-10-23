@@ -11,6 +11,13 @@ struct ItemDetailView: View {
     @State private var deletingAttachment: AttachmentEntry?
     @State private var deletingPasskey: PasskeyInfo?
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
+    /// The page's area (global points): what turns to dust when the item
+    /// is archived (the bars stay drawn above their copy).
+    @State private var visibleFrame: CGRect = .zero
+    @State private var dust: UIImage?
+    @State private var archivedTick = 0
 
     var body: some View {
         Group {
@@ -22,6 +29,7 @@ struct ItemDetailView: View {
             }
         }
         .task(id: itemID) { await model.loadAttachments(of: itemID) }
+        .onAppear { if !reduceMotion { DustView.prewarm() } }
         .onDisappear { model.forgetRevealed(of: itemID) }
     }
 
@@ -130,6 +138,17 @@ struct ItemDetailView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .opacity(dust == nil ? 1 : 0)
+        .overlay(alignment: .topLeading) { dustOverlay }
+        .background {
+            GeometryReader { proxy in
+                let visible = proxy.frame(in: .global)
+                Color.clear
+                    .onAppear { visibleFrame = visible }
+                    .onChange(of: visible) { _, new in visibleFrame = new }
+            }
+        }
+        .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.8), trigger: archivedTick)
         .navigationTitle(summary.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar(summary) }
@@ -210,7 +229,7 @@ struct ItemDetailView: View {
                             }
                         }
                         Button("Add an attachment…", systemImage: "paperclip") { importingFile = true }
-                        Button("Archive", systemImage: "archivebox") { Task { await model.setArchived(itemID, true) } }
+                        Button("Archive", systemImage: "archivebox") { Task { await archive() } }
                         Button("Move to Trash", systemImage: "trash", role: .destructive) { confirmTrash = true }
                     case .archived:
                         Button("Unarchive", systemImage: "tray.and.arrow.up") {
@@ -225,6 +244,41 @@ struct ItemDetailView: View {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("Actions")
+        }
+    }
+
+    // MARK: Archiving
+
+    /// The page turns to dust while the item is archived, then the list
+    /// comes back without it. Reduce Motion: a plain fade.
+    private func archive() async {
+        archivedTick += 1
+        // The Actions menu closes first: it mustn't be in the snapshot.
+        try? await Task.sleep(for: .milliseconds(300))
+        let image = reduceMotion ? nil : DustView.snapshot(visibleFrame)
+        if let image {
+            dust = image
+        } else {
+            withAnimation(.easeOut(duration: 0.25)) { dust = UIImage() }
+        }
+        async let archived: Void = model.setArchived(itemID, true)
+        // The way back to the list starts while the last grains leave.
+        try? await Task.sleep(for: .seconds(image == nil ? 0.25 : DustView.duration * 0.65))
+        dismiss()
+        await archived
+    }
+
+    @ViewBuilder
+    private var dustOverlay: some View {
+        if let dust, dust.size != .zero {
+            // Exactly over the page, under the bars.
+            GeometryReader { proxy in
+                let origin = proxy.frame(in: .global).origin
+                DustView(image: dust)
+                    .frame(width: visibleFrame.width, height: visibleFrame.height)
+                    .offset(x: visibleFrame.minX - origin.x, y: visibleFrame.minY - origin.y)
+            }
+            .ignoresSafeArea()
         }
     }
 

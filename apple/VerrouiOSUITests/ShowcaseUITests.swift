@@ -285,6 +285,20 @@ final class ShowcaseUITests: XCTestCase {
         pause(2)
     }
 
+    /// Archiving: the page turns to dust, the list comes back without the
+    /// item.
+    func testMotionArchive() throws {
+        launchMock()
+        unlock()
+        openItem("git", title: "GitHub")
+        pause(1)
+        mark("start")
+        app.buttons[L("Actions", "Actions")].firstMatch.tap()
+        app.buttons[L("Archive", "Archiver")].firstMatch.tap()
+        XCTAssertTrue(app.navigationBars["GitHub"].waitForNonExistence(timeout: 5), "back to the list")
+        pause(2)
+    }
+
     /// Copy: the icon turns into a checkmark, then comes back.
     func testMotionCopy() throws {
         launchMock()
