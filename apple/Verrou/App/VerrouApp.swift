@@ -285,6 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Diagnostics.shared.start()
         let quickAccess = QuickAccessController(model: model)
         self.quickAccess = quickAccess
         autofill = UniversalAutofill(model: model, quickAccess: quickAccess)

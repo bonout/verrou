@@ -17,6 +17,11 @@ tagging (docs/RELEASING.md).
 - VoiceOver reads the icon-only buttons and the informative icons, and
   skips decorative ones (ACCESSIBILITY.md).
 
+**Mac and iPhone**
+- Settings → Diagnostics: crash and hang reports from the system stay on
+  the device, never sent; share them with the developers if something went
+  wrong, or delete them.
+
 **Command line**
 - `verrou run`: when one secret starts another (`pass` and `password123`)
   and the command wrote the longer one in two parts, the end of it could show

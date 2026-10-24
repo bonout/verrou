@@ -4791,6 +4791,16 @@
         }
       }
     },
+    "Crash and hang reports": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rapports de plantage et de blocage"
+          }
+        }
+      }
+    },
     "Create": {
       "localizations": {
         "fr": {
@@ -5141,6 +5151,16 @@
         }
       }
     },
+    "Delete Reports": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer les rapports"
+          }
+        }
+      }
+    },
     "Delete attachment": {
       "localizations": {
         "fr": {
@@ -5357,6 +5377,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tout désélectionner"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostics"
           }
         }
       }
@@ -12891,6 +12921,16 @@
         }
       }
     },
+    "Share Reports…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Partager les rapports…"
+          }
+        }
+      }
+    },
     "Share a text or a file through an encrypted link (Bitwarden Send)": {
       "localizations": {
         "fr": {
@@ -15987,6 +16027,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quand Safari propose d'enregistrer la passkey, choisissez Verrou."
+          }
+        }
+      }
+    },
+    "When Verrou crashes or hangs, the system writes a report: its call stacks and versions, nothing from your vault. The reports stay on this device; Verrou never sends them. Share them with the developers if something went wrong.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quand Verrou plante ou se bloque, le système écrit un rapport : ses piles d'appels et ses versions, rien de votre coffre. Les rapports restent sur cet appareil ; Verrou ne les envoie jamais. Partagez-les avec les développeurs si quelque chose s'est mal passé."
           }
         }
       }

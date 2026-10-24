@@ -95,8 +95,9 @@ jobs:
           node-version: 22
       - run: cargo build -p verrou-bridge --example test_server --bin verrou-native-host
       - run: node --test extension/test/*.test.mjs
-      # Performance guard: 10,000 items, less than one frame at 60 Hz.
-      - run: cargo test --release -p verrou-core --test search -- --include-ignored search_is_fast
+      # Performance guards on 10,000 items: a search in less than one frame at
+      # 60 Hz, the vault opened (search index built) in less than 150 ms.
+      - run: cargo test --release -p verrou-core --test search -- --include-ignored fast_on_10k_items
       # Duplicates: 10,000 items in less than 200 ms.
       - run: cargo test --release -p verrou-core --test duplicates -- --include-ignored duplicates_are_fast
 

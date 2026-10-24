@@ -218,6 +218,7 @@ struct AboutView: View {
                 credit("French diceware list", "Tango for Tails and the Tor project (ulif/diceware), CC0 1.0: French passphrases.")
                 credit("UniFFI", "Mozilla, MPL-2.0: binding between the Rust core and Swift.")
             }
+            DiagnosticsSection()
             Section {
                 Text("“Bitwarden” is a trademark of Bitwarden, Inc. Verrou is neither affiliated with nor endorsed by Bitwarden.")
                     .font(.footnote)

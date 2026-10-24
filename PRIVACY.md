@@ -42,6 +42,12 @@ iCloud and computer backups. Face ID and Touch ID are handled by the system: Ver
 sees your biometric data. The camera is used only to scan a one-time code's
 QR code, and no image is saved.
 
+When Verrou crashes or hangs, macOS and iOS hand it a report (MetricKit)
+about once a day: call stacks and versions, nothing from your vault. Verrou
+keeps the 20 most recent on the device and never sends them; Settings →
+Diagnostics show how many there are, let you share them (you choose with
+whom) or delete them.
+
 ## Contact
 
 Questions: open an issue at https://github.com/bonout/verrou/issues, or

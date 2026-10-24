@@ -150,7 +150,7 @@ targets:
       - path: VerrouAutoFill/PasskeyPrfSystem.swift
       # Approving from the iPhone is the app's business.
       - path: Shared
-        excludes: ["Remote/**"]
+        excludes: ["Remote/**", "Diagnostics/**"]
       - path: Verrou/Resources/Assets.xcassets
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
@@ -278,7 +278,7 @@ targets:
     sources:
       - path: VerrouAutoFill
       - path: Shared
-        excludes: ["Remote/**"]
+        excludes: ["Remote/**", "Diagnostics/**"]
       - path: VerrouiOS/Resources/Assets.xcassets
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework

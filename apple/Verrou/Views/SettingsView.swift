@@ -105,6 +105,7 @@ private struct GeneralSettings: View {
             UpdatesSection()
             AppAutofillSection()
             SystemAutofillSection()
+            DiagnosticsSection()
         }
     }
 

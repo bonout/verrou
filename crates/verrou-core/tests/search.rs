@@ -159,6 +159,20 @@ fn app_suggestions_use_macapp_uris() {
 
 /// Performance guard, optimized builds only: 10,000 items,
 /// a keystroke must stay well under one frame at 60 Hz.
+/// Opening the vault builds its search index: on 10,000 items, it must
+/// stay far below what a user notices after Touch ID.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "measurement only meaningful in --release")]
+fn vault_opens_fast_on_10k_items() {
+    let items = mock::vault_items(10_000, 7, MockLanguage::En);
+    let start = Instant::now();
+    let v = Vault::new(items);
+    let elapsed = start.elapsed();
+    assert_eq!(v.len(), 10_000);
+    eprintln!("index of 10,000 items: {elapsed:?}");
+    assert!(elapsed.as_millis() < 150, "{elapsed:?} to open");
+}
+
 #[test]
 #[cfg_attr(debug_assertions, ignore = "measurement only meaningful in --release")]
 fn search_is_fast_on_10k_items() {

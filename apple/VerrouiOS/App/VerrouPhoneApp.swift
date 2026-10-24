@@ -33,6 +33,7 @@ struct VerrouPhoneApp: App {
         let environment = ProcessInfo.processInfo.environment
         ActivityNotifier.shared.silent = environment["VERROU_E2E_SERVER"] != nil || environment["VERROU_DEMO"] != nil
         ActivityNotifier.shared.install()
+        Diagnostics.shared.start()
     }
 
     var body: some Scene {
