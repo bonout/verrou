@@ -2395,7 +2395,9 @@ pub trait BridgeDelegate: Send + Sync {
     /// password; for a protected item, the `needs_confirmation`
     /// confirmation), then answer with `answer_bridge_confirmation(id, …)`.
     /// `site`: for `LinkSite`, the host of the site to link to the item
-    /// (empty otherwise).
+    /// (empty otherwise). `reason`: why the terminal asks, as it declares
+    /// it (empty if it didn't say).
+    #[allow(clippy::too_many_arguments)]
     fn confirm_requested(
         &self,
         id: String,
@@ -2404,10 +2406,12 @@ pub trait BridgeDelegate: Send + Sync {
         item: String,
         title: String,
         site: String,
+        reason: String,
     );
     /// A client found the vault locked. `kind`: the terminal may be
     /// unlocked from the iPhone, the browser brings Verrou forward.
-    fn unlock_requested(&self, kind: BridgeClientKind);
+    /// `reason`: the terminal's, as for `confirm_requested`.
+    fn unlock_requested(&self, kind: BridgeClientKind, reason: String);
     /// The extension saved a login (or a code): the vault was synced again,
     /// the app reloads its list. `title`: to announce it.
     fn vault_changed(&self, item: String, title: String);
@@ -2561,8 +2565,9 @@ impl Backend for SessionBackend {
         })
     }
 
-    fn request_unlock(&self, kind: ClientKind) {
-        self.delegate.unlock_requested(kind.into());
+    fn request_unlock(&self, kind: ClientKind, reason: &str) {
+        self.delegate
+            .unlock_requested(kind.into(), reason.to_owned());
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
@@ -2619,6 +2624,7 @@ impl Backend for SessionBackend {
             request.item,
             request.title,
             request.site,
+            request.reason,
         );
         let pending = PendingConfirmation {
             confirmations: &self.confirmations,
@@ -2916,10 +2922,11 @@ mod tests {
             _: String,
             _: String,
             _: String,
+            _: String,
         ) {
             self.0.answer(&id, true);
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String) {}
         fn vault_changed(&self, _: String, _: String) {}
         fn reprompt_requested(&self, _: String, _: String) {}
     }
@@ -2946,6 +2953,7 @@ mod tests {
                 item: item.to_owned(),
                 title: String::new(),
                 site: String::new(),
+                reason: String::new(),
             }))
         };
         assert!(confirm(&plain));
@@ -3126,9 +3134,10 @@ mod optimistic_tests {
             _: String,
             _: String,
             _: String,
+            _: String,
         ) {
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String) {}
         fn vault_changed(&self, item: String, _: String) {
             self.0.lock().unwrap().push(item);
         }

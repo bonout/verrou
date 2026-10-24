@@ -86,7 +86,7 @@ impl Backend for Fake {
         Box::pin(async move { Some(outcome) })
     }
 
-    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind) {
+    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind, _reason: &str) {
         println!("UNLOCK");
     }
 

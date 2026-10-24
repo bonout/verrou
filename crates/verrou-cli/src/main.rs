@@ -41,6 +41,11 @@ struct Cli {
     #[arg(long, global = true)]
     json: bool,
 
+    /// Why you ask: shown in Verrou's approval, on the Mac and the iPhone
+    /// ("deploy to production"). Declared, never checked.
+    #[arg(long, global = true, env = "VERROU_REASON")]
+    reason: Option<String>,
+
     #[command(subcommand)]
     command: Command,
 }
@@ -278,9 +283,10 @@ impl Source {
         }
         let path = Config::default_path()?;
         let config = Config::load(&path)?.ok_or_else(|| Error::NotLinked.to_string())?;
-        Remote::connect(&config, Endpoint::from_env())
-            .map(Self::App)
-            .map_err(|e| e.to_string())
+        let mut remote =
+            Remote::connect(&config, Endpoint::from_env()).map_err(|e| e.to_string())?;
+        remote.reason.clone_from(&cli.reason);
+        Ok(Self::App(remote))
     }
 
     fn ask(remote: &mut Remote, command: &Ask) -> Result<ReplyResult, String> {

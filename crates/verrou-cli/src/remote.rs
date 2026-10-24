@@ -159,6 +159,8 @@ pub struct Remote {
     client: String,
     key: ChannelKey,
     next: u64,
+    /// Sent with each request: shown in the approval (`--reason`).
+    pub reason: Option<String>,
 }
 
 impl Remote {
@@ -169,6 +171,7 @@ impl Remote {
             client: config.client.clone(),
             key,
             next: 1,
+            reason: None,
         })
     }
 
@@ -179,6 +182,7 @@ impl Remote {
         let mut payload = serde_json::to_vec(&Request {
             id,
             ts: now_ms(),
+            reason: self.reason.clone(),
             command: command.clone(),
         })
         .map_err(|e| Error::Protocol(e.to_string()))?;

@@ -6621,6 +6621,16 @@
         }
       }
     },
+    "Reason given: “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Motif indiqué : « %@ »"
+          }
+        }
+      }
+    },
     "Recently modified": {
       "localizations": {
         "fr": {

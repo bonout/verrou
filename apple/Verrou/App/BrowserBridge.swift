@@ -122,7 +122,7 @@ final class BrowserBridge {
         }
     }
 
-    fileprivate func unlockRequested(kind: BridgeClientKind) {
+    fileprivate func unlockRequested(kind: BridgeClientKind, reason: String) {
         guard model.lockState == .locked else { return }
         // Away from the Mac, the terminal waits for the iPhone (the window
         // stays locked).
@@ -131,7 +131,7 @@ final class BrowserBridge {
                 .notice("terminal unlock: from the iPhone \(remote.canUnlock), away \(remote.isAway)")
         }
         if kind == .cli, let remote = model.remote, remote.canUnlock, remote.isAway {
-            Task { await model.unlockFromPhone(client: String(localized: "the terminal")) }
+            Task { await model.unlockFromPhone(client: String(localized: "the terminal"), reason: reason) }
             return
         }
         NSApp.activate()
@@ -164,7 +164,7 @@ final class BrowserBridge {
     /// Protected item ("master password re-prompt"): the same confirmation
     /// as in the app (Touch ID or master password).
     fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String,
-                                      site: String) {
+                                      site: String, reason motive: String) {
         // The name announced at pairing ("Brave", "Firefox").
         let browser = clientName.isEmpty ? String(localized: "the browser") : clientName
         let reason = switch purpose {
@@ -179,16 +179,18 @@ final class BrowserBridge {
         // Many items requested in a short time: maybe not you.
         case .bulk: String(localized: "\(browser) is requesting many items in a short time: allow “\(title)”")
         }
+        // The terminal's reason, as it declares it, after what is asked.
+        let prompt = motive.isEmpty ? reason : "\(reason) (\(motive))"
         Task {
             let protected = model.session.needsConfirmation(id: item)
             let local: @MainActor (LAContext) async -> Bool = { [model] context in
                 protected ? await model.confirmAccess(itemID: item, title: title, context: context)
-                          : await Biometrics.confirm(reason: reason, context: context)
+                          : await Biometrics.confirm(reason: prompt, context: context)
             }
             // At the Mac: Touch ID; away: the paired iPhone (`RemoteApprovals`).
             let outcome = if let remote = model.remote {
                 await remote.decide(client: clientName.isEmpty ? String(localized: "the terminal") : clientName,
-                                    purpose: purpose.wire, title: title, site: site, local: local)
+                                    purpose: purpose.wire, title: title, site: site, reason: motive, local: local)
             } else {
                 RemoteApprovals.Outcome.local(await local(LAContext()))
             }
@@ -290,19 +292,20 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         }
     }
 
-    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String, site: String) {
+    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String, site: String,
+                          reason: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
                 // Bridge stopped in the meantime: the request expires by itself.
                 bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title,
-                                         site: site)
+                                         site: site, reason: reason)
             }
         }
     }
 
-    func unlockRequested(kind: BridgeClientKind) {
+    func unlockRequested(kind: BridgeClientKind, reason: String) {
         DispatchQueue.main.async { [weak bridge] in
-            MainActor.assumeIsolated { bridge?.unlockRequested(kind: kind) }
+            MainActor.assumeIsolated { bridge?.unlockRequested(kind: kind, reason: reason) }
         }
     }
 

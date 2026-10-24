@@ -868,12 +868,12 @@ final class AppModel {
     /// The terminal found the vault locked while you are away: the iPhone
     /// opens it for the terminal only. The window stays locked; the vault
     /// locks again `remoteSessionLifetime` after the last approval.
-    func unlockFromPhone(client: String) async {
+    func unlockFromPhone(client: String, reason: String) async {
         guard let remote, remote.canUnlock, lockState == .locked, !needsLogin, !remoteUnlocking,
               !session.isUnlocked() else { return }
         remoteUnlocking = true
         defer { remoteUnlocking = false }
-        guard let key = await remote.unlock(client: client), lockState == .locked else { return }
+        guard let key = await remote.unlock(client: client, reason: reason), lockState == .locked else { return }
         do {
             _ = try await Perf.measure("vault decryption (Rust, from the iPhone)") {
                 try await session.unlockWithUserKey(userKey: key)

@@ -29,6 +29,7 @@ struct Fake {
     unlocked: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
     confirmations: Mutex<Vec<(Purpose, String)>>,
+    reasons: Mutex<Vec<String>>,
 }
 
 impl Backend for Fake {
@@ -59,7 +60,7 @@ impl Backend for Fake {
     }
 
     /// Like Touch ID succeeding a moment later.
-    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind) {
+    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind, _reason: &str) {
         std::thread::sleep(Duration::from_millis(300));
         self.unlocked.store(true, Ordering::SeqCst);
     }
@@ -81,6 +82,7 @@ impl Backend for Fake {
             .lock()
             .unwrap()
             .push((request.purpose, request.title));
+        self.reasons.lock().unwrap().push(request.reason);
         Box::pin(async { true })
     }
 }
@@ -186,6 +188,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         unlocked: AtomicBool::new(false),
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
+        reasons: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -362,6 +365,7 @@ fn git_signs_through_the_agent() {
         unlocked: AtomicBool::new(true),
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
+        reasons: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -523,6 +527,7 @@ fn run_hands_a_secret_to_a_command_masked() {
         unlocked: AtomicBool::new(true),
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
+        reasons: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -549,6 +554,7 @@ fn run_hands_a_secret_to_a_command_masked() {
         .env("VERROU_BRIDGE_PORT", bridge.port().to_string())
         .env("TOKEN", "verrou://GitHub/password")
         .env("PLAIN", "nothing to hide")
+        .env("VERROU_REASON", "deploy\nto production")
         .output()
         .unwrap();
     let stdout = String::from_utf8(output.stdout).unwrap();
@@ -559,6 +565,11 @@ fn run_hands_a_secret_to_a_command_masked() {
     assert_eq!(
         backend.confirmations.lock().unwrap().as_slice(),
         [(Purpose::Reveal, "GitHub".to_owned())]
+    );
+    // The reason reaches the approval, on one line.
+    assert_eq!(
+        backend.reasons.lock().unwrap().as_slice(),
+        ["deploy to production".to_owned()]
     );
     std::fs::remove_dir_all(&dir).ok();
 }

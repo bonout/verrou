@@ -58,6 +58,14 @@ struct ApprovalScreen: View {
             Text("\(request.client.capitalizedFirst) wants to \(request.action).")
                 .font(.body.weight(.medium))
                 .multilineTextAlignment(.center)
+            if let reason = request.reason, !reason.isEmpty {
+                // Declared by whoever asks: shown as such.
+                Text("Reason given: “\(reason)”")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("remote-reason")
+            }
             if request.kind == .unlock {
                 Text("The Mac's window stays locked; the vault locks again 5 minutes after the last approval.")
                     .font(.footnote)

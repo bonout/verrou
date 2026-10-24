@@ -55,6 +55,20 @@ final class RemoteApprovalTests: XCTestCase {
         XCTAssertNil(response.key)
     }
 
+    func testReasonTravelsAndOlderRequestsStillOpen() throws {
+        var withReason = request()
+        withReason.reason = "deploy to production"
+        let (sealed, _) = try RemoteApproval.seal(withReason, to: phoneKey.publicKey, signer: macKey)
+        XCTAssertEqual(try RemoteApproval.open(sealed, macKey: macKey.publicKey, with: phoneKey).request.reason,
+                       "deploy to production")
+        // A Mac without reasons: the field is simply absent.
+        let older = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request())) as? [String: Any]
+        XCTAssertNil(older?["reason"])
+        let decoded = try JSONDecoder().decode(RemoteApproval.Request.self,
+                                               from: JSONSerialization.data(withJSONObject: older ?? [:]))
+        XCTAssertNil(decoded.reason)
+    }
+
     func testRequestFromAnotherMacIsRefused() throws {
         let impostor = P256.Signing.PrivateKey()
         let (sealed, _) = try RemoteApproval.seal(request(), to: phoneKey.publicKey, signer: impostor)

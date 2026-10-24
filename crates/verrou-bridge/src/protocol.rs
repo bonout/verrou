@@ -81,8 +81,35 @@ pub struct Request {
     pub id: u64,
     /// Unix timestamp in milliseconds.
     pub ts: i64,
+    /// Why the terminal asks (`verrou --reason`, `VERROU_REASON`): shown in
+    /// the approval, as declared by the client, never checked
+    /// ([`clean_reason`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
     #[serde(flatten)]
     pub command: Command,
+}
+
+/// Longest reason shown, in characters.
+pub const MAX_REASON: usize = 120;
+
+/// The reason as shown: one line, no control characters, at most
+/// [`MAX_REASON`] characters.
+pub fn clean_reason(reason: Option<&str>) -> String {
+    let flat: String = reason
+        .unwrap_or_default()
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    let trimmed = flat.split_whitespace().collect::<Vec<_>>().join(" ");
+    if trimmed.chars().count() <= MAX_REASON {
+        trimmed
+    } else {
+        format!(
+            "{}…",
+            trimmed.chars().take(MAX_REASON - 1).collect::<String>()
+        )
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -545,4 +572,30 @@ pub struct PasskeyRegistration {
     pub algorithm: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prf: Option<PrfCreated>,
+}
+
+#[cfg(test)]
+mod reason_tests {
+    use super::*;
+
+    #[test]
+    fn reason_is_one_short_line() {
+        assert_eq!(clean_reason(None), "");
+        assert_eq!(
+            clean_reason(Some("  deploy\n\tto  prod\u{7} ")),
+            "deploy to prod"
+        );
+        let long = "x".repeat(300);
+        let cleaned = clean_reason(Some(&long));
+        assert_eq!(cleaned.chars().count(), MAX_REASON);
+        assert!(cleaned.ends_with('…'));
+    }
+
+    #[test]
+    fn requests_without_a_reason_still_parse() {
+        let request: Request = serde_json::from_str(r#"{"id":1,"ts":0,"cmd":"status"}"#).unwrap();
+        assert_eq!(request.reason, None);
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(!json.contains("reason"));
+    }
 }

@@ -85,8 +85,8 @@ pub trait Backend: Send + Sync + 'static {
     fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>>;
     /// A client asks to unlock: bring Verrou to the foreground (the
     /// browser), or ask the paired iPhone if the user is away from the Mac
-    /// (the terminal).
-    fn request_unlock(&self, kind: ClientKind);
+    /// (the terminal). `reason`: the terminal's, cleaned (empty if none).
+    fn request_unlock(&self, kind: ClientKind, reason: &str);
     /// Pairing request: show `code` and ask for approval, then
     /// answer with [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
@@ -152,6 +152,9 @@ pub struct Confirmation {
     /// [`Purpose::LinkSite`]: the host of the site to link to the item
     /// (empty otherwise). The app words the request itself.
     pub site: String,
+    /// Why the terminal asks, as it declares it ([`crate::protocol::clean_reason`]);
+    /// empty if it didn't say.
+    pub reason: String,
 }
 
 /// Approvals still valid: (client, purpose, item) → time of the approval.
@@ -433,6 +436,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         return bad;
     }
     let backend = &shared.backend;
+    let reason = crate::protocol::clean_reason(request.reason.as_deref());
     let result = match request.command {
         command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
             reason: "command not allowed for this client".to_owned(),
@@ -457,7 +461,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         | Command::PasskeyTargets(_)
         | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
         Command::Unlock => {
-            backend.request_unlock(info.kind);
+            backend.request_unlock(info.kind, &reason);
             ReplyResult::Done
         }
         Command::Check {
@@ -489,7 +493,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
                 }))
                 .await,
         ),
-        command => terminal(shared, &info, command).await,
+        command => terminal(shared, &info, command, &reason).await,
     };
     let Ok(mut body) = serde_json::to_vec(&Reply {
         id: request.id,
@@ -523,10 +527,11 @@ async fn approved(
     item: &str,
     title: &str,
 ) -> bool {
-    approved_for_site(shared, client, purpose, item, title, "").await
+    approved_for_site(shared, client, purpose, item, title, "", "").await
 }
 
-/// [`approved`], with the site the request is about (`LinkSite`).
+/// [`approved`], with the site the request is about (`LinkSite`) and the
+/// terminal's reason.
 async fn approved_for_site(
     shared: &Shared,
     client: &ClientInfo,
@@ -534,6 +539,7 @@ async fn approved_for_site(
     item: &str,
     title: &str,
     site: &str,
+    reason: &str,
 ) -> bool {
     let entry = (client.id.clone(), purpose, item.to_owned());
     {
@@ -550,6 +556,7 @@ async fn approved_for_site(
         item: item.to_owned(),
         title: title.to_owned(),
         site: site.to_owned(),
+        reason: reason.to_owned(),
     };
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
@@ -621,7 +628,12 @@ fn refused() -> ReplyResult {
 
 /// Terminal commands (already filtered by [`access::allowed`]).
 #[allow(clippy::too_many_lines)] // one branch per command, readable in one go
-async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyResult {
+async fn terminal(
+    shared: &Shared,
+    client: &ClientInfo,
+    command: Command,
+    reason: &str,
+) -> ReplyResult {
     let backend = &*shared.backend;
     let denied = |reason: String| ReplyResult::Denied { reason };
     match command {
@@ -655,7 +667,17 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
                 None => return ReplyResult::Locked,
                 Some(Err(reason)) => return denied(reason),
                 Some(Ok((true, title))) => {
-                    if !approved(shared, client, Purpose::Reveal, &item, &title).await {
+                    if !approved_for_site(
+                        shared,
+                        client,
+                        Purpose::Reveal,
+                        &item,
+                        &title,
+                        "",
+                        reason,
+                    )
+                    .await
+                    {
                         return refused();
                     }
                 }
@@ -679,7 +701,8 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
                 }
                 Some(Some((title, true))) => title,
             };
-            if !approved(shared, client, Purpose::Reveal, &item, &title).await {
+            if !approved_for_site(shared, client, Purpose::Reveal, &item, &title, "", reason).await
+            {
                 return refused();
             }
             let now = u64::try_from(now_ms() / 1000).unwrap_or(0);
@@ -728,7 +751,7 @@ async fn terminal(shared: &Shared, client: &ClientInfo, command: Command) -> Rep
             } else {
                 Purpose::Ssh
             };
-            if !approved(shared, client, purpose, &item, &title).await {
+            if !approved_for_site(shared, client, purpose, &item, &title, "", reason).await {
                 return refused();
             }
             let signed = read(backend, |v| ssh::sign(v, &blob, &data, flags));
@@ -825,6 +848,7 @@ async fn forms(shared: &Shared, client: &ClientInfo, command: Command) -> ReplyR
                 &format!("{item} {host}"),
                 &title,
                 &host,
+                "",
             )
             .await
             {

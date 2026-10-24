@@ -942,6 +942,17 @@ asks for Touch ID (or the session password) in Verrou: *allow the terminal
 to read “GitHub”*. An approval lasts 5 minutes for that item and that
 terminal, and is forgotten when the vault locks.
 
+Say why you ask with `--reason` (or `VERROU_REASON`, for an agent or a
+script): the approval shows it, on the Mac (*allow the terminal to read
+“GitHub” (deploy to production)*) and on the iPhone's approval screen
+(*Reason given: “deploy to production”*). It is what the terminal
+declares, one line of 120 characters at most, never checked; the iPhone's
+notification still says nothing of the request.
+
+```sh
+verrou --reason "deploy to production" run --env-file .env -- ./deploy.sh
+```
+
 ### Secrets for a command (`verrou run`)
 
 `verrou get --field` prints the secret: it lands in the terminal, its

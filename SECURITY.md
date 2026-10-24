@@ -875,6 +875,12 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   refused. A protected item ("master password re-prompt") requires the
   app's confirmation (Touch ID or master password), which the Rust core
   checks before handing over anything.
+- **Reason** (`--reason`, `VERROU_REASON`): sent with each request, cleaned
+  by the bridge (one line, no control characters, 120 characters at most)
+  and shown after what is asked, on the Mac and on the iPhone's approval
+  screen, as "reason given": the client declares it, nothing checks it. It
+  travels sealed like the rest of the request; the iPhone's notification
+  stays without content.
 - **`verrou run`**: the values of `verrou://` references are asked with
   the same approval as `get`, then only placed in the environment of the
   command it starts; nothing is printed, the CLI keeps them in zeroed

@@ -87,7 +87,7 @@ impl Backend for FakeBackend {
         Box::pin(async move { outcome })
     }
 
-    fn request_unlock(&self, _kind: ClientKind) {
+    fn request_unlock(&self, _kind: ClientKind, _reason: &str) {
         self.unlock_requested.store(true, Ordering::SeqCst);
     }
 

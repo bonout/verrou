@@ -186,6 +186,9 @@ enum RemoteApproval {
         let expires: Date
         /// Unlock: K sealed for this iPhone.
         let escrow: Escrow?
+        /// Why the terminal asks, as it declares it (`verrou --reason`);
+        /// absent from older Macs.
+        var reason: String? = nil
     }
 
     /// A request as it travels: the Mac's ephemeral public key, the sealed
