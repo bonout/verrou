@@ -607,6 +607,30 @@ test("sign-up: \"Suggest a strong password\" fills the password and its confirma
   assert.equal(page.pillNode(), null);
 });
 
+test("sign-in page whose password field says \"new-password\": filled as a sign-in", async () => {
+  // As on collectives.cafannecy.fr: a lone password field marked
+  // new-password, in a form with a "Login" button.
+  const background = fakeBackground();
+  const page = openPage((h) => h("form", { id: "basic_form", action: "" },
+    h("input", { id: "login", type: "text", name: "login" }),
+    h("input", { id: "password", type: "password", name: "password", autocomplete: "new-password" }),
+    h("input", { id: "submit_button", type: "submit", value: "Login" })), background);
+  await eventually(() => page.pillText().includes("Sign in"), "pill");
+  page.press("Sign in");
+  await eventually(() => page.byId("password").value, "fill");
+  assert.equal(page.byId("login").value, "camille@exemple.fr");
+  assert.equal(page.byId("password").value, "mot-de-passe-camille");
+});
+
+test("sign-up page with a lone \"new-password\" field: still a new password", async () => {
+  const page = openPage((h) => h("form", { id: "signup" },
+    h("input", { id: "email", type: "email", name: "email" }),
+    h("input", { id: "password", type: "password", name: "password", autocomplete: "new-password" }),
+    h("button", { type: "submit" }, "Créer mon compte")), fakeBackground({ items: [] }));
+  page.byId("password").focus();
+  await eventually(() => page.pillText().includes("Suggest a strong password"), "suggestion");
+});
+
 test("sign-in on a sign-up page: \"Generate a password\" in the list", async () => {
   const page = openPage((h) => h("form", { id: "both" },
     h("input", { id: "email", type: "email", autocomplete: "username" }),

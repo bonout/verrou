@@ -17,6 +17,11 @@ tagging (docs/RELEASING.md).
 - VoiceOver reads the icon-only buttons and the informative icons, and
   skips decorative ones (ACCESSIBILITY.md).
 
+**Browser extension**
+- Sign-in pages that mark their password field as a new password (to stop
+  browsers from filling it) are recognized as sign-in pages: the password
+  is filled too.
+
 ## 0.3.1
 
 **Mac**

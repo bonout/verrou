@@ -36,6 +36,7 @@
   const NEW_HINT = /new|nouveau|nouvelle|confirm|repeat|retype|again|verify|vérif|register|sign.?up|inscri|créer|create/i;
   const CURRENT_HINT = /current|old|actuel|ancien|existing/i;
   const SIGNUP_FORM_HINT = /register|sign.?up|inscri|create.?account|créer.?(un|votre).?compte|join/i;
+  const LOGIN_FORM_HINT = /log.?in|sign.?in|se.?connecter|connexion|identifi/i;
   const TEXT_TYPES = new Set(["text", "email", "tel", ""]);
 
   // MARK: Fields
@@ -85,7 +86,12 @@
       const autocomplete = (input.autocomplete || "").toLowerCase();
       const hint = hintOf(input);
       let role;
-      if (autocomplete.includes("new-password")) role = "new";
+      // Some sign-in pages mark their only password field "new-password",
+      // to keep browsers from filling it: a lone field in a form (or on a
+      // page) that says "log in", and nothing about signing up, is the
+      // account's current password.
+      if (autocomplete.includes("new-password") && fields.length === 1 && signInDespiteNewPassword(scope)) role = "current";
+      else if (autocomplete.includes("new-password")) role = "new";
       else if (autocomplete.includes("current-password")) role = "current";
       else if (CURRENT_HINT.test(hint)) role = "current";
       else if (NEW_HINT.test(hint)) role = "new";
@@ -97,6 +103,12 @@
       roles.set(input, role);
     });
     return roles;
+  }
+
+  function signInDespiteNewPassword(scope) {
+    const hint = formHint(scope);
+    if (SIGNUP_FORM_HINT.test(hint) || SIGNUP_FORM_HINT.test(location.href)) return false;
+    return LOGIN_FORM_HINT.test(hint) || LOGIN_FORM_HINT.test(location.href);
   }
 
   const roleOf = (input) => passwordRoles(scopeOf(input)).get(input) ?? null;
