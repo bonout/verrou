@@ -4341,6 +4341,16 @@
         }
       }
     },
+    "Copy One-Time Code": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier le code à usage unique"
+          }
+        }
+      }
+    },
     "Copy Password": {
       "localizations": {
         "fr": {
@@ -4377,6 +4387,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copier l'identifiant"
+          }
+        }
+      }
+    },
+    "Copy Website": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier le site"
           }
         }
       }
@@ -6871,6 +6891,16 @@
         }
       }
     },
+    "Hold ⌥ to show the hidden fields": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Maintenir ⌥ pour afficher les champs masqués"
+          }
+        }
+      }
+    },
     "Home Wi-Fi": {
       "localizations": {
         "fr": {
@@ -7597,6 +7627,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il renvoie à un autre champ de l'élément"
+          }
+        }
+      }
+    },
+    "Item": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élément"
           }
         }
       }

@@ -223,7 +223,6 @@ private struct ItemToolbarActions: View {
             Label("Copy Password", systemImage: "key")
         }
         .help("Copy the password (⇧⌘C)")
-        .keyboardShortcut("c", modifiers: [.command, .shift])
         .disabled(item?.category != .login)
         Button {
             if let host = item?.host, let url = URL(string: "https://\(host)") {
@@ -267,8 +266,11 @@ struct SidebarView: View {
             }
             if let folders = model.counts?.folders, !folders.isEmpty {
                 Section("Folders") {
-                    ForEach(folders, id: \.name) { folder in
-                        row(.folder(name: folder.name), folder.name, "folder", count: folder.count, tint: .secondary)
+                    // Nested by name ("Work/Clients"); items dropped on a
+                    // folder move into it.
+                    OutlineGroup(FolderNode.tree(folders.map { ($0.name, $0.count) }), children: \.children) { node in
+                        row(.folder(name: node.path), node.name, "folder", count: node.count, tint: .secondary)
+                            .modifier(FolderDropTarget(path: node.path))
                     }
                 }
             }
@@ -598,6 +600,7 @@ private struct ListRow: View, Equatable {
     let focusList: () -> Void
     @State private var hovered = false
     @State private var pressed = false
+    @State private var deferredClick = false
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.selected == rhs.selected && lhs.row.summary == rhs.row.summary
@@ -612,19 +615,35 @@ private struct ListRow: View, Equatable {
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
             // On press, not on release: the highlight follows the click
-            // without waiting. ⌃-click: only the context menu.
-            .gesture(
+            // without waiting. ⌃-click: only the context menu. A plain press
+            // on a row of a multiple selection waits for the release, like
+            // the Finder: dragging carries the whole selection.
+            .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
                         guard !pressed else { return }
                         pressed = true
                         let modifiers = NSEvent.modifierFlags
                         guard !modifiers.contains(.control) else { return }
-                        model.click(row.id, modifiers: modifiers)
+                        if modifiers.intersection([.command, .shift]).isEmpty,
+                           model.isMultiSelection, model.selectedSet.contains(row.id) {
+                            deferredClick = true
+                        } else {
+                            model.click(row.id, modifiers: modifiers)
+                        }
                         focusList()
                     }
-                    .onEnded { _ in pressed = false }
+                    .onEnded { _ in
+                        if deferredClick { model.click(row.id, modifiers: []) }
+                        deferredClick = false
+                        pressed = false
+                    }
             )
+            // To a sidebar folder (FolderDropTarget).
+            .onDrag {
+                deferredClick = false
+                return ItemDrag.provider(model.dragIDs(from: row.id))
+            }
             .contextMenu { RowMenu(summary: row.summary) }
     }
 }

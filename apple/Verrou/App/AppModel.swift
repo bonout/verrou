@@ -1383,6 +1383,19 @@ final class AppModel {
         if field.secret { revealed[field.id] = nil }
     }
 
+    func copyUsername(of itemID: String) {
+        guard let summary = summary(id: itemID), summary.category == .login, !summary.subtitle.isEmpty else { return }
+        session.recordItemUse(id: itemID)
+        copy(summary.subtitle, label: String(localized: "Username"), secret: false)
+    }
+
+    /// The first website, in full (not only its host).
+    func copyWebsite(of itemID: String) {
+        guard let url = (try? session.detail(id: itemID))?.urls.first else { return }
+        session.recordItemUse(id: itemID)
+        copy(url, label: String(localized: "Website"), secret: false)
+    }
+
     func copyPassword(of itemID: String) {
         if summaries.first(where: { $0.id == itemID })?.sharing?.hidePasswords == true {
             toast = Toast(message: String(localized: "Password hidden"),

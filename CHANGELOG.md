@@ -4,6 +4,17 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**Mac**
+- Folders nest the Bitwarden way: `Work/Clients` shows inside `Work`, in a
+  tree in the sidebar, and selecting `Work` lists its subfolders' items too.
+- Drag items, or a whole selection, onto a folder in the sidebar to move
+  them there.
+- New *Item* menu: ⌃⌘C copies the username, ⇧⌘C the password, ⌥⌘C the
+  one-time code, ⌥⇧⌘C the website.
+- Hold ⌥ to show the hidden fields of the item.
+
 ## 0.3.1
 
 **Mac**

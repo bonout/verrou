@@ -182,6 +182,27 @@ fn search_is_fast_on_10k_items() {
     assert!(per_query.as_millis() < 16, "{per_query:?} per query");
 }
 
+#[test]
+fn a_folder_holds_its_subfolders() {
+    let mut items = mock::vault_items(0, 42, MockLanguage::En);
+    items[0].folder = Some("Work/Clients/Acme".to_owned());
+    items[1].folder = Some("Work".to_owned());
+    items[2].folder = Some("Workshop".to_owned());
+    let (client, own, other) = (
+        items[0].title.clone(),
+        items[1].title.clone(),
+        items[2].title.clone(),
+    );
+    let v = Vault::new(items);
+    let work = titles(&v, "", &Filter::Folder("work".to_owned()));
+    assert!(work.contains(&client) && work.contains(&own));
+    assert!(!work.contains(&other), "Workshop isn't inside Work");
+    assert_eq!(
+        titles(&v, "", &Filter::Folder("Work/Clients".to_owned())),
+        vec![client]
+    );
+}
+
 fn vault_with_passkeys() -> Vault {
     let items = mock::vault_items(0, 42, MockLanguage::En);
     let passkeys = mock::passkeys(&items, MockLanguage::En);

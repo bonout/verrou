@@ -83,6 +83,12 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   any item.
 - **Act on many items at once**: select them like in Finder, then archive,
   trash, restore, favorite or move them to a folder in one go.
+- **Nest folders** the Bitwarden way (`Work/Clients` sits inside `Work`, in
+  a tree in the sidebar), and drag items, or a whole selection, onto a
+  folder to move them.
+- **Copy from the keyboard**: ⌃⌘C the username, ⇧⌘C the password, ⌥⌘C the
+  one-time code, ⌥⇧⌘C the website (the *Item* menu); hold ⌥ to show the
+  hidden fields of the item.
 - **Find your passkeys**: a *Passkeys* list with a count (site and user name
   on each row), and `passkey:github` or `has:passkey` in the search.
 - **Sort your way**: by relevance, title, modification, creation or last use
@@ -137,6 +143,9 @@ managers and cleared after 90 seconds. Details and known limits are in
 [SECURITY.md](SECURITY.md).
 
 ## Install
+
+You need a [Vaultwarden](https://github.com/dani-garcia/vaultwarden) server
+(the end-to-end tests run against 1.37.4).
 
 Every release is on the [Releases page](https://github.com/bonout/verrou/releases/latest),
 with `SHA256SUMS` and a build attestation for each file
@@ -378,7 +387,7 @@ fills any app, while your data stays in the Bitwarden format on your server.
 You can use both side by side.
 
 **Does it work with bitwarden.com?**
-It's built and tested against Vaultwarden only.
+It's built and tested against Vaultwarden only: every change runs the end-to-end tests against Vaultwarden 1.37.4.
 
 **Is there an iPhone app?**
 Yes, in progress: the iPhone app and its system-wide AutoFill (passwords,

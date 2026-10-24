@@ -53,6 +53,25 @@ struct VerrouApp: App {
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
             }
+            // The selected item, as in 1Password and Quick Access: ⌘C alone
+            // stays the text copy of the fields.
+            CommandMenu("Item") {
+                let item = delegate.model.isMultiSelection ? nil : delegate.model.selectedSummary
+                Button("Copy Username") { if let item { delegate.model.copyUsername(of: item.id) } }
+                    .keyboardShortcut("c", modifiers: [.command, .control])
+                    .disabled(item?.category != .login || item?.subtitle.isEmpty != false)
+                Button("Copy Password") { if let item { delegate.model.copyPassword(of: item.id) } }
+                    .keyboardShortcut("c", modifiers: [.command, .shift])
+                    .disabled(item?.category != .login)
+                Button("Copy One-Time Code") { if let item { delegate.model.copyCode(of: item.id) } }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
+                    .disabled(item?.hasTotp != true)
+                Button("Copy Website") { if let item { delegate.model.copyWebsite(of: item.id) } }
+                    .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+                    .disabled(item?.host == nil)
+                Divider()
+                Text("Hold ⌥ to show the hidden fields")
+            }
             CommandMenu("Vault") {
                 Button("Quick Access") { delegate.quickAccess?.toggle() }
                     .keyboardShortcut(.space, modifiers: [.command, .shift])

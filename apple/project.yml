@@ -84,6 +84,11 @@ targets:
       path: Verrou/Info.plist
       properties:
         VerrouAppGroup: $(VERROU_MAC_APP_GROUP)
+        # Items dragged from the list to a sidebar folder (Views/FolderTree.swift).
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: app.verrou.items
+            UTTypeDescription: Verrou items
+            UTTypeConformsTo: [public.data]
         # Updates (Verrou/App/Updates.swift): only builds given the public key
         # (scripts/release-macos.sh) check for them. The app is sandboxed:
         # Sparkle installs through its launcher service.
@@ -185,6 +190,7 @@ targets:
       - path: Shared/Core/VerrouStorage.swift
       - path: VerrouAutoFill/PasskeyPrf.swift
       - path: Shared/Remote/RemoteApproval.swift
+      - path: Verrou/Views/FolderNode.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests

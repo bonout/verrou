@@ -403,25 +403,33 @@ struct BrowserSection: View {
 
 /// Updates of the app (`Updates`): only in release builds.
 private struct UpdatesSection: View {
-    @Environment(Updates.self) private var updates
+    /// Optional: the offscreen review shows Settings without an updater.
+    @Environment(Updates.self) private var updates: Updates?
 
     var body: some View {
-        @Bindable var updates = updates
-        if updates.isAvailable {
-            Section {
-                Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
-                Toggle("Download and install updates automatically", isOn: $updates.automaticallyInstalls)
-                    .disabled(!updates.automaticallyChecks)
-                LabeledContent("Verrou \(Updates.version)") {
-                    Button("Check Now") { updates.check() }
-                        .disabled(!updates.canCheck)
-                }
-            } header: {
-                Text("Updates")
-            } footer: {
-                Text("An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.")
-                    .foregroundStyle(.secondary)
+        if let updates, updates.isAvailable {
+            UpdatesControls(updates: updates)
+        }
+    }
+}
+
+private struct UpdatesControls: View {
+    @Bindable var updates: Updates
+
+    var body: some View {
+        Section {
+            Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
+            Toggle("Download and install updates automatically", isOn: $updates.automaticallyInstalls)
+                .disabled(!updates.automaticallyChecks)
+            LabeledContent("Verrou \(Updates.version)") {
+                Button("Check Now") { updates.check() }
+                    .disabled(!updates.canCheck)
             }
+        } header: {
+            Text("Updates")
+        } footer: {
+            Text("An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.")
+                .foregroundStyle(.secondary)
         }
     }
 }

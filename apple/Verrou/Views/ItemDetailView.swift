@@ -80,6 +80,14 @@ struct ItemDetailView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .modifier(AttachmentDropModifier(summary: detail.summary))
+        .modifier(OptionPeek(itemID: detail.summary.id, fieldIDs: peekable))
+    }
+
+    /// Hidden values ⌥ shows: the secret fields (not the one-time code,
+    /// always visible) and the notes.
+    private var peekable: [String] {
+        let secrets = fields.filter { $0.secret && !$0.hidden && $0.fieldType != .totp }.map(\.id)
+        return detail.hasNotes ? secrets + ["notes"] : secrets
     }
 
     private var header: some View {
@@ -368,5 +376,62 @@ struct NotesRow: View {
             }
         }
         .padding(14)
+    }
+}
+
+/// Holding ⌥ shows the item's hidden fields, released hides them again. An
+/// item that asks for a confirmation (protected, or the vault's session
+/// password) isn't shown this way: its eye button asks first.
+private struct OptionPeek: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+    let fieldIDs: [String]
+    @State private var monitor: Any?
+    /// The fields ⌥ revealed, to hide only those on release.
+    @State private var shown: [String] = []
+    /// What the monitor, created once, acts on: the item shown now.
+    @State private var current = Current()
+
+    private final class Current {
+        var itemID = ""
+        var fieldIDs: [String] = []
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: itemID, initial: true) { current.itemID = itemID }
+            .onChange(of: fieldIDs, initial: true) { current.fieldIDs = fieldIDs }
+            .onAppear {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
+                    let option = event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option
+                    option ? show() : hide()
+                    return event
+                }
+            }
+            .onDisappear {
+                if let monitor { NSEvent.removeMonitor(monitor) }
+                monitor = nil
+                hide()
+            }
+            .onChange(of: itemID) { hide() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in hide() }
+    }
+
+    private func show() {
+        let itemID = current.itemID
+        guard shown.isEmpty, !itemID.isEmpty, model.lockState == .unlocked,
+              !model.session.needsConfirmation(id: itemID) else { return }
+        let hidden = current.fieldIDs.filter { model.revealed[$0] == nil }
+        withAnimation(.snappy(duration: 0.15)) {
+            shown = hidden.filter { model.reveal($0, of: itemID) != nil }
+        }
+    }
+
+    private func hide() {
+        guard !shown.isEmpty else { return }
+        withAnimation(.snappy(duration: 0.15)) {
+            for id in shown { model.revealed[id] = nil }
+        }
+        shown = []
     }
 }

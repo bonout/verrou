@@ -317,7 +317,15 @@ fn filter_accepts(filter: &Filter, item: &Item, entry: &Entry) -> bool {
         Filter::Favorites => item.favorite,
         Filter::Kind(kind) => item.kind == *kind,
         Filter::Template(template) => item.template() == Some(*template),
-        Filter::Folder(folder) => entry.folder.as_deref() == Some(fold(folder).as_str()),
+        // A folder holds its subfolders' items too: "Work" shows
+        // "Work/Clients" (Bitwarden's nested folders, named with "/").
+        Filter::Folder(folder) => entry.folder.as_deref().is_some_and(|name| {
+            let folder = fold(folder);
+            name == folder
+                || name
+                    .strip_prefix(folder.as_str())
+                    .is_some_and(|rest| rest.starts_with('/'))
+        }),
         Filter::Tag(tag) => entry.tags.contains(&fold(tag)),
         Filter::WithTotp => item.has_totp(),
         Filter::Organization(id) => item
