@@ -1,38 +1,4 @@
-<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Verrou : votre coffre Vaultwarden, natif sur Mac et iPhone</title>
-<meta name="description" content="Un gestionnaire de mots de passe natif et rapide pour votre propre serveur Vaultwarden : app Mac, app iPhone, extension de navigateur, ligne de commande et agent SSH. Open source.">
-<meta name="color-scheme" content="dark">
-<meta property="og:title" content="Verrou">
-<meta property="og:description" content="Votre coffre Vaultwarden, natif sur Mac et iPhone. Recherche instantanée, validation depuis l'iPhone, secrets tenus à l'écart du terminal.">
-<meta property="og:image" content="https://verrou.bonout.com/media/fr/mac.png">
-<link rel="canonical" href="https://verrou.bonout.com/fr/">
-<link rel="alternate" hreflang="en" href="https://verrou.bonout.com/">
-<link rel="alternate" hreflang="fr" href="https://verrou.bonout.com/fr/">
-<link rel="alternate" hreflang="x-default" href="https://verrou.bonout.com/">
-<link rel="icon" href="/media/icon.png">
-<link rel="stylesheet" href="/style.css">
-</head>
-<body>
-
-<nav>
-  <div class="wrap">
-    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
-    <div class="links">
-      <a href="#features">Fonctions</a>
-      <a href="#iphone-approval">Validation iPhone</a>
-      <a href="#terminal">Terminal</a>
-      <a href="#security">Sécurité</a>
-      <a href="https://github.com/bonout/verrou">GitHub</a>
-    </div>
-    <a class="lang" href="/" hreflang="en" lang="en">EN</a>
-    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Télécharger</a>
-  </div>
-</nav>
-
+<!--{"title": "Verrou : votre coffre Vaultwarden, natif sur Mac et iPhone", "description": "Gestionnaire de mots de passe natif et rapide pour votre serveur Vaultwarden : app Mac et iPhone, extension, ligne de commande et agent SSH. Libre.", "schema": "app"}-->
 <header class="hero" id="top">
   <div class="notch-stage" aria-hidden="true">
     <div class="notch" id="notch">
@@ -48,7 +14,7 @@
     </div>
     <p class="small">Version {{version}} · <a href="https://github.com/bonout/verrou/releases/tag/v{{version}}">notes de version</a> · Libre et open source · macOS 15 ou plus récent · iOS 17 ou plus récent · fonctionne avec votre coffre Bitwarden existant</p>
     <div class="window reveal">
-      <video src="/media/fr/demo.mp4" poster="/media/fr/mac.png" autoplay muted loop playsinline aria-label="Verrou sur Mac : déverrouillage, recherche, affichage d'un mot de passe et de son code à usage unique, Accès rapide"></video>
+      <video src="/media/fr/demo.mp4" poster="/img/fr/mac.jpg" muted loop playsinline preload="none" data-play aria-label="Verrou sur Mac : déverrouillage, recherche, affichage d'un mot de passe et de son code à usage unique, Accès rapide"></video>
     </div>
   </div>
 </header>
@@ -135,9 +101,9 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
       <p class="sub" style="margin:0 auto">Remplissage automatique des identifiants, codes à usage unique et passkeys dans Safari et les apps. Scannez un QR code de double authentification, ou choisissez Verrou pour ouvrir tous les liens de configuration de codes. Liquid Glass sur iOS 26.</p>
     </div>
     <div class="phones reveal">
-      <div class="phone"><img src="/media/fr/ios-vault.png" alt="Verrou sur iPhone : l'écran d'accueil du coffre" loading="lazy"></div>
-      <div class="phone"><video src="/media/fr/ios-app.mp4" poster="/media/fr/ios-search.png" autoplay muted loop playsinline aria-label="Verrou sur iPhone : déverrouillage, recherche, copie d'un mot de passe, code à usage unique"></video></div>
-      <div class="phone"><img src="/media/fr/ios-item.png" alt="Verrou sur iPhone : un élément avec son code à usage unique" loading="lazy"></div>
+      <div class="phone"><img src="/img/fr/ios-vault.jpg" alt="Verrou sur iPhone : l'écran d'accueil du coffre" loading="lazy"></div>
+      <div class="phone"><video src="/media/fr/ios-app.mp4" poster="/img/fr/ios-search.jpg" muted loop playsinline preload="none" data-play aria-label="Verrou sur iPhone : déverrouillage, recherche, copie d'un mot de passe, code à usage unique"></video></div>
+      <div class="phone"><img src="/img/fr/ios-item.jpg" alt="Verrou sur iPhone : un élément avec son code à usage unique" loading="lazy"></div>
     </div>
   </div>
 </section>
@@ -172,18 +138,6 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
   </div>
 </section>
 
-<footer>
-  <div class="wrap">
-    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
-    <span>Open source, GPL-3.0. Non affilié à Bitwarden.</span>
-    <nav>
-      <a href="https://github.com/bonout/verrou">GitHub</a>
-      <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Confidentialité</a>
-      <a href="mailto:contact@bonout.com">Contact</a>
-    </nav>
-  </div>
-</footer>
-
 <script type="application/json" id="notch-scenes">[
   "<span>🔒</span><span>Verrou</span>",
   "<span>›_</span><span>Le terminal veut lire « GitHub »</span><span class=\"dim\">Touch ID</span>",
@@ -192,6 +146,3 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
   "<span>GitHub</span><span class=\"code\">482 913</span>{ring}",
   "<span>📋</span><span>Mot de passe copié</span><span class=\"dim\">effacé dans 90 s</span>"
 ]</script>
-<script src="/site.js"></script>
-</body>
-</html>

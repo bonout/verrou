@@ -1,0 +1,36 @@
+# Verrou
+
+> Verrou is a free, open source (GPL-3.0) password manager app for macOS and iPhone that works with your own Vaultwarden server. It is a native client (SwiftUI on a Rust core, Bitwarden's official Rust SDK for the cryptography) for the vault you already have, in the standard Bitwarden format, so the official Bitwarden apps keep working next to it. Current version: {{version}}. Website: https://verrou.bonout.com. Source: https://github.com/bonout/verrou.
+
+Key facts:
+
+- Platforms: macOS 15 or later (Mac app, signed and notarized, updates itself), iOS 17 or later (iPhone app, coming to the App Store), browser extension for Brave, Chrome and Firefox, command line tool `verrou` (macOS and Linux).
+- Server: built and tested against Vaultwarden (self-hosted Bitwarden-compatible server). bitwarden.com is not a supported server.
+- Mac: Touch ID, YubiKey or master password; search as you type (under 5 ms on 10,000 items); Quick Access from any app (⌘⇧Space); fills any Mac app (⌘\); offline edits; audit (reused, weak, breached passwords, missing two-factor); import from 1Password, Apple Passwords and Proton Pass with duplicate merging.
+- iPhone: Face ID; AutoFill for passwords, one-time codes (TOTP) and passkeys in Safari and apps; QR code scanning to set up one-time codes; shared vaults, Send.
+- Terminal and AI agents: `verrou run` gives a command the secrets referenced as `verrou://Item/field` in its environment and masks them in its output, so they never reach the terminal or an AI agent's context (Claude Code, Codex…). Each secret asks for Touch ID, with the reason given (`--reason`). When the Mac is locked or idle, the request goes to the paired iPhone, approved with Face ID, through the user's own iCloud account, sealed end to end; the Mac's vault key never leaves the Mac. SSH agent and git commit signing with keys stored in the vault.
+- Privacy: the vault is decrypted only on the user's devices; no account, no analytics; every network connection is documented in PRIVACY.md and SECURITY.md.
+- Price: free. Publisher: Bonout (contact@bonout.com). Not affiliated with Bitwarden, Inc. or the Vaultwarden project.
+
+## Pages
+
+- [Home](https://verrou.bonout.com/): overview, Mac and iPhone, iPhone approvals, terminal
+- [Vaultwarden Mac app](https://verrou.bonout.com/vaultwarden-mac/): features and install on macOS
+- [Vaultwarden iPhone app](https://verrou.bonout.com/vaultwarden-iphone/): AutoFill, one-time codes, passkeys
+- [Secrets for AI agents](https://verrou.bonout.com/ai-agents-secrets/): `verrou run`, masking, approvals from the iPhone
+- [Verrou vs the Bitwarden app](https://verrou.bonout.com/bitwarden-alternative/): comparison, when to use which
+- [Verrou vs 1Password](https://verrou.bonout.com/1password-alternative/): comparison, moving from 1Password
+- [FAQ](https://verrou.bonout.com/faq/)
+- [All pages as text](https://verrou.bonout.com/llms-full.txt)
+
+## Docs
+
+- [README](https://github.com/bonout/verrou/blob/main/README.md): features, install
+- [Guide](https://github.com/bonout/verrou/blob/main/docs/GUIDE.md): everything in detail, including the command line
+- [Security](https://github.com/bonout/verrou/blob/main/SECURITY.md): design, connections, known limits
+- [Privacy policy](https://github.com/bonout/verrou/blob/main/PRIVACY.md)
+- [Releases](https://github.com/bonout/verrou/releases/latest): downloads, SHA256SUMS, build attestations
+
+## Optional
+
+- [Version française](https://verrou.bonout.com/fr/)

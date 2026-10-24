@@ -167,7 +167,39 @@ pre .g { color: var(--green); }
 
 footer { border-top: 1px solid var(--line); padding: 40px 0 60px; color: var(--muted); font-size: 14px; }
 footer .wrap { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
-footer nav { all: unset; display: flex; gap: 20px; margin-left: auto; }
+footer nav { all: unset; display: flex; flex-wrap: wrap; gap: 10px 20px; margin-left: auto; }
+footer nav a { text-decoration: none; }
+footer nav a:hover { color: var(--text); }
+
+/* Content pages (site/pages/*): a hero, then prose, tables and questions. */
+.page-hero { position: relative; text-align: center; padding: 72px 0 24px; }
+.page-hero::before {
+  content: ""; position: absolute; inset: -200px 0 auto 0; height: 600px; z-index: -1;
+  background: radial-gradient(60% 60% at 50% 0%, rgba(108, 116, 255, 0.28), transparent 70%);
+}
+.page-hero h1 { max-width: 18ch; font-size: clamp(36px, 6vw, 60px); }
+.prose { width: min(760px, 100% - 32px); margin: 0 auto; padding: 24px 0 80px; }
+.prose h2 { font-size: clamp(26px, 3.4vw, 34px); margin: 56px 0 12px; }
+.prose h3 { font-size: 19px; margin: 28px 0 6px; }
+.prose p, .prose li { color: var(--muted); }
+.prose strong { color: var(--text); font-weight: 600; }
+.prose ul { padding-left: 22px; }
+.prose li { margin: 6px 0; }
+.prose a:not(.button) { color: #aab0ff; }
+.prose pre { margin: 18px 0; }
+.prose figure { margin: 32px 0; }
+.prose figure img { border-radius: 14px; border: 1px solid var(--line); }
+.prose figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; text-align: center; }
+.prose .phone { margin: 32px auto; }
+.prose .cta { justify-content: flex-start; margin: 28px 0 0; }
+.table { overflow-x: auto; margin: 20px 0; border: 1px solid var(--line); border-radius: 16px; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--text); font-weight: 600; background: var(--panel); }
+td { color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { color: var(--text); }
+.note { font-size: 14px; color: var(--muted); }
 
 .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.8s ease, transform 0.8s ease; }
 .reveal.in { opacity: 1; transform: none; }

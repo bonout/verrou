@@ -1,45 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Verrou: your Vaultwarden vault, native on Mac and iPhone</title>
-<meta name="description" content="A fast, native password manager for your own Vaultwarden server: Mac app, iPhone app, browser extension, command line and SSH agent. Open source.">
-<meta name="color-scheme" content="dark">
-<meta property="og:title" content="Verrou">
-<meta property="og:description" content="Your Vaultwarden vault, native on Mac and iPhone. Instant search, approvals from your iPhone, secrets kept out of your terminal.">
-<meta property="og:image" content="https://verrou.bonout.com/media/en/mac.png">
-<link rel="canonical" href="https://verrou.bonout.com/">
-<link rel="alternate" hreflang="en" href="https://verrou.bonout.com/">
-<link rel="alternate" hreflang="fr" href="https://verrou.bonout.com/fr/">
-<link rel="alternate" hreflang="x-default" href="https://verrou.bonout.com/">
-<link rel="icon" href="/media/icon.png">
-<link rel="stylesheet" href="/style.css">
-<script>
-  // French browsers get the French page, until their reader picks a language.
-  try {
-    const preferred = ((navigator.languages || [navigator.language])[0] || "").toLowerCase();
-    if (!localStorage.getItem("lang") && preferred.startsWith("fr")) location.replace("/fr/" + location.hash);
-  } catch {}
-</script>
-</head>
-<body>
-
-<nav>
-  <div class="wrap">
-    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
-    <div class="links">
-      <a href="#features">Features</a>
-      <a href="#iphone-approval">iPhone approval</a>
-      <a href="#terminal">Terminal</a>
-      <a href="#security">Security</a>
-      <a href="https://github.com/bonout/verrou">GitHub</a>
-    </div>
-    <a class="lang" href="/fr/" hreflang="fr" lang="fr">FR</a>
-    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download</a>
-  </div>
-</nav>
-
+<!--{"title": "Verrou: your Vaultwarden vault, native on Mac and iPhone", "description": "A fast, native password manager for your own Vaultwarden server: Mac app, iPhone app, browser extension, command line and SSH agent. Open source.", "schema": "app"}-->
 <header class="hero" id="top">
   <div class="notch-stage" aria-hidden="true">
     <div class="notch" id="notch">
@@ -55,7 +14,7 @@
     </div>
     <p class="small">Version {{version}} · <a href="https://github.com/bonout/verrou/releases/tag/v{{version}}">release notes</a> · Free and open source · macOS 15 or later · iOS 17 or later · works with your existing Bitwarden vault</p>
     <div class="window reveal">
-      <video src="/media/en/demo.mp4" poster="/media/en/mac.png" autoplay muted loop playsinline aria-label="Verrou on Mac: unlocking, searching, revealing a password and its one-time code, Quick Access"></video>
+      <video src="/media/en/demo.mp4" poster="/img/en/mac.jpg" muted loop playsinline preload="none" data-play aria-label="Verrou on Mac: unlocking, searching, revealing a password and its one-time code, Quick Access"></video>
     </div>
   </div>
 </header>
@@ -142,9 +101,9 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
       <p class="sub" style="margin:0 auto">AutoFill for logins, one-time codes and passkeys in Safari and apps. Scan a two-factor QR code, or set Verrou up to open every setup code link. Liquid Glass on iOS 26.</p>
     </div>
     <div class="phones reveal">
-      <div class="phone"><img src="/media/en/ios-vault.png" alt="Verrou on iPhone: the vault home screen" loading="lazy"></div>
-      <div class="phone"><video src="/media/en/ios-app.mp4" poster="/media/en/ios-search.png" autoplay muted loop playsinline aria-label="Verrou on iPhone: unlock, search, copy a password, one-time code"></video></div>
-      <div class="phone"><img src="/media/en/ios-item.png" alt="Verrou on iPhone: an item with its one-time code" loading="lazy"></div>
+      <div class="phone"><img src="/img/en/ios-vault.jpg" alt="Verrou on iPhone: the vault home screen" loading="lazy"></div>
+      <div class="phone"><video src="/media/en/ios-app.mp4" poster="/img/en/ios-search.jpg" muted loop playsinline preload="none" data-play aria-label="Verrou on iPhone: unlock, search, copy a password, one-time code"></video></div>
+      <div class="phone"><img src="/img/en/ios-item.jpg" alt="Verrou on iPhone: an item with its one-time code" loading="lazy"></div>
     </div>
   </div>
 </section>
@@ -179,18 +138,6 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
   </div>
 </section>
 
-<footer>
-  <div class="wrap">
-    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
-    <span>Open source, GPL-3.0. Not affiliated with Bitwarden.</span>
-    <nav>
-      <a href="https://github.com/bonout/verrou">GitHub</a>
-      <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Privacy</a>
-      <a href="mailto:contact@bonout.com">Contact</a>
-    </nav>
-  </div>
-</footer>
-
 <script type="application/json" id="notch-scenes">[
   "<span>🔒</span><span>Verrou</span>",
   "<span>›_</span><span>Terminal wants to read “GitHub”</span><span class=\"dim\">Touch ID</span>",
@@ -199,6 +146,3 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
   "<span>GitHub</span><span class=\"code\">482 913</span>{ring}",
   "<span>📋</span><span>Password copied</span><span class=\"dim\">cleared in 90 s</span>"
 ]</script>
-<script src="/site.js"></script>
-</body>
-</html>

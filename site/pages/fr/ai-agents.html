@@ -1,0 +1,50 @@
+<!--{"title": "Secrets pour agents IA, validés sur iPhone | Verrou", "description": "Donnez à Claude Code, Codex et aux agents IA les clés dont ils ont besoin sans les montrer : verrou run injecte, masque et demande Touch ID ou l'iPhone."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Terminal et agents IA</div>
+    <h1>Vos agents utilisent vos secrets. Ils ne les voient jamais.</h1>
+    <p class="lede">Verrou transmet clés d'API et mots de passe aux commandes que lance un agent IA, les tient hors de son contexte et de votre historique, et vous demande d'abord : Touch ID sur le Mac, Face ID sur l'iPhone quand vous êtes absent.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Télécharger Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/docs/GUIDE.md#command-line-and-ssh-agent">Guide de la ligne de commande</a>
+    </div>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>Le problème des secrets avec les agents IA</h2>
+  <p>Un agent de code comme Claude Code ou Codex lance des commandes dans votre terminal. Si un jeton se trouve dans un fichier <code>.env</code>, une variable d'environnement ou la sortie d'une commande, il finit dans le contexte de l'agent, dans des journaux, et parfois dans une transcription envoyée ailleurs. Coller les secrets à la main ne tient pas, et donner à l'agent tout votre gestionnaire de mots de passe est pire.</p>
+
+  <h2>verrou run : les secrets entrent, ne sortent jamais</h2>
+  <p><code>verrou run</code> lance une commande avec les secrets dont elle a besoin dans son environnement. Vos fichiers ne contiennent que des références, ils peuvent donc être commités :</p>
+  <pre><span class="c"># .env : aucun secret dedans</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "déploiement" run --env-file .env -- ./deploy.sh
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
+  <ul>
+    <li><strong>Sortie masquée.</strong> Si la commande affiche un secret, Verrou le remplace par <code>&lt;concealed by Verrou&gt;</code> avant qu'il n'atteigne le terminal ou l'agent.</li>
+    <li><strong>Validés un par un.</strong> Chaque secret demande Touch ID, avec le motif donné par l'agent (<code>--reason</code> ou <code>VERROU_REASON</code>). Une validation vaut 5 minutes pour cet élément et ce terminal.</li>
+    <li><strong>Chercher sans voir.</strong> <code>verrou search</code> montre titres, identifiants et sites, jamais les mots de passe : un agent trouve seul la bonne référence.</li>
+  </ul>
+
+  <h2>Loin du Mac ? Validez depuis l'iPhone.</h2>
+  <p>Quand l'écran du Mac est verrouillé ou que vous êtes inactif, la demande part vers Verrou sur votre iPhone associé : « Le terminal veut lire GitHub, motif : déploiement ». Face ID, un geste, et la commande continue. Si le coffre du Mac était verrouillé, une seule validation le déverrouille pour cet élément.</p>
+  <ul>
+    <li><strong>De bout en bout.</strong> Demandes et réponses passent par la base privée de votre propre compte iCloud, scellées entre le Mac et les clés Secure Enclave de l'iPhone. Aucun serveur à nous.</li>
+    <li><strong>La clé du coffre reste sur le Mac.</strong> L'iPhone ne fait que valider ; il ne reçoit jamais la clé du coffre du Mac.</li>
+    <li><strong>La notification ne dit rien.</strong> Elle indique seulement qu'une demande attend ; le motif s'affiche dans l'app, après Face ID.</li>
+  </ul>
+
+  <h2>Agent SSH et signature git</h2>
+  <p><code>eval "$(verrou ssh-agent)"</code> sert les clés SSH de votre coffre : <code>ssh</code>, <code>git push</code> et <code>git commit -S</code> fonctionnent, et chaque signature demande votre accord.</p>
+
+  <h2>Et par rapport aux autres</h2>
+  <p>1Password propose un <code>op run</code> comparable dans son outil en ligne de commande, lié à son cloud. Verrou le fait pour un coffre sur votre propre serveur Vaultwarden, avec validation depuis l'iPhone ; voir <a href="/fr/alternative-1password/">Verrou ou 1Password</a>.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Télécharger pour Mac</a>
+    <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/SECURITY.md#terminal-and-ssh-agent">Détails de sécurité</a>
+  </div>
+</article>

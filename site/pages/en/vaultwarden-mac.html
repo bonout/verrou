@@ -1,0 +1,54 @@
+<!--{"title": "Vaultwarden Mac app: Verrou, a native client for your server", "description": "A native macOS app for Vaultwarden: Touch ID, search as you type, Quick Access from any app, browser extension and SSH agent. Free and open source.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden for Mac</div>
+    <h1>A native Mac app for your Vaultwarden server.</h1>
+    <p class="lede">Verrou opens the vault you already have on Vaultwarden, in a real Mac app: SwiftUI on a Rust core, Touch ID, and results as you type.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Source code</a>
+    </div>
+    <p class="small">Free and open source (GPL-3.0) · macOS 15 or later · signed and notarized by Apple · updates itself</p>
+  </div>
+</header>
+
+<article class="prose">
+  <figure>
+    <img src="/img/en/mac.jpg" alt="Verrou on Mac: the vault, a login with its one-time code" width="1600" height="1000" loading="lazy">
+    <figcaption>Verrou on a Mac, with the demo vault.</figcaption>
+  </figure>
+
+  <h2>What is Verrou?</h2>
+  <p><strong>Verrou is a free, open source password manager app for macOS and iPhone that works with your own Vaultwarden server.</strong> It reads and writes your vault in the standard Bitwarden format, so the official Bitwarden apps and the web vault keep working next to it. Nothing to migrate, nothing to export.</p>
+
+  <h2>Why a native Vaultwarden client on Mac</h2>
+  <ul>
+    <li><strong>Opens in a blink, finds as you type.</strong> Fuzzy, accent-insensitive search, under 5 ms on 10,000 items, with filters like <code>type:card</code>.</li>
+    <li><strong>Quick Access from any app.</strong> <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Space</kbd>, type, then copy a password or a one-time code without opening the main window.</li>
+    <li><strong>Fills any Mac app.</strong> <kbd>⌘</kbd> <kbd>\</kbd> types the username and password into the app in front of you, browser or not.</li>
+    <li><strong>Touch ID, a YubiKey or your master password.</strong> The vault key is sealed by the Secure Enclave; the vault locks after inactivity, on sleep and with the screen.</li>
+    <li><strong>Works offline.</strong> Edits, new items, trash and archive are kept and synced in order as soon as the server answers.</li>
+  </ul>
+
+  <h2>Everything your Vaultwarden vault holds</h2>
+  <p>Logins with one-time codes (TOTP), passkeys, cards, identities, secure notes, SSH keys, attachments, Wi-Fi networks with a QR code to join, and custom fields. Shared vaults too: organizations, collections, groups and members, confirmed by fingerprint phrase, plus Send and emergency access.</p>
+
+  <h2>Browser extension, terminal and SSH agent</h2>
+  <p>The Verrou extension fills logins, one-time codes, cards and passkeys in Brave, Chrome and Firefox, only for the site in front of you, over an encrypted local channel. From the terminal, <code>verrou</code> searches without ever seeing a secret, signs with the SSH keys in your vault, and hands secrets to commands without printing them: see <a href="/ai-agents-secrets/">secrets for AI agents</a>.</p>
+
+  <h2>Install</h2>
+  <ol>
+    <li>Download <code>Verrou-{{version}}-macos.dmg</code>, open it and drag Verrou to Applications. It is signed with a Developer ID and notarized by Apple.</li>
+    <li>Open Verrou, enter your Vaultwarden address, e-mail and master password, then your second factor. Touch ID unlocks it from then on.</li>
+    <li>Optional: in Settings, link the browser extension and the <code>verrou</code> command.</li>
+  </ol>
+  <p>Verrou updates itself: it checks once a day, downloads in the background and installs when you quit, after checking the update's signature.</p>
+
+  <h2>Private by design</h2>
+  <p>Your vault is decrypted only on your Mac, by Bitwarden's official Rust SDK. Verrou talks to your server; the only other connections (breach checks with 5 characters of a hash, update checks) are listed in the <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">privacy policy</a>. No account of ours, no analytics.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download for Mac</a>
+    <a class="button ghost" href="/vaultwarden-iphone/">The iPhone app</a>
+  </div>
+</article>

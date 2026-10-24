@@ -1,0 +1,50 @@
+<!--{"title": "Secrets for AI agents, approved from your iPhone | Verrou", "description": "Give Claude Code, Codex and other AI agents the keys they need without showing them: verrou run injects secrets, masks them, and asks Touch ID or your iPhone."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Terminal &amp; AI agents</div>
+    <h1>Your agents use your secrets. They never see them.</h1>
+    <p class="lede">Verrou hands API keys and passwords to the commands an AI agent runs, keeps them out of its context and your scrollback, and asks you first: Touch ID on the Mac, Face ID on your iPhone when you're away.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/docs/GUIDE.md#command-line-and-ssh-agent">Command line guide</a>
+    </div>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>The problem with secrets and AI agents</h2>
+  <p>An AI coding agent such as Claude Code or Codex runs commands in your terminal. If a token sits in a <code>.env</code> file, in an environment variable or in a command's output, it ends up in the agent's context, in logs, and sometimes in a transcript sent elsewhere. Pasting secrets by hand doesn't scale, and giving the agent your whole password manager is worse.</p>
+
+  <h2>verrou run: secrets in, never out</h2>
+  <p><code>verrou run</code> starts a command with the secrets it needs in its environment. Your files only hold references, so they can be committed:</p>
+  <pre><span class="c"># .env: no secret in it</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "deploy" run --env-file .env -- ./deploy.sh
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
+  <ul>
+    <li><strong>Masked output.</strong> If the command prints a secret, Verrou replaces it with <code>&lt;concealed by Verrou&gt;</code> before it reaches the terminal or the agent.</li>
+    <li><strong>Approved one by one.</strong> Each secret asks for Touch ID, with the reason the agent gave (<code>--reason</code> or <code>VERROU_REASON</code>). An approval lasts 5 minutes for that item and that terminal.</li>
+    <li><strong>Search without secrets.</strong> <code>verrou search</code> shows titles, usernames and sites, never passwords, so an agent can find the right reference on its own.</li>
+  </ul>
+
+  <h2>Away from your Mac? Approve from your iPhone.</h2>
+  <p>When your Mac's screen is locked or you've been idle, the request goes to Verrou on your paired iPhone: "Terminal wants to read GitHub, reason: deploy". Face ID, one tap, and the command continues. If the Mac's vault was locked, a single approval unlocks it for that one item.</p>
+  <ul>
+    <li><strong>End to end.</strong> Requests and answers go through your own iCloud private database, sealed between the Mac and the iPhone's Secure Enclave keys. No server of ours.</li>
+    <li><strong>The vault key stays on the Mac.</strong> The iPhone only approves; it never receives your Mac's vault key.</li>
+    <li><strong>The notification says nothing.</strong> It only tells you a request is waiting; the reason appears in the app, after Face ID.</li>
+  </ul>
+
+  <h2>SSH agent and git signing</h2>
+  <p><code>eval "$(verrou ssh-agent)"</code> serves the SSH keys stored in your vault: <code>ssh</code>, <code>git push</code> and <code>git commit -S</code> work, and each signature asks for your approval.</p>
+
+  <h2>How it compares</h2>
+  <p>1Password offers a similar <code>op run</code> in its CLI, tied to its cloud. Verrou does it for a vault on your own Vaultwarden server, with approvals from your iPhone; see <a href="/1password-alternative/">Verrou vs 1Password</a>.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download for Mac</a>
+    <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/SECURITY.md#terminal-and-ssh-agent">Security details</a>
+  </div>
+</article>

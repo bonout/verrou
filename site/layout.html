@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<meta name="description" content="{{description}}">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="{{canonical}}">
+<link rel="alternate" hreflang="en" href="{{alternate_en}}">
+<link rel="alternate" hreflang="fr" href="{{alternate_fr}}">
+<link rel="alternate" hreflang="x-default" href="{{alternate_en}}">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Verrou">
+<meta property="og:title" content="{{title}}">
+<meta property="og:description" content="{{description}}">
+<meta property="og:url" content="{{canonical}}">
+<meta property="og:image" content="{{og_image}}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="{{og_locale}}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/media/icon.png">
+<link rel="apple-touch-icon" href="/media/icon.png">
+<link rel="stylesheet" href="/style.css">
+{{schema}}
+{{redirect}}
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="{{home}}"><img src="/media/icon.png" alt="">Verrou</a>
+    <div class="links">
+      <a href="{{mac}}">{{w_mac}}</a>
+      <a href="{{iphone}}">{{w_iphone}}</a>
+      <a href="{{agents}}">{{w_agents}}</a>
+      <a href="{{bitwarden}}">{{w_compare}}</a>
+      <a href="{{faq}}">{{w_faq}}</a>
+      <a href="https://github.com/bonout/verrou">GitHub</a>
+    </div>
+    <a class="lang" href="{{other_href}}" hreflang="{{other_lang}}" lang="{{other_lang}}" title="{{w_other_name}}">{{w_other}}</a>
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">{{w_download}}</a>
+  </div>
+</nav>
+
+{{body}}
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="{{home}}"><img src="/media/icon.png" alt="">Verrou</a>
+    <span>{{w_footer}}</span>
+    <nav>
+      <a href="{{mac}}">{{w_mac}}</a>
+      <a href="{{iphone}}">{{w_iphone}}</a>
+      <a href="{{agents}}">{{w_agents}}</a>
+      <a href="{{bitwarden}}">{{w_vs_bitwarden}}</a>
+      <a href="{{onepassword}}">{{w_vs_1password}}</a>
+      <a href="{{faq}}">{{w_faq}}</a>
+      <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">{{w_security}}</a>
+      <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">{{w_privacy}}</a>
+      <a href="https://github.com/bonout/verrou">GitHub</a>
+      <a href="mailto:contact@bonout.com">{{w_contact}}</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="/site.js"></script>
+</body>
+</html>

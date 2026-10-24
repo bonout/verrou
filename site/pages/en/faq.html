@@ -1,0 +1,50 @@
+<!--{"title": "Verrou FAQ: Vaultwarden app for Mac and iPhone", "description": "Answers about Verrou: what it is, Vaultwarden and Bitwarden compatibility, security, the iPhone app, AI agents, updates and price.", "schema": "faq"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">FAQ</div>
+    <h1>Questions about Verrou.</h1>
+  </div>
+</header>
+
+<article class="prose">
+<section class="faq">
+  <h3>What is Verrou?</h3>
+  <p>Verrou is a free, open source password manager for Mac and iPhone that works with your own Vaultwarden server. It is a native app (SwiftUI on a Rust core) with Touch ID and Face ID, search as you type, Quick Access, a browser extension, a command line tool and an SSH agent.</p>
+
+  <h3>Does Verrou work with Vaultwarden?</h3>
+  <p>Yes: Verrou is built and tested against Vaultwarden. Sign in with your server address, e-mail and master password, then your second factor.</p>
+
+  <h3>Does it work with bitwarden.com?</h3>
+  <p>Verrou is built and tested against Vaultwarden only. It uses the Bitwarden format and protocol, but bitwarden.com isn't a supported server today.</p>
+
+  <h3>Can I keep using the official Bitwarden apps?</h3>
+  <p>Yes. Verrou stores everything on your server in the standard Bitwarden format, including passkeys, attachments and shared vaults, so the Bitwarden apps and web vault keep working next to it. If you stop using Verrou, nothing changes.</p>
+
+  <h3>Is Verrou safe?</h3>
+  <p>The vault is decrypted only on your devices, by Bitwarden's official Rust SDK, and the key is sealed by the Secure Enclave for Touch ID and Face ID. The browser extension only receives the logins of the open site, and copied secrets are cleared after 90 seconds. Every connection and its known limits are documented in SECURITY.md, and every release file has a build attestation.</p>
+
+  <h3>Is Verrou free?</h3>
+  <p>Yes. Verrou is free and open source under the GPL-3.0 licence.</p>
+
+  <h3>How do I install Verrou on a Mac?</h3>
+  <p>Download the disk image from the GitHub releases (macOS 15 or later), drag Verrou to Applications and sign in to your Vaultwarden server. The app is signed and notarized by Apple, and updates itself after checking each update's signature.</p>
+
+  <h3>Is there an iPhone app?</h3>
+  <p>Yes, with Face ID and AutoFill for passwords, one-time codes and passkeys (iOS 17 or later). It is coming to the App Store; meanwhile it can be built from the source code.</p>
+
+  <h3>How does Verrou keep secrets away from AI agents?</h3>
+  <p>With verrou run, a command gets the secrets it needs in its environment while your files only hold verrou:// references. If the command prints a secret, Verrou masks it before it reaches the terminal or the agent. Each secret asks for Touch ID, or Face ID on your paired iPhone when you are away from the Mac.</p>
+
+  <h3>Can I approve requests from my iPhone?</h3>
+  <p>Yes. When the Mac is locked or idle, requests from the terminal or an AI agent go to Verrou on your iPhone through your own iCloud account, sealed end to end. Face ID approves them; the Mac's vault key never leaves the Mac.</p>
+
+  <h3>Which browsers are supported?</h3>
+  <p>Brave, Chrome and Firefox, with an extension that fills logins, one-time codes, cards and passkeys. Safari and other Mac apps are filled through the system's AutoFill and Verrou's ⌘\ shortcut.</p>
+
+  <h3>Can I import from 1Password or Apple Passwords?</h3>
+  <p>Yes: Verrou imports from 1Password, Apple Passwords and Proton Pass, then finds duplicates (the same account under different URLs, titles or usernames) and merges them.</p>
+
+  <h3>Who makes Verrou?</h3>
+  <p>Verrou is an independent open source project published by Bonout. It is not affiliated with Bitwarden, Inc. or the Vaultwarden project. Contact: contact@bonout.com.</p>
+</section>
+</article>

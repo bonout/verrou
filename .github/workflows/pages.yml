@@ -1,6 +1,6 @@
-# The site, verrou.bonout.com, in English (/) and French (/fr/): site/ plus
-# the pictures it uses from docs/media (kept in one place), published by
-# GitHub Pages.
+# The site, verrou.bonout.com, in English (/) and French (/fr/): built by
+# site/build.py from site/pages, plus the videos from docs/media, published
+# by GitHub Pages.
 name: Site
 
 on:
@@ -36,28 +36,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p _site/media
-          cp -R site/. _site/
-          cp docs/media/icon.png _site/media/
-          # Each language's pictures, in its own language: docs/media for
-          # English (the README's), docs/media/fr for French.
-          for lang in en fr; do
-            src=docs/media; [[ $lang == en ]] || src=docs/media/$lang
-            mkdir -p _site/media/$lang
-            cp $src/02-vault.png _site/media/$lang/mac.png
-            cp $src/demo.mp4 $src/ios-app.mp4 _site/media/$lang/
-            for shot in 03-vault:ios-vault 07-search:ios-search 08-item:ios-item; do
-              cp docs/media/ios/screens/$lang/${shot%%:*}.png _site/media/$lang/${shot#*:}.png
-            done
-          done
           # The download links and the version shown: the latest release.
           version="$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
-          version="${version#v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected version: $version"; exit 1; }
-          perl -pi -e "s/\{\{version\}\}/$version/g" _site/index.html _site/fr/index.html
-          if grep -n "{{" _site/index.html _site/fr/index.html; then exit 1; fi
-          # Every file a page names must be there.
-          grep -ho '"/[a-z][^"#]*\.[a-z0-9]*"' _site/index.html _site/fr/index.html | tr -d '"' | sort -u | while read -r file; do
+          python3 site/build.py _site "${version#v}"
+          # The videos and the icon come from docs/media (kept in one place):
+          # docs/media for English (the README's), docs/media/fr for French.
+          mkdir -p _site/media/en _site/media/fr
+          cp docs/media/icon.png _site/media/
+          cp docs/media/demo.mp4 docs/media/ios-app.mp4 _site/media/en/
+          cp docs/media/fr/demo.mp4 docs/media/fr/ios-app.mp4 _site/media/fr/
+          # Every local file a page names must be there.
+          find _site -name index.html -exec grep -ho '"/[a-z][^"#]*\.[a-z0-9]*"' {} + | tr -d '"' | sort -u | while read -r file; do
             test -f "_site$file" || { echo "missing: $file"; exit 1; }
           done
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

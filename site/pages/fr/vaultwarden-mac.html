@@ -1,0 +1,54 @@
+<!--{"title": "App Mac pour Vaultwarden : Verrou, client natif", "description": "Une app macOS native pour Vaultwarden : Touch ID, recherche instantanée, Accès rapide depuis toute app, extension de navigateur et agent SSH. Libre.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden sur Mac</div>
+    <h1>Une vraie app Mac pour votre serveur Vaultwarden.</h1>
+    <p class="lede">Verrou ouvre le coffre que vous avez déjà sur Vaultwarden, dans une app Mac native : SwiftUI sur un cœur en Rust, Touch ID, et des résultats pendant que vous tapez.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Télécharger Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Code source</a>
+    </div>
+    <p class="small">Libre et gratuit (GPL-3.0) · macOS 15 ou plus récent · signé et notarisé par Apple · se met à jour tout seul</p>
+  </div>
+</header>
+
+<article class="prose">
+  <figure>
+    <img src="/img/fr/mac.jpg" alt="Verrou sur Mac : le coffre, un identifiant avec son code à usage unique" width="1600" height="1000" loading="lazy">
+    <figcaption>Verrou sur Mac, avec le coffre de démonstration.</figcaption>
+  </figure>
+
+  <h2>Qu'est-ce que Verrou ?</h2>
+  <p><strong>Verrou est un gestionnaire de mots de passe libre et gratuit pour macOS et iPhone, qui fonctionne avec votre propre serveur Vaultwarden.</strong> Il lit et écrit votre coffre au format Bitwarden standard : les apps Bitwarden officielles et le coffre web continuent de fonctionner à côté. Rien à migrer, rien à exporter.</p>
+
+  <h2>Pourquoi un client Vaultwarden natif sur Mac</h2>
+  <ul>
+    <li><strong>S'ouvre en un clin d'œil, trouve pendant que vous tapez.</strong> Recherche approximative, insensible aux accents, en moins de 5 ms sur 10 000 éléments, avec des filtres comme <code>type:carte</code>.</li>
+    <li><strong>Accès rapide depuis n'importe quelle app.</strong> <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Espace</kbd>, tapez, puis copiez un mot de passe ou un code à usage unique sans ouvrir la fenêtre principale.</li>
+    <li><strong>Remplit n'importe quelle app Mac.</strong> <kbd>⌘</kbd> <kbd>\</kbd> tape l'identifiant et le mot de passe dans l'app au premier plan, navigateur ou non.</li>
+    <li><strong>Touch ID, une YubiKey ou votre mot de passe principal.</strong> La clé du coffre est scellée par la Secure Enclave ; le coffre se verrouille après inactivité, en veille et avec l'écran.</li>
+    <li><strong>Fonctionne hors ligne.</strong> Modifications, nouveaux éléments, corbeille et archives sont conservés et synchronisés dans l'ordre dès que le serveur répond.</li>
+  </ul>
+
+  <h2>Tout ce que contient votre coffre Vaultwarden</h2>
+  <p>Identifiants avec codes à usage unique (TOTP), passkeys, cartes, identités, notes sécurisées, clés SSH, pièces jointes, réseaux Wi-Fi avec un QR code pour s'y connecter, et champs personnalisés. Les coffres partagés aussi : organisations, collections, groupes et membres, confirmés par phrase d'empreinte, ainsi que Send et l'accès d'urgence.</p>
+
+  <h2>Extension de navigateur, terminal et agent SSH</h2>
+  <p>L'extension Verrou remplit identifiants, codes à usage unique, cartes et passkeys dans Brave, Chrome et Firefox, uniquement pour le site ouvert, par un canal local chiffré. Dans le terminal, <code>verrou</code> cherche sans jamais voir un secret, signe avec les clés SSH de votre coffre, et transmet des secrets aux commandes sans les afficher : voir <a href="/fr/secrets-agents-ia/">les secrets pour les agents IA</a>.</p>
+
+  <h2>Installation</h2>
+  <ol>
+    <li>Téléchargez <code>Verrou-{{version}}-macos.dmg</code>, ouvrez-le et glissez Verrou dans Applications. Il est signé avec un Developer ID et notarisé par Apple.</li>
+    <li>Ouvrez Verrou, saisissez l'adresse de votre Vaultwarden, votre e-mail et votre mot de passe principal, puis votre second facteur. Touch ID le déverrouille ensuite.</li>
+    <li>En option : dans les Réglages, reliez l'extension de navigateur et la commande <code>verrou</code>.</li>
+  </ol>
+  <p>Verrou se met à jour tout seul : il vérifie une fois par jour, télécharge en arrière-plan et installe quand vous le quittez, après avoir vérifié la signature de la mise à jour.</p>
+
+  <h2>Confidentiel par conception</h2>
+  <p>Votre coffre n'est déchiffré que sur votre Mac, par le SDK Rust officiel de Bitwarden. Verrou parle à votre serveur ; les seules autres connexions (vérification des fuites avec 5 caractères d'une empreinte, recherche de mises à jour) sont listées dans la <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">politique de confidentialité</a>. Aucun compte chez nous, aucune statistique.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Télécharger pour Mac</a>
+    <a class="button ghost" href="/fr/client-vaultwarden-iphone/">L'app iPhone</a>
+  </div>
+</article>

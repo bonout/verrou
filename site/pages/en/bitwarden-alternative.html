@@ -1,0 +1,50 @@
+<!--{"title": "Native Bitwarden app alternative for Mac & iPhone | Verrou", "description": "Verrou vs the Bitwarden desktop app: a native client for your Vaultwarden vault, with instant search, Quick Access and app filling. Use both side by side."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Compare</div>
+    <h1>Verrou or the Bitwarden app?</h1>
+    <p class="lede">Same vault, same format, same server. Verrou is a native app for people who self-host with Vaultwarden and live on a Mac and an iPhone.</p>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>The short answer</h2>
+  <p><strong>Verrou is not a fork or a replacement of Bitwarden: it is another client for the same vault.</strong> It works with your Vaultwarden server in the standard Bitwarden format, so you can keep the official Bitwarden apps, browser extension and web vault, and use Verrou where you prefer it. Stop using Verrou any time: nothing changes on your server.</p>
+
+  <div class="table">
+    <table>
+      <tr><th></th><th>Verrou</th><th>Bitwarden apps</th></tr>
+      <tr><td>Mac app</td><td>Native (SwiftUI and Rust)</td><td>Electron</td></tr>
+      <tr><td>Search</td><td>As you type, under 5 ms on 10,000 items, fuzzy and accent-insensitive</td><td>Search box in the vault</td></tr>
+      <tr><td>Quick Access from any app</td><td>⌘⇧Space, then copy a password or a code</td><td>Open the app window</td></tr>
+      <tr><td>Fill any Mac app</td><td>⌘\ types the login into the app in front</td><td>Browsers and system AutoFill</td></tr>
+      <tr><td>Secrets for commands and AI agents</td><td><code>verrou run</code>, masked output, approval from the iPhone</td><td>Bitwarden CLI and Secrets Manager</td></tr>
+      <tr><td>Servers</td><td>Vaultwarden (built and tested against it)</td><td>Bitwarden cloud, self-hosted Bitwarden and Vaultwarden</td></tr>
+      <tr><td>Platforms</td><td>macOS, iPhone, Brave, Chrome, Firefox, CLI on Linux</td><td>Every platform, including Windows and Android</td></tr>
+      <tr><td>Price</td><td>Free, open source (GPL-3.0)</td><td>Free tier and paid plans, open source</td></tr>
+    </table>
+  </div>
+  <p class="note">Compared with the Bitwarden apps' public features in October 2026; Bitwarden is a trademark of Bitwarden, Inc., and Verrou is not affiliated with it.</p>
+
+  <h2>When Verrou is the better fit</h2>
+  <ul>
+    <li>You run <strong>Vaultwarden</strong> at home or for your team, and use a Mac and an iPhone.</li>
+    <li>You want a vault that <strong>opens instantly and finds as you type</strong>, from any app.</li>
+    <li>You work in the terminal or with <strong>AI agents</strong> and want secrets approved one by one, from your iPhone when you're away.</li>
+  </ul>
+
+  <h2>When to stay with the official apps</h2>
+  <ul>
+    <li>You use <strong>bitwarden.com</strong>: Verrou is built and tested against Vaultwarden only.</li>
+    <li>You need <strong>Windows, Linux desktop or Android</strong> apps.</li>
+    <li>You rely on Bitwarden's business features (SSO, admin console, Secrets Manager).</li>
+  </ul>
+
+  <h2>Switching is reversible</h2>
+  <p>Everything stays on your server in the Bitwarden format, including passkeys, attachments and shared vaults. Install Verrou next to the Bitwarden app, sign in to the same server, and compare.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Download Verrou {{version}}</a>
+    <a class="button ghost" href="/1password-alternative/">Verrou vs 1Password</a>
+  </div>
+</article>

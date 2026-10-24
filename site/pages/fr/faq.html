@@ -1,0 +1,50 @@
+<!--{"title": "FAQ Verrou : l'app Vaultwarden pour Mac et iPhone", "description": "Réponses sur Verrou : ce que c'est, compatibilité Vaultwarden et Bitwarden, sécurité, app iPhone, agents IA, mises à jour et prix.", "schema": "faq"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">FAQ</div>
+    <h1>Questions sur Verrou.</h1>
+  </div>
+</header>
+
+<article class="prose">
+<section class="faq">
+  <h3>Qu'est-ce que Verrou ?</h3>
+  <p>Verrou est un gestionnaire de mots de passe libre et gratuit pour Mac et iPhone, qui fonctionne avec votre propre serveur Vaultwarden. C'est une app native (SwiftUI sur un cœur en Rust) avec Touch ID et Face ID, recherche instantanée, Accès rapide, extension de navigateur, outil en ligne de commande et agent SSH.</p>
+
+  <h3>Verrou fonctionne-t-il avec Vaultwarden ?</h3>
+  <p>Oui : Verrou est conçu et testé pour Vaultwarden. Connectez-vous avec l'adresse de votre serveur, votre e-mail et votre mot de passe principal, puis votre second facteur.</p>
+
+  <h3>Fonctionne-t-il avec bitwarden.com ?</h3>
+  <p>Verrou est conçu et testé pour Vaultwarden uniquement. Il utilise le format et le protocole de Bitwarden, mais bitwarden.com n'est pas un serveur pris en charge aujourd'hui.</p>
+
+  <h3>Puis-je garder les apps Bitwarden officielles ?</h3>
+  <p>Oui. Verrou garde tout sur votre serveur au format Bitwarden standard, y compris passkeys, pièces jointes et coffres partagés : les apps Bitwarden et le coffre web continuent de fonctionner à côté. Si vous arrêtez Verrou, rien ne change.</p>
+
+  <h3>Verrou est-il sûr ?</h3>
+  <p>Le coffre n'est déchiffré que sur vos appareils, par le SDK Rust officiel de Bitwarden, et sa clé est scellée par la Secure Enclave pour Touch ID et Face ID. L'extension ne reçoit que les identifiants du site ouvert, et les secrets copiés sont effacés après 90 secondes. Chaque connexion et ses limites connues sont documentées dans SECURITY.md, et chaque fichier publié a une attestation de build.</p>
+
+  <h3>Verrou est-il gratuit ?</h3>
+  <p>Oui. Verrou est libre et gratuit, sous licence GPL-3.0.</p>
+
+  <h3>Comment installer Verrou sur Mac ?</h3>
+  <p>Téléchargez l'image disque depuis les releases GitHub (macOS 15 ou plus récent), glissez Verrou dans Applications et connectez-vous à votre serveur Vaultwarden. L'app est signée et notarisée par Apple, et se met à jour toute seule après avoir vérifié la signature de chaque mise à jour.</p>
+
+  <h3>Y a-t-il une app iPhone ?</h3>
+  <p>Oui, avec Face ID et le remplissage automatique des mots de passe, codes à usage unique et passkeys (iOS 17 ou plus récent). Elle arrive sur l'App Store ; en attendant, elle peut être compilée depuis le code source.</p>
+
+  <h3>Comment Verrou tient-il les secrets loin des agents IA ?</h3>
+  <p>Avec verrou run, une commande reçoit les secrets dont elle a besoin dans son environnement, tandis que vos fichiers ne contiennent que des références verrou://. Si la commande affiche un secret, Verrou le masque avant qu'il n'atteigne le terminal ou l'agent. Chaque secret demande Touch ID, ou Face ID sur votre iPhone associé quand vous êtes loin du Mac.</p>
+
+  <h3>Puis-je valider les demandes depuis mon iPhone ?</h3>
+  <p>Oui. Quand le Mac est verrouillé ou inactif, les demandes du terminal ou d'un agent IA arrivent dans Verrou sur votre iPhone, par votre propre compte iCloud, chiffrées de bout en bout. Face ID les valide ; la clé du coffre du Mac ne quitte jamais le Mac.</p>
+
+  <h3>Quels navigateurs sont pris en charge ?</h3>
+  <p>Brave, Chrome et Firefox, avec une extension qui remplit identifiants, codes à usage unique, cartes et passkeys. Safari et les autres apps Mac sont remplis par le remplissage automatique du système et le raccourci ⌘\ de Verrou.</p>
+
+  <h3>Puis-je importer depuis 1Password ou les Mots de passe d'Apple ?</h3>
+  <p>Oui : Verrou importe depuis 1Password, les Mots de passe d'Apple et Proton Pass, puis détecte les doublons (un même compte sous des URL, titres ou identifiants différents) et les fusionne.</p>
+
+  <h3>Qui fait Verrou ?</h3>
+  <p>Verrou est un projet libre indépendant publié par Bonout. Il n'est affilié ni à Bitwarden, Inc. ni au projet Vaultwarden. Contact : contact@bonout.com.</p>
+</section>
+</article>
