@@ -620,6 +620,17 @@ fn released(shared: &Shared, client: &ClientInfo, item: &str) {
         .push((item.to_owned(), Instant::now()));
 }
 
+/// Terminal: an approval that couldn't hold because the vault locked
+/// meanwhile (screen locked while the iPhone was asked) is not a refusal:
+/// the terminal asks for the unlock, then again.
+fn refused_or_locked(backend: &dyn Backend) -> ReplyResult {
+    if backend.is_unlocked() {
+        refused()
+    } else {
+        ReplyResult::Locked
+    }
+}
+
 fn refused() -> ReplyResult {
     ReplyResult::Denied {
         reason: "refused in Verrou".to_owned(),
@@ -678,7 +689,7 @@ async fn terminal(
                     )
                     .await
                     {
-                        return refused();
+                        return refused_or_locked(backend);
                     }
                 }
                 Some(Ok((false, _))) => {}
@@ -703,7 +714,7 @@ async fn terminal(
             };
             if !approved_for_site(shared, client, Purpose::Reveal, &item, &title, "", reason).await
             {
-                return refused();
+                return refused_or_locked(backend);
             }
             let now = u64::try_from(now_ms() / 1000).unwrap_or(0);
             match read(backend, |v| access::totp_code(v, &item, now)) {
@@ -752,7 +763,7 @@ async fn terminal(
                 Purpose::Ssh
             };
             if !approved_for_site(shared, client, purpose, &item, &title, "", reason).await {
-                return refused();
+                return refused_or_locked(backend);
             }
             let signed = read(backend, |v| ssh::sign(v, &blob, &data, flags));
             data.zeroize();

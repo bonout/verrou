@@ -218,11 +218,15 @@ impl Remote {
     }
 
     /// Like [`Self::call`], but a refusal becomes an error, and a locked
-    /// vault is unlocked first: Verrou asks for Touch ID, we wait up to a
-    /// minute.
+    /// vault is unlocked first: Verrou asks for Touch ID (or the iPhone),
+    /// we wait up to a minute. Twice at most: the vault may lock again
+    /// while an approval is being given.
     pub fn ask(&mut self, command: &Command) -> Result<ReplyResult, Error> {
         let mut result = self.call(command)?;
-        if result == ReplyResult::Locked {
+        for _ in 0..2 {
+            if result != ReplyResult::Locked {
+                break;
+            }
             self.unlock()?;
             result = self.call(command)?;
         }

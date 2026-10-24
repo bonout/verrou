@@ -178,6 +178,7 @@ final class RemoteApprovals {
     private func persist(_ value: Stored) throws {
         let data = try JSONEncoder().encode(value)
         try data.write(to: file, options: .atomic)
+        Self.restrict(file)
         stored = value
         phones = value.phones
     }
@@ -308,6 +309,7 @@ final class RemoteApprovals {
                                        authenticating: Data(identity.mac.utf8)).combined ?? Data()
             let sealed = try JSONEncoder().encode(SealedFile(ephemeral: ephemeral.publicKey.x963Representation, box: box))
             try sealed.write(to: escrowFile, options: .atomic)
+            Self.restrict(escrowFile)
         } catch {
             log.error("escrow not saved: \(error.localizedDescription, privacy: .public)")
         }
@@ -338,6 +340,11 @@ final class RemoteApprovals {
             log.error("escrow unreadable: \(error.localizedDescription, privacy: .public)")
             clearEscrow()
         }
+    }
+
+    /// Readable by this account only.
+    private static func restrict(_ url: URL) {
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     private static func fileKey(_ secret: SharedSecret, mac: String) -> SymmetricKey {

@@ -30,6 +30,8 @@ struct FakeBackend {
     /// The "user"'s answer to approval requests.
     approve: AtomicBool,
     confirmations: Mutex<Vec<Confirmation>>,
+    /// The vault locks while the user answers (screen locked meanwhile).
+    lock_while_confirming: AtomicBool,
 }
 
 impl Backend for FakeBackend {
@@ -105,6 +107,9 @@ impl Backend for FakeBackend {
 
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         self.confirmations.lock().unwrap().push(request);
+        if self.lock_while_confirming.load(Ordering::SeqCst) {
+            self.unlocked.store(false, Ordering::SeqCst);
+        }
         let approved = self.approve.load(Ordering::SeqCst);
         Box::pin(async move { approved })
     }
@@ -271,6 +276,7 @@ fn start_with(
         pairings: Mutex::new(sender),
         approve: AtomicBool::new(false),
         confirmations: Mutex::new(Vec::new()),
+        lock_while_confirming: AtomicBool::new(false),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -914,4 +920,40 @@ fn many_items_in_a_row_need_approval() {
     backend.approve.store(true, Ordering::SeqCst);
     assert_eq!(fill_site(&mut client, 8)["result"], "credentials");
     let _ = std::fs::remove_file(file);
+}
+
+/// The vault locks while the approval is being given: the terminal is told
+/// "locked" (it then asks for the unlock and again), not "refused". The
+/// reason reaches the approval.
+#[test]
+fn approval_cut_by_a_lock_says_locked() {
+    let (bridge, backend, pairings, file) = start();
+    {
+        let mut vault = backend.vault.lock().unwrap();
+        *vault = Vault::new(vec![github()]);
+    }
+    let mut cli = Client::connect(bridge.port());
+    cli.begin_pairing_with(&json!({ "name": "verrou", "kind": "cli" }));
+    let request = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
+    bridge.answer_pairing(&request.id, true);
+    assert_eq!(cli.receive()["type"], "paired");
+
+    backend.approve.store(false, Ordering::SeqCst);
+    backend.lock_while_confirming.store(true, Ordering::SeqCst);
+    let reveal = cli.request(
+        &json!({ "cmd": "reveal", "item": "github", "field": "password",
+                                      "reason": "deploy\nnow" }),
+    );
+    assert_eq!(reveal["result"], "locked", "{reveal}");
+    assert_eq!(
+        backend.confirmations.lock().unwrap()[0].reason,
+        "deploy now"
+    );
+
+    // Still unlocked: a refusal stays a refusal.
+    backend.unlocked.store(true, Ordering::SeqCst);
+    backend.lock_while_confirming.store(false, Ordering::SeqCst);
+    let reveal = cli.request(&json!({ "cmd": "reveal", "item": "github", "field": "password" }));
+    assert_eq!(reveal["result"], "denied", "{reveal}");
+    std::fs::remove_file(file).ok();
 }
