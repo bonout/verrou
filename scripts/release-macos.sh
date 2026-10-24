@@ -12,9 +12,11 @@
 # ASC_ISSUER_ID): archive signed by the team, exported for Developer ID (with
 # the VerrouAutoFillMac credential provider and the app group
 # <team>.app.verrou), notarized and stapled, in Verrou-<version>-macos.dmg.
-# The Developer ID Application certificate must be in the keychain (the
-# release workflow imports it); the profiles are created by Xcode
-# (-allowProvisioningUpdates).
+# The Developer ID Application certificate must be in the keychain, and the
+# two Developer ID profiles installed ("Verrou Developer ID" for the app,
+# "Verrou AutoFill Developer ID" for its extension): the release workflow
+# imports them. The export signs manually with them: an API key can't create
+# Developer ID profiles.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -56,7 +58,13 @@ cat > "$OUT/ExportOptions.plist" <<EOF
 <dict>
   <key>method</key><string>developer-id</string>
   <key>teamID</key><string>$TEAM</string>
-  <key>signingStyle</key><string>automatic</string>
+  <key>signingStyle</key><string>manual</string>
+  <key>signingCertificate</key><string>Developer ID Application</string>
+  <key>provisioningProfiles</key>
+  <dict>
+    <key>app.verrou.mac</key><string>Verrou Developer ID</string>
+    <key>app.verrou.mac.autofill</key><string>Verrou AutoFill Developer ID</string>
+  </dict>
 </dict>
 </plist>
 EOF

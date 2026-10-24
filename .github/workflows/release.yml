@@ -102,6 +102,7 @@ jobs:
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
       MAC_CERT_P12: ${{ secrets.MAC_DEVELOPER_ID_P12 }}
       MAC_CERT_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
+      MAC_PROFILES: ${{ secrets.MAC_DEVELOPER_ID_PROFILES }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: rustup toolchain install stable --profile minimal --target aarch64-apple-darwin,x86_64-apple-darwin && rustup default stable
@@ -122,6 +123,16 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm "$RUNNER_TEMP/cert.p12"
+          # The Developer ID profiles of the app and its extension (an API key
+          # can't create them: release-macos.sh signs manually with them).
+          for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            echo "$MAC_PROFILES" | base64 --decode | tar -xz -C "$dir"
+            for profile in "$dir"/verrou*.provisionprofile; do
+              uuid="$(security cms -D -i "$profile" | plutil -extract UUID raw -)"
+              mv "$profile" "$dir/$uuid.provisionprofile"
+            done
+          done
           printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc.p8" >> "$GITHUB_ENV"
       - run: VERROU_TEAM="${MAC_CERT_P12:+$VERROU_TEAM}" scripts/release-macos.sh "${{ needs.version.outputs.version }}"

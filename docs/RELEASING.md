@@ -53,6 +53,7 @@ sees them.
 | `APPLE_TEAM_ID` | the 10-character Apple team identifier |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_P8` | an App Store Connect API key with the Admin role (Users and Access › Integrations): notarization, profiles, TestFlight. `ASC_KEY_P8` is the content of the `.p8` file |
 | `MAC_DEVELOPER_ID_P12`, `MAC_DEVELOPER_ID_PASSWORD` | the Developer ID Application certificate and its private key, exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
+| `MAC_DEVELOPER_ID_PROFILES` | the two Developer ID provisioning profiles for that certificate, named `Verrou Developer ID` (`app.verrou.mac`) and `Verrou AutoFill Developer ID` (`app.verrou.mac.autofill`): `tar -czf - verrou.provisionprofile verrou-autofill.provisionprofile \| base64`. An API key can't create Developer ID profiles: make them on developer.apple.com (Profiles › Developer ID), again when the certificate is renewed |
 | `AMO_JWT_ISSUER`, `AMO_JWT_SECRET` | addons.mozilla.org API keys (https://addons.mozilla.org/developers/addon/api/key/) |
 
 Each pair is optional: without the Developer ID certificate the Mac app is
