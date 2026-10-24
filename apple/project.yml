@@ -338,6 +338,23 @@ targets:
   # screenshots requested from the script (`simctl io screenshot`), measured
   # scrolling (XCTOSSignpostMetric). Run by scripts/ios-showcase.sh and
   # scripts/ios-bench.sh.
+  # Accessibility audit of the Mac app (opens it on screen).
+  VerrouMacUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: VerrouMacUITests
+    dependencies:
+      - target: Verrou
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Verrou
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: ""
+
   VerrouiOSUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -354,6 +371,12 @@ targets:
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
 schemes:
+  VerrouMacUITests:
+    build:
+      targets:
+        VerrouMacUITests: [test]
+    test:
+      targets: [VerrouMacUITests]
   VerrouMacTests:
     build:
       targets:

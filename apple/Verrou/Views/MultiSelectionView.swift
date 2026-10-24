@@ -10,6 +10,7 @@ struct MultiSelectionView: View {
         let available = model.availability(of: ids)
         VStack(spacing: 18) {
             Image(systemName: "square.stack.3d.up.fill")
+                .accessibilityHidden(true)
                 .font(.system(size: 46))
                 .foregroundStyle(Theme.accent)
             VStack(spacing: 4) {

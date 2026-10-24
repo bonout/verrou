@@ -199,6 +199,7 @@ private struct TwoFactorStep: View {
         VStack(spacing: 14) {
             ZStack {
                 Image(systemName: "key.horizontal.fill")
+                    .accessibilityHidden(true)
                     .font(.system(size: 34))
                     .foregroundStyle(Theme.accent)
                     .symbolEffect(.pulse, isActive: model.securityKeyWaiting)

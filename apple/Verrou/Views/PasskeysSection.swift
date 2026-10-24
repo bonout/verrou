@@ -41,6 +41,7 @@ private struct PasskeyRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "person.badge.key.fill")
+                .accessibilityHidden(true)
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 22)

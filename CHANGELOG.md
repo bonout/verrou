@@ -14,6 +14,8 @@ tagging (docs/RELEASING.md).
 - New *Item* menu: ⌃⌘C copies the username, ⇧⌘C the password, ⌥⌘C the
   one-time code, ⌥⇧⌘C the website.
 - Hold ⌥ to show the hidden fields of the item.
+- VoiceOver reads the icon-only buttons and the informative icons, and
+  skips decorative ones (ACCESSIBILITY.md).
 
 ## 0.3.1
 

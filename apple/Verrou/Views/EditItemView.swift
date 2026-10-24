@@ -68,6 +68,7 @@ struct EditItemView: View {
                                     draft.login?.removeURL(at: index)
                                 } label: {
                                     Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                                        .accessibilityLabel("Remove this website")
                                 }
                                 .buttonStyle(.plain)
                                 .help("Remove this website")
@@ -203,6 +204,7 @@ struct EditItemView: View {
                 showPassword.toggle()
             } label: {
                 Image(systemName: showPassword ? "eye.slash" : "eye")
+                    .accessibilityLabel(showPassword ? "Hide" : "Show")
             }
             .buttonStyle(.borderless)
             .help(showPassword ? "Hide" : "Show")
@@ -210,6 +212,7 @@ struct EditItemView: View {
                 showGenerator = true
             } label: {
                 Image(systemName: "wand.and.stars")
+                    .accessibilityLabel("Generate a password or a passphrase")
             }
             .buttonStyle(.borderless)
             .help("Generate a password or a passphrase")

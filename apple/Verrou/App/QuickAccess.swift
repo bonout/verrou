@@ -278,6 +278,7 @@ struct QuickAccessView: View {
                         Spacer()
                         if summary.hasTotp {
                             Image(systemName: "clock.badge.checkmark").font(.caption)
+                                .accessibilityLabel("One-time code")
                         }
                     }
                     .padding(.horizontal, 10)
@@ -295,6 +296,7 @@ struct QuickAccessView: View {
     private var lockedState: some View {
         VStack(spacing: 14) {
             Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("Verrou is locked").font(.headline)
             if model.canUseTouchID {
                 Button {

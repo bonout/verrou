@@ -204,6 +204,7 @@ private struct WatchtowerSections<Row: View>: View {
                         if let doc = missing.documentation, let url = URL(string: doc) {
                             Link(destination: url) {
                                 Image(systemName: "questionmark.circle")
+                                    .accessibilityLabel("Help")
                             }
                             .buttonStyle(.borderless)
                             .help("Turn on two-factor authentication on \(missing.site)")
@@ -242,6 +243,7 @@ private struct WatchtowerSections<Row: View>: View {
                         if let doc = candidate.documentation, let url = URL(string: doc) {
                             Link(destination: url) {
                                 Image(systemName: "questionmark.circle")
+                                    .accessibilityLabel("Help")
                             }
                             .buttonStyle(.borderless)
                             .help("Help from \(candidate.domain) on passkeys")

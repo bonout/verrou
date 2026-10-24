@@ -24,6 +24,7 @@ struct ImportView: View {
     private var header: some View {
         HStack(spacing: 12) {
             Image(systemName: "square.and.arrow.down.on.square.fill")
+                .accessibilityHidden(true)
                 .font(.system(size: 26))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
@@ -309,6 +310,7 @@ private struct EntryLabel: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: entry.category.symbol)
+                .accessibilityLabel(Text(entry.category.label))
                 .foregroundStyle(entry.category.tint)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
@@ -318,6 +320,7 @@ private struct EntryLabel: View {
             Spacer()
             if entry.hasTotp {
                 Image(systemName: "clock.badge.checkmark").font(.caption).foregroundStyle(.teal)
+                    .accessibilityLabel("One-time code")
                     .help("One-time code")
             }
         }

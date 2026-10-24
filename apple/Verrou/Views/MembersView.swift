@@ -110,6 +110,7 @@ private struct MemberRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: member.role.symbol)
+                .accessibilityHidden(true)
                 .font(.system(size: 15))
                 .foregroundStyle(member.status == .revoked ? Color.secondary : Theme.accent)
                 .frame(width: 26)
@@ -256,6 +257,7 @@ struct MemberDetailView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             Image(systemName: member.role.symbol)
+                .accessibilityHidden(true)
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 64, height: 64)
@@ -369,6 +371,7 @@ struct MemberEditorView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: draft.isNew ? "person.badge.plus" : "person.crop.circle.badge.checkmark")
+                    .accessibilityHidden(true)
                     .font(.system(size: 22))
                     .foregroundStyle(.indigo)
                 VStack(alignment: .leading, spacing: 2) {

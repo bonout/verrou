@@ -544,6 +544,7 @@ private struct FillingSettings: View {
                             model.setFolderMatchRule(rule.folderId, nil)
                         } label: {
                             Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                                .accessibilityLabel("Go back to the default rule for this folder")
                         }
                         .buttonStyle(.plain)
                         .help("Go back to the default rule for this folder")

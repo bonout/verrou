@@ -453,6 +453,7 @@ struct AccessibilityRequestView: View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             VStack(spacing: 12) {
                 Image(systemName: "keyboard.badge.ellipsis").font(.largeTitle).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Text("Verrou needs to be able to type for you").font(.headline)
                 Text("To fill the username and password in another app, allow Verrou in System Settings → Privacy & Security → Accessibility, then press the shortcut again.")
                     .foregroundStyle(.secondary)
@@ -526,6 +527,7 @@ enum AutofillHUD {
         self.panel = panel
         let view = HStack(spacing: 10) {
             Image(systemName: failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .accessibilityHidden(true)
                 .foregroundStyle(failure ? Color.orange : Color.green)
                 .font(.title3)
             VStack(alignment: .leading, spacing: 2) {

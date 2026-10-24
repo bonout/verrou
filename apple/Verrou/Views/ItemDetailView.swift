@@ -139,6 +139,7 @@ struct ItemDetailView: View {
                 Task { await model.setFavorite(detail.summary.id, !detail.summary.favorite) }
             } label: {
                 Image(systemName: detail.summary.favorite ? "star.fill" : "star")
+                    .accessibilityLabel(detail.summary.favorite ? "Remove from Favorites" : "Add to Favorites")
                     .font(.title2)
                     .foregroundStyle(detail.summary.favorite ? Color.yellow : Color.secondary)
             }
@@ -170,6 +171,7 @@ struct ItemDetailView: View {
                         perform: @escaping () async -> Void) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol).foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text(text).font(.callout).foregroundStyle(.secondary)
             Spacer()
             if model.canModify(detail.summary) {

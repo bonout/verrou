@@ -83,6 +83,7 @@ private struct ContactRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: contact.accessType == .view ? "eye" : "key")
+                .accessibilityHidden(true)
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 26)
@@ -161,6 +162,7 @@ struct EmergencyDetailView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             Image(systemName: contact.accessType == .view ? "eye" : "key")
+                .accessibilityHidden(true)
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 64, height: 64)
@@ -378,6 +380,7 @@ struct GrantorVaultView: View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "eye").foregroundStyle(Theme.accent)
+                    .accessibilityHidden(true)
                 Text("Vault of \(vault.grantor)").font(.headline)
                 Text("read-only").font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -487,6 +490,7 @@ private struct GrantorItemView: View {
                 model.copyGrantorField(field, itemID: detail.summary.id, in: vault)
             } label: {
                 Image(systemName: "doc.on.doc")
+                    .accessibilityLabel("Copy")
             }
             .buttonStyle(.borderless)
             .help("Copy")

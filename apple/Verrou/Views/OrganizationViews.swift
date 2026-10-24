@@ -50,6 +50,7 @@ private struct SheetHeader: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: symbol)
+                .accessibilityHidden(true)
                 .font(.system(size: 22))
                 .foregroundStyle(.indigo)
             VStack(alignment: .leading, spacing: 2) {
@@ -271,6 +272,7 @@ struct CollectionEditorView: View {
             Toggle(isOn: granted) {
                 HStack(spacing: 6) {
                     Image(systemName: systemImage).foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                     Text(title).lineLimit(1)
                     if let note {
                         Text(note).font(.caption).foregroundStyle(.orange)
@@ -354,6 +356,7 @@ struct GroupsView: View {
                                     Task { await model.deleteGroup(group, in: draft.organizationID) }
                                 } label: {
                                     Image(systemName: "trash")
+                                        .accessibilityLabel("Delete the group")
                                 }
                                 .help("Delete the group (its members keep their direct access)")
                             }

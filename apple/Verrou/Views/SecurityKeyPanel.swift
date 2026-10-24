@@ -10,6 +10,7 @@ struct SecurityKeyPanel: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "key.horizontal.fill")
+                .accessibilityHidden(true)
                 .font(.system(size: 30))
                 .foregroundStyle(Theme.accent)
                 .symbolEffect(.pulse, isActive: model.keyPrompt != nil)

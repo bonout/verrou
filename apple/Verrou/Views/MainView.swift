@@ -502,6 +502,7 @@ struct ItemListView: View {
                     .pickerStyle(.inline)
                 } label: {
                     Image(systemName: "arrow.up.arrow.down")
+                        .accessibilityLabel("Sort")
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
@@ -819,6 +820,7 @@ struct UnshareView: View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: "person.2.slash.fill")
+                    .accessibilityHidden(true)
                     .font(.system(size: 24))
                     .foregroundStyle(.indigo)
                 VStack(alignment: .leading, spacing: 4) {

@@ -101,6 +101,7 @@ struct LockView: View {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "arrow.right.circle.fill")
+                        .accessibilityLabel("Unlock")
                         .font(.title2)
                         .foregroundStyle(password.isEmpty ? Color.secondary : Theme.accent)
                 }

@@ -166,6 +166,7 @@ struct SendDetailView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             Image(systemName: send.content == .file ? "doc" : "text.alignleft")
+                .accessibilityHidden(true)
                 .font(.system(size: 28))
                 .foregroundStyle(send.available ? Theme.accent : .secondary)
                 .frame(width: 64, height: 64)
@@ -254,6 +255,7 @@ struct SendRow: View {
     var body: some View {
         HStack(spacing: 11) {
             Image(systemName: send.content == .file ? "doc" : "text.alignleft")
+                .accessibilityLabel(send.content == .file ? "File" : "Text")
                 .font(.system(size: 18))
                 .foregroundStyle(send.available ? Theme.accent : .secondary)
                 .frame(width: 28)
@@ -262,10 +264,12 @@ struct SendRow: View {
                     Text(send.name).lineLimit(1)
                     if send.hasPassword {
                         Image(systemName: "key.fill").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel("Protected by a password")
                             .help("Protected by a password")
                     }
                     if send.hideEmail {
                         Image(systemName: "eye.slash").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel("Email address hidden")
                             .help("Email address hidden")
                     }
                 }

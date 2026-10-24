@@ -63,6 +63,7 @@ struct SharedVaultsSection: View {
                             }
                         } label: {
                             Image(systemName: "plus")
+                                .accessibilityLabel("Add")
                         }
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
@@ -155,6 +156,7 @@ struct SharingView: View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
                 Image(systemName: "person.2.fill")
+                    .accessibilityHidden(true)
                     .font(.system(size: 24))
                     .foregroundStyle(.indigo)
                 VStack(alignment: .leading, spacing: 2) {
@@ -272,6 +274,7 @@ struct HiddenFieldRow: View {
             }
             Spacer()
             Image(systemName: "eye.slash").foregroundStyle(.tertiary)
+                .accessibilityLabel("Hidden by the organization")
                 .help("The organization hides this field for your account. Filling in the browser is still possible.")
         }
         .padding(.horizontal, 14)

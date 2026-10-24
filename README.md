@@ -19,7 +19,8 @@
   <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
   <a href="#install">Install</a> ·
   <a href="docs/GUIDE.md">Full guide</a> ·
-  <a href="SECURITY.md">Security</a>
+  <a href="SECURITY.md">Security</a> ·
+  <a href="ACCESSIBILITY.md">Accessibility</a>
 </p>
 
 <p align="center">

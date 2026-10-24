@@ -40,6 +40,7 @@ struct CustomFieldsSection: View {
                 move(index, by: -1)
             } label: {
                 Image(systemName: "chevron.up")
+                    .accessibilityLabel("Move Up")
             }
             .buttonStyle(.borderless)
             .disabled(index == 0)
@@ -48,6 +49,7 @@ struct CustomFieldsSection: View {
                 move(index, by: 1)
             } label: {
                 Image(systemName: "chevron.down")
+                    .accessibilityLabel("Move Down")
             }
             .buttonStyle(.borderless)
             .disabled(index == fields.count - 1)
@@ -57,6 +59,7 @@ struct CustomFieldsSection: View {
                 shown.removeAll()
             } label: {
                 Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                    .accessibilityLabel("Delete this field")
             }
             .buttonStyle(.plain)
             .help("Delete this field")
@@ -80,6 +83,7 @@ struct CustomFieldsSection: View {
                     if shown.contains(index) { shown.remove(index) } else { shown.insert(index) }
                 } label: {
                     Image(systemName: shown.contains(index) ? "eye.slash" : "eye")
+                        .accessibilityLabel(shown.contains(index) ? "Hide" : "Show")
                 }
                 .buttonStyle(.borderless)
                 .help(shown.contains(index) ? "Hide" : "Show")

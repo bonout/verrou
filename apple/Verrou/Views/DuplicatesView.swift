@@ -104,6 +104,7 @@ struct DuplicatesView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "square.on.square.dashed")
+                .accessibilityHidden(true)
                 .font(.system(size: 26))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 4) {
@@ -305,6 +306,7 @@ private struct MemberRow: View {
             Spacer(minLength: 4)
             if member.item.hasTotp {
                 Image(systemName: "clock.badge.checkmark").font(.caption).foregroundStyle(.teal)
+                    .accessibilityLabel("One-time code")
                     .help("One-time code")
                     .padding(.top, 4)
             }
