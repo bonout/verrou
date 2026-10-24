@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://verrou.bonout.com"><b>Website</b></a> ·
-  <a href="https://github.com/bonout/verrou/releases/tag/v0.3.0"><b>Download Verrou 0.3.0</b></a> ·
+  <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
   <a href="#install">Install</a> ·
   <a href="docs/GUIDE.md">Full guide</a> ·
   <a href="SECURITY.md">Security</a>
@@ -168,7 +168,8 @@ silicon, `x86_64-apple-darwin` for Intel Macs, `x86_64-unknown-linux-gnu`),
 then put `verrou` on your `PATH`:
 
 ```sh
-v=0.3.0 t=aarch64-apple-darwin
+v=$(curl -fsSL https://api.github.com/repos/bonout/verrou/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+t=aarch64-apple-darwin
 curl -LO https://github.com/bonout/verrou/releases/download/v$v/verrou-$v-$t.tar.gz
 tar -xzf verrou-$v-$t.tar.gz
 install -m 755 verrou-$v-$t/verrou ~/.local/bin/verrou   # or /usr/local/bin

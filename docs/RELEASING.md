@@ -38,6 +38,10 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 A release created by hand in GitHub's interface for the tag is fine: the
 files are attached to it and its notes are kept.
 
+Once the release is out, the website is rebuilt: its download links and the
+version it shows come from the latest release (`{{version}}` in `site/`).
+The README links to the latest release and needs no change.
+
 The first job fails if the tag and the two versions differ. Running the
 workflow by hand (Actions › Release › Run workflow) builds everything and
 publishes nothing: a dry run.

@@ -7,6 +7,10 @@ on:
   push:
     branches: [main]
     paths: [site/**, docs/media/**, .github/workflows/pages.yml]
+  # The links point to the latest release: release.yml runs this workflow
+  # once a release is out (a release published in the UI starts it too).
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +33,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Assemble
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p _site/media
           cp -R site/. _site/
@@ -44,6 +50,12 @@ jobs:
               cp docs/media/ios/screens/$lang/${shot%%:*}.png _site/media/$lang/${shot#*:}.png
             done
           done
+          # The download links and the version shown: the latest release.
+          version="$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          version="${version#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "unexpected version: $version"; exit 1; }
+          perl -pi -e "s/\{\{version\}\}/$version/g" _site/index.html _site/fr/index.html
+          if grep -n "{{" _site/index.html _site/fr/index.html; then exit 1; fi
           # Every file a page names must be there.
           grep -ho '"/[a-z][^"#]*\.[a-z0-9]*"' _site/index.html _site/fr/index.html | tr -d '"' | sort -u | while read -r file; do
             test -f "_site$file" || { echo "missing: $file"; exit 1; }
