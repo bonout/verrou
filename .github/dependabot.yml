@@ -1,20 +1,26 @@
-# Weekly update proposals for the Rust crates and the GitHub Actions (pinned
-# by SHA: Dependabot bumps the SHA). The extension has no dependencies;
-# cargo-deny itself is pinned by version and SHA-256 in ci.yml.
+# Update proposals, once a month and grouped: the Rust crates' minor and patch
+# versions, and the GitHub Actions (pinned by SHA: Dependabot bumps the SHA).
+# Major versions are left out: they are reviewed and done by hand (most are
+# cryptography crates). Security fixes come at any time, through Dependabot
+# security updates (repository settings). The extension has no
+# dependencies; cargo-deny itself is pinned by version and SHA-256 in ci.yml.
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 2
     groups:
       rust-minor:
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: monthly
     groups:
       actions:
         patterns: ["*"]
