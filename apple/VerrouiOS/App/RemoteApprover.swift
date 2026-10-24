@@ -101,10 +101,11 @@ final class RemoteApprover {
 
     /// The vault's own Face ID, at launch or on return: not when the app
     /// opens for a request of the Mac (one Face ID, the request's). Waits
-    /// for the check of the requests 0.4 s at most.
+    /// for the check of the requests 1.5 s at most (an iCloud fetch; a
+    /// few hundred milliseconds usually).
     func allowsVaultPrompt() async -> Bool {
         guard isPaired else { return true }
-        let deadline = ContinuousClock.now + .milliseconds(400)
+        let deadline = ContinuousClock.now + .milliseconds(1500)
         while refreshing || checkDue, current == nil, ContinuousClock.now < deadline {
             try? await Task.sleep(for: .milliseconds(20))
         }
