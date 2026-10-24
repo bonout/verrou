@@ -11,7 +11,8 @@ struct SharedVaultsHomeSection: View {
     var body: some View {
         let sharing = model.sharing
         // Without a shared vault, nothing to build: creating or joining an
-        // organization goes through the home screen's "+" menu.
+        // organization goes through the home screen's "+" menu. Only the
+        // organizations: their collections are on the organization's page.
         if !model.organizations.isEmpty {
             Section {
                 ForEach(model.organizations, id: \.id) { org in
@@ -25,18 +26,6 @@ struct SharedVaultsHomeSection: View {
                             }
                             Text("\(org.count)").foregroundStyle(.secondary).monospacedDigit()
                         }
-                    }
-                    ForEach(org.collections, id: \.id) { collection in
-                        NavigationLink(value: PhoneModel.Route.list(.collection(id: collection.id))) {
-                            HStack(spacing: 12) {
-                                TintedSymbol(symbol: collection.readOnly ? "eye.fill" : "tray.full.fill",
-                                             tint: .indigo.opacity(0.7))
-                                Text(collection.name)
-                                Spacer()
-                                Text("\(collection.count)").foregroundStyle(.secondary).monospacedDigit()
-                            }
-                        }
-                        .padding(.leading, 18)
                     }
                 }
             } header: {
