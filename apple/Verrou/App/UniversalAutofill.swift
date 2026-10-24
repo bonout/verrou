@@ -461,7 +461,7 @@ struct AccessibilityRequestView: View {
                     .frame(maxWidth: 440)
                 Button("Open System Settings") { AccessibilityPermission.request() }
                     .buttonStyle(.borderedProminent)
-                Text("Since Verrou is signed on this Mac, macOS may forget this permission after an update: remove it from the list and add it again.")
+                Text("Already turned on but this message comes back? macOS ties the permission to one build of Verrou: remove Verrou from the list with −, then add it again.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -511,7 +511,7 @@ struct AppAutofillSection: View {
         if enabled, UniversalAutofill.current?.shortcutUnavailable == true {
             return "\(shortcut.label) is already taken by another app: choose another combination."
         }
-        return "\(shortcut.label) in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return. Since Verrou is signed on this Mac, macOS may forget the Accessibility permission after an update: remove it from the list and allow it again."
+        return "\(shortcut.label) in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return."
     }
 }
 

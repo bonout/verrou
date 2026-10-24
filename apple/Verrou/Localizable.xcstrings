@@ -61,12 +61,12 @@
         }
       }
     },
-    "%@ in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return. Since Verrou is signed on this Mac, macOS may forget the Accessibility permission after an update: remove it from the list and allow it again.": {
+    "%@ in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape l'identifiant, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour. Verrou étant signé sur ce Mac, macOS peut oublier l'autorisation Accessibilité après une mise à jour : retirez-le de la liste et autorisez-le à nouveau."
+            "value": "%@ dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape l'identifiant, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour."
           }
         }
       }
@@ -2797,6 +2797,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Déjà présents, ignorés (%lld)"
+          }
+        }
+      }
+    },
+    "Already turned on but this message comes back? macOS ties the permission to one build of Verrou: remove Verrou from the list with −, then add it again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déjà activé mais ce message revient ? macOS lie l'autorisation à une build précise de Verrou : retirez Verrou de la liste avec −, puis ajoutez-le de nouveau."
           }
         }
       }
@@ -13247,16 +13257,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Signature…"
-          }
-        }
-      }
-    },
-    "Since Verrou is signed on this Mac, macOS may forget this permission after an update: remove it from the list and add it again.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou étant signé sur ce Mac, macOS peut oublier cette autorisation après une mise à jour : retirez-le de la liste et ajoutez-le à nouveau."
           }
         }
       }
