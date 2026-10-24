@@ -67,6 +67,13 @@ final class RemoteApprover {
     @ObservationIgnored private var stored: Stored?
     @ObservationIgnored private var context: (LAContext, Date)?
     @ObservationIgnored private var refreshing = false
+    /// A check of the requests is due (launch, return to the foreground):
+    /// set at once, before its task starts, for `allowsVaultPrompt`.
+    @ObservationIgnored private var checkDue = false
+    /// After an answer: the next request (the secret after an unlock)
+    /// comes a second later, while iCloud's notification may not.
+    @ObservationIgnored private var followUp: Task<Void, Never>?
+    static let followUpWindow: Duration = .seconds(20)
     @ObservationIgnored private var refreshAgain = false
     /// Answered or refused here: not shown again if the Mac hasn't erased it
     /// yet.
@@ -85,6 +92,23 @@ final class RemoteApprover {
             self.stored = stored
             macs = stored.macs
         }
+        // Opened for a request: known before the vault asks for Face ID.
+        if !macs.isEmpty {
+            checkDue = true
+            Task { await refresh() }
+        }
+    }
+
+    /// The vault's own Face ID, at launch or on return: not when the app
+    /// opens for a request of the Mac (one Face ID, the request's). Waits
+    /// for the check of the requests 0.4 s at most.
+    func allowsVaultPrompt() async -> Bool {
+        guard isPaired else { return true }
+        let deadline = ContinuousClock.now + .milliseconds(400)
+        while refreshing || checkDue, current == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return current == nil
     }
 
     var isPaired: Bool { !macs.isEmpty }
@@ -195,7 +219,10 @@ final class RemoteApprover {
             return
         }
         refreshing = true
-        defer { refreshing = false }
+        defer {
+            refreshing = false
+            checkDue = false
+        }
         repeat {
             refreshAgain = false
             guard let records = try? await RemoteCloud.all(in: RemoteCloud.zone(phone: stored.phone)) else { return }
@@ -243,6 +270,9 @@ final class RemoteApprover {
     /// with the same Face ID.
     func answer(approved: Bool) async {
         guard let pending = current, case .ready(let opened) = pending.state, let stored else { return }
+        // Handled from now on: a check running meanwhile mustn't show it
+        // again (it would be answered twice, the next one never).
+        handled.insert(pending.id)
         update(pending.id) { $0.state = .sending }
         do {
             var k: Data?
@@ -254,11 +284,12 @@ final class RemoteApprover {
             }
             let box = try RemoteApproval.answer(opened, approved: approved, key: k)
             try await RemoteCloud.save([RemoteCloud.response(box, request: pending.id, phone: stored.phone)])
-            handled.insert(pending.id)
             update(pending.id) { $0.state = .answered(approved) }
+            watchForNext()
             try? await Task.sleep(for: .milliseconds(700))
             next()
         } catch {
+            handled.remove(pending.id)
             update(pending.id) { $0.state = .failed(Self.describe(error)) }
         }
     }
@@ -270,7 +301,30 @@ final class RemoteApprover {
         next()
     }
 
+    /// Every second for `followUpWindow`, in the foreground, while no
+    /// request is shown: the one that follows is fetched without waiting
+    /// for its notification.
+    private func watchForNext() {
+        followUp?.cancel()
+        followUp = Task { [weak self] in
+            let end = ContinuousClock.now + Self.followUpWindow
+            while !Task.isCancelled, ContinuousClock.now < end {
+                try? await Task.sleep(for: .seconds(1))
+                guard let self, UIApplication.shared.applicationState == .active else { return }
+                if self.current == nil || self.isAnswered { await self.refresh() }
+            }
+        }
+    }
+
+    /// The request shown is already answered (its check mark).
+    private var isAnswered: Bool {
+        if case .answered? = current?.state { return true }
+        return false
+    }
+
     private func next() {
+        // A queue made before an answer may still hold it.
+        queue.removeAll { handled.contains($0.id) }
         current = queue.isEmpty ? nil : queue.removeFirst()
         presenter.update()
     }
@@ -286,6 +340,7 @@ final class RemoteApprover {
     func sceneChanged(to phase: ScenePhase) {
         switch phase {
         case .background:
+            followUp?.cancel()
             context?.0.invalidate()
             context = nil
             if var pending = current, case .ready = pending.state {
@@ -297,6 +352,7 @@ final class RemoteApprover {
             // iCloud's notifications reach the app once registered (each
             // launch: the system keeps the token).
             if isPaired {
+                checkDue = true
                 UIApplication.shared.registerForRemoteNotifications()
                 if !subscribed, let phone = stored?.phone {
                     Task { try? await subscribe(phone) }

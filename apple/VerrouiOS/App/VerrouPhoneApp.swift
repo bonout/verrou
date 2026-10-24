@@ -40,8 +40,9 @@ struct VerrouPhoneApp: App {
             RootView()
                 .environment(model)
                 .onChange(of: scenePhase) { _, phase in
-                    model.scenePhaseChanged(to: phase)
+                    // The requests first: the vault's Face ID waits for them.
                     model.remote.sceneChanged(to: phase)
+                    model.scenePhaseChanged(to: phase)
                 }
                 // `otpauth://` links: Verrou can be the app chosen to set up
                 // verification codes.

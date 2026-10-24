@@ -461,6 +461,8 @@ final class PhoneModel {
         guard autoFaceID, mode == .vaultwarden, canUseBiometrics, lockState == .locked, !needsLogin,
               UIApplication.shared.applicationState != .background else { return }
         if let last = lastBiometricPrompt, Date().timeIntervalSince(last) < 3 { return }
+        // Opened for a request of the Mac: its Face ID is the only one.
+        guard await remote.allowsVaultPrompt(), lockState == .locked else { return }
         await unlockWithBiometrics()
     }
 
