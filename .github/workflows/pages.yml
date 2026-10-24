@@ -54,3 +54,14 @@ jobs:
           path: _site
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+      # Tells Bing (ChatGPT search, Copilot), Yandex and the other IndexNow
+      # engines which pages changed, instead of waiting for their crawlers.
+      - name: IndexNow
+        continue-on-error: true
+        run: |
+          key="$(cd site && ls *.txt | grep -vx llms.txt | sed "s/\.txt$//")"
+          urls="$(grep -o '<loc>[^<]*</loc>' _site/sitemap.xml | sed -e 's/<loc>//' -e 's/<\/loc>//' | jq -R . | jq -s .)"
+          jq -n --arg key "$key" --argjson urls "$urls" \
+            '{host: "verrou.bonout.com", key: $key, keyLocation: ("https://verrou.bonout.com/" + $key + ".txt"), urlList: $urls}' \
+          | curl -sS -o /dev/null -w "IndexNow: HTTP %{http_code}\n" -X POST https://api.indexnow.org/indexnow \
+              -H "Content-Type: application/json; charset=utf-8" --data-binary @-

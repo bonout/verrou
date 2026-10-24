@@ -152,7 +152,8 @@ def build(out, version):
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    for item in ("site.js", "CNAME", ".nojekyll", "img"):
+    # The IndexNow key (a public file by design: it proves the site is ours).
+    for item in ("site.js", "CNAME", ".nojekyll", "img", *(path.name for path in root.glob("*.txt") if path.name != "llms.txt")):
         source = root / item
         if source.is_dir():
             shutil.copytree(source, out / item)
