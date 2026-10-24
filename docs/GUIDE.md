@@ -922,6 +922,11 @@ for what it shows, over the same local bridge as the extension (TCP
 opens it in the background; if the vault is locked, Verrou asks for Touch ID
 and the CLI waits up to a minute.
 
+The Mac app from the website ships `verrou` (`Contents/Helpers/verrou`):
+Settings → *Browsers and Terminal* → *Command line* → *Copy Command* gives
+the line to paste in Terminal, which links `/usr/local/bin/verrou` to it.
+Linked this way, the command updates with the app. From the sources:
+
 ```sh
 cargo install --path crates/verrou-cli   # installs `verrou`
 verrou link        # once: compare the 6-digit code, accept in Verrou

@@ -49,7 +49,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   SIM="$( [[ "$(uname -m)" == arm64 ]] && echo aarch64-apple-ios-sim || echo x86_64-apple-ios )"
   PROFILE="${PROFILE:-release}" PLATFORMS=all TARGETS="$HOST" IOS_TARGETS="" SIM_TARGETS="$SIM" scripts/build-apple.sh
   (cd apple && xcodegen generate --quiet)
-  xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
+  xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED" \
     ARCHS="$(uname -m)" build-for-testing -quiet
 fi

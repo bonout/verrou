@@ -83,7 +83,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   # EXC_BAD_ACCESS on the guard page).
   PROFILE="${PROFILE:-release}" PLATFORMS=all TARGETS="$HOST" IOS_TARGETS="" SIM_TARGETS="$SIM" scripts/build-apple.sh
   (cd apple && xcodegen generate --quiet)
-  xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
+  xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED" \
     ARCHS="$(uname -m)" build -quiet
 fi

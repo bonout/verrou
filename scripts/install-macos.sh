@@ -37,7 +37,7 @@ fi
 
 [[ "${SKIP_RUST:-}" == 1 ]] || TARGETS="$TARGET" scripts/build-apple.sh
 (cd apple && xcodegen generate --quiet)
-xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Release \
+xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme Verrou -configuration Release \
   -destination "platform=macOS,arch=$ARCH" -derivedDataPath target/xcode.noindex \
   "${SIGNING[@]}" CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
   build -quiet

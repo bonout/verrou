@@ -2851,6 +2851,16 @@
         }
       }
     },
+    "An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une mise à jour s'installe quand vous quittez Verrou, jamais pendant qu'il fonctionne. Verrou vérifie d'abord sa signature : seule une mise à jour publiée par les développeurs de Verrou s'installe."
+          }
+        }
+      }
+    },
     "Another": {
       "localizations": {
         "fr": {
@@ -3541,6 +3551,16 @@
         }
       }
     },
+    "Check Now": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher maintenant"
+          }
+        }
+      }
+    },
     "Check again": {
       "localizations": {
         "fr": {
@@ -3557,6 +3577,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vérifier les fuites"
+          }
+        }
+      }
+    },
+    "Check for Updates…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher des mises à jour…"
+          }
+        }
+      }
+    },
+    "Check for updates automatically": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher les mises à jour automatiquement"
           }
         }
       }
@@ -4241,6 +4281,16 @@
         }
       }
     },
+    "Copied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copié"
+          }
+        }
+      }
+    },
     "Copied secrets don't go to your other devices and are cleared by iOS after the delay.": {
       "localizations": {
         "fr": {
@@ -4267,6 +4317,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copier : %@"
+          }
+        }
+      }
+    },
+    "Copy Command": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier la commande"
           }
         }
       }
@@ -5387,6 +5447,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Touchez deux fois pour copier"
+          }
+        }
+      }
+    },
+    "Download and install updates automatically": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Télécharger et installer les mises à jour automatiquement"
           }
         }
       }
@@ -7167,6 +7237,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mot de passe principal incorrect."
+          }
+        }
+      }
+    },
+    "Installed in %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installée dans %@"
           }
         }
       }
@@ -9951,6 +10031,16 @@
         }
       }
     },
+    "Not installed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non installée"
+          }
+        }
+      }
+    },
     "Not logged in": {
       "localizations": {
         "fr": {
@@ -10897,6 +10987,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Coller depuis le presse-papiers"
+          }
+        }
+      }
+    },
+    "Paste the command in Terminal (it asks for your Mac password): it links “verrou” to the app, so the command updates with Verrou.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collez la commande dans Terminal (elle demande le mot de passe du Mac) : elle relie « verrou » à l'app, et la commande se met à jour avec Verrou."
           }
         }
       }
@@ -15231,6 +15331,16 @@
         }
       }
     },
+    "Updates": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mises à jour"
+          }
+        }
+      }
+    },
     "Uploading “%@”…": {
       "localizations": {
         "fr": {
@@ -15467,6 +15577,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verrou"
+          }
+        }
+      }
+    },
+    "Verrou %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou %@"
           }
         }
       }
@@ -17697,6 +17817,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "« Copier la clé publique » pour l'installer sur un serveur"
+          }
+        }
+      }
+    },
+    "“verrou” command": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commande « verrou »"
           }
         }
       }

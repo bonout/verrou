@@ -1383,6 +1383,37 @@ developer account), sandboxed (outgoing network and USB), hardened
 runtime, without `get-task-allow` (no debugger can attach to it); the
 script refuses to install a build that would have it.
 
+## Updates (Mac)
+
+The Mac app published on GitHub updates itself with
+[Sparkle](https://sparkle-project.org) (`Verrou/App/Updates.swift`):
+
+- Once a day (and on "Check for Updates…"), it reads `appcast.xml` from the
+  latest GitHub release, over HTTPS. The feed itself is signed
+  (`SURequireSignedFeed`): a feed that isn't signed by Verrou's key is
+  ignored, so nobody can serve an older release or other notes instead.
+- An update is only installed if its EdDSA signature matches the public key
+  built into the app (`SUPublicEDKey`), checked before the disk image is
+  even opened (`SUVerifyUpdateBeforeExtraction`), and if the new app is
+  signed by the same Developer ID team. The private key only exists in the
+  `release` environment's secrets: the release workflow signs the disk image
+  and the feed with it.
+- It is downloaded in the background and installed when the app quits,
+  never by relaunching it on its own: an approval from the iPhone in
+  progress is never cut short. Settings can turn off automatic checks or
+  installs.
+- The app is sandboxed: Sparkle installs through its launcher service (two
+  `mach-lookup` exceptions limited to its own services,
+  `app.verrou.mac-spks` and `-spki`). The app already has the outgoing
+  network: Sparkle's downloader service isn't used.
+- Only builds made by `scripts/release-macos.sh` carry the public key:
+  debug, ad hoc and locally installed builds have no updater.
+
+The `verrou` command ships in the app (`Contents/Helpers/verrou`), signed
+with it and notarized with it; linked into the `PATH`, it updates with the
+app, and the command and the app always speak the same version of the
+bridge.
+
 ## Report a problem
 
 Don't open a public issue: report the vulnerability privately via

@@ -24,6 +24,12 @@ collected data.
   database (CloudKit), sealed end to end between your two devices, then are
   erased; Apple's push notification service tells the iPhone a request is
   waiting, without its content.
+- **GitHub**, for the Mac app downloaded from the website: once a day and
+  when you choose "Check for Updates…" (automatic checks can be turned off
+  in Settings), Verrou downloads
+  the description of the latest release and, if it is newer, its disk image.
+  GitHub sees your IP address and the version of Verrou and of macOS (in the
+  request's User-Agent); nothing else is sent.
 - **The site of an item**, only when you tap "Change Password" or "Create a
   Passkey" for it: Verrou asks that site whether it publishes the standard
   addresses for those pages (`/.well-known/change-password`,

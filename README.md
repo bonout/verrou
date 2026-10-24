@@ -149,6 +149,10 @@ with `SHA256SUMS` and a build attestation for each file
 2. Open Verrou and enter your server address, e-mail and master password,
    then your second factor. Touch ID unlocks it from then on.
 
+Verrou updates itself: it checks GitHub once a day, downloads a new version
+in the background and installs it when you quit the app, after checking its
+signature (Settings → General → Updates).
+
 Optional, from Verrou's Settings:
 
 - **Brave, Chrome or Firefox extension**: *Browsers and Terminal*, then follow
@@ -163,7 +167,13 @@ Optional, from Verrou's Settings:
 
 ### Command line and SSH agent
 
-Download the archive for your machine (`aarch64-apple-darwin` for Apple
+The Mac app ships the `verrou` command and keeps it up to date with itself:
+in Verrou's Settings, *Browsers and Terminal* → *Command line* → *Copy
+Command*, paste it in Terminal (it links `/usr/local/bin/verrou` to the app),
+then run `verrou link` once and compare the code shown in Verrou.
+
+Without the Mac app (Linux, or a machine of its own), download the archive
+for your machine (`aarch64-apple-darwin` for Apple
 silicon, `x86_64-apple-darwin` for Intel Macs, `x86_64-unknown-linux-gnu`),
 then put `verrou` on your `PATH`:
 

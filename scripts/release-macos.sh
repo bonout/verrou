@@ -17,11 +17,25 @@
 # "Verrou AutoFill Developer ID" for its extension): the release workflow
 # imports them. The export signs manually with them: an API key can't create
 # Developer ID profiles.
+#
+# Updates (Sparkle): the Developer ID build carries the public key below and
+# a build number that grows with the version (0.3.1 → 301). With
+# SPARKLE_ED_PRIVATE_KEY (exported by Sparkle's generate_keys -x), the disk
+# image is signed and appcast.xml written next to it: attached to the
+# release, it is what installed apps read
+# (releases/latest/download/appcast.xml). VERROU_SPARKLE_FEED points a test
+# build to another feed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 VERSION="${1:?usage: release-macos.sh <version>}"
+[[ "$VERSION" =~ ^([0-9]+)\.([0-9]{1,2})\.([0-9]{1,2})$ ]] || { echo "version x.y.z expected: $VERSION" >&2; exit 2; }
+BUILD=$(( BASH_REMATCH[1] * 10000 + 10#${BASH_REMATCH[2]} * 100 + 10#${BASH_REMATCH[3]} ))
+# EdDSA public key of the updates; its private key is the SPARKLE_ED_PRIVATE_KEY
+# secret of the release environment.
+SPARKLE_PUBLIC_KEY="mxqF/wn5FR6ivEJcfAfAsLunKzAOp54UDg0E3yUZbVE="
+REPOSITORY="${GITHUB_REPOSITORY:-bonout/verrou}"
 OUT="target/release-macos"
 rm -rf "$OUT"
 mkdir -p "$OUT"
@@ -42,13 +56,15 @@ ARCHIVE="$OUT/Verrou.xcarchive"
 
 scripts/build-apple.sh
 (cd apple && xcodegen generate --quiet)
-xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Release \
+xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme Verrou -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath target/xcode-release.noindex \
   -archivePath "$ARCHIVE" \
   CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" \
   VERROU_MAC_APP_GROUP="$TEAM.app.verrou" VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements \
   VERROU_MAC_AUTOFILL_ENTITLEMENTS=VerrouAutoFillMac/VerrouAutoFillMac.entitlements \
   CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO MARKETING_VERSION="$VERSION" \
+  CURRENT_PROJECT_VERSION="$BUILD" VERROU_SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" \
+  ${VERROU_SPARKLE_FEED:+VERROU_SPARKLE_FEED="$VERROU_SPARKLE_FEED"} \
   -allowProvisioningUpdates "${AUTH[@]}" archive -quiet
 
 cat > "$OUT/ExportOptions.plist" <<EOF
@@ -94,3 +110,34 @@ xcrun notarytool submit "$DMG" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" \
 xcrun stapler staple "$DMG"
 spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 echo "notarized: $DMG"
+
+if [[ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]]; then
+  echo "no SPARKLE_ED_PRIVATE_KEY: no appcast.xml, installed apps won't see this release"
+  exit 0
+fi
+# Sparkle's tools come with the package Xcode resolved (checksum checked).
+SIGN_UPDATE="$(find target/xcode-release.noindex/SourcePackages/artifacts -path '*/bin/sign_update' -type f | head -1)"
+[[ -x "$SIGN_UPDATE" ]] || { echo "sign_update not found" >&2; exit 1; }
+SIGNATURE="$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "$DMG")"
+[[ "$SIGNATURE" =~ ^sparkle:edSignature=\"[A-Za-z0-9+/=]+\"\ length=\"[0-9]+\"$ ]] || { echo "unexpected sign_update output" >&2; exit 1; }
+cat > "$OUT/appcast.xml" <<XML
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Verrou</title>
+    <item>
+      <title>Verrou $VERSION</title>
+      <pubDate>$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+      <sparkle:version>$BUILD</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
+      <sparkle:fullReleaseNotesLink>https://github.com/$REPOSITORY/releases/tag/v$VERSION</sparkle:fullReleaseNotesLink>
+      <enclosure url="https://github.com/$REPOSITORY/releases/download/v$VERSION/Verrou-$VERSION-macos.dmg" type="application/octet-stream" $SIGNATURE/>
+    </item>
+  </channel>
+</rss>
+XML
+# The feed is signed too (SURequireSignedFeed): nobody can serve an older
+# release or other notes in its place.
+printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$SIGN_UPDATE" --ed-key-file - "$OUT/appcast.xml"
+echo "appcast: $OUT/appcast.xml"

@@ -22,7 +22,10 @@ struct SettingsView: View {
                 .tag(SettingsTab.filling)
             Group {
                 if let bridge = model.browserBridge {
-                    SettingsPane { BrowserSection(bridge: bridge) }
+                    SettingsPane {
+                        BrowserSection(bridge: bridge)
+                        CommandLineSection()
+                    }
                 } else {
                     SettingsPane {
                         Section {
@@ -99,6 +102,7 @@ private struct GeneralSettings: View {
                 }
             }
 
+            UpdatesSection()
             AppAutofillSection()
             SystemAutofillSection()
         }
@@ -394,6 +398,73 @@ struct BrowserSection: View {
             return String(localized: "In Brave: brave://extensions, “Developer mode”, “Load unpacked”, then ⌘⇧G and paste the path. In Firefox: about:debugging, “This Firefox”, “Load Temporary Add-on…”, then ⌘⇧G and paste the manifest path (to redo at each Firefox start, see the guide). Then click the browser's Verrou icon to link the extension. \(terminal)")
         }
         return String(localized: "The extension only receives the logins of the open site, over HTTPS, with the vault unlocked. The terminal searches without seeing the secrets; each one asks for Touch ID.")
+    }
+}
+
+/// Updates of the app (`Updates`): only in release builds.
+private struct UpdatesSection: View {
+    @Environment(Updates.self) private var updates
+
+    var body: some View {
+        @Bindable var updates = updates
+        if updates.isAvailable {
+            Section {
+                Toggle("Check for updates automatically", isOn: $updates.automaticallyChecks)
+                Toggle("Download and install updates automatically", isOn: $updates.automaticallyInstalls)
+                    .disabled(!updates.automaticallyChecks)
+                LabeledContent("Verrou \(Updates.version)") {
+                    Button("Check Now") { updates.check() }
+                        .disabled(!updates.canCheck)
+                }
+            } header: {
+                Text("Updates")
+            } footer: {
+                Text("An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+/// The `verrou` command shipped in the app (Contents/Helpers/verrou): linked
+/// into the PATH, it updates with the app. The sandbox can't write outside
+/// the app's container: the user pastes the command in Terminal.
+struct CommandLineSection: View {
+    @State private var copied = false
+
+    private static let tool = Bundle.main.bundleURL.appending(path: "Contents/Helpers/verrou")
+    private static let link = "/usr/local/bin/verrou"
+
+    private static var command: String {
+        let quoted = "'" + tool.path.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        return "sudo mkdir -p /usr/local/bin && sudo ln -sf \(quoted) \(link)"
+    }
+
+    /// The link already points to this app's tool.
+    private var installed: Bool {
+        (try? FileManager.default.destinationOfSymbolicLink(atPath: Self.link)) == Self.tool.path
+    }
+
+    var body: some View {
+        if FileManager.default.isExecutableFile(atPath: Self.tool.path) {
+            Section {
+                LabeledContent {
+                    Button(copied ? "Copied" : "Copy Command") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(Self.command, forType: .string)
+                        copied = true
+                    }
+                } label: {
+                    Text("“verrou” command")
+                    Text(installed ? "Installed in \(Self.link)" : "Not installed")
+                }
+            } header: {
+                Text("Command line")
+            } footer: {
+                Text("Paste the command in Terminal (it asks for your Mac password): it links “verrou” to the app, so the command updates with Verrou.")
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

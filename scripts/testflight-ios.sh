@@ -38,7 +38,7 @@ mkdir -p "$OUT"
 PLATFORMS=all scripts/build-apple.sh
 (cd apple && xcodegen generate --quiet)
 
-xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Release \
+xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Release \
   -destination 'generic/platform=iOS' -derivedDataPath target/xcode-device.noindex \
   -archivePath "$ARCHIVE" \
   DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic VERROU_APP_GROUP="$GROUP" \
