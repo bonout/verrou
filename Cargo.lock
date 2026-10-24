@@ -5085,7 +5085,7 @@ version = "0.3.1"
 dependencies = [
  "csv",
  "data-encoding",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "nucleo-matcher",
  "p256 0.13.2",
  "psl",
@@ -5144,7 +5144,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hkdf 0.12.4",
- "hmac 0.12.1",
+ "hmac 0.13.0",
  "p256 0.13.2",
  "rand 0.8.8",
  "reqwest 0.12.28",
