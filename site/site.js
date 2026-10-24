@@ -40,7 +40,12 @@ const player = new IntersectionObserver((entries) => {
     else entry.target.pause();
   }
 }, { threshold: 0.25 });
-if (!reduced) document.querySelectorAll("video[data-play]").forEach((video) => player.observe(video));
+// After the page has loaded: the first paint never waits for a video.
+if (!reduced) {
+  const start = () => setTimeout(() => document.querySelectorAll("video[data-play]").forEach((video) => player.observe(video)), 800);
+  if (document.readyState === "complete") start();
+  else addEventListener("load", start, { once: true });
+}
 
 // Sections rise into view; the approval steps light up one by one.
 const flow = document.getElementById("flow");

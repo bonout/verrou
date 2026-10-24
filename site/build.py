@@ -4,9 +4,11 @@
     python3 site/build.py _site 0.3.1
 
 Each page of site/pages/<lang>/ starts with a comment holding its metadata
-(JSON: title, description, optional "schema": "app" or "faq"); the layout
+(JSON: title, description, optional "schema": "app" or "faq", optional
+"preload": the picture shown first, fetched early); the layout
 (site/layout.html) wraps it with the navigation, the alternate languages,
-the structured data and the footer. Next to the pages: sitemap.xml,
+the structured data, the footer and the styles (inlined: nothing blocks the
+first paint). Next to the pages: sitemap.xml,
 robots.txt (search engines and AI crawlers welcome), llms.txt and
 llms-full.txt (llmstxt.org: what an AI assistant should know about Verrou).
 The pictures and videos are copied by the Pages workflow.
@@ -75,7 +77,7 @@ def app_schema(lang, version, description):
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "downloadUrl": f"{REPO}/releases/download/v{version}/Verrou-{version}-macos.dmg",
         "url": SITE + PATHS["index"][lang],
-        "image": f"{SITE}/media/{lang}/mac.png",
+        "image": f"{SITE}/img/og-{lang}.png",
         "codeRepository": REPO,
         "inLanguage": lang,
         "publisher": {"@type": "Organization", "name": "Bonout", "email": "contact@bonout.com"},
@@ -142,10 +144,13 @@ def text_of(fragment):
 def build(out, version):
     root = Path(__file__).resolve().parent
     layout = (root / "layout.html").read_text()
+    # Minimal minification: comments and indentation.
+    css = re.sub(r"/\*.*?\*/", "", (root / "style.css").read_text(), flags=re.S)
+    css = re.sub(r"\s*\n\s*", "\n", css).strip()
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    for item in ("style.css", "site.js", "CNAME", ".nojekyll", "img"):
+    for item in ("site.js", "CNAME", ".nojekyll", "img"):
         source = root / item
         if source.is_dir():
             shutil.copytree(source, out / item)
@@ -182,6 +187,9 @@ def build(out, version):
                 "schema": (f'<script type="application/ld+json">{json.dumps(schema, ensure_ascii=False)}</script>'
                            if schema else ""),
                 "redirect": redirect,
+                "css": css,
+                "preload": (f'<link rel="preload" as="image" href="{meta["preload"].replace("{lang}", lang)}" fetchpriority="high">'
+                            if "preload" in meta else ""),
                 "home": PATHS["index"][lang],
                 "mac": PATHS["vaultwarden-mac"][lang],
                 "iphone": PATHS["vaultwarden-iphone"][lang],
