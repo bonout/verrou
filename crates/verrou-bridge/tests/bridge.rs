@@ -89,7 +89,12 @@ impl Backend for FakeBackend {
         Box::pin(async move { outcome })
     }
 
-    fn request_unlock(&self, _kind: ClientKind, _reason: &str) {
+    fn request_unlock(
+        &self,
+        _kind: ClientKind,
+        _reason: &str,
+        _then: Option<&verrou_bridge::protocol::UnlockIntent>,
+    ) {
         self.unlock_requested.store(true, Ordering::SeqCst);
     }
 

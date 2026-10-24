@@ -10255,6 +10255,36 @@
         }
       }
     },
+    "unlock the vault and get the code of “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "déverrouiller le coffre et obtenir le code de « %@ »"
+          }
+        }
+      }
+    },
+    "unlock the vault and read the password of “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "déverrouiller le coffre et lire le mot de passe de « %@ »"
+          }
+        }
+      }
+    },
+    "unlock the vault and read “%@” in “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "déverrouiller le coffre et lire « %1$@ » dans « %2$@ »"
+          }
+        }
+      }
+    },
     "unlock the vault on “%@”": {
       "localizations": {
         "fr": {

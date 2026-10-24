@@ -37,6 +37,7 @@ use crate::passkeys;
 use crate::protocol::{
     CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
     MAX_FRAME, Outgoing, Reply, ReplyResult, Request, SaveAction, SecretValue, Suggestion,
+    UnlockIntent,
 };
 use crate::ssh;
 
@@ -85,8 +86,9 @@ pub trait Backend: Send + Sync + 'static {
     fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>>;
     /// A client asks to unlock: bring Verrou to the foreground (the
     /// browser), or ask the paired iPhone if the user is away from the Mac
-    /// (the terminal). `reason`: the terminal's, cleaned (empty if none).
-    fn request_unlock(&self, kind: ClientKind, reason: &str);
+    /// (the terminal). `reason`: the terminal's, cleaned (empty if none);
+    /// `then`: what it will read once unlocked, cleaned.
+    fn request_unlock(&self, kind: ClientKind, reason: &str, then: Option<&UnlockIntent>);
     /// Pairing request: show `code` and ask for approval, then
     /// answer with [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
@@ -460,8 +462,9 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         | Command::PasskeyGet(_)
         | Command::PasskeyTargets(_)
         | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
-        Command::Unlock => {
-            backend.request_unlock(info.kind, &reason);
+        Command::Unlock { then } => {
+            let then = then.map(|intent| intent.cleaned());
+            backend.request_unlock(info.kind, &reason, then.as_ref());
             ReplyResult::Done
         }
         Command::Check {

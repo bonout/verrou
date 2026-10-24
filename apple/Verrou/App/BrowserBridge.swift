@@ -26,6 +26,10 @@ final class BrowserBridge {
     private(set) var clients: [BridgeClient] = []
     /// Confirmations in progress: the extension retries every second.
     @ObservationIgnored private var confirming: Set<String> = []
+    /// The iPhone approved "unlock and read <item>": that item's next
+    /// reading by the terminal needs no second approval (once, for 60 s,
+    /// exact identifier or title).
+    @ObservationIgnored private var unlockGrant: (item: String, until: Date)?
 
     var enabled: Bool = UserDefaults.standard.bool(forKey: "braveBridge") {
         didSet {
@@ -122,7 +126,7 @@ final class BrowserBridge {
         }
     }
 
-    fileprivate func unlockRequested(kind: BridgeClientKind, reason: String) {
+    fileprivate func unlockRequested(kind: BridgeClientKind, reason: String, thenItem: String, thenField: String) {
         guard model.lockState == .locked else { return }
         // Away from the Mac, the terminal waits for the iPhone (the window
         // stays locked).
@@ -131,7 +135,12 @@ final class BrowserBridge {
                 .notice("terminal unlock: from the iPhone \(remote.canUnlock), away \(remote.isAway)")
         }
         if kind == .cli, let remote = model.remote, remote.canUnlock, remote.isAway {
-            Task { await model.unlockFromPhone(client: String(localized: "the terminal"), reason: reason) }
+            let then = thenItem.isEmpty ? nil : (item: thenItem, field: thenField)
+            Task {
+                let unlocked = await model.unlockFromPhone(client: String(localized: "the terminal"), reason: reason,
+                                                           then: then)
+                if unlocked, let then { unlockGrant = (then.item, Date().addingTimeInterval(60)) }
+            }
             return
         }
         NSApp.activate()
@@ -178,6 +187,16 @@ final class BrowserBridge {
         case .card: String(localized: "allow \(browser) to fill the card “\(title)”")
         // Many items requested in a short time: maybe not you.
         case .bulk: String(localized: "\(browser) is requesting many items in a short time: allow “\(title)”")
+        }
+        // Already approved on the iPhone with the unlock: "unlock and read
+        // this item".
+        if purpose == .reveal, let grant = unlockGrant, grant.until > Date(),
+           grant.item == item || grant.item.localizedCaseInsensitiveCompare(title) == .orderedSame {
+            unlockGrant = nil
+            if model.session.needsConfirmation(id: item) { model.session.authorizeItem(id: item) }
+            model.extendRemoteSession()
+            model.session.answerBridgeConfirmation(id: id, approved: true)
+            return
         }
         // The terminal's reason, as it declares it, after what is asked.
         let prompt = motive.isEmpty ? reason : "\(reason) (\(motive))"
@@ -303,9 +322,11 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         }
     }
 
-    func unlockRequested(kind: BridgeClientKind, reason: String) {
+    func unlockRequested(kind: BridgeClientKind, reason: String, thenItem: String, thenField: String) {
         DispatchQueue.main.async { [weak bridge] in
-            MainActor.assumeIsolated { bridge?.unlockRequested(kind: kind, reason: reason) }
+            MainActor.assumeIsolated {
+                bridge?.unlockRequested(kind: kind, reason: reason, thenItem: thenItem, thenField: thenField)
+            }
         }
     }
 

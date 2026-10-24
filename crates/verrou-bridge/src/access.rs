@@ -37,7 +37,7 @@ const MAX_RESULTS: usize = 200;
 /// and the unlock request.
 pub fn allowed(kind: ClientKind, command: &Command) -> bool {
     match command {
-        Command::Status | Command::Unlock => true,
+        Command::Status | Command::Unlock { .. } => true,
         Command::Suggest { .. }
         | Command::Fill { .. }
         | Command::Check { .. }
@@ -984,7 +984,7 @@ mod tests {
             assert!(allowed(ClientKind::Cli, command), "{command:?}");
             assert!(!allowed(ClientKind::Browser, command), "{command:?}");
         }
-        for command in [Command::Status, Command::Unlock] {
+        for command in [Command::Status, Command::Unlock { then: None }] {
             assert!(allowed(ClientKind::Browser, &command));
             assert!(allowed(ClientKind::Cli, &command));
         }

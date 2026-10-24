@@ -15,7 +15,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use verrou_bridge::access;
-use verrou_bridge::protocol::{Command as Ask, ItemSummary, ItemView, ReplyResult};
+use verrou_bridge::protocol::{Command as Ask, ItemSummary, ItemView, ReplyResult, UnlockIntent};
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
 use verrou_cli::git_signing;
@@ -289,6 +289,17 @@ impl Source {
         Ok(Self::App(remote))
     }
 
+    /// What is about to be read: an unlock asked meanwhile carries it, so
+    /// that one approval on the iPhone covers both.
+    fn intend(&mut self, item: &str, field: &str) {
+        if let Self::App(remote) = self {
+            remote.intent = Some(UnlockIntent {
+                item: item.to_owned(),
+                field: field.to_owned(),
+            });
+        }
+    }
+
     fn ask(remote: &mut Remote, command: &Ask) -> Result<ReplyResult, String> {
         remote.ask(command).map_err(|e| e.to_string())
     }
@@ -412,6 +423,9 @@ fn run(cli: &Cli) -> Result<(), String> {
             reveal,
         } => {
             let mut source = Source::open(cli)?;
+            if let Some(field_id) = field {
+                source.intend(&query.join(" "), field_id);
+            }
             let item = source.item(&query.join(" "))?;
             if let Some(field_id) = field {
                 let value = field_value(&mut source, &item, field_id)?;
@@ -437,6 +451,7 @@ fn run(cli: &Cli) -> Result<(), String> {
         }
         Command::Totp { query } => {
             let mut source = Source::open(cli)?;
+            source.intend(&query.join(" "), "totp");
             let item = source.item(&query.join(" "))?;
             if !item.summary.has_totp {
                 return Err(format!("\"{}\" has no one-time code", item.summary.title));
@@ -592,6 +607,7 @@ fn run_command(cli: &Cli) -> Result<ExitCode, String> {
         let mut source = Source::open(cli)?;
         let mut items: HashMap<String, ItemView> = HashMap::new();
         for (name, reference) in &references {
+            source.intend(&reference.item, &reference.field);
             if !items.contains_key(&reference.item) {
                 let item = source
                     .item(&reference.item)

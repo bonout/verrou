@@ -90,6 +90,26 @@ pub struct Request {
     pub command: Command,
 }
 
+/// What the terminal reads after an unlock: the item as it asked for it
+/// (a title or an identifier: the locked vault can't name it), and the
+/// field (`password`, `totp`…).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct UnlockIntent {
+    pub item: String,
+    pub field: String,
+}
+
+impl UnlockIntent {
+    /// As shown: one short line each.
+    #[must_use]
+    pub fn cleaned(&self) -> Self {
+        Self {
+            item: clean_reason(Some(&self.item)),
+            field: clean_reason(Some(&self.field)),
+        }
+    }
+}
+
 /// Longest reason shown, in characters.
 pub const MAX_REASON: usize = 120;
 
@@ -126,8 +146,15 @@ pub enum Command {
         url: String,
         item: String,
     },
-    /// Brings Verrou to the foreground to unlock it.
-    Unlock,
+    /// Brings Verrou to the foreground to unlock it (the terminal: asks
+    /// the paired iPhone when the user is away).
+    Unlock {
+        /// Terminal: what it will read once unlocked. Shown in the iPhone's
+        /// request, whose approval then also covers that item, once
+        /// ([`UnlockIntent`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<UnlockIntent>,
+    },
     /// Login typed on the page `url`: already in the vault, new,
     /// or a new password for an item? `current`: the old password
     /// of a change form.

@@ -358,10 +358,12 @@ final class RemoteApprovals {
     }
 
     /// The vault key, if the iPhone approves.
-    func unlock(client: String, reason: String) async -> String? {
+    /// `then`: what the terminal reads once unlocked, shown in the request.
+    func unlock(client: String, reason: String, then: (item: String, field: String)?) async -> String? {
         guard canUnlock, let vault, let mac = stored?.mac else { return nil }
-        let response = await ask(kind: .unlock, client: client, purpose: "unlock", title: "", site: "",
-                                 reason: reason, lifetime: RemoteApproval.unlockLifetime, escrows: vault.escrows)
+        let response = await ask(kind: .unlock, client: client, purpose: "unlock", title: then?.item ?? "", site: "",
+                                 reason: reason, field: then?.field, lifetime: RemoteApproval.unlockLifetime,
+                                 escrows: vault.escrows)
         guard let response, response.approved, let key = response.key else { return nil }
         return try? RemoteApproval.openVault(vault, key: key, mac: mac)
     }
@@ -436,7 +438,8 @@ final class RemoteApprovals {
                     guard !Task.isCancelled else { return }
                 }
                 let response = await ask(kind: .access, client: client, purpose: purpose, title: title, site: site,
-                                         reason: reason, lifetime: RemoteApproval.requestLifetime, escrows: [:])
+                                         reason: reason, field: nil, lifetime: RemoteApproval.requestLifetime,
+                                         escrows: [:])
                 if let response {
                     race.finish(.remote(response.approved))
                 } else if localTask == nil {
@@ -459,7 +462,7 @@ final class RemoteApprovals {
 
     /// The iPhone's answer for the Mac (nil: none in time, or withdrawn).
     private func ask(kind: RemoteApproval.Kind, client: String, purpose: String, title: String, site: String,
-                     reason: String, lifetime: TimeInterval,
+                     reason: String, field: String?, lifetime: TimeInterval,
                      escrows: [String: RemoteApproval.Escrow]) async -> RemoteApproval.Response? {
         guard let mac = stored?.mac else { return nil }
         let signingKey: SecureEnclave.P256.Signing.PrivateKey
@@ -478,7 +481,8 @@ final class RemoteApprovals {
             if kind == .unlock, escrows[phone.id] == nil { continue }
             let request = RemoteApproval.Request(id: id, mac: mac, kind: kind, client: client, purpose: purpose,
                                                  title: title, site: site, expires: expires, escrow: escrows[phone.id],
-                                                 reason: reason.isEmpty ? nil : reason)
+                                                 reason: reason.isEmpty ? nil : reason,
+                                                 field: field.flatMap { $0.isEmpty ? nil : $0 })
             let sealed: RemoteApproval.Sealed, ephemeral: P256.KeyAgreement.PrivateKey
             do {
                 (sealed, ephemeral) = try RemoteApproval.seal(request, to: key, signer: signingKey)

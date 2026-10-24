@@ -12,6 +12,7 @@ use serde::Serialize;
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
 use verrou_bridge::protocol::{
     ClientKind, Command, ErrorCode, Incoming, MAX_FRAME, Outgoing, Reply, ReplyResult, Request,
+    UnlockIntent,
 };
 use zeroize::Zeroize as _;
 
@@ -161,6 +162,9 @@ pub struct Remote {
     next: u64,
     /// Sent with each request: shown in the approval (`--reason`).
     pub reason: Option<String>,
+    /// What the next commands read: sent with an unlock request, so that
+    /// one approval on the iPhone unlocks and lets this item out.
+    pub intent: Option<UnlockIntent>,
 }
 
 impl Remote {
@@ -172,6 +176,7 @@ impl Remote {
             key,
             next: 1,
             reason: None,
+            intent: None,
         })
     }
 
@@ -245,7 +250,9 @@ impl Remote {
     }
 
     fn unlock(&mut self) -> Result<(), Error> {
-        self.call(&Command::Unlock)?;
+        self.call(&Command::Unlock {
+            then: self.intent.clone(),
+        })?;
         eprintln!("verrou: vault locked, unlock it in Verrou…");
         let start = Instant::now();
         while start.elapsed() < UNLOCK_WAIT {

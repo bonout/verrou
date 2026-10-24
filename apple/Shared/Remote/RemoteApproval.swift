@@ -189,6 +189,9 @@ enum RemoteApproval {
         /// Why the terminal asks, as it declares it (`verrou --reason`);
         /// absent from older Macs.
         var reason: String? = nil
+        /// Unlock: the field the terminal will read then, in the item
+        /// `title` (as the terminal named it: the locked vault can't).
+        var field: String? = nil
     }
 
     /// A request as it travels: the Mac's ephemeral public key, the sealed

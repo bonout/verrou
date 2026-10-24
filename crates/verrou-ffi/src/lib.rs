@@ -33,7 +33,9 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use verrou_bridge::access::Write;
-use verrou_bridge::protocol::{CONFIRM_IN_APP, ClientKind, Credentials, SaveAction, Suggestion};
+use verrou_bridge::protocol::{
+    CONFIRM_IN_APP, ClientKind, Credentials, SaveAction, Suggestion, UnlockIntent,
+};
 use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
 use verrou_core::apps;
 use verrou_core::generator::{self, PasswordOptions};
@@ -2410,8 +2412,17 @@ pub trait BridgeDelegate: Send + Sync {
     );
     /// A client found the vault locked. `kind`: the terminal may be
     /// unlocked from the iPhone, the browser brings Verrou forward.
-    /// `reason`: the terminal's, as for `confirm_requested`.
-    fn unlock_requested(&self, kind: BridgeClientKind, reason: String);
+    /// `reason`: the terminal's, as for `confirm_requested`. `then_item`,
+    /// `then_field`: what the terminal will read once unlocked (empty if it
+    /// didn't say): shown in the iPhone's request, whose approval then
+    /// covers that item.
+    fn unlock_requested(
+        &self,
+        kind: BridgeClientKind,
+        reason: String,
+        then_item: String,
+        then_field: String,
+    );
     /// The extension saved a login (or a code): the vault was synced again,
     /// the app reloads its list. `title`: to announce it.
     fn vault_changed(&self, item: String, title: String);
@@ -2565,9 +2576,11 @@ impl Backend for SessionBackend {
         })
     }
 
-    fn request_unlock(&self, kind: ClientKind, reason: &str) {
+    fn request_unlock(&self, kind: ClientKind, reason: &str, then: Option<&UnlockIntent>) {
+        let (item, field) =
+            then.map_or_else(Default::default, |t| (t.item.clone(), t.field.clone()));
         self.delegate
-            .unlock_requested(kind.into(), reason.to_owned());
+            .unlock_requested(kind.into(), reason.to_owned(), item, field);
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
@@ -2926,7 +2939,8 @@ mod tests {
         ) {
             self.0.answer(&id, true);
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String, _: String, _: String) {
+        }
         fn vault_changed(&self, _: String, _: String) {}
         fn reprompt_requested(&self, _: String, _: String) {}
     }
@@ -3137,7 +3151,8 @@ mod optimistic_tests {
             _: String,
         ) {
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String) {}
+        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String, _: String, _: String) {
+        }
         fn vault_changed(&self, item: String, _: String) {
             self.0.lock().unwrap().push(item);
         }

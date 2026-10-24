@@ -30,6 +30,8 @@ struct Fake {
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
     confirmations: Mutex<Vec<(Purpose, String)>>,
     reasons: Mutex<Vec<String>>,
+    /// What each unlock request announced.
+    intents: Mutex<Vec<Option<verrou_bridge::protocol::UnlockIntent>>>,
 }
 
 impl Backend for Fake {
@@ -60,7 +62,13 @@ impl Backend for Fake {
     }
 
     /// Like Touch ID succeeding a moment later.
-    fn request_unlock(&self, _kind: verrou_bridge::protocol::ClientKind, _reason: &str) {
+    fn request_unlock(
+        &self,
+        _kind: verrou_bridge::protocol::ClientKind,
+        _reason: &str,
+        then: Option<&verrou_bridge::protocol::UnlockIntent>,
+    ) {
+        self.intents.lock().unwrap().push(then.cloned());
         std::thread::sleep(Duration::from_millis(300));
         self.unlocked.store(true, Ordering::SeqCst);
     }
@@ -189,6 +197,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
+        intents: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -366,6 +375,7 @@ fn git_signs_through_the_agent() {
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
+        intents: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -524,10 +534,12 @@ fn run_hands_a_secret_to_a_command_masked() {
     let (sender, pairings) = mpsc::channel();
     let backend = Arc::new(Fake {
         vault: Vault::new(vec![login()]),
-        unlocked: AtomicBool::new(true),
+        // Locked: the unlock request says what will be read.
+        unlocked: AtomicBool::new(false),
         pairings: Mutex::new(sender),
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
+        intents: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -561,10 +573,20 @@ fn run_hands_a_secret_to_a_command_masked() {
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(output.status.success(), "{stderr}");
     assert_eq!(stdout, "got it: <concealed by Verrou>\n");
-    assert_eq!(stderr, "nothing to hide\n");
+    assert_eq!(
+        stderr,
+        "verrou: vault locked, unlock it in Verrou…\nnothing to hide\n"
+    );
     assert_eq!(
         backend.confirmations.lock().unwrap().as_slice(),
         [(Purpose::Reveal, "GitHub".to_owned())]
+    );
+    assert_eq!(
+        backend.intents.lock().unwrap().as_slice(),
+        [Some(verrou_bridge::protocol::UnlockIntent {
+            item: "GitHub".to_owned(),
+            field: "password".to_owned(),
+        })]
     );
     // The reason reaches the approval, on one line.
     assert_eq!(

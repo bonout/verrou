@@ -875,6 +875,14 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   refused. A protected item ("master password re-prompt") requires the
   app's confirmation (Touch ID or master password), which the Rust core
   checks before handing over anything.
+- **Unlock and read in one approval**: when the terminal finds the vault
+  locked, its unlock request says what it will read (the item as the
+  terminal named it, title or identifier, since the locked vault can't name
+  it, and the field). The iPhone shows "unlock the vault and read the
+  password of “GitHub”"; approving it also approves that reading, once,
+  within 60 s, and only for the item whose identifier or title is exactly
+  the one shown (case aside). Anything else asks again. An unlock done on
+  the Mac (Touch ID) approves nothing beyond the unlock.
 - **Reason** (`--reason`, `VERROU_REASON`): sent with each request, cleaned
   by the bridge (one line, no control characters, 120 characters at most)
   and shown after what is asked, on the Mac and on the iPhone's approval

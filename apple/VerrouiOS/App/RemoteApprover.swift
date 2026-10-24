@@ -390,7 +390,10 @@ extension RemoteApproval.Request {
     /// "read “GitHub”", in the request's words.
     var action: String {
         switch purpose {
-        case "unlock": String(localized: "unlock the vault")
+        case "unlock" where title.isEmpty: String(localized: "unlock the vault")
+        case "unlock" where field == "totp": String(localized: "unlock the vault and get the code of “\(title)”")
+        case "unlock" where field == "password": String(localized: "unlock the vault and read the password of “\(title)”")
+        case "unlock": String(localized: "unlock the vault and read “\(field ?? "")” in “\(title)”")
         case "reveal": String(localized: "read “\(title)”")
         case "ssh": String(localized: "use the SSH key “\(title)”")
         case "gitSign": String(localized: "sign a git commit with the key “\(title)”")
