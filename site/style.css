@@ -21,7 +21,7 @@ body {
   overflow-x: hidden;
 }
 a { color: inherit; }
-img, video { max-width: 100%; display: block; }
+img, video { max-width: 100%; height: auto; display: block; }
 .wrap { width: min(1120px, 100% - 32px); margin: 0 auto; }
 
 /* Navigation */
