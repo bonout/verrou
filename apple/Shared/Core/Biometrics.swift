@@ -74,7 +74,8 @@ enum Biometrics {
 
     /// `context`: invalidating it withdraws the request (the iPhone answered
     /// first, see `RemoteApprovals`).
-    static func authenticate(reason: String, context: LAContext = LAContext()) async -> Outcome {
+    static func authenticate(reason: String, context: LAContext = LAContext(),
+                             isolation: isolated (any Actor)? = #isolation) async -> Outcome {
         context.localizedFallbackTitle = String(localized: "Master password")
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
@@ -95,7 +96,8 @@ enum Biometrics {
     /// Confirmation of an access requested by the terminal: Touch ID, or the
     /// session password (`.deviceOwnerAuthentication`) when Touch ID is not
     /// available or the user prefers it.
-    static func confirm(reason: String, context: LAContext = LAContext()) async -> Bool {
+    static func confirm(reason: String, context: LAContext = LAContext(),
+                        isolation: isolated (any Actor)? = #isolation) async -> Bool {
         var error: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else { return false }
         return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false

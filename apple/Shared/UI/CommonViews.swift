@@ -144,11 +144,11 @@ struct HighlightedText: View {
             var piece = AttributedString(String(character))
             if marked.contains(UInt32(offset)) {
                 if let tint {
-                    piece.foregroundColor = tint
+                    piece[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = tint
                 } else {
-                    piece.underlineStyle = .single
+                    piece[AttributeScopes.SwiftUIAttributes.UnderlineStyleAttribute.self] = .single
                 }
-                piece.font = .body.weight(.semibold)
+                piece[AttributeScopes.SwiftUIAttributes.FontAttribute.self] = .body.weight(.semibold)
             }
             result += piece
         }
@@ -185,9 +185,9 @@ struct PasswordText: View {
         for character in value {
             var piece = AttributedString(String(character))
             if character.isNumber {
-                piece.foregroundColor = Theme.digit
+                piece[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Theme.digit
             } else if !character.isLetter {
-                piece.foregroundColor = Theme.symbol
+                piece[AttributeScopes.SwiftUIAttributes.ForegroundColorAttribute.self] = Theme.symbol
             }
             result += piece
         }

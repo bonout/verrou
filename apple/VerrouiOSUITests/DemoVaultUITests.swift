@@ -3,8 +3,9 @@ import XCTest
 /// *Try the Demo Vault* on the sign-in screen (what App Review sees): opens
 /// the demo vault without a server, and leaving it goes back to sign-in.
 /// Needs an iPhone with no account (a fresh Simulator), in English.
+@MainActor
 final class DemoVaultUITests: XCTestCase {
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
     }
 

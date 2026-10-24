@@ -109,7 +109,7 @@ final class HotKey {
     nonisolated(unsafe) private static var handler: EventHandlerRef?
     nonisolated(unsafe) private static var nextID: UInt32 = 1
 
-    init(keyCode: UInt32, modifiers: UInt32, action: @escaping @MainActor () -> Void) {
+    init(keyCode: UInt32, modifiers: UInt32, action: @escaping @MainActor @Sendable () -> Void) {
         Self.installHandlerIfNeeded()
         id = Self.nextID
         Self.nextID += 1

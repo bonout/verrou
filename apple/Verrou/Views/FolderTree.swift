@@ -15,7 +15,7 @@ enum ItemDrag {
         return provider
     }
 
-    static func load(_ providers: [NSItemProvider], then: @escaping @MainActor ([String]) -> Void) {
+    static func load(_ providers: [NSItemProvider], then: @escaping @MainActor @Sendable ([String]) -> Void) {
         guard let provider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(type.identifier) }) else { return }
         _ = provider.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
             guard let data, let text = String(data: data, encoding: .utf8) else { return }

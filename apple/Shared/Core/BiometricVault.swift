@@ -105,7 +105,7 @@ enum BiometricVault {
     /// soon as the face or finger is recognized, before the Secure Enclave
     /// and decryption: the lock screen can start opening.
     static func open(in directory: URL, reason: String, file name: String = appFile,
-                     accepted: (@MainActor () -> Void)? = nil) async throws -> String {
+                     accepted: (@MainActor @Sendable () -> Void)? = nil) async throws -> String {
         guard let data = try? Data(contentsOf: file(in: directory, name: name)),
               let sealed = try? JSONDecoder().decode(Sealed.self, from: data) else { throw Failure.invalidated }
         let context = LAContext()

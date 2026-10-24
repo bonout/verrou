@@ -17,6 +17,11 @@ packages:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Every data race the compiler can see is reported (the CI fails on
+    # any): the code already builds in the Swift 6 language mode, which also
+    # adds runtime isolation checks; that switch waits for a release tested
+    # on devices.
+    SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.3.1"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""

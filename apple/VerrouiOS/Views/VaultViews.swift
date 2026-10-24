@@ -836,7 +836,7 @@ struct ItemRow: View, Equatable {
     let row: ResultRow
     var showsPasskey = false
 
-    static func == (lhs: ItemRow, rhs: ItemRow) -> Bool {
+    nonisolated static func == (lhs: ItemRow, rhs: ItemRow) -> Bool {
         lhs.row.summary == rhs.row.summary && lhs.row.highlights == rhs.row.highlights
             && lhs.showsPasskey == rhs.showsPasskey
     }

@@ -1461,8 +1461,9 @@ final class AutoLock {
         Self.minutes > 0 ? TimeInterval(Self.minutes * 60) : nil
     }
     private var lastActivity = Date()
-    private var timer: Timer?
-    private var observers: [NSObjectProtocol] = []
+    // Set on the main actor, released in deinit (nonisolated).
+    nonisolated(unsafe) private var timer: Timer?
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     private let onLock: @MainActor () -> Void
 
     init(onLock: @escaping @MainActor () -> Void) {

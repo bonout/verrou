@@ -4,19 +4,24 @@ import XCTest
 /// regions, clipped text…) on the main screens of the Mac app, with the
 /// mock vault. Opens the app on screen: run it from Xcode or
 /// `xcodebuild test -scheme VerrouMacUITests`.
+@MainActor
 final class AccessibilityAuditUITests: XCTestCase {
     private var app: XCUIApplication!
     private var issues: [String] = []
 
-    override func setUp() {
-        continueAfterFailure = true
-        app = XCUIApplication()
-        app.launchEnvironment["VERROU_MOCK"] = "1"
-        app.launch()
+    override nonisolated func setUp() {
+        MainActor.assumeIsolated {
+            continueAfterFailure = true
+            app = XCUIApplication()
+            app.launchEnvironment["VERROU_MOCK"] = "1"
+            app.launch()
+        }
     }
 
-    override func tearDown() {
-        app.terminate()
+    override nonisolated func tearDown() {
+        MainActor.assumeIsolated {
+            app.terminate()
+        }
     }
 
     func testMainScreensPassTheAudit() throws {

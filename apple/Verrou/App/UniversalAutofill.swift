@@ -275,7 +275,8 @@ enum AccessibilityPermission {
 
     /// Asks macOS to add Verrou to the list (and opens the settings).
     static func request() {
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        // kAXTrustedCheckOptionPrompt, by its value: the SDK declares it a global var.
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         if AXIsProcessTrustedWithOptions(options) { return }
         // Sandboxed app: this request is what adds Verrou to the list.
         if CGRequestPostEventAccess() { return }
@@ -340,7 +341,7 @@ struct KeystrokePlayer {
         }
     }
 
-    func play(_ strokes: [AutofillKeystroke]) async {
+    func play(_ strokes: [AutofillKeystroke], isolation: isolated (any Actor)? = #isolation) async {
         for key in Self.keys(for: strokes) {
             sink.post(key)
             if case .character = key {

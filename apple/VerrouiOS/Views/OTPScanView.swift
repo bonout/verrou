@@ -339,13 +339,14 @@ final class MetadataScannerController: UIViewController, AVCaptureMetadataOutput
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        let session = session
+        // AVCaptureSession is thread-safe; Apple asks to start it off the main thread.
+        nonisolated(unsafe) let session = session
         DispatchQueue.global(qos: .userInitiated).async { session.startRunning() }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        let session = session
+        nonisolated(unsafe) let session = session
         DispatchQueue.global(qos: .userInitiated).async { session.stopRunning() }
     }
 

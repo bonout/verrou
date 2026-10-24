@@ -17,12 +17,13 @@ import XCTest
 /// `VERROU_AUTOFILL_E2E_*` (see `AutoFillSetupDriver`), `_PAGE` (address of
 /// the test page), `_SHOTS` (screenshots folder, on the Mac) and `_PAUSE`
 /// (seconds of pause at key steps, for a video one can follow).
+@MainActor
 final class AutoFillUITests: XCTestCase {
     private let environment = ProcessInfo.processInfo.environment
     private lazy var safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
 
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
     }
 

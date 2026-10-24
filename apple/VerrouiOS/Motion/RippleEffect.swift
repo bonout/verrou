@@ -11,7 +11,7 @@ struct RippleEffect: ViewModifier {
 
     /// Short enough to fit in the lock screen's fade.
     static let duration = 0.26
-    private static let amplitude: Double = 16
+    nonisolated private static let amplitude: Double = 16
 
     func body(content: Content) -> some View {
         // At rest, the view as is: the Metal library is only loaded at the
@@ -23,7 +23,7 @@ struct RippleEffect: ViewModifier {
         }
     }
 
-    private static func shader(size: CGSize, origin: CGPoint, elapsed: Double) -> Shader {
+    nonisolated private static func shader(size: CGSize, origin: CGPoint, elapsed: Double) -> Shader {
         ShaderLibrary.Ripple(.float2(size), .float2(origin), .float(elapsed), .float(amplitude),
                              .float(36), .float(6), .float(1100))
     }

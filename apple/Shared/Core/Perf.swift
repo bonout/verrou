@@ -85,7 +85,8 @@ enum Perf {
         return try body()
     }
 
-    static func measure<T>(_ label: String, _ body: () async throws -> T) async rethrows -> T {
+    static func measure<T>(_ label: String, isolation: isolated (any Actor)? = #isolation,
+                           _ body: () async throws -> T) async rethrows -> T {
         let start = ContinuousClock.now
         defer { mark("\(label): \(ms(since: start)) ms") }
         return try await body()

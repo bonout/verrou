@@ -123,11 +123,26 @@ jobs:
       - run: cd apple && xcodegen generate
       - name: Build the app
         run: |
+          set -o pipefail
           xcodebuild -project apple/Verrou.xcodeproj -scheme Verrou -configuration Debug \
             -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode.noindex \
-            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build
-      - name: Build the iPhone app (simulator, unsigned)
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build 2>&1 | tee "$RUNNER_TEMP/mac.log"
+      - name: Mac unit tests
         run: |
+          set -o pipefail
+          xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouMacTests \
+            -destination 'platform=macOS,arch=arm64' -derivedDataPath target/xcode.noindex test 2>&1 | tee "$RUNNER_TEMP/mac-tests.log"
+      - name: Build the iPhone app and its tests (simulator, unsigned)
+        run: |
+          set -o pipefail
           xcodebuild -project apple/Verrou.xcodeproj -scheme VerrouiOS -configuration Debug \
             -destination 'generic/platform=iOS Simulator' ARCHS=arm64 -derivedDataPath target/xcode-ios.noindex \
-            CODE_SIGNING_ALLOWED=NO build
+            CODE_SIGNING_ALLOWED=NO build-for-testing 2>&1 | tee "$RUNNER_TEMP/ios.log"
+      # Complete concurrency checking (project.yml): a data race the compiler
+      # sees fails the build.
+      - name: No concurrency warning
+        run: |
+          if grep -hE "warning: .*(Sendable|Swift 6 language mode|actor-isolated|data race)" "$RUNNER_TEMP"/*.log | sort -u | grep .; then
+            echo "::error::concurrency warnings (see above)"
+            exit 1
+          fi

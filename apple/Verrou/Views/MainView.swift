@@ -603,7 +603,7 @@ private struct ListRow: View, Equatable {
     @State private var pressed = false
     @State private var deferredClick = false
 
-    static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.selected == rhs.selected && lhs.row.summary == rhs.row.summary
             && lhs.row.highlights == rhs.row.highlights && lhs.showsPasskey == rhs.showsPasskey
     }

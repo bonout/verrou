@@ -12,11 +12,12 @@ import XCTest
 ///
 /// The showcase runs in English, on the demo vault's English words
 /// (`VERROU_MOCK_LANG=en`): Emily Parker's vault.
+@MainActor
 final class ShowcaseUITests: XCTestCase {
     private let environment = ProcessInfo.processInfo.environment
     private var app = XCUIApplication()
 
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
     }
 

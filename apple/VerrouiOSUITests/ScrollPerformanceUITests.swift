@@ -3,8 +3,9 @@ import XCTest
 /// Scrolling the list on a demo vault of 2,000 items (launched by
 /// `scripts/ios-bench.sh`): hitches measured by UIKit's scrolling signposts
 /// (`XCTOSSignpostMetric.scrollingAndDecelerationMetric`).
+@MainActor
 final class ScrollPerformanceUITests: XCTestCase {
-    override func setUp() {
+    override func setUp() async throws {
         continueAfterFailure = false
     }
 
