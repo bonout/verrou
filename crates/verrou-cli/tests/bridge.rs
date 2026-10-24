@@ -512,3 +512,53 @@ fn git_signs_through_the_agent() {
     assert_eq!(backend.confirmations.lock().unwrap().len(), 2);
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// `verrou run`: the command gets the password in its environment, after
+/// the approval; its output has it masked.
+#[test]
+fn run_hands_a_secret_to_a_command_masked() {
+    let (sender, pairings) = mpsc::channel();
+    let backend = Arc::new(Fake {
+        vault: Vault::new(vec![login()]),
+        unlocked: AtomicBool::new(true),
+        pairings: Mutex::new(sender),
+        confirmations: Mutex::new(Vec::new()),
+    });
+    let dir = temp_dir();
+    let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
+    let endpoint = Endpoint {
+        port: bridge.port(),
+        launch: false,
+    };
+    let approver = {
+        let bridge = Arc::clone(&bridge);
+        std::thread::spawn(move || {
+            let request: PairingRequest = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
+            bridge.answer_pairing(&request.id, true);
+        })
+    };
+    let config = remote::link(endpoint, "terminal (verrou)", |_| {}).unwrap();
+    approver.join().unwrap();
+    let path = dir.join("cli.json");
+    config.save(&path).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_verrou"))
+        .args(["run", "--", "sh", "-c"])
+        .arg(r#"[ "$TOKEN" = hunter2 ] && echo "got it: $TOKEN"; echo "$PLAIN" >&2"#)
+        .env("VERROU_CLI_CONFIG", &path)
+        .env("VERROU_BRIDGE_PORT", bridge.port().to_string())
+        .env("TOKEN", "verrou://GitHub/password")
+        .env("PLAIN", "nothing to hide")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(output.status.success(), "{stderr}");
+    assert_eq!(stdout, "got it: <concealed by Verrou>\n");
+    assert_eq!(stderr, "nothing to hide\n");
+    assert_eq!(
+        backend.confirmations.lock().unwrap().as_slice(),
+        [(Purpose::Reveal, "GitHub".to_owned())]
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

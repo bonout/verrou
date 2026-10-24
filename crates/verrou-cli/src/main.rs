@@ -5,9 +5,10 @@
 //! `127.0.0.1`, encrypted channel). Secrets require the user's approval in
 //! Verrou (Touch ID). `--mock` works on the mock vault, without the app.
 
+use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::process::ExitCode;
+use std::process::{ExitCode, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -19,9 +20,11 @@ use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
 use verrou_cli::git_signing;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
+use verrou_cli::run;
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
+use zeroize::Zeroizing;
 
 #[derive(Parser)]
 #[command(name = "verrou", version, about = "Password manager for Vaultwarden")]
@@ -77,6 +80,27 @@ enum Command {
     },
     /// One-time code of the item found (approval asked in Verrou).
     Totp { query: Vec<String> },
+    /// Run a command with secrets in its environment: each variable set to
+    /// `verrou://<item>/<field>` (here or in `--env-file`) gets the field's
+    /// value, after your approval in Verrou. The secrets never go through
+    /// the terminal; the command's output has them masked.
+    Run {
+        /// Dotenv file (`KEY=value`, values may be `verrou://` references).
+        #[arg(long)]
+        env_file: Option<PathBuf>,
+        /// Don't mask the secrets in the command's output (it then writes
+        /// straight to the terminal: interactive programs).
+        #[arg(long)]
+        no_masking: bool,
+        /// The command and its arguments, after `--`.
+        #[arg(
+            required = true,
+            trailing_var_arg = true,
+            allow_hyphen_values = true,
+            value_name = "COMMAND"
+        )]
+        command: Vec<String>,
+    },
     /// Generate a password, or a passphrase with `--words` (locally,
     /// without the app).
     Generate {
@@ -214,6 +238,13 @@ struct ItemDetailJson<'a> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if matches!(cli.command, Command::Run { .. }) {
+        // The command's exit code becomes ours.
+        return run_command(&cli).unwrap_or_else(|message| {
+            eprintln!("verrou: {message}");
+            ExitCode::FAILURE
+        });
+    }
     match run(&cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(message) => {
@@ -416,6 +447,7 @@ fn run(cli: &Cli) -> Result<(), String> {
                 writeln!(out, "{code}").ok();
             }
         }
+        Command::Run { .. } => {}
         Command::Generate { .. } => generate(cli, &mut out),
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
@@ -528,6 +560,100 @@ fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), Str
         eprintln!("(nothing written: run again with --apply to apply these settings)");
     }
     Ok(())
+}
+
+/// `verrou run`: resolves the `verrou://` references, then runs the
+/// command with them, its output masked (see `verrou_cli::run`).
+fn run_command(cli: &Cli) -> Result<ExitCode, String> {
+    let Command::Run {
+        env_file,
+        no_masking,
+        command,
+    } = &cli.command
+    else {
+        return Ok(ExitCode::FAILURE);
+    };
+    let file = match env_file {
+        Some(path) => run::parse_env_file(
+            &std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?,
+        )
+        .map_err(|e| format!("{}: {e}", path.display()))?,
+        None => Vec::new(),
+    };
+    let references = run::references(std::env::vars(), &file)?;
+    let mut secrets: Vec<(String, Zeroizing<String>)> = Vec::new();
+    if !references.is_empty() {
+        let mut source = Source::open(cli)?;
+        let mut items: HashMap<String, ItemView> = HashMap::new();
+        for (name, reference) in &references {
+            if !items.contains_key(&reference.item) {
+                let item = source
+                    .item(&reference.item)
+                    .map_err(|e| format!("{name}: {e}"))?;
+                items.insert(reference.item.clone(), item);
+            }
+            let item = &items[&reference.item];
+            let value = field_value(&mut source, item, &reference.field)
+                .map_err(|e| format!("{name}: {e}"))?;
+            secrets.push((name.clone(), Zeroizing::new(value)));
+        }
+    }
+    let (program, arguments) = command.split_first().ok_or("missing command")?;
+    let mut child = std::process::Command::new(program);
+    child.args(arguments);
+    for (name, value) in &file {
+        if run::Reference::parse(value).is_none() {
+            child.env(name, value);
+        }
+    }
+    for (name, value) in &secrets {
+        child.env(name, value.as_str());
+    }
+    let masking = !no_masking && !secrets.is_empty();
+    if masking {
+        child.stdout(Stdio::piped()).stderr(Stdio::piped());
+    }
+    let mut child = child.spawn().map_err(|e| format!("{program}: {e}"))?;
+    let pumps: Vec<std::thread::JoinHandle<()>> = if masking {
+        let masker = || run::Masker::new(secrets.iter().map(|(_, value)| value.as_str()));
+        let out = child.stdout.take().map(|from| {
+            let masker = masker();
+            std::thread::spawn(move || {
+                let _ = run::pump(from, std::io::stdout(), masker);
+            })
+        });
+        let err = child.stderr.take().map(|from| {
+            let masker = masker();
+            std::thread::spawn(move || {
+                let _ = run::pump(from, std::io::stderr(), masker);
+            })
+        });
+        out.into_iter().chain(err).collect()
+    } else {
+        Vec::new()
+    };
+    // The values only stay in the command's environment.
+    drop(secrets);
+    let status = child.wait().map_err(|e| format!("{program}: {e}"))?;
+    for pump in pumps {
+        let _ = pump.join();
+    }
+    Ok(exit_code(status))
+}
+
+/// The command's code; killed by a signal: 128 + the signal, as a shell
+/// says it.
+fn exit_code(status: std::process::ExitStatus) -> ExitCode {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt as _;
+        if let Some(signal) = status.signal() {
+            return ExitCode::from(u8::try_from(128 + signal).unwrap_or(u8::MAX));
+        }
+    }
+    status.code().map_or(ExitCode::FAILURE, |code| {
+        ExitCode::from(u8::try_from(code).unwrap_or(1))
+    })
 }
 
 /// A field's value: visible in the item, or asked of Verrou.

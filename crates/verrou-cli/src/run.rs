@@ -1,0 +1,307 @@
+//! `verrou run -- <command>`: the command gets its secrets in environment
+//! variables, without them going through the terminal, its history, or an
+//! agent's context (Claude Code, Codex…).
+//!
+//! A variable whose value is a reference `verrou://<item>/<field>` (in the
+//! environment, or in a `--env-file`) is replaced by the field's value,
+//! asked of Verrou with the usual approval (Touch ID, or the paired
+//! iPhone). The item is a title or an identifier, percent-encoded if it
+//! holds a `/` (`verrou://GitHub%2Fwork/token`); the field is `password`,
+//! `username`, `totp` (the current code), `notes`, or a custom field.
+//!
+//! What the command prints is masked by default: each secret it was given
+//! is replaced by `<concealed by Verrou>`, including when it is split
+//! across two writes ([`Masker`]). `--no-masking` passes the output as is
+//! (an interactive program that needs a terminal).
+
+use std::io::{self, Read, Write};
+
+use zeroize::Zeroizing;
+
+pub const SCHEME: &str = "verrou://";
+pub const CONCEALED: &str = "<concealed by Verrou>";
+
+/// A field of an item, to resolve.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reference {
+    pub item: String,
+    pub field: String,
+}
+
+impl Reference {
+    /// `verrou://<item>/<field>`; `None` for any other value, which passes
+    /// as is.
+    pub fn parse(value: &str) -> Option<Result<Self, String>> {
+        let rest = value.strip_prefix(SCHEME)?;
+        let Some((item, field)) = rest.rsplit_once('/') else {
+            return Some(Err(format!("\"{value}\": expected {SCHEME}<item>/<field>")));
+        };
+        let (Some(item), Some(field)) = (percent_decode(item), percent_decode(field)) else {
+            return Some(Err(format!("\"{value}\": invalid percent-encoding")));
+        };
+        if item.is_empty() || field.is_empty() {
+            return Some(Err(format!("\"{value}\": expected {SCHEME}<item>/<field>")));
+        }
+        Some(Ok(Self { item, field }))
+    }
+}
+
+fn percent_decode(text: &str) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = text.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// `KEY=value` lines of a dotenv file: comments, blank lines and an
+/// `export ` prefix allowed, value optionally in single or double quotes.
+pub fn parse_env_file(text: &str) -> Result<Vec<(String, String)>, String> {
+    let mut vars = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").unwrap_or(line);
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("line {}: expected KEY=value", number + 1));
+        };
+        let key = key.trim();
+        if key.is_empty() || !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(format!(
+                "line {}: invalid variable name \"{key}\"",
+                number + 1
+            ));
+        }
+        let value = value.trim();
+        let value = ['"', '\'']
+            .iter()
+            .find_map(|q| value.strip_prefix(*q).and_then(|v| v.strip_suffix(*q)))
+            .unwrap_or(value);
+        vars.push((key.to_owned(), value.to_owned()));
+    }
+    Ok(vars)
+}
+
+/// The variables to resolve: those of the environment, then the file's (a
+/// file's variable wins over the environment's).
+pub fn references(
+    environment: impl IntoIterator<Item = (String, String)>,
+    file: &[(String, String)],
+) -> Result<Vec<(String, Reference)>, String> {
+    let mut found: Vec<(String, Reference)> = Vec::new();
+    let all = environment.into_iter().chain(file.iter().cloned());
+    for (name, value) in all {
+        found.retain(|(n, _)| *n != name);
+        if let Some(reference) = Reference::parse(&value) {
+            found.push((name, reference?));
+        }
+    }
+    found.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(found)
+}
+
+/// Replaces the secrets in a stream of bytes. Only the end of a write
+/// that starts a secret is held back, until the next write tells whether
+/// the secret follows: a secret split between two writes is still masked,
+/// and the rest of the output (a prompt without a newline) shows at once.
+/// [`Masker::finish`] lets out what is held.
+pub struct Masker {
+    secrets: Vec<Zeroizing<Vec<u8>>>,
+    pending: Zeroizing<Vec<u8>>,
+}
+
+impl Masker {
+    /// Secrets shorter than 3 bytes are not masked: they would hide
+    /// ordinary output (a one-digit PIN).
+    pub fn new<'a>(secrets: impl IntoIterator<Item = &'a str>) -> Self {
+        let mut secrets: Vec<Zeroizing<Vec<u8>>> = secrets
+            .into_iter()
+            .filter(|s| s.len() >= 3)
+            .map(|s| Zeroizing::new(s.as_bytes().to_vec()))
+            .collect();
+        // Longest first: a secret containing another is masked whole.
+        secrets.sort_by_key(|s| std::cmp::Reverse(s.len()));
+        secrets.dedup_by(|a, b| a.as_slice() == b.as_slice());
+        Self {
+            secrets,
+            pending: Zeroizing::new(Vec::new()),
+        }
+    }
+
+    /// What can be written now.
+    pub fn feed(&mut self, data: &[u8]) -> Vec<u8> {
+        self.pending.extend_from_slice(data);
+        self.drain(false)
+    }
+
+    /// The end of the stream.
+    pub fn finish(&mut self) -> Vec<u8> {
+        self.drain(true)
+    }
+
+    fn drain(&mut self, last: bool) -> Vec<u8> {
+        let data: &[u8] = &self.pending;
+        let mut out = Vec::with_capacity(data.len());
+        let mut i = 0;
+        'scan: while i < data.len() {
+            let rest = &data[i..];
+            for secret in &self.secrets {
+                if rest.starts_with(secret) {
+                    out.extend_from_slice(CONCEALED.as_bytes());
+                    i += secret.len();
+                    continue 'scan;
+                }
+            }
+            // The rest may be the start of a secret cut by the write.
+            if !last
+                && self
+                    .secrets
+                    .iter()
+                    .any(|s| s.len() > rest.len() && s.starts_with(rest))
+            {
+                break;
+            }
+            out.push(data[i]);
+            i += 1;
+        }
+        let kept = data[i..].to_vec();
+        *self.pending = kept;
+        out
+    }
+}
+
+/// Copies `from` to `to`, masked, until the end of `from`.
+pub fn pump(mut from: impl Read, mut to: impl Write, mut masker: Masker) -> io::Result<()> {
+    let mut buffer = Zeroizing::new([0_u8; 8192]);
+    loop {
+        let n = match from.read(buffer.as_mut()) {
+            Ok(0) => break,
+            Ok(n) => n,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        let out = masker.feed(&buffer[..n]);
+        to.write_all(&out)?;
+        // Lines appear as the command writes them.
+        to.flush()?;
+    }
+    to.write_all(&masker.finish())?;
+    to.flush()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn references_are_parsed() {
+        assert_eq!(
+            Reference::parse("verrou://GitHub/password"),
+            Some(Ok(Reference {
+                item: "GitHub".into(),
+                field: "password".into()
+            }))
+        );
+        assert_eq!(
+            Reference::parse("verrou://GitHub%2Fwork%20account/api%20token"),
+            Some(Ok(Reference {
+                item: "GitHub/work account".into(),
+                field: "api token".into()
+            }))
+        );
+        assert_eq!(Reference::parse("hello"), None);
+        assert!(matches!(Reference::parse("verrou://GitHub"), Some(Err(_))));
+        assert!(matches!(
+            Reference::parse("verrou:///password"),
+            Some(Err(_))
+        ));
+        assert!(matches!(Reference::parse("verrou://a%zz/b"), Some(Err(_))));
+    }
+
+    #[test]
+    fn env_file_is_read() {
+        let vars = parse_env_file(
+            "# comment\n\nexport TOKEN=\"verrou://GitHub/token\"\nPLAIN='x=y'\nPORT=8080\n",
+        )
+        .unwrap();
+        assert_eq!(
+            vars,
+            vec![
+                ("TOKEN".into(), "verrou://GitHub/token".into()),
+                ("PLAIN".into(), "x=y".into()),
+                ("PORT".into(), "8080".into()),
+            ]
+        );
+        assert!(parse_env_file("NOEQUALS").is_err());
+        assert!(parse_env_file("BAD-NAME=1").is_err());
+    }
+
+    #[test]
+    fn file_wins_over_environment() {
+        let env = vec![
+            ("A".to_owned(), "verrou://One/password".to_owned()),
+            ("B".to_owned(), "plain".to_owned()),
+        ];
+        let file = vec![
+            ("A".to_owned(), "plain now".to_owned()),
+            ("C".to_owned(), "verrou://Two/totp".to_owned()),
+        ];
+        let found = references(env, &file).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, "C");
+    }
+
+    #[test]
+    fn secrets_are_masked_across_writes() {
+        let mut masker = Masker::new(["hunter2-secret", "ab"]);
+        let mut out = Vec::new();
+        out.extend(masker.feed(b"token=hunter2"));
+        out.extend(masker.feed(b"-secret and ab\n"));
+        out.extend(masker.finish());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("token={CONCEALED} and ab\n")
+        );
+    }
+
+    #[test]
+    fn longest_secret_wins() {
+        let mut masker = Masker::new(["pass", "password123"]);
+        let mut out = masker.feed(b"password123 pass");
+        out.extend(masker.finish());
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            format!("{CONCEALED} {CONCEALED}")
+        );
+    }
+
+    #[test]
+    fn only_a_possible_secret_is_held_back() {
+        let mut masker = Masker::new(["hunter2"]);
+        // A prompt without a newline shows at once.
+        assert_eq!(masker.feed(b"Password: "), b"Password: ");
+        // "hun" may start the secret: held until the next write.
+        assert_eq!(masker.feed(b"ok hun"), b"ok ");
+        assert_eq!(masker.feed(b"gry\n"), b"hungry\n");
+        assert_eq!(masker.feed(b"hun"), b"");
+        assert_eq!(masker.finish(), b"hun");
+    }
+
+    #[test]
+    fn output_without_secrets_passes_through() {
+        let mut out = Vec::new();
+        pump(&b"hello\nworld\n"[..], &mut out, Masker::new(["unrelated"])).unwrap();
+        assert_eq!(out, b"hello\nworld\n");
+    }
+}

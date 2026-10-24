@@ -102,7 +102,10 @@ your logins in Brave, Firefox and any other Mac app. The interface is in French.
   usernames is found (certain, probable, to check) and merged into one item.
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
   that signs with the keys in your vault, and git commit signing. Each secret
-  is approved with Touch ID.
+  is approved with Touch ID. `verrou run` hands secrets to a command in its
+  environment, masked in its output: they never land in the terminal or in
+  an AI agent's context (`GITHUB_TOKEN=verrou://GitHub/token verrou run --
+  gh repo list`).
 - **Approve from your iPhone**: away from the Mac (screen locked or idle),
   the terminal's requests go to Verrou on the paired iPhone, where Face ID
   approves them; it can also unlock the vault for the terminal, without the

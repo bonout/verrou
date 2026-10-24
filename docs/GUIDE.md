@@ -929,6 +929,7 @@ verrou status
 verrou search github            # titles, usernames, sites: never secrets
 verrou get github --field password | pbcopy
 verrou totp github
+GITHUB_TOKEN=verrou://GitHub/token verrou run -- gh repo list   # see below
 verrou generate -l 24           # local, no app needed
 verrou generate --words 5       # passphrase (see below)
 verrou unlink
@@ -940,6 +941,39 @@ must be on. Reading a secret (`get --field password`, `--reveal`, `totp`)
 asks for Touch ID (or the session password) in Verrou: *allow the terminal
 to read “GitHub”*. An approval lasts 5 minutes for that item and that
 terminal, and is forgotten when the vault locks.
+
+### Secrets for a command (`verrou run`)
+
+`verrou get --field` prints the secret: it lands in the terminal, its
+scrollback, and the context of an AI agent working there (Claude Code,
+Codex…). `verrou run` hands it to one command instead, in an environment
+variable, and nothing is printed:
+
+```sh
+GITHUB_TOKEN=verrou://GitHub/token verrou run -- gh repo list
+verrou run --env-file .env -- npm run deploy
+```
+
+A variable whose value is `verrou://<item>/<field>` gets the field's value;
+the others pass as is. The item is a title or an identifier (percent-encode
+a `/` or a space: `verrou://GitHub%20work/token`); the field is `password`,
+`username`, `totp` (the current code), `notes` or a custom field's name. A
+`.env` file can mix references and plain values, so it can be committed
+without any secret in it:
+
+```sh
+# .env
+DATABASE_URL=verrou://Production%20database/url
+API_KEY=verrou://Stripe/secret%20key
+PORT=8080
+```
+
+Each item asks for your approval once, as with `get` (Touch ID, or the
+paired iPhone). What the command prints is masked: any value it received
+shows as `<concealed by Verrou>`, even when a secret is cut across two
+writes, while the rest of the output (a prompt without a newline) shows at
+once. `--no-masking` connects the command straight to the terminal, for
+interactive programs. The exit code is the command's.
 
 ### SSH agent
 

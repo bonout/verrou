@@ -875,6 +875,17 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   refused. A protected item ("master password re-prompt") requires the
   app's confirmation (Touch ID or master password), which the Rust core
   checks before handing over anything.
+- **`verrou run`**: the values of `verrou://` references are asked with
+  the same approval as `get`, then only placed in the environment of the
+  command it starts; nothing is printed, the CLI keeps them in zeroed
+  buffers until the command ends. The command's output goes through a mask
+  that replaces each of these values (3 bytes or more) with `<concealed by
+  Verrou>`, holding back only an end of write that could start one.
+  Limits: the command itself, and the programs it starts, can do anything
+  with the values (write them to a file, send them); the mask doesn't see a
+  value it transforms (encoded, split by other characters); `--no-masking`
+  turns it off. It is meant to keep secrets out of the terminal and of an
+  agent's context, not to confine a program the user doesn't trust.
 - **SSH keys**: the private key (OpenSSH, as Vaultwarden keeps it) never
   leaves the app. Verrou signs (RustCrypto's `ssh-key` crate) and only
   returns the signature; the agent only sees the public keys. Keys
