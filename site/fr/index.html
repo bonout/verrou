@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verrou : votre coffre Vaultwarden, natif sur Mac et iPhone</title>
+<meta name="description" content="Un gestionnaire de mots de passe natif et rapide pour votre propre serveur Vaultwarden : app Mac, app iPhone, extension de navigateur, ligne de commande et agent SSH. Open source.">
+<meta name="color-scheme" content="dark">
+<meta property="og:title" content="Verrou">
+<meta property="og:description" content="Votre coffre Vaultwarden, natif sur Mac et iPhone. Recherche instantanée, validation depuis l'iPhone, secrets tenus à l'écart du terminal.">
+<meta property="og:image" content="https://verrou.bonout.com/media/fr/mac.png">
+<link rel="canonical" href="https://verrou.bonout.com/fr/">
+<link rel="alternate" hreflang="en" href="https://verrou.bonout.com/">
+<link rel="alternate" hreflang="fr" href="https://verrou.bonout.com/fr/">
+<link rel="alternate" hreflang="x-default" href="https://verrou.bonout.com/">
+<link rel="icon" href="/media/icon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
+    <div class="links">
+      <a href="#features">Fonctions</a>
+      <a href="#iphone-approval">Validation iPhone</a>
+      <a href="#terminal">Terminal</a>
+      <a href="#security">Sécurité</a>
+      <a href="https://github.com/bonout/verrou">GitHub</a>
+    </div>
+    <a class="lang" href="/" hreflang="en" lang="en">EN</a>
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v0.3.0/Verrou-0.3.0-macos.dmg">Télécharger</a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="notch-stage" aria-hidden="true">
+    <div class="notch" id="notch">
+      <div class="slot" id="notch-slot"></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <h1>Votre coffre, natif et instantané.</h1>
+    <p class="lede">Verrou est une app Mac et iPhone pour votre propre serveur Vaultwarden. Elle s'ouvre en un clin d'œil, trouve tout pendant que vous tapez, et garde vos secrets à l'écart de tout le reste.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v0.3.0/Verrou-0.3.0-macos.dmg">Télécharger Verrou 0.3.0</a>
+      <a class="button ghost" href="#iphone">App iPhone</a>
+    </div>
+    <p class="small">Version 0.3.0 · <a href="https://github.com/bonout/verrou/releases/tag/v0.3.0">notes de version</a> · Libre et open source · macOS 15 ou plus récent · iOS 17 ou plus récent · fonctionne avec votre coffre Bitwarden existant</p>
+    <div class="window reveal">
+      <video src="/media/fr/demo.mp4" poster="/media/fr/mac.png" autoplay muted loop playsinline aria-label="Verrou sur Mac : déverrouillage, recherche, affichage d'un mot de passe et de son code à usage unique, Accès rapide"></video>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">Au quotidien</div>
+      <h2>Si rapide qu'on l'oublie.</h2>
+      <p class="sub">Une app SwiftUI native sur un cœur en Rust, construite sur la cryptographie de Bitwarden. Votre coffre reste sur votre serveur, au format Bitwarden : les apps officielles continuent de fonctionner à côté.</p>
+    </div>
+    <div class="grid">
+      <div class="card wide reveal">
+        <div class="icon">⌘</div>
+        <h3>Accès rapide, depuis n'importe quelle app</h3>
+        <p><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Espace</kbd> et tapez : les résultats s'affichent en quelques millisecondes parmi des milliers d'éléments. <kbd>⌘</kbd> <kbd>\</kbd> remplit l'app au premier plan, même hors du navigateur.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">◎</div>
+        <h3>Touch ID et Face ID</h3>
+        <p>La clé du coffre est scellée par la Secure Enclave. Un regard suffit pour déverrouiller.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">⧉</div>
+        <h3>Extension de navigateur</h3>
+        <p>Brave, Chrome et Firefox : identifiants, codes, cartes et passkeys, uniquement pour le site ouvert.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">⇄</div>
+        <h3>Coffres partagés</h3>
+        <p>Organisations, collections et membres, confirmés par phrase d'empreinte. La famille et l'équipe, dans la même app.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">✓</div>
+        <h3>Audit de sécurité</h3>
+        <p>Mots de passe faibles, réutilisés ou divulgués, passage aux passkeys, et doublons fusionnés en un seul élément.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="iphone-approval">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="eyebrow">Nouveau</div>
+      <h2>Loin du Mac ? Validez depuis l'iPhone.</h2>
+      <p class="sub">Quand le terminal ou un agent IA a besoin d'un secret en votre absence, la demande arrive dans Verrou sur votre iPhone. Face ID, un geste, c'est fait. Même si le coffre du Mac était verrouillé.</p>
+      <p class="sub">Chiffré de bout en bout par votre propre compte iCloud. Votre iPhone ne voit jamais la clé du coffre, et aucun serveur à nous n'intervient.</p>
+    </div>
+    <div class="flow reveal" id="flow">
+      <div class="bubble"><div class="icon">›_</div><div><div class="who">Terminal · MacBook</div><div class="what">veut lire « GitHub »</div></div><span class="badge">Mac verrouillé</span></div>
+      <div class="bubble"><div class="icon">📱</div><div><div class="who">Verrou · iPhone</div><div class="what">Déverrouiller et lire « GitHub » · motif : déploiement</div></div><span class="badge">Face ID</span></div>
+      <div class="bubble"><div class="icon">✓</div><div><div class="who">Terminal</div><div class="what">Secret transmis à la commande, masqué</div></div><span class="badge">en quelques secondes</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="terminal">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="eyebrow">Terminal et agents IA</div>
+      <h2>Des secrets pour vos commandes, pas pour votre historique.</h2>
+      <p class="sub"><code>verrou run</code> transmet les secrets à une commande dans son environnement. Ils n'apparaissent jamais dans le terminal, son historique ou le contexte d'un agent IA, et tout ce que la commande affiche est masqué.</p>
+      <p class="sub">Et aussi un agent SSH qui signe avec les clés de votre coffre, et la signature des commits git. Chaque secret demande votre accord.</p>
+    </div>
+    <pre class="reveal"><span class="c"># .env : à commiter, il ne contient aucun secret</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "déploiement" run --env-file .env -- ./deploy.sh
+<span class="c">Touch ID · ou votre iPhone si vous êtes absent</span>
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
+<span class="g">✓ done</span>
+
+<span class="p">$</span> eval "$(verrou ssh-agent)" &amp;&amp; git commit -S</pre>
+  </div>
+</section>
+
+<section id="iphone">
+  <div class="wrap">
+    <div class="reveal" style="text-align:center">
+      <div class="eyebrow">iPhone</div>
+      <h2>Le même coffre, dans votre poche.</h2>
+      <p class="sub" style="margin:0 auto">Remplissage automatique des identifiants, codes à usage unique et passkeys dans Safari et les apps. Scannez un QR code de double authentification, ou choisissez Verrou pour ouvrir tous les liens de configuration de codes. Liquid Glass sur iOS 26.</p>
+    </div>
+    <div class="phones reveal">
+      <div class="phone"><img src="/media/fr/ios-vault.png" alt="Verrou sur iPhone : l'écran d'accueil du coffre" loading="lazy"></div>
+      <div class="phone"><video src="/media/fr/ios-app.mp4" poster="/media/fr/ios-search.png" autoplay muted loop playsinline aria-label="Verrou sur iPhone : déverrouillage, recherche, copie d'un mot de passe, code à usage unique"></video></div>
+      <div class="phone"><img src="/media/fr/ios-item.png" alt="Verrou sur iPhone : un élément avec son code à usage unique" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">Confidentiel par conception</div>
+      <h2>Rien à qui faire confiance, sauf votre serveur.</h2>
+      <p class="sub">Aucun compte chez nous, aucune statistique, aucun pistage. Chaque connexion est documentée, avec ses limites connues.</p>
+    </div>
+    <ul class="checks reveal">
+      <li><strong>La cryptographie de Bitwarden</strong>, de bout en bout : le coffre n'est déchiffré que sur vos appareils.</li>
+      <li><strong>Des clés de la Secure Enclave</strong> pour Touch ID, Face ID et les validations sur iPhone.</li>
+      <li><strong>L'extension</strong> ne reçoit que les identifiants du site ouvert, par un canal local chiffré.</li>
+      <li><strong>Les secrets copiés</strong> sont cachés aux gestionnaires de presse-papiers et effacés après 90 secondes.</li>
+      <li><strong>Le terminal</strong> cherche sans jamais voir un secret ; chacun demande votre accord.</li>
+      <li><strong>Open source</strong>, GPL-3.0, avec une attestation de build pour chaque fichier publié.</li>
+    </ul>
+    <p class="sub" style="margin-top:36px"><a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">Lire SECURITY.md</a> · <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Politique de confidentialité</a></p>
+  </div>
+</section>
+
+<section style="text-align:center; padding-top: 40px">
+  <div class="wrap reveal">
+    <h2>Essayez Verrou.</h2>
+    <p class="sub" style="margin: 0 auto 30px">Avec votre serveur Vaultwarden, ou en commençant par le coffre de démonstration.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v0.3.0/Verrou-0.3.0-macos.dmg">Télécharger Verrou 0.3.0</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Voir sur GitHub</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="/media/icon.png" alt="">Verrou</a>
+    <span>Open source, GPL-3.0. Non affilié à Bitwarden.</span>
+    <nav>
+      <a href="https://github.com/bonout/verrou">GitHub</a>
+      <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Confidentialité</a>
+      <a href="mailto:contact@bonout.com">Contact</a>
+    </nav>
+  </div>
+</footer>
+
+<script type="application/json" id="notch-scenes">[
+  "<span>🔒</span><span>Verrou</span>",
+  "<span>›_</span><span>Le terminal veut lire « GitHub »</span><span class=\"dim\">Touch ID</span>",
+  "<span>📱</span><span class=\"dim\">Envoyé à votre iPhone…</span>",
+  "<span class=\"ok\">✓</span><span>Validé sur l'iPhone</span><span class=\"dim\">Face ID</span>",
+  "<span>GitHub</span><span class=\"code\">482 913</span>{ring}",
+  "<span>📋</span><span>Mot de passe copié</span><span class=\"dim\">effacé dans 90 s</span>"
+]</script>
+<script src="/site.js"></script>
+</body>
+</html>

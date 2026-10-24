@@ -1,5 +1,6 @@
-# The site, verrou.bonout.com: site/ plus the pictures it uses from
-# docs/media (kept in one place), published by GitHub Pages.
+# The site, verrou.bonout.com, in English (/) and French (/fr/): site/ plus
+# the pictures it uses from docs/media (kept in one place), published by
+# GitHub Pages.
 name: Site
 
 on:
@@ -29,13 +30,23 @@ jobs:
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
       - name: Assemble
         run: |
-          mkdir -p _site/media/ios/design/after/sombre
+          mkdir -p _site/media
           cp -R site/. _site/
-          cp docs/media/icon.png docs/media/02-vault.png docs/media/demo.mp4 docs/media/ios-app.mp4 _site/media/
-          cp docs/media/ios/design/after/sombre/{03-coffre,07-recherche,08-fiche}.png _site/media/ios/design/after/sombre/
-          # Every picture the page names must be there.
-          grep -o 'media/[^"]*' _site/index.html | sort -u | while read -r file; do
-            test -f "_site/$file" || { echo "missing: $file"; exit 1; }
+          cp docs/media/icon.png _site/media/
+          # Each language's pictures, in its own language: docs/media for
+          # English (the README's), docs/media/fr for French.
+          for lang in en fr; do
+            src=docs/media; [[ $lang == en ]] || src=docs/media/$lang
+            mkdir -p _site/media/$lang
+            cp $src/02-vault.png _site/media/$lang/mac.png
+            cp $src/demo.mp4 $src/ios-app.mp4 _site/media/$lang/
+            for shot in 03-vault:ios-vault 07-search:ios-search 08-item:ios-item; do
+              cp docs/media/ios/screens/$lang/${shot%%:*}.png _site/media/$lang/${shot#*:}.png
+            done
+          done
+          # Every file a page names must be there.
+          grep -ho '"/[a-z][^"#]*\.[a-z0-9]*"' _site/index.html _site/fr/index.html | tr -d '"' | sort -u | while read -r file; do
+            test -f "_site$file" || { echo "missing: $file"; exit 1; }
           done
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
