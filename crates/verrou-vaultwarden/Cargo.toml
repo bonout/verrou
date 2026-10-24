@@ -33,7 +33,7 @@ uuid.workspace = true
 tokio = { workspace = true, features = ["sync", "rt", "time"] }
 # Unlock with a security key: sealing of the user's key
 # (HKDF-SHA256, AES-256-GCM), the primitives of the bridge to the extension.
-hkdf = "0.12"
+hkdf = "0.13"
 aes-gcm = "0.10"
 rand.workspace = true
 zeroize.workspace = true

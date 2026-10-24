@@ -22,7 +22,7 @@ tokio = { workspace = true, features = ["net", "io-util", "time"] }
 # Key agreement and channel encryption: the same primitives as WebCrypto
 # on the extension side (ECDH P-256, HKDF-SHA256, AES-256-GCM).
 p256 = { version = "0.13", features = ["ecdh"] }
-hkdf = "0.12"
+hkdf = "0.13"
 aes-gcm = "0.10"
 # SSH agent: sign with the vault's keys, without them leaving the app.
 # The version the Bitwarden SDK already uses (a single copy of RSA).
