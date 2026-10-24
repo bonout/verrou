@@ -168,7 +168,7 @@ silicon, `x86_64-apple-darwin` for Intel Macs, `x86_64-unknown-linux-gnu`),
 then put `verrou` on your `PATH`:
 
 ```sh
-v=0.2.0 t=aarch64-apple-darwin
+v=0.3.0 t=aarch64-apple-darwin
 curl -LO https://github.com/bonout/verrou/releases/download/v$v/verrou-$v-$t.tar.gz
 tar -xzf verrou-$v-$t.tar.gz
 install -m 755 verrou-$v-$t/verrou ~/.local/bin/verrou   # or /usr/local/bin
