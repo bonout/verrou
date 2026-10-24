@@ -1,0 +1,50 @@
+{
+  "name": "steam",
+  "url": "https://store.steampowered.com/login/",
+  "recorded": "2026-10-24",
+  "title": "Sign In",
+  "path": "/login/",
+  "forms": [
+    {
+      "action": "https://store.steampowered.com/search",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "name": "term",
+          "autocomplete": "off",
+          "placeholder": "Search the store"
+        }
+      ],
+      "buttons": []
+    },
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "«r4»",
+          "label": "Sign in with account name"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "«r5»",
+          "label": "Password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Sign in"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "«r4»",
+    "password": "«r5»"
+  }
+}

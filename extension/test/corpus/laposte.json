@@ -1,0 +1,12 @@
+{
+  "name": "laposte",
+  "url": "https://moncompte.laposte.fr/moncompte-auth/auth/realms/mon-compte/protocol/openid-connect/auth?client_id=laposte&response_type=code&redirect_uri=https%3A%2F%2Fwww.laposte.fr",
+  "recorded": "2026-10-24",
+  "title": "Mon Compte",
+  "path": "/moncompte-auth/auth/realms/mon-compte/protocol/openid-connect/auth",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

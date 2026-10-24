@@ -1,0 +1,53 @@
+{
+  "name": "free",
+  "url": "https://subscribe.free.fr/login/",
+  "recorded": "2026-10-24",
+  "title": "Espace abonné Freebox",
+  "path": "/login/",
+  "forms": [
+    {
+      "id": "log_form",
+      "action": "do_login.pl",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "login_b",
+          "name": "login",
+          "placeholder": "Identifiant",
+          "label": "Identifiant"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "pass_b",
+          "name": "pass",
+          "placeholder": "Mot de passe",
+          "label": "Mot de passe"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": ""
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "visibility"
+        },
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Se connecter"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "login_b",
+    "password": "pass_b"
+  }
+}

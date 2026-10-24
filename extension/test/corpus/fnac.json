@@ -1,0 +1,12 @@
+{
+  "name": "fnac",
+  "url": "https://secure.fnac.com/identity/server/gateway/1/?client_id=fnac",
+  "recorded": "2026-10-24",
+  "title": "FNAC DARTY - Maintenance",
+  "path": "/identity/server/gateway/1/",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "site in maintenance when recorded"
+  }
+}

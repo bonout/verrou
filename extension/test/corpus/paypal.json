@@ -1,0 +1,35 @@
+{
+  "name": "paypal",
+  "url": "https://www.paypal.com/signin",
+  "recorded": "2026-10-24",
+  "title": "Log in to your PayPal account",
+  "path": "/signin",
+  "forms": [
+    {
+      "name": "login",
+      "action": "/signin",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "email",
+          "name": "login_email",
+          "autocomplete": "username",
+          "placeholder": "Email or mobile number",
+          "label": "Email or mobile number"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Next"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "email"
+  }
+}

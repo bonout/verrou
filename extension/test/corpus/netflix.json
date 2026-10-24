@@ -1,0 +1,46 @@
+{
+  "name": "netflix",
+  "url": "https://www.netflix.com/fr/login",
+  "recorded": "2026-10-24",
+  "title": "Netflix",
+  "path": "/fr/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": ":R5akql6l9allbaldalkm:",
+          "name": "userLoginId",
+          "autocomplete": "email",
+          "label": "E-mail ou numéro de mobile"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": ":R59lal6l9allbaldalkm:",
+          "name": "password",
+          "autocomplete": "password",
+          "label": "Mot de passe"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continuer"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Obtenir de l'aide"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": ":R5akql6l9allbaldalkm:",
+    "password": ":R59lal6l9allbaldalkm:"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "edf",
+  "url": "https://particulier.edf.fr/fr/accueil/espace-client/tableau-de-bord.html",
+  "recorded": "2026-10-24",
+  "title": "Me connecter ou créer mon espace client EDF",
+  "path": "/sso/XUI/",
+  "forms": [
+    {
+      "loose": true,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "email",
+          "autocomplete": "email",
+          "placeholder": "Votre e-mail",
+          "label": "E-mail exemple : marie.dupont@gmail.com"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "text": "Suivant"
+        },
+        {
+          "tag": "button",
+          "text": "J'utilise un appareil de confiance"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "email"
+  }
+}

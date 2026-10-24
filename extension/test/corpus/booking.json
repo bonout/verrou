@@ -1,0 +1,42 @@
+{
+  "name": "booking",
+  "url": "https://account.booking.com/sign-in",
+  "recorded": "2026-10-24",
+  "title": "Sign in or create an account | Booking.com",
+  "path": "/sign-in",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "hidden-password",
+          "name": "password",
+          "autocomplete": "current-password"
+        },
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "username",
+          "name": "username",
+          "autocomplete": "username",
+          "placeholder": "Enter your email address",
+          "label": "Email address"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continue with email"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "username",
+    "password": "hidden-password",
+    "note": "Booking's password field next to the e-mail is there for password managers"
+  }
+}

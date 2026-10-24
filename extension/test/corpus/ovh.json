@@ -1,0 +1,39 @@
+{
+  "name": "ovh",
+  "url": "https://www.ovh.com/auth/",
+  "recorded": "2026-10-24",
+  "title": "Control panel - OVHcloud",
+  "path": "/signin/",
+  "forms": [
+    {
+      "id": "login-form",
+      "action": "/auth/",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "account",
+          "name": "5cd7d093"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "password",
+          "name": "c692e6ce"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Login"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "account",
+    "password": "password"
+  }
+}

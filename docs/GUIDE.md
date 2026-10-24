@@ -904,13 +904,25 @@ node --test extension/test/passkeys.test.mjs # passkeys: page options, creation 
 node --test extension/test/seamless.test.mjs # self-reload, passkey autofill (Brave and Firefox APIs), fallback notices
 node --test extension/test/firefox.test.mjs  # Firefox manifest, shared files and version, ids, Firefox reload rule
 node --test extension/test/content.test.mjs  # the pill (content.js) in a fake DOM: when it shows, what it fills, trusted events only
+node --test extension/test/corpus.test.mjs   # real sign-in pages (corpus/*.json): the right fields filled, nothing else
 VERROU_LINT_FIREFOX=1 node --test extension/test/firefox.test.mjs  # also Mozilla's `web-ext lint` (via npx)
 node extension/e2e/brave.mjs                  # walkthrough in a real Brave (throwaway profile)
 node extension/e2e/seamless.mjs               # passkey autofill in a real Brave (SEAMLESS_UPDATE=1: self-reload)
 ```
 
 (They need `cargo build -p verrou-bridge --example test_server --bin verrou-native-host`,
-except `content.test.mjs`, which needs nothing but Node.)
+except `content.test.mjs` and `corpus.test.mjs`, which need nothing but Node.)
+
+The corpus is recorded from the real pages listed in
+`extension/test/corpus/sites.txt`: `CHROME=… node scripts/login-corpus.mjs
+[site…]` opens each one in a headless Chrome and keeps only the shape of its
+forms (visible inputs, their attributes and labels, buttons; no value, no
+token). Each page's `expect` block, written by hand after looking at the
+page, says which fields get the username and the password (`login`), the
+username only (`username-first`), or why the page is `skipped` (a bot check
+in a headless browser, a form that loads later). A site that fills badly:
+add it to `sites.txt`, record it, write its `expect`, then fix the
+extension until it passes.
 There is no automated walkthrough in a real Firefox yet; the steps above are
 checked by hand.
 

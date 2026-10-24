@@ -37,6 +37,8 @@
   const CURRENT_HINT = /current|old|actuel|ancien|existing/i;
   const SIGNUP_FORM_HINT = /register|sign.?up|inscri|create.?account|créer.?(un|votre).?compte|join/i;
   const LOGIN_FORM_HINT = /log.?in|sign.?in|se.?connecter|connexion|identifi/i;
+  const SIGN_IN_STEP_HINT = /log.?in|sign.?in|connecter|connexion|identifi|\bnext\b|continue|continuer|suivant/i;
+  const NEWSLETTER_FORM_HINT = /newsletter|subscribe|abonn/i;
   const TEXT_TYPES = new Set(["text", "email", "tel", ""]);
 
   // MARK: Fields
@@ -1083,7 +1085,20 @@
   function strongUsername(input) {
     const autocomplete = (input.autocomplete || "").toLowerCase();
     return /\b(username|webauthn)\b/.test(autocomplete)
-      || /user|login|identifiant|account|compte|pseudo/i.test(`${input.name} ${input.id}`);
+      || /user|login|identifiant|account|compte|pseudo/i.test(`${input.name} ${input.id}`)
+      || signInStep(input);
+  }
+
+  // A lone e-mail field on a page or in a form that says "log in" or "next"
+  // (EDF, Vercel, Airbnb: the first step of a sign-in), unless its form
+  // speaks of a newsletter.
+  function signInStep(input) {
+    const form = formHint(scopeOf(input));
+    if (NEWSLETTER_FORM_HINT.test(form)) return false;
+    const buttons = scopeOf(input) === document
+      ? [...document.querySelectorAll("button, input[type=submit]")].map((b) => b.textContent || b.value).join(" ")
+      : "";
+    return SIGN_IN_STEP_HINT.test(`${form} ${buttons} ${document.title} ${location.pathname}`);
   }
 
   // The page's sign-in field, its kind, and the step (the kinds of fields

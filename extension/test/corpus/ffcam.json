@@ -1,0 +1,36 @@
+{
+  "name": "ffcam",
+  "url": "https://portail.ffcam.fr/auth/login?redirect=%2Flanding",
+  "recorded": "2026-10-24",
+  "title": "SSO FFCAM",
+  "path": "/auth/login",
+  "forms": [
+    {
+      "id": "login-form",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "autocomplete": "email"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "autocomplete": "current-password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Mot de passe oublié"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "@0",
+    "password": "@1"
+  }
+}

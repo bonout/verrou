@@ -1,0 +1,31 @@
+{
+  "name": "spotify",
+  "url": "https://accounts.spotify.com/fr/login",
+  "recorded": "2026-10-24",
+  "title": "Spotify",
+  "path": "/fr/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "username",
+          "autocomplete": "username",
+          "label": "Adresse e-mail"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continuer"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "username"
+  }
+}

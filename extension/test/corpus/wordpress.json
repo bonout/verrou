@@ -1,0 +1,25 @@
+{
+  "name": "wordpress",
+  "url": "https://wordpress.com/log-in",
+  "recorded": "2026-10-24",
+  "title": "Checking your browser...",
+  "path": "/log-in",
+  "forms": [
+    {
+      "loose": true,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "id": "huhgsqhy",
+          "label": "I am human"
+        }
+      ],
+      "buttons": []
+    }
+  ],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

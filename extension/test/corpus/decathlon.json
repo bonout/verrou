@@ -1,0 +1,12 @@
+{
+  "name": "decathlon",
+  "url": "https://www.decathlon.fr/login",
+  "recorded": "2026-10-24",
+  "title": "Just a moment...",
+  "path": "/",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "bot check (Cloudflare) in a headless browser"
+  }
+}

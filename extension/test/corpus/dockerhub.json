@@ -1,0 +1,33 @@
+{
+  "name": "dockerhub",
+  "url": "https://login.docker.com/u/login",
+  "recorded": "2026-10-24",
+  "title": "",
+  "path": "/u/login/identifier",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "username",
+          "name": "username",
+          "autocomplete": "email",
+          "label": "Username or email address *",
+          "inputmode": "text"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continue"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "username"
+  }
+}

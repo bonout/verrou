@@ -1,0 +1,43 @@
+{
+  "name": "heroku",
+  "url": "https://id.heroku.com/login",
+  "recorded": "2026-10-24",
+  "title": "Heroku | Login",
+  "path": "/login",
+  "forms": [
+    {
+      "action": "/login",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "email",
+          "name": "email",
+          "placeholder": "Email address",
+          "label": "Email address"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "password",
+          "name": "password",
+          "autocomplete": "off",
+          "placeholder": "Password",
+          "label": "Password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Log In"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "email",
+    "password": "password"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "dropbox",
+  "url": "https://www.dropbox.com/login",
+  "recorded": "2026-10-24",
+  "title": "Login or Sign Up for a Dropbox Account",
+  "path": "/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "susi_email8552645837171545",
+          "name": "susi_email",
+          "autocomplete": "username webauthn",
+          "placeholder": "name@company.com",
+          "label": "Email",
+          "inputmode": "text"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continue"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "susi_email8552645837171545"
+  }
+}

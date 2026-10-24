@@ -1,0 +1,32 @@
+{
+  "name": "airbnb",
+  "url": "https://www.airbnb.fr/login",
+  "recorded": "2026-10-24",
+  "title": "Connexion/Inscription – Airbnb",
+  "path": "/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "phone-or-email",
+          "autocomplete": "tel-national",
+          "label": "Numéro de téléphone ou adresse e-mail",
+          "inputmode": "email"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continuer"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "phone-or-email"
+  }
+}

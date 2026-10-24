@@ -1,0 +1,33 @@
+{
+  "name": "slack",
+  "url": "https://slack.com/signin",
+  "recorded": "2026-10-24",
+  "title": "Login | Slack",
+  "path": "/signin",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "signup_email",
+          "name": "email",
+          "autocomplete": "username webauthn",
+          "placeholder": "name@work-email.com",
+          "label": "Enter your email address"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Sign In With Email"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "signup_email"
+  }
+}

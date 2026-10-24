@@ -26,6 +26,10 @@ tagging (docs/RELEASING.md).
 - Sign-in pages that mark their password field as a new password (to stop
   browsers from filling it) are recognized as sign-in pages: the password
   is filled too.
+- The first step of a sign-in with a lone e-mail field (EDF, Vercel, Airbnb's
+  "phone or e-mail") now gets the pill when the page or its button says
+  "log in" or "next"; newsletter forms still don't.
+- Tested on a corpus of 40 real sign-in pages (extension/test/corpus).
 
 ## 0.3.1
 

@@ -1,0 +1,32 @@
+{
+  "name": "notion",
+  "url": "https://www.notion.so/login",
+  "recorded": "2026-10-24",
+  "title": "Notion - Log in",
+  "path": "/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": ":r4:",
+          "autocomplete": "username",
+          "placeholder": "Enter your email address...",
+          "label": "Email"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "autocomplete": "current-password"
+        }
+      ],
+      "buttons": []
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": ":r4:",
+    "password": "@1"
+  }
+}

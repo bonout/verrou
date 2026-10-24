@@ -1,0 +1,59 @@
+{
+  "name": "discord",
+  "url": "https://discord.com/login",
+  "recorded": "2026-10-24",
+  "title": "Discord",
+  "path": "/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "uid_13",
+          "name": "email",
+          "autocomplete": "username webauthn",
+          "ariaLabel": "Email or Phone Number",
+          "label": "Email or Phone Number*",
+          "maxlength": "999"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "uid_15",
+          "name": "password",
+          "autocomplete": "current-password",
+          "ariaLabel": "Password",
+          "label": "Password*"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Forgot your password?"
+        },
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Log In"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Register"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Or sign in with a passkey"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "uid_13",
+    "password": "uid_15"
+  }
+}

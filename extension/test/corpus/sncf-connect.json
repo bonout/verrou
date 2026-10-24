@@ -1,0 +1,12 @@
+{
+  "name": "sncf-connect",
+  "url": "https://www.sncf-connect.com/app/account/login",
+  "recorded": "2026-10-24",
+  "title": "sncf-connect.com",
+  "path": "/account/login",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

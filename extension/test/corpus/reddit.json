@@ -1,0 +1,12 @@
+{
+  "name": "reddit",
+  "url": "https://www.reddit.com/login/",
+  "recorded": "2026-10-24",
+  "title": "",
+  "path": "/login/",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "name": "vinted",
+  "url": "https://www.vinted.fr/member/signup/select_type",
+  "recorded": "2026-10-24",
+  "title": "Rejoins le mouvement de la seconde main et vends sans frais ! | Vinted",
+  "path": "/member/register/select_type",
+  "forms": [
+    {
+      "action": "/catalog",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "search_text",
+          "name": "search_text",
+          "autocomplete": "off",
+          "placeholder": "Rechercher des articles",
+          "maxlength": "5000"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Articles"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "skipped",
+    "reason": "redirected to the catalog: the sign-in is a dialog"
+  }
+}

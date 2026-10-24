@@ -40,9 +40,9 @@ function matches(element, selector) {
   });
 }
 
-export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
+export function createDom({ origin = "https://connect.exemple.fr", title = "" } = {}) {
   const url = new URL(origin);
-  const document = { listeners: {}, focused: null, readyState: "complete" };
+  const document = { listeners: {}, focused: null, readyState: "complete", title };
   const windowListeners = {};
 
   class FakeEvent {
@@ -284,8 +284,12 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
       return this.closest("form");
     }
 
+    // <label for="id">, or a <label> around the field.
     get labels() {
-      return [];
+      let top = this;
+      while (top.parent) top = top.parent;
+      return [...top.walk()].filter((node) => node.tagName === "LABEL"
+        && ((this.id && node.attributes.for === this.id) || node.contains(this)));
     }
   }
 
@@ -436,7 +440,7 @@ export function createDom({ origin = "https://connect.exemple.fr" } = {}) {
 
   const context = {
     document,
-    location: { origin: url.origin, hostname: url.hostname, href: url.href },
+    location: { origin: url.origin, hostname: url.hostname, href: url.href, pathname: url.pathname },
     HTMLInputElement: FakeInput,
     HTMLSelectElement: FakeSelect,
     HTMLFormElement: FakeForm,

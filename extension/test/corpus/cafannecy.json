@@ -1,0 +1,48 @@
+{
+  "name": "cafannecy",
+  "url": "https://collectives.cafannecy.fr/auth/login",
+  "recorded": "2026-10-24",
+  "title": "Collectives",
+  "path": "/auth/login",
+  "forms": [
+    {
+      "id": "basic_form",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "login",
+          "name": "login",
+          "label": "Email ou Licence"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "password",
+          "name": "password",
+          "autocomplete": "new-password",
+          "label": "Mot de passe"
+        },
+        {
+          "tag": "input",
+          "type": "checkbox",
+          "id": "remember_me",
+          "name": "remember_me",
+          "label": "Se souvenir de la connexion"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "input",
+          "type": "submit",
+          "text": "Login"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "login",
+    "password": "password"
+  }
+}

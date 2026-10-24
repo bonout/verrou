@@ -1,0 +1,30 @@
+{
+  "name": "amazon-fr",
+  "url": "https://www.amazon.fr/ap/signin?openid.pape.max_auth_age=0&openid.return_to=https%3A%2F%2Fwww.amazon.fr%2F&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=frflex&openid.mode=checkid_setup&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0",
+  "recorded": "2026-10-24",
+  "title": "Se connecter",
+  "path": "/ax/claim",
+  "forms": [
+    {
+      "id": "ap_login_form",
+      "name": "signIn",
+      "action": "/ax/claim",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "ap_email_login",
+          "name": "email",
+          "autocomplete": "webauthn",
+          "ariaLabel": "Saisissez un numéro de téléphone mobile ou votre adresse e-mail",
+          "inputmode": "email"
+        }
+      ],
+      "buttons": []
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "ap_email_login"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "npm",
+  "url": "https://www.npmjs.com/login",
+  "recorded": "2026-10-24",
+  "title": "Just a moment...",
+  "path": "/login",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "bot check (Cloudflare) in a headless browser"
+  }
+}

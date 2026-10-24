@@ -1,0 +1,47 @@
+{
+  "name": "figma",
+  "url": "https://www.figma.com/login",
+  "recorded": "2026-10-24",
+  "title": "Login | Figma",
+  "path": "/login",
+  "forms": [
+    {
+      "id": "auth-view-page",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "email",
+          "name": "email",
+          "autocomplete": "username",
+          "label": "Email"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "current-password",
+          "name": "password",
+          "autocomplete": "current-password",
+          "label": "Password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "Continue with Google"
+        },
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Log in"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "email",
+    "password": "current-password"
+  }
+}

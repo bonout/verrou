@@ -1,0 +1,12 @@
+{
+  "name": "gitlab",
+  "url": "https://gitlab.com/users/sign_in",
+  "recorded": "2026-10-24",
+  "title": "Just a moment...",
+  "path": "/users/sign_in",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "bot check (Cloudflare) in a headless browser"
+  }
+}

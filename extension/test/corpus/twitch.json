@@ -1,0 +1,58 @@
+{
+  "name": "twitch",
+  "url": "https://www.twitch.tv/login",
+  "recorded": "2026-10-24",
+  "title": "Log In - Twitch",
+  "path": "/login",
+  "forms": [
+    {
+      "name": "login-submit-form",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "login-username",
+          "autocomplete": "username webauthn",
+          "ariaLabel": "Enter your username",
+          "label": "Username"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "password-input",
+          "autocomplete": "current-password",
+          "ariaLabel": "Enter your password",
+          "label": "Password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Log In"
+        },
+        {
+          "tag": "button",
+          "text": "Continue with Google"
+        },
+        {
+          "tag": "button",
+          "text": "Continue with Amazon"
+        },
+        {
+          "tag": "button",
+          "text": "Continue with Apple"
+        },
+        {
+          "tag": "button",
+          "text": "Don't have an account? Sign up"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "login-username",
+    "password": "password-input"
+  }
+}

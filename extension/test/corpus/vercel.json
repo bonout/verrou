@@ -1,0 +1,33 @@
+{
+  "name": "vercel",
+  "url": "https://vercel.com/login",
+  "recorded": "2026-10-24",
+  "title": "Login – Vercel",
+  "path": "/login",
+  "forms": [
+    {
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "input-_r_g_",
+          "name": "email",
+          "autocomplete": "email",
+          "placeholder": "Email Address",
+          "ariaLabel": "Email Address"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continue with Email"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "input-_r_g_"
+  }
+}

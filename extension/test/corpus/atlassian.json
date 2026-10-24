@@ -1,0 +1,34 @@
+{
+  "name": "atlassian",
+  "url": "https://id.atlassian.com/login",
+  "recorded": "2026-10-24",
+  "title": "Log in to continue - Log in with Atlassian account",
+  "path": "/login",
+  "forms": [
+    {
+      "id": "form-login",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "username-_r0_",
+          "name": "username",
+          "autocomplete": "username",
+          "placeholder": "Enter your email",
+          "label": "Email*"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "submit",
+          "text": "Continue"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "username-first",
+    "username": "username-_r0_"
+  }
+}

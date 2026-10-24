@@ -1,0 +1,45 @@
+{
+  "name": "linkedin",
+  "url": "https://www.linkedin.com/login",
+  "recorded": "2026-10-24",
+  "title": "Connexion LinkedIn, S’identifier | LinkedIn",
+  "path": "/login/",
+  "forms": [
+    {
+      "loose": true,
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "email",
+          "id": "_R_e3pptiejj35656j6_",
+          "autocomplete": "username webauthn",
+          "label": "E-mail ou téléphone"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "_R_1lpptiejj35656j6_",
+          "autocomplete": "current-password",
+          "label": "Mot de passe"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "S’identifier avec Apple"
+        },
+        {
+          "tag": "button",
+          "type": "button",
+          "text": "S’identifier"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "_R_e3pptiejj35656j6_",
+    "password": "_R_1lpptiejj35656j6_"
+  }
+}

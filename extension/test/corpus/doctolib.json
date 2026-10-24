@@ -1,0 +1,12 @@
+{
+  "name": "doctolib",
+  "url": "https://www.doctolib.fr/sessions/new",
+  "recorded": "2026-10-24",
+  "title": "Doctolib : Prenez rendez-vous en ligne chez un soignant",
+  "path": "/sessions/new",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

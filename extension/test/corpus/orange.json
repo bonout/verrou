@@ -1,0 +1,12 @@
+{
+  "name": "orange",
+  "url": "https://login.orange.fr/",
+  "recorded": "2026-10-24",
+  "title": "Saisie de votre mot de passe - Identification Orange",
+  "path": "/password",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

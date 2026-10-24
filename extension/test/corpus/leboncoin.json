@@ -1,0 +1,12 @@
+{
+  "name": "leboncoin",
+  "url": "https://auth.leboncoin.fr/login/",
+  "recorded": "2026-10-24",
+  "title": "leboncoin.fr",
+  "path": "/login/",
+  "forms": [],
+  "expect": {
+    "kind": "skipped",
+    "reason": "the form loads after the recording"
+  }
+}

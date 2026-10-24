@@ -1,0 +1,42 @@
+{
+  "name": "github",
+  "url": "https://github.com/login",
+  "recorded": "2026-10-24",
+  "title": "Sign in to GitHub · GitHub",
+  "path": "/login",
+  "forms": [
+    {
+      "action": "/session",
+      "inputs": [
+        {
+          "tag": "input",
+          "type": "text",
+          "id": "login_field",
+          "name": "login",
+          "autocomplete": "username",
+          "label": "Username or email address"
+        },
+        {
+          "tag": "input",
+          "type": "password",
+          "id": "password",
+          "name": "password",
+          "autocomplete": "current-password",
+          "label": "Password"
+        }
+      ],
+      "buttons": [
+        {
+          "tag": "input",
+          "type": "submit",
+          "text": "Sign in"
+        }
+      ]
+    }
+  ],
+  "expect": {
+    "kind": "login",
+    "username": "login_field",
+    "password": "password"
+  }
+}

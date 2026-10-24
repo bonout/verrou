@@ -94,7 +94,7 @@ jobs:
         with:
           node-version: 22
       - run: cargo build -p verrou-bridge --example test_server --bin verrou-native-host
-      - run: node --test extension/test/bridge.test.mjs extension/test/passkeys.test.mjs extension/test/seamless.test.mjs extension/test/firefox.test.mjs extension/test/content.test.mjs extension/test/i18n.test.mjs
+      - run: node --test extension/test/*.test.mjs
       # Performance guard: 10,000 items, less than one frame at 60 Hz.
       - run: cargo test --release -p verrou-core --test search -- --include-ignored search_is_fast
       # Duplicates: 10,000 items in less than 200 ms.
