@@ -17,6 +17,11 @@ tagging (docs/RELEASING.md).
 - VoiceOver reads the icon-only buttons and the informative icons, and
   skips decorative ones (ACCESSIBILITY.md).
 
+**Command line**
+- `verrou run`: when one secret starts another (`pass` and `password123`)
+  and the command wrote the longer one in two parts, the end of it could show
+  after the masked start. Found by fuzzing, fixed.
+
 **Browser extension**
 - Sign-in pages that mark their password field as a new password (to stop
   browsers from filling it) are recognized as sign-in pages: the password

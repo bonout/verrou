@@ -1414,6 +1414,22 @@ with it and notarized with it; linked into the `PATH`, it updates with the
 app, and the command and the app always speak the same version of the
 bridge.
 
+## Fuzzing
+
+`fuzz/` feeds random and mutated input to everything that reads data Verrou
+doesn't control: imported files (1Password, Apple Passwords, Proton Pass,
+including ZIP archives), scanned QR codes and `otpauth://` links (Google
+Authenticator exports too), JSON from the network (2fa.directory, a site's
+passkey endpoints), SSH agent requests and git signature headers. A run must
+end in an error, never a crash or a hang. The masker of `verrou run` is
+checked for two properties: its output doesn't depend on how the command
+cut its writes, and no secret shows in it. The `Fuzz` workflow runs each
+target five minutes every week; locally: `cargo +nightly fuzz run <target>`.
+
+The first runs found one flaw, fixed: with two secrets where one starts the
+other (`pass` and `password123`), output cut after `password12` showed the
+end of the longer one (`word123`) after masking the shorter.
+
 ## Dependencies
 
 The CI checks every Rust dependency with `cargo-deny` (`deny.toml`): known

@@ -20,3 +20,9 @@ apple/Local.xcconfig
 /apple/Verrou/Info.plist
 /apple/VerrouAutoFillMac/Info.plist
 
+
+# Fuzzing (fuzz/): builds, generated corpora and crash cases
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/

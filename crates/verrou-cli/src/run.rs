@@ -156,14 +156,11 @@ impl Masker {
         let mut i = 0;
         'scan: while i < data.len() {
             let rest = &data[i..];
-            for secret in &self.secrets {
-                if rest.starts_with(secret) {
-                    out.extend_from_slice(CONCEALED.as_bytes());
-                    i += secret.len();
-                    continue 'scan;
-                }
-            }
-            // The rest may be the start of a secret cut by the write.
+            // The rest may be the start of a secret cut by the write: wait
+            // for the next one before anything else, even if a shorter
+            // secret already matches ("pass" in "password12", while
+            // "password123" may follow: masking "pass" at once would let
+            // the end of the longer one out).
             if !last
                 && self
                     .secrets
@@ -171,6 +168,13 @@ impl Masker {
                     .any(|s| s.len() > rest.len() && s.starts_with(rest))
             {
                 break;
+            }
+            for secret in &self.secrets {
+                if rest.starts_with(secret) {
+                    out.extend_from_slice(CONCEALED.as_bytes());
+                    i += secret.len();
+                    continue 'scan;
+                }
             }
             out.push(data[i]);
             i += 1;
@@ -284,6 +288,17 @@ mod tests {
             String::from_utf8(out).unwrap(),
             format!("{CONCEALED} {CONCEALED}")
         );
+    }
+
+    #[test]
+    fn a_secret_starting_another_doesnt_let_the_longer_one_out() {
+        // Found by fuzzing: "password12" arrives first; masking "pass" at
+        // once let "word123" out when the rest of "password123" came.
+        let mut masker = Masker::new(["pass", "password123"]);
+        let mut out = masker.feed(b"password12");
+        out.extend(masker.feed(b"3 ok"));
+        out.extend(masker.finish());
+        assert_eq!(String::from_utf8(out).unwrap(), format!("{CONCEALED} ok"));
     }
 
     #[test]

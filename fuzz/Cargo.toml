@@ -1,0 +1,61 @@
+# Fuzzing of the parsers that read data Verrou doesn't control (imported
+# files, scanned QR codes, otpauth links, JSON from the network, SSH agent
+# and signature messages) and of the output masker of `verrou run`.
+#
+#   cargo +nightly fuzz run <target>        (cargo install cargo-fuzz)
+#
+# Not part of the workspace: libFuzzer needs a nightly toolchain.
+[package]
+name = "verrou-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-or-later"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
+verrou-core = { path = "../crates/verrou-core" }
+verrou-bridge = { path = "../crates/verrou-bridge" }
+verrou-cli = { path = "../crates/verrou-cli" }
+
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "import"
+path = "fuzz_targets/import.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "otp_scan"
+path = "fuzz_targets/otp_scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "network_json"
+path = "fuzz_targets/network_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ssh_messages"
+path = "fuzz_targets/ssh_messages.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "masker"
+path = "fuzz_targets/masker.rs"
+test = false
+doc = false
+bench = false
