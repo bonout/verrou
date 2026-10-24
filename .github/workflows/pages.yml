@@ -31,7 +31,7 @@ jobs:
         run: |
           mkdir -p _site/media/ios/design/after/sombre
           cp -R site/. _site/
-          cp docs/media/icon.png docs/media/02-coffre.png docs/media/demo.mp4 docs/media/ios-app.mp4 _site/media/
+          cp docs/media/icon.png docs/media/02-vault.png docs/media/demo.mp4 docs/media/ios-app.mp4 _site/media/
           cp docs/media/ios/design/after/sombre/{03-coffre,07-recherche,08-fiche}.png _site/media/ios/design/after/sombre/
           # Every picture the page names must be there.
           grep -o 'media/[^"]*' _site/index.html | sort -u | while read -r file; do

@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://verrou.bonout.com"><b>Website</b></a> ·
-  <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
+  <a href="https://github.com/bonout/verrou/releases/tag/v0.3.0"><b>Download Verrou 0.3.0</b></a> ·
   <a href="#install">Install</a> ·
   <a href="docs/GUIDE.md">Full guide</a> ·
   <a href="SECURITY.md">Security</a>
