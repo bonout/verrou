@@ -22,7 +22,10 @@ shasum -a 256 -c SHA256SUMS --ignore-missing
 ## Cutting a release
 
 1. In a pull request, set the same version in `Cargo.toml` (`[workspace.package]
-   version`) and `apple/project.yml` (`MARKETING_VERSION`). The extension's
+   version`) and `apple/project.yml` (`MARKETING_VERSION`), and add its
+   section to `CHANGELOG.md`: what changes for users, in a few lines. It
+   becomes the release notes (`scripts/release-notes.sh <version>` shows
+   them); the release stops at the first job without it. The extension's
    version follows its content (`scripts/stamp-extension.sh`).
 2. Merge it, then tag `main` and push the tag:
 
