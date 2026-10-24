@@ -4,6 +4,7 @@ description = "Verrou on the command line, and its SSH agent."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 rust-version.workspace = true
 
 [lib]

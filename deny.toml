@@ -1,0 +1,62 @@
+# Supply-chain checks of the Rust dependencies (cargo-deny), run by the CI:
+# known vulnerabilities, licenses compatible with Verrou's GPL-3.0, and
+# where crates come from.
+#
+#   cargo deny check
+
+[graph]
+all-features = false
+
+[advisories]
+# Every advisory fails the CI, except those below: each one with why it
+# doesn't reach Verrou, and to look at again when a fixed version exists.
+ignore = [
+    # Marvin attack (timing of RSA decryption) in Bitwarden's SDK, used to
+    # open organization keys: decryption only happens locally, on demand, and
+    # nobody can submit ciphertexts and time it. No fixed rsa release exists.
+    { id = "RUSTSEC-2023-0071", reason = "local RSA decryption only, no timing oracle; no fixed version" },
+    # Timing variability in crypto-bigint 0.5, through p256 0.13 (YubiKey
+    # library `authenticator`, passkey signatures): a local side channel; the
+    # fix only exists in crypto-bigint 0.7, which p256 0.13 can't use.
+    { id = "RUSTSEC-2026-0387", reason = "local side channel; fixed only in crypto-bigint 0.7, not reachable through p256 0.13" },
+    # Unmaintained, no known vulnerability: CBOR of the YubiKey library.
+    { id = "RUSTSEC-2021-0127", reason = "serde_cbor unmaintained, no vulnerability; used by authenticator" },
+    # Unmaintained, build time only: UniFFI's templates generating the Swift binding.
+    { id = "RUSTSEC-2026-0374", reason = "basic-toml unmaintained; build-time only (uniffi_bindgen)" },
+]
+
+[licenses]
+# Compatible with GPL-3.0-or-later. Bitwarden's SDK is offered as
+# "GPL-3.0-only OR LicenseRef-Bitwarden-SDK": Verrou uses it under GPL-3.0.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-1-Clause",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[bans]
+# Several versions of a crate: reported, not blocking (the dependencies'
+# own choices).
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# Bitwarden's SDK, pinned to a commit in Cargo.toml.
+allow-git = ["https://github.com/bitwarden/sdk-internal"]

@@ -4,6 +4,7 @@ description = "Bridge between Verrou and its clients (browser extension, termina
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 rust-version.workspace = true
 
 [dependencies]

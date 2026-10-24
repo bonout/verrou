@@ -1,0 +1,20 @@
+# Weekly update proposals for the Rust crates and the GitHub Actions (pinned
+# by SHA: Dependabot bumps the SHA). The extension has no dependencies;
+# cargo-deny itself is pinned by version and SHA-256 in ci.yml.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

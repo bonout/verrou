@@ -4,6 +4,7 @@ description = "Verrou core: vault model, local search, TOTP codes, generator."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 rust-version.workspace = true
 
 [dependencies]

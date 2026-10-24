@@ -36,6 +36,24 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # Known vulnerabilities, licenses and sources of the Rust dependencies
+  # (deny.toml): a new advisory against a dependency fails here.
+  supply-chain:
+    name: Supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Only GitHub's own actions run here: cargo-deny's release binary,
+      # checked against its SHA-256.
+      - run: |
+          version=0.20.2
+          sha256=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
+          archive="cargo-deny-$version-x86_64-unknown-linux-musl.tar.gz"
+          curl -sSfL -o "$RUNNER_TEMP/$archive" "https://github.com/EmbarkStudios/cargo-deny/releases/download/$version/$archive"
+          echo "$sha256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/cargo-deny-$version-x86_64-unknown-linux-musl/cargo-deny" check
+
   rust:
     name: Tests (Rust, extension)
     runs-on: ubuntu-latest

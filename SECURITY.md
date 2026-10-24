@@ -1414,6 +1414,17 @@ with it and notarized with it; linked into the `PATH`, it updates with the
 app, and the command and the app always speak the same version of the
 bridge.
 
+## Dependencies
+
+The CI checks every Rust dependency with `cargo-deny` (`deny.toml`): known
+vulnerabilities (RustSec), licenses compatible with the GPL-3.0, and where
+each crate comes from (crates.io, and Bitwarden's SDK pinned to a commit).
+A new advisory fails the build. The few that are accepted are listed in
+`deny.toml`, each with why it doesn't reach Verrou (local-only timing side
+channels, unmaintained crates without a known flaw, build-time tools), to
+look at again as soon as a fixed version exists. Dependabot proposes the
+updates each week.
+
 ## Report a problem
 
 Don't open a public issue: report the vulnerability privately via
