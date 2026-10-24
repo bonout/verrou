@@ -1,9 +1,12 @@
 name: CI
 
+# Every branch: main's ruleset requires these checks on the very commit
+# pushed there, so a branch is pushed and checked first, then main moves to
+# it (fast-forward), without bypassing the rule.
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: ["**"]
 
 permissions:
   contents: read
