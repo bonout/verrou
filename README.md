@@ -14,6 +14,7 @@
 </p>
 
 <p align="center">
+  <a href="https://verrou.bonout.com"><b>Website</b></a> ·
   <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
   <a href="#install">Install</a> ·
   <a href="docs/GUIDE.md">Full guide</a> ·
