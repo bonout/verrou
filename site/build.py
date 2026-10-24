@@ -81,6 +81,8 @@ def app_schema(lang, version, description):
         "codeRepository": REPO,
         "inLanguage": lang,
         "publisher": {"@type": "Organization", "name": "Bonout", "email": "contact@bonout.com"},
+        # The same Verrou elsewhere: search engines and AI assistants link them.
+        "sameAs": [REPO, "https://x.com/verrou_app"],
     }
 
 

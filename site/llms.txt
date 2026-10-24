@@ -1,6 +1,6 @@
 # Verrou
 
-> Verrou is a free, open source (GPL-3.0) password manager app for macOS and iPhone that works with your own Vaultwarden server. It is a native client (SwiftUI on a Rust core, Bitwarden's official Rust SDK for the cryptography) for the vault you already have, in the standard Bitwarden format, so the official Bitwarden apps keep working next to it. Current version: {{version}}. Website: https://verrou.bonout.com. Source: https://github.com/bonout/verrou.
+> Verrou is a free, open source (GPL-3.0) password manager app for macOS and iPhone that works with your own Vaultwarden server. It is a native client (SwiftUI on a Rust core, Bitwarden's official Rust SDK for the cryptography) for the vault you already have, in the standard Bitwarden format, so the official Bitwarden apps keep working next to it. Current version: {{version}}. Website: https://verrou.bonout.com. Source: https://github.com/bonout/verrou. On X: https://x.com/verrou_app.
 
 Key facts:
 
