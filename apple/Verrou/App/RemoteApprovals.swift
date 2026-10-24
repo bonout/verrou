@@ -20,7 +20,8 @@ import os
 ///   answer wins, the other request is withdrawn.
 /// - **Unlock**: at each unlock on the Mac (password, Touch ID, security
 ///   key), the vault key is sealed with a key K and K for each iPhone
-///   (`RemoteApproval.escrow`), in memory only, for 12 hours. The terminal
+///   (`RemoteApproval.escrow`), for 12 hours; kept on disk sealed by the
+///   Mac's Secure Enclave, so that an update of Verrou doesn't end it. The terminal
 ///   finding the vault locked while you are away: the iPhone returns K, the
 ///   vault opens for the terminal only (the window stays locked) and locks
 ///   again 5 minutes after the last approval.
@@ -44,6 +45,21 @@ final class RemoteApprovals {
         /// The Secure Enclave signing key (opaque, usable on this Mac only).
         let signingKey: Data
         var phones: [Phone]
+        /// Secure Enclave key that seals the escrow on disk
+        /// (`remote-escrow.json`); made at the first escrow.
+        var sealingKey: Data?
+    }
+
+    /// The escrow as kept on disk, sealed by the Mac's Secure Enclave.
+    private struct EscrowFile: Codable {
+        let box: Data
+        let escrows: [String: RemoteApproval.Escrow]
+        let until: Date
+    }
+
+    private struct SealedFile: Codable {
+        let ephemeral: Data
+        let box: Data
     }
 
     enum PairingState: Equatable {
@@ -87,6 +103,7 @@ final class RemoteApprovals {
     @ObservationIgnored var escrowNeeded: (() -> Void)?
 
     @ObservationIgnored private let file: URL
+    @ObservationIgnored private let escrowFile: URL
     @ObservationIgnored private var stored: Stored?
     @ObservationIgnored private var vault: RemoteApproval.Vault?
     @ObservationIgnored private var pairingTask: Task<Void, Never>?
@@ -99,11 +116,13 @@ final class RemoteApprovals {
 
     init(directory: URL) {
         file = directory.appending(path: "remote-approval.json")
+        escrowFile = directory.appending(path: "remote-escrow.json")
         if let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(Stored.self, from: data),
            stored.version == Stored.current {
             self.stored = stored
             phones = stored.phones
         }
+        loadEscrow()
         let center = DistributedNotificationCenter.default()
         observers.append(center.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.screenLocked = true }
@@ -254,11 +273,76 @@ final class RemoteApprovals {
         self.vault = vault
         log.notice("unlock from the iPhone prepared for \(vault.escrows.count) iPhone(s)")
         if local || escrowUntil == nil { escrowUntil = Date().addingTimeInterval(Self.escrowLifetime) }
+        saveEscrow()
     }
 
     func clearEscrow() {
         vault = nil
         escrowUntil = nil
+        try? FileManager.default.removeItem(at: escrowFile)
+    }
+
+    // MARK: Escrow on disk
+
+    /// The escrow survives a restart of Verrou (an update), until its
+    /// end: both boxes, sealed again by a Secure Enclave key of this Mac
+    /// (no biometrics, after the first login). Without the iPhone they
+    /// open nothing: K only comes out of it, after Face ID.
+    private func saveEscrow() {
+        guard let vault, let escrowUntil, var identity = stored else { return }
+        do {
+            let key: SecureEnclave.P256.KeyAgreement.PrivateKey
+            if let data = identity.sealingKey {
+                key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: data)
+            } else {
+                key = try SecureEnclave.P256.KeyAgreement.PrivateKey(
+                    accessControl: SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+                                                                   .privateKeyUsage, nil)!)
+                identity.sealingKey = key.dataRepresentation
+                try persist(identity)
+            }
+            let plain = try JSONEncoder().encode(EscrowFile(box: vault.box, escrows: vault.escrows, until: escrowUntil))
+            let ephemeral = P256.KeyAgreement.PrivateKey()
+            let box = try AES.GCM.seal(plain, using: Self.fileKey(try ephemeral.sharedSecretFromKeyAgreement(with: key.publicKey),
+                                                                  mac: identity.mac),
+                                       authenticating: Data(identity.mac.utf8)).combined ?? Data()
+            let sealed = try JSONEncoder().encode(SealedFile(ephemeral: ephemeral.publicKey.x963Representation, box: box))
+            try sealed.write(to: escrowFile, options: .atomic)
+        } catch {
+            log.error("escrow not saved: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// At launch: the escrow left by the previous run, if it is still
+    /// valid and made for the iPhones paired now.
+    private func loadEscrow() {
+        guard let identity = stored, let keyData = identity.sealingKey,
+              let data = try? Data(contentsOf: escrowFile) else { return }
+        do {
+            let sealed = try JSONDecoder().decode(SealedFile.self, from: data)
+            let key = try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: keyData)
+            let ephemeral = try P256.KeyAgreement.PublicKey(x963Representation: sealed.ephemeral)
+            let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: sealed.box),
+                                         using: Self.fileKey(try key.sharedSecretFromKeyAgreement(with: ephemeral),
+                                                             mac: identity.mac),
+                                         authenticating: Data(identity.mac.utf8))
+            let file = try JSONDecoder().decode(EscrowFile.self, from: plain)
+            guard file.until > Date(), Set(file.escrows.keys) == Set(phones.map(\.id)) else {
+                clearEscrow()
+                return
+            }
+            vault = RemoteApproval.Vault(box: file.box, escrows: file.escrows)
+            escrowUntil = file.until
+            log.notice("unlock from the iPhone kept from the previous launch")
+        } catch {
+            log.error("escrow unreadable: \(error.localizedDescription, privacy: .public)")
+            clearEscrow()
+        }
+    }
+
+    private static func fileKey(_ secret: SharedSecret, mac: String) -> SymmetricKey {
+        secret.hkdfDerivedSymmetricKey(using: SHA256.self, salt: Data(mac.utf8),
+                                       sharedInfo: Data("verrou.remote.escrow-file.v1".utf8), outputByteCount: 32)
     }
 
     var canUnlock: Bool {

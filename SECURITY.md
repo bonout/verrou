@@ -971,15 +971,20 @@ default: nothing happens until an iPhone is paired. Code:
 - **Unlock**: the Mac never sends the vault key. At each unlock **on the
   Mac** (password, Touch ID, security key), it draws a key K, seals the
   vault key with K (AES-GCM) and K for each iPhone (ECDH with an ephemeral
-  key), then forgets K: both boxes stay **in memory only**, for 12 hours.
-  When the terminal finds the vault locked while the user is away, the
-  request carries K's box: the iPhone opens it after Face ID and returns K
-  in its sealed answer. The iPhone never sees the vault key; K is useless
-  without the box in the Mac's memory, and is replaced after each use. The
-  vault opens for the bridge only (the window stays locked) and locks again
-  5 minutes after the last approval from the iPhone. Quitting Verrou,
-  restarting the Mac, logging out, removing an iPhone or turning the
-  setting off erases the boxes: the password or Touch ID is needed again.
+  key), then forgets K: both boxes are kept for 12 hours, in memory and in
+  `remote-escrow.json` (account folder), sealed again with AES-GCM under a
+  key from an ECDH with a Secure Enclave key of this Mac (no biometrics,
+  usable after the first login): an update or a restart of Verrou doesn't
+  end it, and the file opens on no other Mac. When the terminal finds the
+  vault locked while the user is away, the request carries K's box: the
+  iPhone opens it after Face ID and returns K in its sealed answer. The
+  iPhone never sees the vault key; K is useless without the vault box kept
+  by the Mac, and the boxes, without the iPhone and Face ID; both are
+  replaced after each use. The vault opens for the bridge only (the window
+  stays locked) and locks again 5 minutes after the last approval from the
+  iPhone. Past the 12 hours, logging out, removing or pairing an iPhone, or
+  turning the setting off erases the boxes and the file: the password or
+  Touch ID is needed again.
 - **Speed**: about 0.8 s from the request to the iPhone's notification,
   2 s for the round trip without the user (measured over 60 requests,
   iPhone locked and unlocked). While a request waits, the Mac fetches the
