@@ -783,7 +783,10 @@ it), and anything weaker is created.
 3. In any app, put the cursor in the username field (or the password field)
    and press ⌘\. Quick Access opens, titled with that app, listing the
    logins linked to it. Enter fills: Verrou closes, the app comes back to the
-   front, and the username, Tab and password are typed.
+   front, and the username, Tab and password are typed. In a terminal
+   (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty, WezTerm, Hyper), whose
+   prompts (`sudo`, `ssh`, `git`) ask for the password alone, only the
+   password is typed.
 4. No login linked yet: search for it and press **⌘↩** to fill and link it
    to the app (or click *Link to “…”* to link without filling). The link is
    stored in the item as a `macapp://<bundle id>` URI (with Bitwarden's

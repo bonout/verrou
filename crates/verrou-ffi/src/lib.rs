@@ -2119,12 +2119,15 @@ impl VaultSession {
         &self,
         id: String,
         submit: bool,
+        password_only: bool,
     ) -> Result<Vec<AutofillKeystroke>, VerrouError> {
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
             self.require_authorized(item)?;
-            let keys = apps::item_keystrokes(item, submit).ok_or_else(|| VerrouError::Invalid {
-                message: "only a login can be filled into an app".to_owned(),
+            let keys = apps::item_keystrokes(item, submit, password_only).ok_or_else(|| {
+                VerrouError::Invalid {
+                    message: "only a login can be filled into an app".to_owned(),
+                }
             })?;
             self.record_use(&item.id);
             Ok(keys.into_iter().map(Into::into).collect())
@@ -2845,7 +2848,9 @@ mod tests {
         let id = slack[0].id.clone();
         assert!(session.is_linked_to_app(id.clone(), "COM.tinyspeck.SlackMacGap".to_owned()));
         assert!(!session.is_linked_to_app(id.clone(), "com.apple.Terminal".to_owned()));
-        let keys = session.autofill_keystrokes(id.clone(), true).unwrap();
+        let keys = session
+            .autofill_keystrokes(id.clone(), true, false)
+            .unwrap();
         let password = session.reveal(id.clone(), "password".to_owned()).unwrap();
         assert_eq!(
             keys,
@@ -2865,11 +2870,14 @@ mod tests {
         protected.reprompt = true;
         *session.vault.write().unwrap() = Some(Vault::new(items));
         assert!(matches!(
-            session.autofill_keystrokes(id.clone(), false),
+            session.autofill_keystrokes(id.clone(), false, false),
             Err(VerrouError::RepromptRequired)
         ));
         session.authorize_item(id.clone());
-        assert_eq!(session.autofill_keystrokes(id, false).unwrap().len(), 3);
+        assert_eq!(
+            session.autofill_keystrokes(id, false, false).unwrap().len(),
+            3
+        );
 
         // A note is not typed.
         let note = session
@@ -2879,7 +2887,7 @@ mod tests {
             .find(|s| s.category == ItemCategory::SecureNote && !s.reprompt)
             .unwrap();
         assert!(matches!(
-            session.autofill_keystrokes(note.id, false),
+            session.autofill_keystrokes(note.id, false, false),
             Err(VerrouError::Invalid { .. })
         ));
     }

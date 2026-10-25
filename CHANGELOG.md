@@ -4,6 +4,13 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**Mac**
+- ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
+  WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
+  prompts expect, instead of the username, Tab and the password.
+
 ## 0.5.1
 
 **iPhone**

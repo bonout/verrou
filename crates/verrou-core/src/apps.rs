@@ -113,8 +113,10 @@ pub fn keystrokes(username: Option<&str>, password: Option<&str>, submit: bool) 
 }
 
 /// Keystrokes for an item: only a login (the rest makes no sense in an
-/// application field).
-pub fn item_keystrokes(item: &Item, submit: bool) -> Option<Vec<Keystroke>> {
+/// application field). `password_only`: a terminal's password prompt
+/// (`sudo`, `ssh`, `git`) expects the password alone; the username and Tab
+/// would be typed into the hidden prompt, Tab even completing.
+pub fn item_keystrokes(item: &Item, submit: bool, password_only: bool) -> Option<Vec<Keystroke>> {
     if item.kind != ItemKind::Login {
         return None;
     }
@@ -127,6 +129,9 @@ pub fn item_keystrokes(item: &Item, submit: bool) -> Option<Vec<Keystroke>> {
         .field("password")
         .or_else(|| item.field_of_kind(FieldKind::Password))
         .map(|f| f.value.expose());
+    if password_only {
+        return Some(keystrokes(None, password, submit));
+    }
     Some(keystrokes(username, password, submit))
 }
 
@@ -256,10 +261,15 @@ mod tests {
             shared: None,
         };
         assert_eq!(
-            item_keystrokes(&item, false),
+            item_keystrokes(&item, false, false),
             Some(vec![text("c@exemple.fr"), Keystroke::Tab, text("pw")])
         );
+        // A terminal's password prompt: the password alone, then Return.
+        assert_eq!(
+            item_keystrokes(&item, true, true),
+            Some(vec![text("pw"), Keystroke::Return])
+        );
         item.kind = ItemKind::SecureNote;
-        assert_eq!(item_keystrokes(&item, false), None);
+        assert_eq!(item_keystrokes(&item, false, false), None);
     }
 }

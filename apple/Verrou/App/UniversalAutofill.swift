@@ -62,6 +62,17 @@ final class UniversalAutofill {
 
     private static var submits: Bool { UserDefaults.standard.bool(forKey: submitKey) }
 
+    /// Terminals: their password prompts (`sudo`, `ssh`, `git`) expect the
+    /// password alone, so the username and Tab aren't typed there.
+    static let terminals: Set<String> = [
+        "com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
+        "net.kovidgoyal.kitty", "org.alacritty", "io.alacritty", "com.github.wez.wezterm", "co.zeit.hyper",
+    ]
+
+    static func isTerminal(_ bundleID: String) -> Bool {
+        terminals.contains(bundleID)
+    }
+
     private static var copiesTotp: Bool {
         UserDefaults.standard.object(forKey: copyTotpKey) as? Bool ?? true
     }
@@ -161,7 +172,8 @@ final class UniversalAutofill {
         }
         let keys: [AutofillKeystroke]
         do {
-            keys = try model.session.autofillKeystrokes(id: itemID, submit: Self.submits)
+            keys = try model.session.autofillKeystrokes(id: itemID, submit: Self.submits,
+                                                         passwordOnly: Self.isTerminal(target.bundleID))
         } catch {
             AutofillHUD.show(String(localized: "Couldn't fill"), detail: AppModel.describe(error), failure: true)
             return
