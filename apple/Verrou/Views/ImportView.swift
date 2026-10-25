@@ -299,7 +299,7 @@ private struct CountTile: View {
             Text(label).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, minHeight: 58)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.faintFill(0.5), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -354,7 +354,7 @@ private struct ConflictRow: View {
             .fixedSize()
         }
         .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.faintFill(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var existing: String { entry.existingTitle.map { String(localized: "“\($0)”") } ?? String(localized: "an item") }

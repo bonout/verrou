@@ -96,7 +96,7 @@ private struct AttachmentRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
-        .background(hovering ? Color.primary.opacity(0.035) : .clear)
+        .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
         .onTapGesture(count: 2) { if entry.readable { model.openAttachment(entry, of: itemID) } }
         .contextMenu {

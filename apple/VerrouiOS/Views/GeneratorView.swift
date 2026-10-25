@@ -72,6 +72,8 @@ struct GeneratorView: View {
                     .padding(18)
                     .background(Color(.secondarySystemGroupedBackground),
                                 in: RoundedRectangle(cornerRadius: Theme.cardRadius + 6, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius + 6, style: .continuous)
+                        .strokeBorder(Theme.cardBorder))
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())

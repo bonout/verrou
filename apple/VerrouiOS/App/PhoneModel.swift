@@ -108,6 +108,11 @@ final class PhoneModel {
     private(set) var summaries: [ItemSummary] = []
     @ObservationIgnored private var summaryIndex: [String: Int] = [:]
     private(set) var counts: SidebarCounts?
+    /// Folders nested by name, counted with their subfolders (home screen,
+    /// folder screens).
+    var folderTree: [FolderNode] {
+        FolderNode.tree((counts?.folders ?? []).map { ($0.name, $0.count) })
+    }
     private(set) var organizations: [OrganizationView] = []
     private(set) var folders: [FolderOption] = []
     private(set) var syncState: SyncState = .idle

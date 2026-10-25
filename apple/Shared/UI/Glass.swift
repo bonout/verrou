@@ -61,7 +61,8 @@ extension View {
                 if let tint { shape.fill(tint.opacity(0.18)) }
             }
         }
-        .overlay(shape.strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+        .overlay(shape.strokeBorder(ContrastStyle(normal: Color.white.opacity(0.12), increased: Color.secondary.opacity(0.7)),
+                                    lineWidth: 0.5))
     }
 
     /// Glass button (`prominent`: tinted with the accent) on iOS 26; capsule
@@ -248,11 +249,11 @@ private struct PasswordFieldSurface: ViewModifier {
         if LiquidGlass.isAvailable {
             content
                 .glassSurface(shape, interactive: true)
-                .overlay(shape.strokeBorder(focused ? Theme.accent.opacity(0.7) : .clear, lineWidth: 1.5))
+                .overlay(shape.strokeBorder(focused ? Theme.focusRing(0.7) : ContrastStyle(Color.clear), lineWidth: 1.5))
         } else {
             content
                 .background(Color(.secondarySystemGroupedBackground), in: shape)
-                .overlay(shape.strokeBorder(focused ? Theme.accent : Color.secondary.opacity(0.25),
+                .overlay(shape.strokeBorder(focused ? Theme.focusRing() : Theme.border(0.25),
                                             lineWidth: focused ? 1.5 : 0.5))
         }
     }
@@ -263,6 +264,8 @@ struct BiometricUnlockButton: View {
     let title: LocalizedStringKey
     let symbol: String
     let busy: Bool
+    /// False under a more likely choice (AutoFill's "Continue as…").
+    var prominent = true
     let action: () -> Void
 
     var body: some View {
@@ -273,7 +276,7 @@ struct BiometricUnlockButton: View {
                 .frame(maxWidth: .infinity, minHeight: 36)
         }
         .controlSize(.large)
-        .glassButton(prominent: true)
+        .glassButton(prominent: prominent)
         .disabled(busy)
     }
 }

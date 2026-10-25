@@ -47,6 +47,18 @@ With *Reduce motion* (System Settings → Accessibility → Display), the
 password generator's animation and the one-time code's countdown pulse are
 replaced by a fade. Other transitions are short.
 
+## Increase Contrast
+
+With *Increase Contrast* (System Settings → Accessibility → Display on the
+Mac, Settings → Accessibility → Display & Text Size on the iPhone), the
+colors Verrou draws itself become stronger, on the Mac, the iPhone and in
+AutoFill: field and card borders, focus rings, hover and selection
+backgrounds, the track of the password strength meter, and the secondary
+text of a selected row. The accent color is darker, so that white text on
+a selected row stays readable in dark mode too. System colors and
+materials already adapt by themselves. With the setting off, nothing
+changes. The styles are in `apple/Shared/UI/Contrast.swift`.
+
 ## How it is checked
 
 - `scripts/review-capture.sh` renders every screen of the Mac app, in light

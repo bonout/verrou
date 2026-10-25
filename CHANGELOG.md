@@ -4,6 +4,19 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**iPhone**
+- Folders nest as on the Mac: the home screen shows the top-level folders,
+  and a folder lists its subfolders above its items.
+- AutoFill list: right after a login was filled with Face ID, the list
+  opened on the same site's next page offers "Continue as…" first, without
+  Face ID (90 seconds, never for a protected item).
+
+**Mac and iPhone**
+- Increase Contrast (system accessibility setting) draws stronger borders,
+  selection, focus rings and secondary text; nothing changes with it off.
+
 ## 0.4.0
 
 **Mac**

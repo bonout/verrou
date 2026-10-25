@@ -248,7 +248,7 @@ private struct GroupView: View {
             .padding(.top, 2)
         }
         .padding(12)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.faintFill(0.35), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var mergeHelp: String {

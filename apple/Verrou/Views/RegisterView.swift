@@ -150,13 +150,17 @@ struct MasterPasswordStrengthMeter: View {
             HStack(spacing: 3) {
                 ForEach(0..<4) { index in
                     Capsule()
-                        .fill(index < filled ? tint : Color.secondary.opacity(0.2))
+                        .fill(index < filled ? ContrastStyle(tint) : Theme.border(0.2))
                         .frame(height: 4)
                 }
             }
+            // The word in the meter's color; in the text color with
+            // Increase Contrast (yellow on white can't be read), the bar
+            // keeps the color.
             Text(label)
                 .font(.caption)
-                .foregroundStyle(score == nil ? .secondary : tint)
+                .foregroundStyle(score == nil ? AnyShapeStyle(.secondary)
+                                              : AnyShapeStyle(ContrastStyle(normal: tint, increased: Color.primary)))
                 .frame(width: 70, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)

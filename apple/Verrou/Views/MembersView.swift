@@ -35,7 +35,7 @@ struct MembersSidebarRow: View {
             }
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
-            .background(active ? Color.primary.opacity(0.08) : .clear,
+            .background(active ? Theme.wash(0.08) : ContrastStyle(Color.clear),
                         in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             .contentShape(Rectangle())
         }

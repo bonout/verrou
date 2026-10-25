@@ -114,7 +114,7 @@ struct ItemIconContent: View {
         }
         .frame(width: size, height: size)
         .clipShape(shape)
-        .overlay(shape.strokeBorder(.primary.opacity(0.12), lineWidth: 0.5))
+        .overlay(shape.strokeBorder(Theme.iconBorder, lineWidth: 0.5))
         .accessibilityHidden(true)
     }
 

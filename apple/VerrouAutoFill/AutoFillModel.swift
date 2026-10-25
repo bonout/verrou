@@ -83,6 +83,10 @@ final class AutoFillModel {
     private(set) var targets: [ItemSummary] = []
     /// Passkey created: the sheet confirms (checkmark) before closing.
     private(set) var passkeyCreated = false
+    /// iPhone: the login filled less than 90 seconds ago on the list's site
+    /// (`RecentFill`), offered at the top of the lock screen ("Continue
+    /// as…") instead of starting Face ID.
+    private(set) var recentLogin: (itemID: String, user: String)?
 
     private let complete: (Completion) -> Void
     private let log = Logger(subsystem: "app.verrou.autofill", category: "extension")
@@ -141,6 +145,33 @@ final class AutoFillModel {
         Perf.mark("request at +\(Perf.msSinceLaunch) ms from launch")
         self.request = request
         if phase == .ready { load() }
+        offerRecentLogin()
+    }
+
+    /// The list of a site where a login was just filled (two-step form, the
+    /// key icon tapped for the second page): that login is offered without
+    /// Face ID. Not when the 5-minute session opens the list by itself, nor
+    /// on the Mac, whose sheet starts Face ID as soon as it appears.
+    private func offerRecentLogin() {
+        #if os(iOS)
+        recentLogin = nil
+        guard phase == .locked, case .list(let services, _) = request else { return }
+        if !wantsPasskey, AutofillSession.userKey() != nil { return }
+        recentLogin = RecentFill.login(forSites: services.map(Self.host))
+        #endif
+    }
+
+    /// "Continue as…": the remembered login, without Face ID; Face ID if it
+    /// expired in the meantime.
+    func continueWithRecentLogin() {
+        guard let recent = recentLogin else { return }
+        if let credential = RecentFill.credential(for: recent.itemID) {
+            Perf.mark("recent login filled from the list")
+            finish(.password(user: credential.user, password: credential.password))
+        } else {
+            recentLogin = nil
+            if canUseBiometrics { Task { await unlockWithBiometrics() } }
+        }
     }
 
     // MARK: Unlocking
@@ -150,6 +181,8 @@ final class AutoFillModel {
     /// need to wait for it.
     func autoUnlock(appeared: Bool = false) async {
         if await unlockWithSession() { return }
+        // The user chooses: the login just filled, or Face ID for another.
+        guard recentLogin == nil else { return }
         guard phase == .locked, canUseBiometrics else { return }
         // The extension's interface is only in the foreground once its sheet
         // is presented: before that, LocalAuthentication refuses ("caller is
@@ -178,6 +211,7 @@ final class AutoFillModel {
         } catch {
             AutofillSession.forget()
             phase = .locked
+            offerRecentLogin()
             return false
         }
         #else
@@ -445,7 +479,8 @@ final class AutoFillModel {
             if protectedItems.contains(id) {
                 RecentFill.forget()
             } else {
-                RecentFill.remember(itemID: id, user: credential.username, password: credential.password)
+                RecentFill.remember(itemID: id, user: credential.username, password: credential.password,
+                                    sites: sites(filling: id))
             }
             // Conditional creation (iOS 18): Safari may request, right after,
             // a passkey for this account, in the background with the vault
@@ -461,6 +496,24 @@ final class AutoFillModel {
         } catch {
             actionError = ErrorText.describe(error)
         }
+    }
+
+    /// The hosts a filled login is offered again on (`RecentFill`): the
+    /// request's sites and the login's own.
+    private func sites(filling id: String) -> [String] {
+        var hosts: [String] = []
+        switch request {
+        case .list(let services, _):
+            hosts = services.map(Self.host)
+        case .provide(let request):
+            if let identity = request.credentialIdentity as? ASPasswordCredentialIdentity {
+                hosts = [Self.host(of: identity.serviceIdentifier)]
+            }
+        default:
+            break
+        }
+        if let host = (matches + everything).first(where: { $0.id == id })?.host { hosts.append(host) }
+        return hosts
     }
 
     private func fillCode(_ id: String) async {

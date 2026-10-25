@@ -1,9 +1,10 @@
 import Foundation
 
-/// A folder of the sidebar, in a tree: Bitwarden nests folders by their
-/// name ("Work/Clients" is inside "Work"). A parent that only exists through
-/// its subfolders still shows; its count includes its subfolders' items, as
-/// does its filter (`Filter::Folder` in the core).
+/// A folder in a tree: Bitwarden nests folders by their name ("Work/Clients"
+/// is inside "Work"). A parent that only exists through its subfolders still
+/// shows; its count includes its subfolders' items, as does its filter
+/// (`Filter::Folder` in the core). The Mac's sidebar shows it as an outline,
+/// the iPhone one level per screen, like Files.
 struct FolderNode: Identifiable, Hashable {
     /// The full name, the one the server knows ("Work/Clients").
     let path: String
@@ -15,10 +16,26 @@ struct FolderNode: Identifiable, Hashable {
 
     var id: String { path }
 
+    /// A folder's name as a path of the tree: "/Work//Clients/" is
+    /// "Work/Clients", as Bitwarden's clients show it.
+    static func path(of name: String) -> String {
+        name.split(separator: "/", omittingEmptySubsequences: true).joined(separator: "/")
+    }
+
+    /// The folder at `path` in `tree`, at any depth.
+    static func find(_ path: String, in tree: [FolderNode]) -> FolderNode? {
+        for node in tree {
+            if node.path == path { return node }
+            // Only down the branch that leads to it.
+            if path.hasPrefix(node.path + "/") { return find(path, in: node.children ?? []) }
+        }
+        return nil
+    }
+
     static func tree(_ folders: [(name: String, count: UInt32)]) -> [FolderNode] {
         var own: [String: UInt32] = [:]
         for folder in folders {
-            let path = folder.name.split(separator: "/", omittingEmptySubsequences: true).joined(separator: "/")
+            let path = path(of: folder.name)
             guard !path.isEmpty else { continue }
             own[path, default: 0] += folder.count
         }

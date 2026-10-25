@@ -1,6 +1,6 @@
 import XCTest
 
-/// The sidebar's folder tree, built from the folders' full names.
+/// The folder tree (Mac sidebar, iPhone folders), built from the folders' full names.
 final class FolderNodeTests: XCTestCase {
     func testNestsFoldersByName() {
         let tree = FolderNode.tree([("Work/Clients/Acme", 2), ("Work", 1), ("Personal", 3), ("Work/Admin", 4)])
@@ -26,5 +26,19 @@ final class FolderNodeTests: XCTestCase {
         let tree = FolderNode.tree([("/Work//Clients/", 1)])
         XCTAssertEqual(tree.map(\.path), ["Work"])
         XCTAssertEqual(tree[0].children?.map(\.path), ["Work/Clients"])
+    }
+
+    /// The iPhone opens a folder by its path, one level per screen.
+    func testFindsAFolderAtAnyDepth() {
+        let tree = FolderNode.tree([("Work/Clients/Acme", 2), ("Workshop", 1)])
+        XCTAssertEqual(FolderNode.find("Work/Clients/Acme", in: tree)?.count, 2)
+        XCTAssertEqual(FolderNode.find("Work", in: tree)?.children?.map(\.name), ["Clients"])
+        XCTAssertEqual(FolderNode.find("Workshop", in: tree)?.count, 1, "a prefix of the name isn't a parent")
+        XCTAssertNil(FolderNode.find("Work/Admin", in: tree))
+    }
+
+    func testNormalizesAFolderName() {
+        XCTAssertEqual(FolderNode.path(of: "/Work//Clients/"), "Work/Clients")
+        XCTAssertEqual(FolderNode.path(of: "Personal"), "Personal")
     }
 }

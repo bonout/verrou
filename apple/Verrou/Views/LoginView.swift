@@ -298,7 +298,7 @@ struct LabeledField<Content: View>: View {
                 .padding(.horizontal, 12)
                 .frame(height: 36)
                 .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.secondary.opacity(0.25)))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.border(0.25)))
         }
     }
 }

@@ -526,7 +526,7 @@ private struct ScoreRingGaugeStyle: GaugeStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         ZStack {
-            Circle().stroke(tint.opacity(0.18), lineWidth: 6)
+            Circle().stroke(ContrastStyle(normal: tint.opacity(0.18), increased: tint.opacity(0.4)), lineWidth: 6)
             Circle()
                 .trim(from: 0, to: configuration.value)
                 .stroke(tint.gradient, style: StrokeStyle(lineWidth: 6, lineCap: .round))

@@ -273,7 +273,7 @@ struct QuickAccessView: View {
                         VStack(alignment: .leading, spacing: 1) {
                             HighlightedText(text: summary.title, highlights: hit.highlights,
                                             tint: index == selected ? nil : Theme.accent).lineLimit(1)
-                            Text(summary.displaySubtitle).font(.caption).foregroundStyle(index == selected ? Color.white.opacity(0.8) : .secondary).lineLimit(1)
+                            Text(summary.displaySubtitle).font(.caption).foregroundStyle(index == selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.secondary)).lineLimit(1)
                         }
                         Spacer()
                         if summary.hasTotp {

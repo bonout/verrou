@@ -186,7 +186,8 @@ targets:
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
 
   # Mac unit tests without a host app (nothing is shown): account migration
-  # to the app group, PRF input selection, the iPhone approval protocol.
+  # to the app group, PRF input selection, the iPhone approval protocol, the
+  # folder tree, AutoFill's "Continue as…" site check.
   #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
   VerrouMacTests:
     type: bundle.unit-test
@@ -196,7 +197,8 @@ targets:
       - path: Shared/Core/VerrouStorage.swift
       - path: VerrouAutoFill/PasskeyPrf.swift
       - path: Shared/Remote/RemoteApproval.swift
-      - path: Verrou/Views/FolderNode.swift
+      - path: Shared/Core/FolderNode.swift
+      - path: VerrouAutoFill/RecentFill.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests

@@ -351,7 +351,7 @@ struct SidebarPaneButton: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .background(active ? Color.primary.opacity(0.08) : .clear,
+            .background(active ? Theme.wash(0.08) : ContrastStyle(Color.clear),
                         in: RoundedRectangle(cornerRadius: 6, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -611,7 +611,7 @@ private struct ListRow: View, Equatable {
     var body: some View {
         ItemRow(summary: row.summary, highlights: row.highlights, selected: selected, showsPasskey: showsPasskey)
             .padding(.horizontal, 8)
-            .background(selected ? Theme.accent : hovered ? Color.primary.opacity(0.07) : .clear,
+            .background(selected ? ContrastStyle(Theme.accent) : hovered ? Theme.wash(0.07) : ContrastStyle(Color.clear),
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
@@ -673,7 +673,7 @@ struct SearchField: View {
         .padding(.horizontal, 10)
         .frame(height: 32)
         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused.wrappedValue ? Theme.accent.opacity(0.7) : Color.secondary.opacity(0.2), lineWidth: focused.wrappedValue ? 1.5 : 1))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused.wrappedValue ? Theme.focusRing(0.7) : Theme.border(0.2), lineWidth: focused.wrappedValue ? 1.5 : 1))
         .background(
             Button("") { focused.wrappedValue = true }
                 .keyboardShortcut("f", modifiers: .command)

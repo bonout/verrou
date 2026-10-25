@@ -115,10 +115,29 @@ private struct AutoFillLockView: View {
                 Spacer(minLength: 12)
                 GlassGroup(spacing: 14) {
                     VStack(spacing: 14) {
+                        // The login just filled on this site (the form's
+                        // second page): one tap, no Face ID, which stays
+                        // offered below to choose another one.
+                        if let recent = model.recentLogin {
+                            Button {
+                                model.continueWithRecentLogin()
+                            } label: {
+                                Label("Continue as \(recent.user)", systemImage: "person.crop.circle.badge.checkmark")
+                                    .font(.body.weight(.semibold))
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                            }
+                            .controlSize(.large)
+                            .glassButton(prominent: true)
+                            .disabled(model.phase == .unlocking)
+                            .accessibilityIdentifier("autofill-continue-recent")
+                        }
                         if model.canUseBiometrics {
                             BiometricUnlockButton(title: "Unlock with \(Biometrics.name)",
                                                   symbol: Biometrics.symbolName,
-                                                  busy: model.phase == .unlocking) {
+                                                  busy: model.phase == .unlocking,
+                                                  prominent: model.recentLogin == nil) {
                                 Task { await model.unlockWithBiometrics() }
                             }
                         }
@@ -361,6 +380,7 @@ private struct ConfirmationSheet: View {
                 .padding(.horizontal, 16)
                 .frame(minHeight: 48)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Theme.cardBorder))
                 .onSubmit {
                     let typed = password
                     password = ""

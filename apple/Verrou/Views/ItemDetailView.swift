@@ -180,7 +180,7 @@ struct ItemDetailView: View {
             }
         }
         .padding(12)
-        .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.wash(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var metadata: some View {
@@ -207,7 +207,7 @@ struct FieldCard<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) { content }
             .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous).strokeBorder(.separator.opacity(0.6), lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous).strokeBorder(Theme.hairline, lineWidth: 0.5))
             .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
     }
 }
@@ -260,7 +260,7 @@ struct FieldRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .background(hovering ? Color.primary.opacity(0.035) : .clear)
+        .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
         .onTapGesture { model.copyField(field, of: itemID) }
         .accessibilityElement(children: .combine)
@@ -319,7 +319,7 @@ struct IconButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
                 .frame(width: 26, height: 24)
-                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.faintFill(0.6), in: RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .help(help)

@@ -142,7 +142,7 @@ struct CountCapsule: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
-        .background(.quaternary.opacity(0.6), in: Capsule())
+        .background(Theme.faintFill(0.6), in: Capsule())
     }
 }
 
@@ -174,7 +174,7 @@ struct TagsRow: View {
                     .font(.caption.weight(.medium))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
-                    .background(.quaternary.opacity(0.7), in: Capsule())
+                    .background(Theme.faintFill(0.7), in: Capsule())
             }
         }
     }
@@ -278,7 +278,7 @@ struct ItemRowContent<Icon: View>: View {
                     if let sharing = summary.sharing {
                         Image(systemName: "person.2.fill")
                             .font(.system(size: 9))
-                            .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.indigo))
+                            .foregroundStyle(selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.indigo))
                             .help(sharing.label)
                             .accessibilityLabel("Shared")
                     }
@@ -291,13 +291,13 @@ struct ItemRowContent<Icon: View>: View {
                     }
                     .labelStyle(CompactLabelStyle())
                     .font(subtitleFont)
-                    .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.secondary))
                     .lineLimit(1)
                     .accessibilityLabel("Passkey \(line)")
                 } else {
                     Text(summary.displaySubtitle)
                         .font(subtitleFont)
-                        .foregroundStyle(selected ? AnyShapeStyle(.white.opacity(0.8)) : AnyShapeStyle(.secondary))
+                        .foregroundStyle(selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.secondary))
                         .lineLimit(1)
                 }
             }

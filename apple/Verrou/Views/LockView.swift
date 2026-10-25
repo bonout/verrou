@@ -113,7 +113,7 @@ struct LockView: View {
         .padding(.horizontal, 12)
         .frame(width: 280, height: 38)
         .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.accent : Color.secondary.opacity(0.25)))
+        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.focusRing() : Theme.border(0.25)))
     }
 
     /// Highlighted when Touch ID is not offered.

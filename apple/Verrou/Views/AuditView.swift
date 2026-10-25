@@ -122,7 +122,7 @@ struct AuditView: View {
                 }
             }
             .padding(10)
-            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .background(Theme.wash(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .padding(.bottom, 6)
         }
     }
@@ -148,7 +148,7 @@ struct AuditView: View {
             ItemRow(summary: summary, highlights: [], selected: selected)
             if let note {
                 Text(note).font(.caption).monospacedDigit()
-                    .foregroundStyle(selected ? Color.white.opacity(0.85) : .secondary)
+                    .foregroundStyle(selected ? AnyShapeStyle(Theme.onAccentSecondary(0.85)) : AnyShapeStyle(.secondary))
             }
             if change, summary.canChangePassword {
                 ChangePasswordButton(summary: summary, title: "Change", selected: selected)

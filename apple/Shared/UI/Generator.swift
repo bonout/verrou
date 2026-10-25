@@ -76,7 +76,7 @@ struct StrengthMeter: View {
         HStack(spacing: 10) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(.quaternary)
+                    Capsule().fill(Theme.faintFill())
                     Capsule().fill(color).frame(width: proxy.size.width * fraction)
                 }
             }

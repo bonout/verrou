@@ -60,7 +60,7 @@ private struct PasskeyRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .background(hovering ? Color.primary.opacity(0.035) : .clear)
+        .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
         .accessibilityElement(children: .combine)
         .confirmationDialog("Delete the passkey of “\(passkey.rpId)”?", isPresented: $confirming) {

@@ -794,7 +794,10 @@ struct MoveToFolderSheet: View {
             Form {
                 Section {
                     Button("No folder", systemImage: "folder.badge.minus") { move(to: nil) }
-                    ForEach(model.folders, id: \.id) { folder in
+                    // Full names ("Work/Clients"), in order: a subfolder
+                    // follows its parent.
+                    ForEach(model.folders.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending },
+                            id: \.id) { folder in
                         Button(folder.name, systemImage: "folder") { move(to: folder) }
                     }
                 }

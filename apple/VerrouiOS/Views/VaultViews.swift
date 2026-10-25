@@ -144,9 +144,12 @@ struct VaultHomeView: View {
         }
         if let folders = counts?.folders, !folders.isEmpty {
             Section {
-                ForEach(folders, id: \.name) { folder in
+                // Top-level folders only ("Work/Clients" is inside "Work"),
+                // counted with their subfolders: a folder's screen lists
+                // its subfolders above its items, like Files.
+                ForEach(model.folderTree) { folder in
                     FilterLink(title: folder.name, symbol: "folder.fill", tint: .blue, count: folder.count,
-                               filter: .folder(name: folder.name))
+                               filter: .folder(name: folder.path))
                 }
             } header: {
                 SectionHeader("Folders")
@@ -229,6 +232,7 @@ private struct SmartTile: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground),
                         in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous).strokeBorder(Theme.cardBorder))
             .contentShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
         }
         .buttonStyle(TileButtonStyle())
@@ -535,11 +539,17 @@ struct ItemListView: View {
 
     var body: some View {
         @Bindable var model = model
-        let rows = model.rows(query: query, filter: filter, order: order)
+        let rows = shown(model.rows(query: query, filter: filter, order: order))
+        let subfolders = editMode.isEditing ? [] : self.subfolders
         List(selection: $selection) {
-            if rows.isEmpty {
+            if rows.isEmpty, subfolders.isEmpty {
                 emptyState
                     .listRowBackground(Color.clear)
+            }
+            ForEach(subfolders) { folder in
+                NavigationLink(value: PhoneModel.Route.list(.folder(name: folder.path))) {
+                    HomeRow(title: folder.name, symbol: "folder.fill", tint: .blue, count: folder.count)
+                }
             }
             ForEach(rows) { row in
                 ItemRowLink(row: row, showsPasskey: showsPasskey)
@@ -606,8 +616,8 @@ struct ItemListView: View {
         }
         .onChange(of: model.revision) {
             // The items that left the list leave the selection.
-            let shown = Set(model.rows(query: query, filter: filter, order: order).map(\.id))
-            selection.formIntersection(shown)
+            let ids = Set(shown(model.rows(query: query, filter: filter, order: order)).map(\.id))
+            selection.formIntersection(ids)
         }
         #if DEBUG
         .onAppear { PhoneBenchDriver.listShown = true }
@@ -651,6 +661,20 @@ struct ItemListView: View {
         }
     }
 
+    /// The open folder's subfolders, above its items, like Files; not while
+    /// searching, which covers the whole folder, subfolders included.
+    private var subfolders: [FolderNode] {
+        guard case .folder(let path) = filter, query.isEmpty else { return [] }
+        return FolderNode.find(path, in: model.folderTree)?.children ?? []
+    }
+
+    /// The rows listed: a folder with subfolders only lists its own items
+    /// (the core's filter includes its subfolders', reached by their rows).
+    private func shown(_ rows: [ResultRow]) -> [ResultRow] {
+        guard case .folder(let path) = filter, !subfolders.isEmpty else { return rows }
+        return rows.filter { $0.summary.folder.map(FolderNode.path(of:)) == path }
+    }
+
     /// Folder offered for a new item created from this list.
     private var folderID: String? {
         guard case .folder(let name) = filter else { return nil }
@@ -681,7 +705,8 @@ struct ItemListView: View {
         case .passkeys: String(localized: "Passkeys")
         case .category(let category): category.label
         case .template(let template): template.label
-        case .folder(let name): name
+        // The last part of the name: the screen above is its parent.
+        case .folder(let name): String(name.split(separator: "/").last ?? Substring(name))
         case .tag(let name): "#\(name)"
         case .archived: String(localized: "Archived items")
         case .trash: String(localized: "Trash")
