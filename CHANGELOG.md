@@ -18,6 +18,7 @@ tagging (docs/RELEASING.md).
   skips decorative ones (ACCESSIBILITY.md).
 
 **Mac and iPhone**
+- In German, Spanish and Italian too, as is the browser extension.
 - Settings → Diagnostics: crash and hang reports from the system stay on
   the device, never sent; share them with the developers if something went
   wrong, or delete them.

@@ -32,7 +32,8 @@
 Verrou works with the vault you already have on your Vaultwarden server, so
 the official Bitwarden apps and web vault keep working next to it. It opens
 in a fraction of a second, searches thousands of items as you type, and fills
-your logins in Brave, Firefox and any other Mac app. The interface is in French.
+your logins in Brave, Firefox and any other Mac app. In English, French,
+German, Spanish and Italian.
 
 ## What you can do
 
@@ -284,7 +285,7 @@ throwaway Vaultwarden, the end-to-end walkthrough and the demo recording
 
 ## iPhone
 
-The iPhone app (`apple/VerrouiOS`, iOS 17 or later, French interface) shares
+The iPhone app (`apple/VerrouiOS`, iOS 17 or later) shares
 the Rust core and a Swift layer with the Mac app: sign in to Vaultwarden
 (TOTP or e-mail second factor), unlock with Face ID or the master password,
 search as you type, tap to copy (local-only clipboard that iOS clears after

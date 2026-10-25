@@ -1,6 +1,6 @@
-// The extension's texts (extension/_locales): English and French have the
-// same messages and placeholders, and every message the code asks for
-// exists.
+// The extension's texts (extension/_locales): every language has the same
+// messages and placeholders as English, and every message the code asks
+// for exists.
 //
 //   node --test extension/test/i18n.test.mjs
 
@@ -13,14 +13,22 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const messages = (locale) => JSON.parse(readFileSync(`${root}_locales/${locale}/messages.json`, "utf8"));
 const placeholdersOf = (entry) => [...entry.message.matchAll(/\$([A-Za-z0-9_]+)\$/g)].map((m) => m[1].toLowerCase()).sort();
 
-test("English and French have the same messages and placeholders", () => {
+const locales = readdirSync(`${root}_locales`).filter((name) => name !== "en");
+
+test("every language has English's messages and placeholders", () => {
   const en = messages("en");
-  const fr = messages("fr");
-  assert.deepEqual(Object.keys(fr).sort(), Object.keys(en).sort());
+  assert.deepEqual(locales.sort(), ["de", "es", "fr", "it"]);
+  for (const locale of locales) {
+    const translated = messages(locale);
+    assert.deepEqual(Object.keys(translated).sort(), Object.keys(en).sort(), locale);
+    for (const [name, entry] of Object.entries(en)) {
+      assert.match(name, /^[A-Za-z0-9_]+$/);
+      assert.ok(translated[name].message.trim(), `${locale}: ${name} empty`);
+      assert.deepEqual(placeholdersOf(translated[name]), placeholdersOf(entry), `${locale}: ${name}`);
+      assert.deepEqual(translated[name].placeholders, entry.placeholders, `${locale}: ${name}`);
+    }
+  }
   for (const [name, entry] of Object.entries(en)) {
-    assert.match(name, /^[A-Za-z0-9_]+$/);
-    assert.deepEqual(placeholdersOf(fr[name]), placeholdersOf(entry), name);
-    assert.deepEqual(fr[name].placeholders, entry.placeholders, name);
     for (const key of placeholdersOf(entry)) assert.ok(entry.placeholders?.[key], `${name}: $${key}$ undefined`);
   }
 });
