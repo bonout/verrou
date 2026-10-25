@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.5.1
 
 **iPhone**
 - The Dynamic Island for requests from the Mac is gone: iOS only allows it
