@@ -209,6 +209,23 @@ pub enum Command {
     },
     /// Terminal: forget this client (`verrou unlink`).
     Unlink,
+    /// Terminal: a new item in the personal vault (`verrou item create`),
+    /// with the user's approval.
+    ItemCreate {
+        changes: ItemChanges,
+    },
+    /// Terminal: changes to the item `item` (an identifier), with the
+    /// user's approval.
+    ItemEdit {
+        item: String,
+        changes: ItemChanges,
+    },
+    /// Terminal: move the item `item` (identifier or title) to the trash,
+    /// to the archive, or back, with the user's approval.
+    ItemMove {
+        item: String,
+        to: ItemMove,
+    },
     /// SSH agent: the public keys of the vault's SSH keys.
     SshKeys,
     /// SSH agent: sign `data` (base64) with the key whose SSH binary form is
@@ -248,6 +265,61 @@ pub enum Command {
     PasskeyGet(PasskeyUse),
     PasskeyTargets(PasskeyTargetsQuery),
     PasskeyCreate(Box<PasskeyCreation>),
+}
+
+/// What the terminal writes to an item. A missing value leaves it as is.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ItemChanges {
+    /// Creation only: login (by default), secure note, card or identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<ItemKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// The login's sites: they replace the item's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub urls: Option<Vec<String>>,
+    /// A folder's name; empty: out of any folder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub favorite: Option<bool>,
+    /// Fields set or removed, in order ([`crate::access::field_target`]).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<FieldChange>,
+}
+
+/// `name=value`: one of the item's own fields (`password`, `number`…,
+/// `notes`), otherwise a custom field, by its name.
+#[derive(Clone, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+pub struct FieldChange {
+    pub name: String,
+    /// `None`: the field is removed.
+    pub value: Option<String>,
+    /// A new custom field: hidden (`name[password]=…`) or not.
+    #[serde(default)]
+    pub hidden: bool,
+}
+
+/// The value stays out of logs and error messages.
+impl std::fmt::Debug for FieldChange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FieldChange")
+            .field("name", &self.name)
+            .field("value", &self.value.as_ref().map(|_| "••••"))
+            .field("hidden", &self.hidden)
+            .finish()
+    }
+}
+
+/// Where `ItemMove` takes an item.
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ItemMove {
+    /// The trash (restorable 30 days).
+    Trash,
+    Archive,
+    /// Out of the trash or of the archive.
+    Restore,
 }
 
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]

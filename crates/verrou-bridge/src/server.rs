@@ -165,6 +165,12 @@ pub enum Purpose {
     /// Extension: release one more item, beyond `BULK_ITEMS` in a short
     /// time.
     Bulk,
+    /// Terminal: create an item (`item`: its title).
+    Create,
+    /// Terminal: modify, archive or restore an item.
+    Edit,
+    /// Terminal: move an item to the trash.
+    Delete,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -175,7 +181,8 @@ pub struct Confirmation {
     pub item: String,
     /// The item's title, to show.
     pub title: String,
-    /// [`Purpose::LinkSite`]: the host of the site to link to the item
+    /// [`Purpose::LinkSite`]: the host of the site to link to the item;
+    /// [`Purpose::Create`], [`Purpose::Edit`]: the folder the item goes to
     /// (empty otherwise). The app words the request itself.
     pub site: String,
     /// Why the terminal asks, as it declares it ([`crate::protocol::clean_reason`]);
@@ -785,6 +792,9 @@ async fn terminal(
                 Some(Err(reason)) => denied(reason),
             }
         }
+        command @ (Command::ItemCreate { .. }
+        | Command::ItemEdit { .. }
+        | Command::ItemMove { .. }) => item_write(shared, client, command, reason).await,
         Command::Unlink => {
             lock(&shared.clients).remove(&client.id);
             lock(&shared.approvals).retain(|(id, _, _), _| *id != client.id);
@@ -835,6 +845,89 @@ async fn terminal(
         }
         // Extension commands: already handled, or refused by `allowed`.
         _ => denied("command not allowed for this client".to_owned()),
+    }
+}
+
+/// The terminal writes an item ([`crate::items`]): checked first (a write
+/// that would be refused asks nothing), approved by the user in Verrou,
+/// then carried out by the app, which checks it again.
+async fn item_write(
+    shared: &Shared,
+    client: &ClientInfo,
+    command: Command,
+    reason: &str,
+) -> ReplyResult {
+    let backend = &*shared.backend;
+    // Built twice: to ask for the approval, then for the app to carry out.
+    let plan = |command: Command| -> Option<WritePlan> {
+        Some(match command {
+            Command::ItemCreate { changes } => {
+                Box::new(move |_: &Vault| crate::items::plan_create(changes))
+            }
+            Command::ItemEdit { item, changes } => {
+                Box::new(move |v: &Vault| crate::items::plan_edit(v, &item, changes))
+            }
+            Command::ItemMove { item, to } => Box::new(move |v: &Vault| {
+                crate::items::plan_move(v, &item, to).map(|(write, _)| write)
+            }),
+            _ => return None,
+        })
+    };
+    let Some(check) = plan(command.clone()) else {
+        return ReplyResult::Denied {
+            reason: "unexpected command".to_owned(),
+        };
+    };
+    // What the approval says: the purpose, the item, its title, and the
+    // folder it goes to (created if missing), in `site`.
+    let checked = read(backend, |v| {
+        let title_of = |item: &str| v.get(item).map(|i| i.title.clone()).unwrap_or_default();
+        let folder = |changes: &crate::protocol::ItemChanges| {
+            changes
+                .folder
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        check(v).map(|write| match &write {
+            access::Write::NewItem { changes } => {
+                let title = changes.title.clone().unwrap_or_default();
+                (Purpose::Create, title.clone(), title, folder(changes))
+            }
+            access::Write::EditItem { item, changes } => {
+                (Purpose::Edit, item.clone(), title_of(item), folder(changes))
+            }
+            access::Write::MoveItem { item, to } => (
+                if *to == crate::items::StateChange::Trash {
+                    Purpose::Delete
+                } else {
+                    Purpose::Edit
+                },
+                item.clone(),
+                title_of(item),
+                String::new(),
+            ),
+            _ => (Purpose::Edit, String::new(), String::new(), String::new()),
+        })
+    });
+    let (purpose, item, title, folder) = match checked {
+        None => return ReplyResult::Locked,
+        Some(Err(reason)) => return ReplyResult::Denied { reason },
+        Some(Ok(found)) => found,
+    };
+    // An approval holds for one folder: another one asks again.
+    let key = if folder.is_empty() {
+        item
+    } else {
+        format!("{item} {folder}")
+    };
+    if !approved_for_site(shared, client, purpose, &key, &title, &folder, reason).await {
+        return refused_or_locked(backend);
+    }
+    match plan(command) {
+        Some(write) => written(backend.write(write).await),
+        None => refused(),
     }
 }
 

@@ -46257,6 +46257,146 @@
         }
       }
     },
+    "allow the terminal to create “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser le terminal à créer « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dem Terminal erlauben, „%@“ zu erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que el terminal cree “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti al Terminale di creare “%@”"
+          }
+        }
+      }
+    },
+    "allow the terminal to create “%@” in the folder “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser le terminal à créer « %1$@ » dans le dossier « %2$@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dem Terminal erlauben, „%@“ im Ordner „%@“ zu erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que el terminal cree “%@” en la carpeta “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti al Terminale di creare “%@” nella cartella “%@”"
+          }
+        }
+      }
+    },
+    "allow the terminal to modify “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser le terminal à modifier « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dem Terminal erlauben, „%@“ zu ändern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que el terminal modifique “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti al Terminale di modificare “%@”"
+          }
+        }
+      }
+    },
+    "allow the terminal to modify “%@” and file it in the folder “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser le terminal à modifier « %1$@ » et à le ranger dans le dossier « %2$@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dem Terminal erlauben, „%@“ zu ändern und im Ordner „%@“ abzulegen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que el terminal modifique “%@” y lo guarde en la carpeta “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti al Terminale di modificare “%@” e di metterlo nella cartella “%@”"
+          }
+        }
+      }
+    },
+    "allow the terminal to move “%@” to the trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser le terminal à mettre « %@ » à la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dem Terminal erlauben, „%@“ in den Papierkorb zu legen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que el terminal mueva “%@” a la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti al Terminale di spostare “%@” nel Cestino"
+          }
+        }
+      }
+    },
     "allow the terminal to read “%@”": {
       "localizations": {
         "fr": {

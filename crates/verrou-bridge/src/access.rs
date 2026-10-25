@@ -56,6 +56,9 @@ pub fn allowed(kind: ClientKind, command: &Command) -> bool {
         | Command::Reveal { .. }
         | Command::Totp { .. }
         | Command::Unlink
+        | Command::ItemCreate { .. }
+        | Command::ItemEdit { .. }
+        | Command::ItemMove { .. }
         | Command::SshKeys
         | Command::SshSign { .. } => kind == ClientKind::Cli,
     }
@@ -374,6 +377,21 @@ pub enum Write {
         credential_id: String,
         counter: u32,
     },
+    /// The terminal: a new item ([`crate::items::plan_create`]).
+    NewItem {
+        changes: Box<crate::protocol::ItemChanges>,
+    },
+    /// The terminal: changes to the item ([`crate::items::plan_edit`]).
+    EditItem {
+        item: String,
+        changes: Box<crate::protocol::ItemChanges>,
+    },
+    /// The terminal: the item to the trash, the archive, or back
+    /// ([`crate::items::plan_move`]).
+    MoveItem {
+        item: String,
+        to: crate::items::StateChange,
+    },
 }
 
 /// The item `item` if it matches the page.
@@ -386,7 +404,7 @@ fn matching_login<'v>(vault: &'v Vault, page_url: &str, item: &str) -> Result<&'
 }
 
 /// An item shared read-only is not written.
-fn writable(item: &Item) -> Result<&Item, String> {
+pub(crate) fn writable(item: &Item) -> Result<&Item, String> {
     if item.is_writable() {
         Ok(item)
     } else {
@@ -738,6 +756,9 @@ pub fn apply_in_memory(vault: &Vault, write: Write, new_id: &str) -> (Vault, Str
         write @ (Write::Passkey { .. } | Write::PasskeyCounter { .. }) => {
             crate::passkeys::apply_in_memory(vault, write, new_id)
         }
+        write @ (Write::NewItem { .. } | Write::EditItem { .. } | Write::MoveItem { .. }) => {
+            crate::items::apply_in_memory(vault, write, new_id)
+        }
     }
 }
 
@@ -957,6 +978,13 @@ mod tests {
                 kind: None,
                 favorites: false,
                 limit: None,
+            },
+            Command::ItemCreate {
+                changes: crate::protocol::ItemChanges::default(),
+            },
+            Command::ItemMove {
+                item: String::new(),
+                to: crate::protocol::ItemMove::Trash,
             },
             Command::VaultItem {
                 query: String::new(),

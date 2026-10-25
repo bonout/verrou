@@ -27665,6 +27665,62 @@
         }
       }
     },
+    "create “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "créer « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "crear “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "creare “%@”"
+          }
+        }
+      }
+    },
+    "create “%@” in the folder “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "créer « %1$@ » dans le dossier « %2$@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ im Ordner „%@“ erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "crear “%@” en la carpeta “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "creare “%@” nella cartella “%@”"
+          }
+        }
+      }
+    },
     "created %@": {
       "localizations": {
         "fr": {
@@ -28669,6 +28725,90 @@
           "stringUnit": {
             "state": "translated",
             "value": "collegare il sito %@ a “%@”"
+          }
+        }
+      }
+    },
+    "modify “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modifier « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ ändern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modificar “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modificare “%@”"
+          }
+        }
+      }
+    },
+    "modify “%@” and file it in the folder “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modifier « %1$@ » et le ranger dans le dossier « %2$@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ ändern und im Ordner „%@“ ablegen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modificar “%@” y guardarlo en la carpeta “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "modificare “%@” e metterlo nella cartella “%@”"
+          }
+        }
+      }
+    },
+    "move “%@” to the trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mettre « %@ » à la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ in den Papierkorb legen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "mover “%@” a la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "spostare “%@” nel Cestino"
           }
         }
       }

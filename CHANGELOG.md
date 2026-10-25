@@ -18,6 +18,17 @@ tagging (docs/RELEASING.md).
   while Verrou is open, where the approval screen already shows. The
   notification and the approval screen are unchanged.
 
+**Terminal**
+- `verrou read verrou://<item>/<field>` prints one value, or writes it to a
+  file (`-o`, mode 600 by default).
+- `verrou inject` fills a template's `{{ verrou://<item>/<field> }}`
+  references: a configuration file with its secrets, never typed.
+- `verrou item create`, `edit`, `delete`, `archive` and `restore` write
+  the vault from the terminal, the 1Password CLI way (`username=…
+  'API key[password]=…' --generate-password`). Each write asks for your
+  approval in Verrou, on the Mac or the paired iPhone. `--folder` files the
+  item, and creates the folder if it is missing.
+
 ## 0.5.0
 
 **Mac**

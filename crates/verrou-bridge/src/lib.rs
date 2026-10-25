@@ -19,6 +19,7 @@
 pub mod access;
 mod clients;
 pub mod crypto;
+pub mod items;
 pub mod passkeys;
 pub mod protocol;
 mod server;
