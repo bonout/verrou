@@ -208,7 +208,10 @@ final class ShowcaseUITests: XCTestCase {
         app.buttons[L("Select")].firstMatch.tap()
         for index in [0, 1, 3] { app.cells.element(boundBy: index).tap() }
         shot("06-selection")
-        app.buttons["OK"].firstMatch.tap()
+        // The system's "Done", whose word depends on the language.
+        let done = ["OK", "Done", "Fertig", "Aceptar", "Listo", "Fine"].lazy
+            .map { self.app.buttons[$0].firstMatch }.first { $0.exists }
+        (done ?? app.navigationBars.buttons.element(boundBy: 0)).tap()
         back()
 
         // Search.
