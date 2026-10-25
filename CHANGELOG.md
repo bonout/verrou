@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.5.0
 
 **Mac**
 - SSH keys: choose how long a Touch ID covers the terminal. On a key's page,
