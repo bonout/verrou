@@ -40,7 +40,6 @@ struct MembersSidebarRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.leading, 14)
         .help(organization.canManageMembers
               ? "Invite, confirm and manage the members of \(organization.name)"
               : "Members of \(organization.name)")
