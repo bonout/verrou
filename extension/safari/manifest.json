@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Verrou",
+  "description": "__MSG_extSafariDescription__",
+  "default_locale": "en",
+  "version": "0.3.0",
+  "icons": {
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*/*"],
+      "js": ["autofill-submit.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ]
+}

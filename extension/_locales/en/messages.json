@@ -488,5 +488,8 @@
   },
   "popupVerrouLocked": {
     "message": "Verrou is locked."
+  },
+  "extSafariDescription": {
+    "message": "Signs you in once iOS AutoFill has filled a login from Verrou."
   }
 }

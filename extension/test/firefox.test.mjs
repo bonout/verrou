@@ -83,7 +83,7 @@ test("the Firefox manifest: background page, ID, site access", () => {
 
 test("same code as for Brave: identical files, nothing missing", () => {
   const dir = build();
-  const shipped = files(`${root}extension`).filter((f) => !/^(test|e2e)\//.test(f) && f !== "manifest.json" && !f.endsWith(".DS_Store"));
+  const shipped = files(`${root}extension`).filter((f) => !/^(test|e2e|safari)\//.test(f) && f !== "manifest.json" && !f.endsWith(".DS_Store"));
   const built = files(dir).filter((f) => f !== "manifest.json");
   assert.deepEqual(built, shipped);
   for (const file of built) {

@@ -54,7 +54,7 @@ digest="$(
     (
       cd "$DIR"
       sed -E "s/$LINE/\\1\\3/" manifest.json
-      find . -type f ! -name manifest.json ! -name .DS_Store ! -path './test/*' ! -path './e2e/*' \
+      find . -type f ! -name manifest.json ! -name .DS_Store ! -path './test/*' ! -path './e2e/*' ! -path './safari/*' \
         | LC_ALL=C sort \
         | while IFS= read -r file; do
             printf '%s\n' "$file"

@@ -488,5 +488,8 @@
   },
   "popupVerrouLocked": {
     "message": "Verrou est verrouillé."
+  },
+  "extSafariDescription": {
+    "message": "Vous connecte dès que le remplissage automatique d'iOS a rempli un identifiant de Verrou."
   }
 }

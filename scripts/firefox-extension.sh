@@ -37,7 +37,7 @@ mkdir -p "$DEST"
 # The shipped files, without the tests (like stamp-extension.sh).
 (
   cd "$SRC"
-  find . -type f ! -name manifest.json ! -name .DS_Store ! -path './test/*' ! -path './e2e/*' -print0 \
+  find . -type f ! -name manifest.json ! -name .DS_Store ! -path './test/*' ! -path './e2e/*' ! -path './safari/*' -print0 \
     | while IFS= read -r -d '' file; do
         mkdir -p "$DEST/$(dirname "$file")"
         cp "$file" "$DEST/$file"

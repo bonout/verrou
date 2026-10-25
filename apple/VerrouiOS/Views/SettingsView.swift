@@ -741,5 +741,11 @@ private struct AutoFillSection: View {
             Text("The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after \(Biometrics.name) or your master password. After that, the next fills skip \(Biometrics.name) for 5 minutes while the iPhone stays unlocked, until Verrou locks; protected items and passkeys always ask.")
         }
         .task { await model.refreshAutofillStatus() }
+
+        Section {
+            SettingsLabel(String(localized: "Sign in after filling"), symbol: "safari", tint: .blue)
+        } footer: {
+            Text("In Safari, Verrou can also submit the sign-in form once AutoFill has filled it, both steps of a two-step form included. Turn it on in **Settings → Apps → Safari → Extensions → Verrou**, and allow it on all websites. Other browsers don't run extensions.")
+        }
     }
 }

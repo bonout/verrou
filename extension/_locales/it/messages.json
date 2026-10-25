@@ -488,5 +488,8 @@
   },
   "popupVerrouLocked": {
     "message": "Verrou è bloccato."
+  },
+  "extSafariDescription": {
+    "message": "Ti fa accedere non appena il riempimento automatico di iOS ha inserito un login di Verrou."
   }
 }

@@ -12153,6 +12153,34 @@
         }
       }
     },
+    "In Safari, Verrou can also submit the sign-in form once AutoFill has filled it, both steps of a two-step form included. Turn it on in **Settings → Apps → Safari → Extensions → Verrou**, and allow it on all websites. Other browsers don't run extensions.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans Safari, Verrou peut aussi valider le formulaire de connexion une fois rempli par le remplissage automatique, y compris les deux étapes d'un formulaire en deux temps. Activez-le dans **Réglages → Apps → Safari → Extensions → Verrou**, et autorisez-le sur tous les sites. Les autres navigateurs n'exécutent pas d'extensions."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Safari kann Verrou das Anmeldeformular auch absenden, sobald das automatische Ausfüllen es ausgefüllt hat, auch beide Schritte eines zweistufigen Formulars. Aktiviere es unter **Einstellungen → Apps → Safari → Erweiterungen → Verrou** und erlaube es auf allen Websites. Andere Browser führen keine Erweiterungen aus."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En Safari, Verrou también puede enviar el formulario de inicio de sesión cuando el autorrelleno lo ha rellenado, incluidos los dos pasos de un formulario en dos pasos. Actívalo en **Ajustes → Apps → Safari → Extensiones → Verrou** y permítelo en todos los sitios web. Los demás navegadores no ejecutan extensiones."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Safari, Verrou può anche inviare il modulo di accesso dopo che il riempimento automatico l'ha compilato, compresi i due passaggi di un modulo in due passaggi. Attivalo in **Impostazioni → App → Safari → Estensioni → Verrou** e consentilo su tutti i siti web. Gli altri browser non eseguono estensioni."
+          }
+        }
+      }
+    },
     "In the background, when iOS allows it, Verrou only looks at what the app has already downloaded if the vault is locked (no key, no network): news from the server arrives the next time you open it.": {
       "localizations": {
         "fr": {
@@ -21501,6 +21529,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Accedi"
+          }
+        }
+      }
+    },
+    "Sign in after filling": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se connecter après le remplissage"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nach dem Ausfüllen anmelden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sesión tras rellenar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accedi dopo il riempimento"
           }
         }
       }

@@ -488,5 +488,8 @@
   },
   "popupVerrouLocked": {
     "message": "Verrou está bloqueado."
+  },
+  "extSafariDescription": {
+    "message": "Inicia sesión en cuanto el autorrelleno de iOS ha rellenado un inicio de sesión de Verrou."
   }
 }

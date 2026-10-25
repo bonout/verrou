@@ -222,6 +222,7 @@ targets:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
       - target: VerrouAutoFill
+      - target: VerrouSafari
     # Keys outside INFOPLIST_KEY_*, merged into the generated Info.plist.
     info:
       path: VerrouiOS/Info.plist
@@ -322,6 +323,42 @@ targets:
         OTHER_LDFLAGS: ["-lc++"]
         # The app's demo driver has no business here.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) AUTOFILL_EXTENSION"
+
+  # Safari extension, inside the iPhone app: submits the sign-in forms that
+  # iOS AutoFill fills (extension/safari/autofill-submit.js). No access to the
+  # vault; the web files sit at the root of the bundle, where Safari looks.
+  VerrouSafari:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: VerrouSafari
+      - path: ../extension/safari/manifest.json
+        buildPhase: resources
+      - path: ../extension/safari/autofill-submit.js
+        buildPhase: resources
+      - path: ../extension/_locales
+        type: folder
+        buildPhase: resources
+      - path: ../extension/icons
+        type: folder
+        buildPhase: resources
+    info:
+      path: VerrouSafari/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.Safari.web-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SafariWebExtensionHandler
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.safari
+        PRODUCT_NAME: VerrouSafari
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        ENABLE_HARDENED_RUNTIME: NO
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
   # End-to-end AutoFill test (XCUITest): the simulator's Safari, test page
   # served by the Mac. Run by scripts/ios-autofill-e2e.sh.

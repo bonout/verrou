@@ -20,6 +20,10 @@ tagging (docs/RELEASING.md).
   lock (Settings → Security).
 
 **iPhone**
+- Safari signs you in by itself: once AutoFill has filled a login, the
+  Verrou Safari extension submits the form, both steps of a two-step form
+  included. Never a sign-up, an address or a card, nor a form with a field
+  left or a captcha. Turn it on in Settings → Apps → Safari → Extensions.
 - After one Face ID in AutoFill, the next fills on any site skip it for
   5 minutes while the iPhone stays unlocked: a tapped suggestion fills at
   once, without a sheet. Locking Verrou ends it; protected items and
