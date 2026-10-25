@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.4.0
 
 **Mac**
 - Folders nest the Bitwarden way: `Work/Clients` shows inside `Work`, in a
@@ -30,10 +30,10 @@ tagging (docs/RELEASING.md).
   passkeys always ask. Settings → AutoFill turns it off.
 
 **Mac and iPhone**
-- AutoFill is quicker: Face ID shows up as soon as the sheet opens, and on
-  a two-step sign-in (username, then password on the next page) the second
-  step fills at once, without Face ID, for 90 seconds. Never for a protected
-  item.
+- AutoFill is quicker: on a two-step sign-in (username, then password on
+  the next page) the second step fills at once, without Face ID, for 90
+  seconds; never for a protected item. On the Mac, Touch ID shows up as soon
+  as the sheet opens.
 - In German, Spanish and Italian too, as is the browser extension.
 - Settings → Diagnostics: crash and hang reports from the system stay on
   the device, never sent; share them with the developers if something went

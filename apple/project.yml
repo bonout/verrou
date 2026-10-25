@@ -22,7 +22,7 @@ settings:
     # adds runtime isolation checks; that switch waits for a release tested
     # on devices.
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.3.1"
+    MARKETING_VERSION: "0.4.0"
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
