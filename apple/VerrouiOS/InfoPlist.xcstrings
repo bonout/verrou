@@ -10,26 +10,9 @@
             "state": "new",
             "value": "Verrou"
           }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "CFBundleName": {
       "comment": "Bundle name",
@@ -40,26 +23,9 @@
             "state": "new",
             "value": "Verrou"
           }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "NSCameraUsageDescription": {
       "extractionState": "manual",
@@ -79,7 +45,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "La cámara escanea el código QR de un código de un solo uso (autenticación de doble factor). No se guarda ninguna imagen."
+            "value": "Die Kamera scannt den QR-Code eines Einmalcodes (Zwei-Faktor-Authentifizierung). Es wird kein Bild gesichert."
           }
         },
         "es": {
@@ -114,7 +80,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Face ID desbloquea tu bóveda para rellenar inicios de sesión, códigos y llaves de acceso."
+            "value": "Face ID entsperrt deinen Tresor, um Logins, Codes und Passkeys auszufüllen."
           }
         },
         "es": {
@@ -140,26 +106,9 @@
             "state": "new",
             "value": "GPL-3.0-or-later"
           }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GPL-3.0-or-later"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GPL-3.0-or-later"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "GPL-3.0-or-later"
-          }
         }
-      }
+      },
+      "shouldTranslate": false
     }
   },
   "version": "1.0"

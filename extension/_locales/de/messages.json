@@ -1,15 +1,15 @@
 {
   "extDescription": {
-    "message": "Rellena y guarda tus inicios de sesión en Verrou, el gestor de contraseñas para Vaultwarden."
+    "message": "Füllt deine Logins in Verrou aus und sichert sie dort – dem Passwort-Manager für Vaultwarden."
   },
   "settingBridge": {
-    "message": "Brave, Firefox y el terminal"
+    "message": "Brave, Firefox und das Terminal"
   },
   "verrouNotResponding": {
-    "message": "Verrou no responde"
+    "message": "Verrou antwortet nicht"
   },
   "verrouNotRespondingDetail": {
-    "message": "Verrou no responde ($DETAIL$)",
+    "message": "Verrou antwortet nicht ($DETAIL$)",
     "placeholders": {
       "detail": {
         "content": "$1"
@@ -17,61 +17,61 @@
     }
   },
   "verrouLocked": {
-    "message": "Verrou está bloqueado"
+    "message": "Verrou ist gesperrt"
   },
   "verrouUnreachable": {
-    "message": "No se puede contactar con Verrou"
+    "message": "Verrou ist nicht erreichbar"
   },
   "unlock": {
-    "message": "Desbloquear"
+    "message": "Entsperren"
   },
   "unlockWait": {
-    "message": "Desbloquea Verrou…"
+    "message": "Verrou entsperren …"
   },
   "unlockHint": {
-    "message": "Touch ID o contraseña maestra"
+    "message": "Touch ID oder Master-Passwort"
   },
   "confirmInVerrou": {
-    "message": "Confirma en Verrou"
+    "message": "In Verrou bestätigen"
   },
   "confirmInVerrouWait": {
-    "message": "Confirma en Verrou…"
+    "message": "In Verrou bestätigen …"
   },
   "close": {
-    "message": "Cerrar"
+    "message": "Schließen"
   },
   "cancel": {
-    "message": "Cancelar"
+    "message": "Abbrechen"
   },
   "ok": {
-    "message": "Aceptar"
+    "message": "OK"
   },
   "save": {
-    "message": "Guardar"
+    "message": "Sichern"
   },
   "saving": {
-    "message": "Guardando…"
+    "message": "Sichern …"
   },
   "saveFailed": {
-    "message": "No se ha podido guardar"
+    "message": "Sichern nicht möglich"
   },
   "newLogin": {
-    "message": "Nuevo inicio de sesión"
+    "message": "Neues Login"
   },
   "otherLogin": {
-    "message": "Rellenar con otro inicio de sesión…"
+    "message": "Mit einem anderen Login ausfüllen …"
   },
   "noTab": {
-    "message": "ninguna pestaña"
+    "message": "kein Tab"
   },
   "pairRefused": {
-    "message": "Vinculación rechazada en Verrou."
+    "message": "Kopplung in Verrou abgelehnt."
   },
   "pairBusy": {
-    "message": "Ya hay una vinculación en curso: inténtalo de nuevo dentro de un momento."
+    "message": "Eine Kopplung läuft bereits: Versuche es gleich erneut."
   },
   "pairNoAnswer": {
-    "message": "Verrou no responde. ¿Está instalado, con \"$SETTING$\" activado en sus ajustes? ($DETAIL$)",
+    "message": "Verrou antwortet nicht. Ist es installiert und ist „$SETTING$“ in seinen Einstellungen aktiviert? ($DETAIL$)",
     "placeholders": {
       "setting": {
         "content": "$1"
@@ -82,13 +82,13 @@
     }
   },
   "pillClose": {
-    "message": "Cerrar Verrou en esta página"
+    "message": "Verrou auf dieser Seite schließen"
   },
   "pillOtherLogins": {
-    "message": "Otros inicios de sesión"
+    "message": "Andere Logins"
   },
   "pillProtected": {
-    "message": "\"$TITLE$\" está protegido",
+    "message": "„$TITLE$“ ist geschützt",
     "placeholders": {
       "title": {
         "content": "$1"
@@ -96,22 +96,22 @@
     }
   },
   "pillUnpairedTitle": {
-    "message": "La extensión no está vinculada a Verrou"
+    "message": "Die Erweiterung ist nicht mit Verrou verknüpft"
   },
   "pillUnpairedHint": {
-    "message": "Vincúlala desde su icono en la barra de herramientas"
+    "message": "Verknüpfe sie über ihr Symbol in der Symbolleiste"
   },
   "pillOpenApp": {
-    "message": "Abre la app Verrou"
+    "message": "Öffne die Verrou-App"
   },
   "pillGenerate": {
-    "message": "Generar una contraseña"
+    "message": "Passwort erzeugen"
   },
   "pillLinkHint": {
-    "message": "Vincular este sitio a un inicio de sesión de Verrou"
+    "message": "Diese Website mit einem Verrou-Login verknüpfen"
   },
   "pillPasskey": {
-    "message": "Llave de acceso · $USER$",
+    "message": "Passkey · $USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -119,10 +119,10 @@
     }
   },
   "pillSignInPasskey": {
-    "message": "Iniciar sesión con una llave de acceso"
+    "message": "Mit einem Passkey anmelden"
   },
   "pillCodeOf": {
-    "message": "Código de $TITLE$",
+    "message": "Code für $TITLE$",
     "placeholders": {
       "title": {
         "content": "$1"
@@ -130,25 +130,25 @@
     }
   },
   "pillFillCode": {
-    "message": "Rellenar el código"
+    "message": "Code ausfüllen"
   },
   "pillSignIn": {
-    "message": "Iniciar sesión"
+    "message": "Anmelden"
   },
   "pillNoCode": {
-    "message": "No hay código para este sitio"
+    "message": "Kein Code für diese Website"
   },
   "pillNoLogin": {
-    "message": "No hay inicio de sesión para este sitio"
+    "message": "Kein Login für diese Website"
   },
   "pillNoCard": {
-    "message": "No hay tarjetas en Verrou"
+    "message": "Keine Karte in Verrou"
   },
   "pillNoAddress": {
-    "message": "No hay direcciones en Verrou"
+    "message": "Keine Adresse in Verrou"
   },
   "pillFillCard": {
-    "message": "Rellenar la tarjeta $CARD$",
+    "message": "Karte $CARD$ ausfüllen",
     "placeholders": {
       "card": {
         "content": "$1"
@@ -156,31 +156,31 @@
     }
   },
   "pillFillAddress": {
-    "message": "Rellenar la dirección"
+    "message": "Adresse ausfüllen"
   },
   "pillOtherCards": {
-    "message": "Otras tarjetas"
+    "message": "Andere Karten"
   },
   "pillOtherAddresses": {
-    "message": "Otras direcciones"
+    "message": "Andere Adressen"
   },
   "pillSuggestPassword": {
-    "message": "Sugerir una contraseña segura"
+    "message": "Starkes Passwort vorschlagen"
   },
   "fieldButton": {
-    "message": "Verrou: inicios de sesión para este sitio"
+    "message": "Verrou: Logins für diese Website"
   },
   "bannerLabel": {
-    "message": "Verrou: guardando"
+    "message": "Verrou: Sichern"
   },
   "bannerNoUsername": {
-    "message": "sin nombre de usuario"
+    "message": "kein Benutzername"
   },
   "bannerSaveTitle": {
-    "message": "¿Guardar en Verrou?"
+    "message": "In Verrou sichern?"
   },
   "bannerUpdateTitle": {
-    "message": "¿Actualizar la contraseña de \"$TITLE$\"?",
+    "message": "Passwort von „$TITLE$“ aktualisieren?",
     "placeholders": {
       "title": {
         "content": "$1"
@@ -188,28 +188,28 @@
     }
   },
   "bannerNotNow": {
-    "message": "Ahora no"
+    "message": "Nicht jetzt"
   },
   "bannerNever": {
-    "message": "Nunca para este sitio"
+    "message": "Nie für diese Website"
   },
   "bannerUpdate": {
-    "message": "Actualizar"
+    "message": "Aktualisieren"
   },
   "bannerPasswordUpdated": {
-    "message": "Contraseña actualizada"
+    "message": "Passwort aktualisiert"
   },
   "bannerSaved": {
-    "message": "Guardado en Verrou"
+    "message": "In Verrou gesichert"
   },
   "passkeyUseBrowser": {
-    "message": "Usar el navegador"
+    "message": "Browser verwenden"
   },
   "passkeyOfflineTitle": {
-    "message": "No se puede contactar con Verrou: la llave de acceso queda a cargo del navegador"
+    "message": "Verrou ist nicht erreichbar: Der Passkey wird dem Browser überlassen"
   },
   "passkeyOfflineHint": {
-    "message": "Abre Verrou y activa \"$SETTING$\" en sus ajustes.",
+    "message": "Öffne Verrou und aktiviere „$SETTING$“ in den Einstellungen.",
     "placeholders": {
       "setting": {
         "content": "$1"
@@ -217,112 +217,112 @@
     }
   },
   "passkeyUnpairedTitle": {
-    "message": "La extensión no está vinculada a Verrou: la llave de acceso queda a cargo del navegador"
+    "message": "Die Erweiterung ist nicht mit Verrou verknüpft: Der Passkey wird dem Browser überlassen"
   },
   "passkeyUnpairedHint": {
-    "message": "Vincula la extensión desde su icono en la barra de herramientas."
+    "message": "Verknüpfe die Erweiterung über ihr Symbol in der Symbolleiste."
   },
   "passkeyOutdatedTitle": {
-    "message": "Verrou se acaba de actualizar: la llave de acceso queda a cargo del navegador"
+    "message": "Verrou wurde gerade aktualisiert: Der Passkey wird dem Browser überlassen"
   },
   "passkeyOutdatedHint": {
-    "message": "Vuelve a cargar la página para usar las llaves de acceso de Verrou."
+    "message": "Lade die Seite neu, um die Passkeys von Verrou zu verwenden."
   },
   "passkeyAlgorithmTitle": {
-    "message": "Verrou no admite este tipo de clave: la llave de acceso queda a cargo del navegador"
+    "message": "Verrou unterstützt diesen Schlüsseltyp nicht: Der Passkey wird dem Browser überlassen"
   },
   "passkeyAlgorithmHint": {
-    "message": "El sitio no acepta claves ES256, las únicas que Verrou puede crear."
+    "message": "Die Website akzeptiert keine ES256-Schlüssel, die einzigen, die Verrou erstellen kann."
   },
   "passkeyOtherTitle": {
-    "message": "Verrou no ha podido atender la solicitud: la llave de acceso queda a cargo del navegador"
+    "message": "Verrou konnte die Anfrage nicht annehmen: Der Passkey wird dem Browser überlassen"
   },
   "passkeyLockedTitle": {
-    "message": "Llave de acceso: Verrou está bloqueado"
+    "message": "Passkey: Verrou ist gesperrt"
   },
   "passkeyTimedOut": {
-    "message": "Verrou no ha respondido a tiempo"
+    "message": "Verrou hat nicht rechtzeitig geantwortet"
   },
   "passkeySignInTitle": {
-    "message": "¿Iniciar sesión con una llave de acceso de Verrou?"
+    "message": "Mit einem Verrou-Passkey anmelden?"
   },
   "passkeyOtherDevice": {
-    "message": "Otro dispositivo o navegador"
+    "message": "Anderes Gerät oder anderer Browser"
   },
   "passkeySigningIn": {
-    "message": "Iniciando sesión…"
+    "message": "Anmelden …"
   },
   "passkeySignInFailed": {
-    "message": "No se ha podido iniciar sesión"
+    "message": "Anmelden nicht möglich"
   },
   "passkeyExists": {
-    "message": "Esta llave de acceso ya está en Verrou"
+    "message": "Dieser Passkey ist bereits in Verrou"
   },
   "passkeyReplaces": {
-    "message": "sustituye su llave de acceso"
+    "message": "ersetzt seinen Passkey"
   },
   "passkeySaveTitle": {
-    "message": "¿Guardar una llave de acceso en Verrou?"
+    "message": "Passkey in Verrou sichern?"
   },
   "passkeyNoName": {
-    "message": "sin nombre"
+    "message": "kein Name"
   },
   "passkeySaved": {
-    "message": "Llave de acceso guardada en Verrou"
+    "message": "Passkey in Verrou gesichert"
   },
   "popupPairing": {
-    "message": "Vinculando…"
+    "message": "Koppeln …"
   },
   "popupCheckCode": {
-    "message": "Comprueba que Verrou muestra el mismo código y acepta:"
+    "message": "Prüfe, ob Verrou denselben Code anzeigt, und akzeptiere dann:"
   },
   "popupCodesDiffer": {
-    "message": "Si los códigos no coinciden, rechaza en Verrou."
+    "message": "Wenn die Codes unterschiedlich sind, lehne in Verrou ab."
   },
   "popupConnecting": {
-    "message": "Conectando…"
+    "message": "Verbinden …"
   },
   "popupConnectingToVerrou": {
-    "message": "Conectando con Verrou…"
+    "message": "Verbindung mit Verrou wird hergestellt …"
   },
   "popupUnpaired": {
-    "message": "No vinculada"
+    "message": "Nicht verknüpft"
   },
   "popupPair": {
-    "message": "Vincular a Verrou"
+    "message": "Mit Verrou verknüpfen"
   },
   "popupPairIntro": {
-    "message": "Vincula la extensión a la app Verrou de este Mac para rellenar tus inicios de sesión."
+    "message": "Verknüpfe die Erweiterung mit der Verrou-App auf diesem Mac, um deine Logins auszufüllen."
   },
   "popupUnlocked": {
-    "message": "Desbloqueado"
+    "message": "Entsperrt"
   },
   "popupScanQr": {
-    "message": "Añadir el código QR de la pantalla"
+    "message": "Angezeigten QR-Code hinzufügen"
   },
   "popupEnterKeyLink": {
-    "message": "o introduce la clave a mano"
+    "message": "oder den Schlüssel manuell eingeben"
   },
   "popupNoLogins": {
-    "message": "No hay inicios de sesión para este sitio."
+    "message": "Keine Logins für diese Website."
   },
   "popupTwoFactor": {
-    "message": "Autenticación de doble factor"
+    "message": "Zwei-Faktor-Authentifizierung"
   },
   "popupTwoFactorIntro": {
-    "message": "El sitio muestra un código QR para una app de autenticación: Verrou puede guardarlo y generar los códigos."
+    "message": "Die Website zeigt einen QR-Code für eine Authentifizierungs-App: Verrou kann ihn speichern und die Codes erzeugen."
   },
   "popupAutoSubmit": {
-    "message": "Enviar el formulario después de rellenarlo"
+    "message": "Formular nach dem Ausfüllen absenden"
   },
   "popupAutoSubmitHint": {
-    "message": "Solo para un inicio de sesión, cuando no queda nada por escribir y no hay ningún captcha visible."
+    "message": "Nur bei einer Anmeldung, wenn nichts mehr einzugeben ist und kein Captcha sichtbar ist."
   },
   "popupSearchLogin": {
-    "message": "Buscar un inicio de sesión"
+    "message": "Nach einem Login suchen"
   },
   "popupChooseLogin": {
-    "message": "Elige el inicio de sesión que quieres usar en $HOST$.",
+    "message": "Wähle das Login für $HOST$.",
     "placeholders": {
       "host": {
         "content": "$1"
@@ -330,13 +330,13 @@
     }
   },
   "popupThisSite": {
-    "message": "este sitio"
+    "message": "diese Website"
   },
   "popupAddAndFill": {
-    "message": "Añadir y rellenar"
+    "message": "Hinzufügen und ausfüllen"
   },
   "popupFailed": {
-    "message": "Error: $REASON$",
+    "message": "Fehlgeschlagen: $REASON$",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -344,7 +344,7 @@
     }
   },
   "popupConfirmLink": {
-    "message": "¿Añadir $HOST$ a \"$TITLE$\"? Verrou lo sugerirá entonces en este sitio. Comprueba bien la dirección: un sitio de phishing suele imitar al que suplanta.",
+    "message": "$HOST$ zu „$TITLE$“ hinzufügen? Verrou schlägt es dann auf dieser Website vor. Prüfe die Adresse sorgfältig: Eine Phishing-Website imitiert oft die, auf die sie es abgesehen hat.",
     "placeholders": {
       "host": {
         "content": "$1"
@@ -355,10 +355,10 @@
     }
   },
   "popupQrUnsupported": {
-    "message": "este navegador no puede leer códigos QR: introduce la clave a mano"
+    "message": "dieser Browser kann keine QR-Codes lesen: Gib den Schlüssel manuell ein"
   },
   "popupCaptureFailed": {
-    "message": "no se ha podido capturar la pestaña ($REASON$)",
+    "message": "Tab konnte nicht erfasst werden ($REASON$)",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -366,31 +366,31 @@
     }
   },
   "popupReading": {
-    "message": "Leyendo…"
+    "message": "Lesen …"
   },
   "popupNoQr": {
-    "message": "No hay ningún código QR de doble factor visible: muéstralo en pantalla o introduce la clave."
+    "message": "Kein Zwei-Faktor-QR-Code sichtbar: Zeige ihn auf dem Bildschirm an oder gib den Schlüssel ein."
   },
   "popupRetry": {
-    "message": "Reintentar"
+    "message": "Erneut versuchen"
   },
   "popupEnterKey": {
-    "message": "Introducir la clave a mano"
+    "message": "Schlüssel manuell eingeben"
   },
   "popupContinue": {
-    "message": "Continuar"
+    "message": "Fortfahren"
   },
   "popupSecretKey": {
-    "message": "La clave secreta que muestra el sitio (\"setup key\"):"
+    "message": "Der von der Website angezeigte geheime Schlüssel („setup key“):"
   },
   "popupVerificationCode": {
-    "message": "Código de verificación"
+    "message": "Bestätigungscode"
   },
   "popupEnteredKey": {
-    "message": "Clave introducida"
+    "message": "Eingegebener Schlüssel"
   },
   "popupReplacesCode": {
-    "message": "$USERNAME$ · sustituye el código actual",
+    "message": "$USERNAME$ · ersetzt den aktuellen Code",
     "placeholders": {
       "username": {
         "content": "$1"
@@ -398,16 +398,16 @@
     }
   },
   "popupForThisSite": {
-    "message": "para este sitio"
+    "message": "für diese Website"
   },
   "popupAddToVerrou": {
-    "message": "Añadir a Verrou"
+    "message": "Zu Verrou hinzufügen"
   },
   "popupCodeAdded": {
-    "message": "Código añadido. Verrou genera ahora los códigos de este sitio: introduce el código actual para terminar de activarlo en el sitio."
+    "message": "Code hinzugefügt. Verrou erzeugt jetzt die Codes dieser Website: Gib den aktuellen Code ein, um die Aktivierung auf der Website abzuschließen."
   },
   "popupAddFailed": {
-    "message": "No se ha podido añadir: $REASON$",
+    "message": "Hinzufügen nicht möglich: $REASON$",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -415,25 +415,25 @@
     }
   },
   "popupAddCodeTo": {
-    "message": "Añadir este código de verificación a:"
+    "message": "Diesen Bestätigungscode hinzufügen zu:"
   },
   "popupBack": {
-    "message": "Atrás"
+    "message": "Zurück"
   },
   "popupUnpair": {
-    "message": "Desvincular esta extensión"
+    "message": "Verknüpfung dieser Erweiterung aufheben"
   },
   "popupVersionHowFirefox": {
-    "message": "En about:debugging › Este Firefox, vuelve a cargarla, o carga el manifest.json de la carpeta \"extension-firefox\" de Verrou.app (Ajustes de Verrou › Navegadores y Terminal › Extensión para Firefox › Copiar ruta). Complemento instalado (.xpi): instala el de la nueva versión."
+    "message": "Lade sie unter about:debugging › Dieser Firefox neu oder lade die manifest.json aus dem Ordner „extension-firefox“ von Verrou.app (Verrou-Einstellungen › Browser und Terminal › Firefox-Erweiterung › Pfad kopieren). Installiertes Add-on (.xpi): Installiere das der neuen Version."
   },
   "popupVersionHowBrave": {
-    "message": "En brave://extensions, carga la carpeta \"extension\" de Verrou.app (Ajustes de Verrou › Navegadores y Terminal › Copiar ruta), o vuelve a cargarla."
+    "message": "Lade unter brave://extensions den Ordner „extension“ von Verrou.app (Verrou-Einstellungen › Browser und Terminal › Pfad kopieren) oder lade ihn neu."
   },
   "popupVersionTitle": {
-    "message": "Esta extensión no es la que incluye Verrou"
+    "message": "Diese Erweiterung ist nicht die, die Verrou mitliefert"
   },
   "popupVersionText": {
-    "message": "Es la versión $RUNNING$, Verrou incluye la $BUNDLED$. $HOW$",
+    "message": "Dies ist Version $RUNNING$, Verrou liefert $BUNDLED$ mit. $HOW$",
     "placeholders": {
       "running": {
         "content": "$1"
@@ -447,16 +447,16 @@
     }
   },
   "popupAllowSites": {
-    "message": "Permitir Verrou en los sitios"
+    "message": "Verrou auf Websites erlauben"
   },
   "popupAccessGranted": {
-    "message": "Acceso concedido: vuelve a cargar las páginas ya abiertas."
+    "message": "Zugriff gewährt: Lade die bereits geöffneten Seiten neu."
   },
   "popupAccessDenied": {
-    "message": "Acceso denegado: Verrou no podrá rellenar nada."
+    "message": "Zugriff verweigert: Verrou kann nichts ausfüllen."
   },
   "popupRequestFailed": {
-    "message": "Error en la solicitud: $REASON$",
+    "message": "Anfrage fehlgeschlagen: $REASON$",
     "placeholders": {
       "reason": {
         "content": "$1"
@@ -464,16 +464,16 @@
     }
   },
   "popupNoSiteAccess": {
-    "message": "Verrou no tiene acceso a los sitios"
+    "message": "Verrou hat keinen Zugriff auf Websites"
   },
   "popupSiteAccessText": {
-    "message": "Firefox pide tu consentimiento para que la extensión pueda rellenar tus inicios de sesión y ofrecer tus llaves de acceso en las páginas."
+    "message": "Firefox bittet um deine Zustimmung, damit die Erweiterung deine Logins ausfüllen und deine Passkeys auf Seiten anbieten kann."
   },
   "popupOffline": {
-    "message": "Sin conexión"
+    "message": "Offline"
   },
   "popupOfflineText": {
-    "message": "Abre la app y activa \"$SETTING$\" en sus ajustes. Hasta entonces, no habrá relleno ni llaves de acceso: el navegador toma el relevo.",
+    "message": "Öffne die App und aktiviere „$SETTING$“ in den Einstellungen. Bis dahin kein Ausfüllen und keine Passkeys: Der Browser übernimmt.",
     "placeholders": {
       "setting": {
         "content": "$1"
@@ -481,12 +481,12 @@
     }
   },
   "popupLocked": {
-    "message": "Bloqueado"
+    "message": "Gesperrt"
   },
   "popupUnlockVerrou": {
-    "message": "Desbloquear Verrou"
+    "message": "Verrou entsperren"
   },
   "popupVerrouLocked": {
-    "message": "Verrou está bloqueado."
+    "message": "Verrou ist gesperrt."
   }
 }

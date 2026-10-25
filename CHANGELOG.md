@@ -16,6 +16,8 @@ tagging (docs/RELEASING.md).
 - Hold ⌥ to show the hidden fields of the item.
 - VoiceOver reads the icon-only buttons and the informative icons, and
   skips decorative ones (ACCESSIBILITY.md).
+- Locks when the screen saver starts too, along with sleep and the screen
+  lock (Settings → Security).
 
 **Mac and iPhone**
 - In German, Spanish and Italian too, as is the browser extension.

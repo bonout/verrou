@@ -1444,8 +1444,8 @@ private final class KeyPrompts: SecurityKeyObserver, @unchecked Sendable {
     }
 }
 
-/// Auto-lock: inactivity (`autoLockMinutes`, 0: never), sleep and screen
-/// locked (`lockOnSleep`).
+/// Auto-lock: inactivity (`autoLockMinutes`, 0: never), sleep, screen saver
+/// and screen locked (`lockOnSleep`).
 @MainActor
 final class AutoLock {
     static let minutesKey = "autoLockMinutes"
@@ -1477,11 +1477,13 @@ final class AutoLock {
                 MainActor.assumeIsolated { if AutoLock.lockOnSleep { self?.onLock() } }
             })
         }
-        observers.append(DistributedNotificationCenter.default().addObserver(
-            forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { if AutoLock.lockOnSleep { self?.onLock() } }
-        })
+        for name in ["com.apple.screenIsLocked", "com.apple.screensaver.didstart"] {
+            observers.append(DistributedNotificationCenter.default().addObserver(
+                forName: .init(name), object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { if AutoLock.lockOnSleep { self?.onLock() } }
+            })
+        }
     }
 
     func touch() { lastActivity = Date() }

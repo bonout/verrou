@@ -149,7 +149,7 @@ private struct SecuritySettings: View {
                         Text("1 hour of inactivity").tag(60)
                         Text("Never").tag(0)
                     }
-                    Toggle("Lock on sleep and when the screen locks", isOn: $lockOnSleep)
+                    Toggle("Lock on sleep, screen saver and screen lock", isOn: $lockOnSleep)
                 }
 
                 Section {

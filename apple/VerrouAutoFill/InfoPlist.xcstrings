@@ -10,26 +10,9 @@
             "state": "new",
             "value": "Verrou"
           }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verrou"
-          }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "CFBundleName": {
       "comment": "Bundle name",
@@ -40,26 +23,9 @@
             "state": "new",
             "value": "VerrouAutoFill"
           }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "VerrouAutoFill"
-          }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "NSFaceIDUsageDescription": {
       "extractionState": "manual",
@@ -79,7 +45,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Face ID desbloquea tu bóveda para rellenar inicios de sesión, códigos y llaves de acceso."
+            "value": "Face ID entsperrt deinen Tresor, um Logins, Codes und Passkeys auszufüllen."
           }
         },
         "es": {
