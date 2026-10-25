@@ -14,8 +14,10 @@
 //! across two writes ([`Masker`]). `--no-masking` passes the output as is
 //! (an interactive program that needs a terminal).
 
+use std::fmt::Write as _;
 use std::io::{self, Read, Write};
 
+use verrou_bridge::protocol::FieldView;
 use zeroize::Zeroizing;
 
 pub const SCHEME: &str = "verrou://";
@@ -44,6 +46,44 @@ impl Reference {
         }
         Some(Ok(Self { item, field }))
     }
+}
+
+impl Reference {
+    /// The reference as written in an environment variable: `/` and `%`
+    /// (which would be read as a separator or an escape), and whitespace,
+    /// are percent-encoded; [`Self::parse`] gives the same reference back.
+    pub fn to_uri(&self) -> String {
+        format!(
+            "{SCHEME}{}/{}",
+            percent_encode(&self.item),
+            percent_encode(&self.field)
+        )
+    }
+}
+
+fn percent_encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
+        if c == '%' || c == '/' || c.is_whitespace() || c.is_control() {
+            let mut buffer = [0; 4];
+            for byte in c.encode_utf8(&mut buffer).bytes() {
+                let _ = write!(out, "%{byte:02X}");
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+/// The field a reference names: by its id (`password`, `custom-0`), else by
+/// its label, as shown in the app (`API token`), ignoring case.
+pub fn find_field<'a>(fields: &'a [FieldView], name: &str) -> Option<&'a FieldView> {
+    fields.iter().find(|f| f.id == name).or_else(|| {
+        let mut by_label = fields.iter().filter(|f| f.label.eq_ignore_ascii_case(name));
+        // Two fields with the same label: the id must say which.
+        by_label.next().filter(|_| by_label.next().is_none())
+    })
 }
 
 fn percent_decode(text: &str) -> Option<String> {
@@ -231,6 +271,53 @@ mod tests {
             Some(Err(_))
         ));
         assert!(matches!(Reference::parse("verrou://a%zz/b"), Some(Err(_))));
+    }
+
+    #[test]
+    fn references_round_trip_through_their_uri() {
+        for (item, field) in [
+            ("GitHub", "password"),
+            ("GitHub/work account", "api token"),
+            ("100% sure", "clé secrète"),
+        ] {
+            let reference = Reference {
+                item: item.to_owned(),
+                field: field.to_owned(),
+            };
+            let uri = reference.to_uri();
+            assert!(!uri.contains(' '), "{uri}");
+            assert_eq!(Reference::parse(&uri), Some(Ok(reference)));
+        }
+        assert_eq!(
+            Reference {
+                item: "GitHub/work".to_owned(),
+                field: "API token".to_owned()
+            }
+            .to_uri(),
+            "verrou://GitHub%2Fwork/API%20token"
+        );
+    }
+
+    #[test]
+    fn fields_are_found_by_id_then_by_label() {
+        let field = |id: &str, label: &str| FieldView {
+            id: id.to_owned(),
+            label: label.to_owned(),
+            kind: verrou_core::FieldKind::Concealed,
+            secret: true,
+            value: None,
+        };
+        let fields = [
+            field("password", "Password"),
+            field("custom-0", "API token"),
+            field("custom-1", "Twin"),
+            field("custom-2", "Twin"),
+        ];
+        assert_eq!(find_field(&fields, "password").unwrap().id, "password");
+        assert_eq!(find_field(&fields, "api token").unwrap().id, "custom-0");
+        assert_eq!(find_field(&fields, "custom-2").unwrap().id, "custom-2");
+        assert!(find_field(&fields, "Twin").is_none());
+        assert!(find_field(&fields, "missing").is_none());
     }
 
     #[test]

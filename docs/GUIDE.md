@@ -1078,6 +1078,78 @@ and the archive too.
 A value typed on the command line stays in the shell's history: prefer
 `--generate-password`, or a variable (`password="$NEW_PASSWORD"`).
 
+### AI agents: MCP and hooks
+
+`verrou mcp` is an MCP server (Model Context Protocol, over stdio) for coding
+agents. The rule: the agent sees item titles, field names and
+`verrou://` references, **never a secret's value**. To use a secret it asks
+Verrou, and you approve each use, with the reason it gave.
+
+```sh
+claude mcp add verrou -- verrou mcp       # Claude Code
+```
+
+For Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.verrou]
+command = "verrou"
+args = ["mcp"]
+```
+
+For Cursor, in `.cursor/mcp.json` (or `~/.cursor/mcp.json`):
+
+```json
+{ "mcpServers": { "verrou": { "command": "verrou", "args": ["mcp"] } } }
+```
+
+The terminal must be linked first (`verrou link`). The tools:
+
+- `verrou_status`: is this machine linked, is the vault unlocked.
+- `verrou_search`: items by title, username or site, with each field's name
+  and ready-to-use reference. No value comes back.
+- `verrou_run`: runs a command (no shell, unless the agent passes one as the
+  program) with `env` set to references, like `verrou run`. You approve in
+  Verrou, which shows the agent's name and its reason (*allow the terminal
+  to read “GitHub” (Claude Code: deploy to staging)*). The agent gets the
+  exit code and the output with the values masked, the last 32 KB of each
+  stream, and the command is stopped after `timeout_seconds` (300 by
+  default, 3600 at most). At least one reference is required, and every
+  `env` value must be one: a plain value would travel through the
+  conversation anyway.
+- `verrou_generate_password`: a new random password or passphrase. It is not
+  from your vault, so it is returned.
+Writing secrets from an agent (creating an item or a field) is not part of
+this server yet.
+
+A custom field is named in a reference by its label
+(`verrou://Stripe/secret%20key`) or by its identifier (`custom-0`).
+
+**Hooks.** An agent can still read a `.env` file or print a token on its own,
+without going through Verrou. `verrou hook` is a guard rail for that: before
+the agent reads a file or runs a command, it refuses `.env` files (not
+`.env.example`), private keys (`*.pem`, `id_*`, `~/.ssh/*`),
+`~/.aws/credentials`, `.npmrc` and `.pypirc` that hold a token, and commands
+that print them (`cat`, `grep`, `printenv`, `env`, `echo $GITHUB_TOKEN`,
+`verrou get --reveal`…), and tells the agent to use `verrou_run` or
+`verrou run` instead.
+
+```sh
+verrou hook install claude            # ~/.claude/settings.json (--project: .claude/settings.json)
+verrou hook install cursor            # ~/.cursor/hooks.json
+verrou hook install codex             # ~/.codex/hooks.json
+```
+
+Installing merges one entry into the agent's configuration, keeps your other
+hooks, does nothing if it is already there, and says what it changed. Claude
+Code gets a `PreToolUse` hook on `Bash`, `Read` and `Grep`; Cursor, the
+`beforeShellExecution` and `beforeReadFile` hooks; Codex, a `PreToolUse` hook
+on `Bash` (it does not offer file reads to hooks; it asks you to review a new
+hook with `/hooks`). A hook is a guard rail, not a sandbox: it reads a
+command as a person skimming it would, and an agent set on it can get around
+it. What protects your vault is that its secrets only leave after your
+approval.
+
 ### SSH agent
 
 ```sh

@@ -37,6 +37,14 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
     <li><strong>Die Mitteilung verrät nichts.</strong> Sie sagt dir nur, dass eine Anfrage wartet; den Grund siehst du in der App, nach Face ID.</li>
   </ul>
 
+  <h2>MCP-Server und Hooks für Ihren Agenten</h2>
+  <p><code>verrou mcp</code> ist ein MCP-Server, den Claude Code, Codex und Cursor nutzen können (<code>claude mcp add verrou -- verrou mcp</code>). Der Agent findet Einträge und erhält Referenzen, nie Werte; um eine zu verwenden, fragt er Verrou, und Sie bestätigen.</p>
+  <ul>
+    <li><strong>Namen, nie Werte.</strong> Der Agent sieht Titel, Feldnamen und <code>verrou://</code>-Referenzen. Er startet Befehle mit eingesetzten Geheimnissen und erhält deren Ausgabe maskiert.</li>
+    <li><strong>Jede Nutzung bestätigt.</strong> Sie sehen den Namen des Agenten und seinen Grund.</li>
+    <li><strong>Eine Leitplanke.</strong> <code>verrou hook install</code> hindert den Agenten daran, von sich aus <code>.env</code>-Dateien und private Schlüssel zu lesen, und verweist ihn auf <code>verrou run</code>.</li>
+  </ul>
+
   <h2>SSH-Agent und Git-Signaturen</h2>
   <p><code>eval "$(verrou ssh-agent)"</code> stellt die SSH-Schlüssel aus deinem Tresor bereit: <code>ssh</code>, <code>git push</code> und <code>git commit -S</code> funktionieren, und jede Signatur fragt nach deiner Zustimmung.</p>
 

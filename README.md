@@ -116,6 +116,12 @@ German, Spanish and Italian.
   environment, masked in its output: they never land in the terminal or in
   an AI agent's context (`GITHUB_TOKEN=verrou://GitHub/token verrou run --
   gh repo list`).
+- **For AI coding agents**: `verrou mcp` is an MCP server that gives Claude
+  Code, Codex or Cursor item names and `verrou://` references, never values;
+  it runs commands with the secrets injected and masked in their output.
+  You approve each use.
+  `verrou hook install` adds a guard rail that stops an agent from reading
+  `.env` files and keys ([guide](docs/GUIDE.md#ai-agents-mcp-and-hooks)).
 - **Approve from your iPhone**: away from the Mac (screen locked or idle),
   the terminal's requests go to Verrou on the paired iPhone, where Face ID
   approves them; it can also unlock the vault for the terminal, without the

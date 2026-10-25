@@ -927,6 +927,34 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   shell's history and be seen by other processes of the user (`ps`) while
   the command runs; `--generate-password` avoids typing one. A write's
   values never appear in the bridge's `Debug` output.
+- **MCP server and hooks for AI agents** (`verrou mcp`, `verrou hook`).
+  Threat model: the agent may be prompt-injected, so it is treated as able
+  to ask for anything and trusted with nothing. It is a terminal client of
+  the bridge like `verrou run` (same pairing, same approvals), and:
+  - a secret's value never reaches the model: `verrou_search` returns
+    titles, field names, `verrou://` references and the username, nothing
+    else; `verrou_run` returns masked output only (same masker as `verrou
+    run`, the last 32 KB of each stream), and every text sent to the client,
+    errors included, goes once more through a masker holding the values the
+    session handled; the tests assert that known passwords never appear in
+    the server's output;
+  - every use is approved by a human in Verrou, who sees the agent's name
+    (`clientInfo.name` of the MCP handshake) and the reason it declared,
+    cleaned like any reason (one line, 120 characters); `verrou_run` refuses
+    a call without a `verrou://` reference, so it cannot be used to run
+    commands without an approval, and refuses `env` values that are not
+    references;
+  - the server cannot write to the vault: it has no tool that creates or
+    changes an item;
+  - limits: a command the user approved can do anything with the values it
+    gets (the mask does not see a value it transforms, such as encoded or
+    split text); the approval shows the reason, not the command line;
+    `verrou_run` stops a command at its time limit but does not confine it;
+  - the hooks are a guard rail, not a sandbox: they refuse the obvious ways
+    an agent could read `.env` files, private keys, cloud credentials or
+    token variables into its context, and point it to `verrou run`; a
+    determined agent can get around them, and a hook that cannot read its
+    input allows the call. They add no network connection and read no vault.
 - **SSH keys**: the private key (OpenSSH, as Vaultwarden keeps it) never
   leaves the app. Verrou signs (RustCrypto's `ssh-key` crate) and only
   returns the signature; the agent only sees the public keys. Keys

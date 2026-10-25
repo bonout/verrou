@@ -37,6 +37,14 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
     <li><strong>La notification ne dit rien.</strong> Elle indique seulement qu'une demande attend ; le motif s'affiche dans l'app, après Face ID.</li>
   </ul>
 
+  <h2>Serveur MCP et hooks pour votre agent</h2>
+  <p><code>verrou mcp</code> est un serveur MCP que Claude Code, Codex et Cursor peuvent utiliser (<code>claude mcp add verrou -- verrou mcp</code>). L'agent trouve des éléments et obtient des références, jamais des valeurs ; pour en utiliser une, il la demande à Verrou, et vous validez.</p>
+  <ul>
+    <li><strong>Des noms, jamais des valeurs.</strong> L'agent voit les titres, les noms de champs et les références <code>verrou://</code>. Il lance des commandes avec les secrets injectés et reçoit leur sortie masquée.</li>
+    <li><strong>Chaque usage validé.</strong> Vous voyez le nom de l'agent et son motif.</li>
+    <li><strong>Un garde-fou.</strong> <code>verrou hook install</code> empêche l'agent de lire de lui-même les fichiers <code>.env</code> et les clés privées, et le renvoie vers <code>verrou run</code>.</li>
+  </ul>
+
   <h2>Agent SSH et signature git</h2>
   <p><code>eval "$(verrou ssh-agent)"</code> sert les clés SSH de votre coffre : <code>ssh</code>, <code>git push</code> et <code>git commit -S</code> fonctionnent, et chaque signature demande votre accord.</p>
 

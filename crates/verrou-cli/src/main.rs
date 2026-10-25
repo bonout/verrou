@@ -22,8 +22,10 @@ use verrou_bridge::protocol::{
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
 use verrou_cli::git_signing;
+use verrou_cli::hooks;
 use verrou_cli::inject::{self, Piece};
 use verrou_cli::items as item_args;
+use verrou_cli::mcp;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
 use verrou_cli::run::{self, Reference};
 use verrou_core::generator::{self, PasswordOptions};
@@ -150,6 +152,20 @@ enum Command {
             value_name = "COMMAND"
         )]
         command: Vec<String>,
+    },
+    /// MCP server for AI coding agents, over stdio: search the vault (names
+    /// and references, never values), run commands with secrets masked in
+    /// their output, create secrets. Each use is approved in Verrou. Add it
+    /// to an agent with, for example, `claude mcp add verrou -- verrou mcp`.
+    Mcp,
+    /// Guard rail for coding agents: refuses to read `.env` files, private
+    /// keys and credentials, or print secrets from the environment, and
+    /// points to `verrou run`. `verrou hook claude|cursor|codex` is what the
+    /// agent runs (the hook's JSON on stdin); `verrou hook install <agent>`
+    /// adds it to the agent's configuration.
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
     },
     /// Generate a password, or a passphrase with `--words` (locally,
     /// without the app).
@@ -283,6 +299,44 @@ enum ItemAction {
     },
 }
 
+#[derive(Subcommand)]
+enum HookAction {
+    /// Hook for Claude Code (`PreToolUse`: Bash, Read, Grep).
+    Claude,
+    /// Hook for Cursor (beforeShellExecution, beforeReadFile).
+    Cursor,
+    /// Hook for Codex (`PreToolUse`: Bash).
+    Codex,
+    /// Add the hook to an agent's configuration, keeping its other hooks.
+    Install {
+        #[arg(value_enum)]
+        agent: HookAgent,
+        /// This folder's configuration (`.claude/settings.json`…).
+        #[arg(long, conflicts_with = "user")]
+        project: bool,
+        /// The user's configuration (`~/.claude/settings.json`…); the default.
+        #[arg(long)]
+        user: bool,
+    },
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum HookAgent {
+    Claude,
+    Cursor,
+    Codex,
+}
+
+impl From<HookAgent> for hooks::Agent {
+    fn from(agent: HookAgent) -> Self {
+        match agent {
+            HookAgent::Claude => Self::Claude,
+            HookAgent::Cursor => Self::Cursor,
+            HookAgent::Codex => Self::Codex,
+        }
+    }
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum LangArg {
     Fr,
@@ -363,6 +417,10 @@ struct ItemDetailJson<'a> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
+    if let Command::Hook { action } = &cli.command {
+        // The agent reads our exit code and stdout, whatever happens.
+        return hook(action);
+    }
     if matches!(cli.command, Command::Run { .. }) {
         // The command's exit code becomes ours.
         return run_command(&cli).unwrap_or_else(|message| {
@@ -615,7 +673,8 @@ fn run(cli: &Cli) -> Result<(), String> {
                 writeln!(out, "{code}").ok();
             }
         }
-        Command::Run { .. } => {}
+        // `Run` and `Hook` answer with an exit code, in `main`.
+        Command::Run { .. } | Command::Hook { .. } => {}
         Command::Item { action } => item_command(cli, action, &mut out)?,
         Command::Read { .. } => read_reference(cli, &mut out)?,
         Command::Inject {
@@ -631,12 +690,90 @@ fn run(cli: &Cli) -> Result<(), String> {
             *file_mode,
             *force,
         )?,
+        Command::Mcp => mcp_server()?,
         Command::Generate { .. } => generate(cli, &mut out),
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
         Command::Bench { items } => bench(&mut out, *items),
     }
     Ok(())
+}
+
+/// `verrou mcp`: the MCP server, on stdin and stdout, until the client
+/// closes its side. Nothing but protocol goes to stdout.
+fn mcp_server() -> Result<(), String> {
+    let gateway = mcp::BridgeGateway::new(Config::default_path()?, Endpoint::from_env());
+    let mut server = mcp::Server::new(gateway);
+    mcp::serve(
+        std::io::stdin().lock(),
+        std::io::stdout().lock(),
+        &mut server,
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// `verrou hook …`: answers an agent's hook, or installs it.
+fn hook(action: &HookAction) -> ExitCode {
+    let agent = match action {
+        HookAction::Claude => hooks::Agent::Claude,
+        HookAction::Cursor => hooks::Agent::Cursor,
+        HookAction::Codex => hooks::Agent::Codex,
+        HookAction::Install {
+            agent,
+            project,
+            user: _,
+        } => return hook_install((*agent).into(), *project),
+    };
+    let mut input = String::new();
+    if std::io::Read::read_to_string(&mut std::io::stdin().lock(), &mut input).is_err() {
+        eprintln!("verrou hook: cannot read the hook's input");
+    }
+    let answer = hooks::run(agent, &input);
+    if !answer.stdout.is_empty() {
+        println!("{}", answer.stdout);
+    }
+    ExitCode::from(answer.exit)
+}
+
+fn hook_install(agent: hooks::Agent, project: bool) -> ExitCode {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        eprintln!("verrou: HOME is not set");
+        return ExitCode::FAILURE;
+    };
+    let cwd = std::env::current_dir().unwrap_or_else(|_| home.clone());
+    let scope = if project {
+        hooks::Scope::Project
+    } else {
+        hooks::Scope::User
+    };
+    let path = hooks::config_path(agent, scope, &home, &cwd);
+    match hooks::install(agent, &path) {
+        Ok(done) if done.added.is_empty() => {
+            eprintln!(
+                "Already installed in {}: nothing changed.",
+                done.path.display()
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(done) => {
+            eprintln!(
+                "Added `{}` to {}: {}.",
+                agent.command(),
+                done.path.display(),
+                done.added.join(", ")
+            );
+            if agent == hooks::Agent::Codex {
+                eprintln!(
+                    "Codex asks you to review new hooks: run /hooks in Codex. A project's hooks only load once its .codex folder is trusted."
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("verrou: {error}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// `verrou generate`: password, or passphrase with `--words`.
@@ -1113,14 +1250,11 @@ fn field_value(source: &mut Source, item: &ItemView, field_id: &str) -> Result<S
         }
         return source.reveal(&item.summary.id, "notes");
     }
-    let field = item
-        .fields
-        .iter()
-        .find(|f| f.id == field_id)
+    let field = run::find_field(&item.fields, field_id)
         .ok_or_else(|| format!("\"{title}\" has no field \"{field_id}\""))?;
     match &field.value {
         Some(value) => Ok(value.clone()),
-        None => source.reveal(&item.summary.id, field_id),
+        None => source.reveal(&item.summary.id, &field.id),
     }
 }
 

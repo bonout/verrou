@@ -11,6 +11,18 @@ tagging (docs/RELEASING.md).
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
   prompts expect, instead of the username, Tab and the password.
 
+**Terminal and AI agents**
+- `verrou mcp`: an MCP server for coding agents (Claude Code, Codex, Cursor).
+  The agent finds items and gets `verrou://` references, never a value; it
+  runs commands with secrets injected and masked in their output
+  (`verrou_run`) and generates passwords. Each use is approved in Verrou
+  with the agent's name and its reason.
+- `verrou hook install claude|cursor|codex`: a guard rail that stops an
+  agent from reading `.env` files, private keys and cloud credentials, or
+  printing a token, and points it to `verrou run`.
+- References to a custom field now work by the field's name as shown in the
+  app (`verrou://Stripe/secret%20key`), as the guide always said.
+
 ## 0.5.1
 
 **iPhone**
