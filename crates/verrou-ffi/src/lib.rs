@@ -250,6 +250,9 @@ pub enum MockLanguage {
     #[default]
     English,
     French,
+    German,
+    Spanish,
+    Italian,
 }
 
 impl From<MockLanguage> for mock::MockLanguage {
@@ -257,16 +260,23 @@ impl From<MockLanguage> for mock::MockLanguage {
         match language {
             MockLanguage::English => Self::En,
             MockLanguage::French => Self::Fr,
+            MockLanguage::German => Self::De,
+            MockLanguage::Spanish => Self::Es,
+            MockLanguage::Italian => Self::It,
         }
     }
 }
 
-/// The mock vault's language for a language code (`fr-FR`, `en`…): French
-/// for `fr…`, English otherwise.
+/// The mock vault's language for a language code (`fr-FR`, `de`, `en`…):
+/// French for `fr…`, German for `de…`, Spanish for `es…`, Italian for
+/// `it…`, English otherwise.
 #[uniffi::export]
 pub fn mock_language(code: String) -> MockLanguage {
     match mock::MockLanguage::from_code(&code) {
         mock::MockLanguage::Fr => MockLanguage::French,
+        mock::MockLanguage::De => MockLanguage::German,
+        mock::MockLanguage::Es => MockLanguage::Spanish,
+        mock::MockLanguage::It => MockLanguage::Italian,
         mock::MockLanguage::En => MockLanguage::English,
     }
 }

@@ -70,7 +70,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
         // Screens before the vault.
         await screen("01-locked", root: RootView(), expect: .init(identifiers: ["lock-title"]))
-        model.loginEmail = language.pick("emily.parker@example.com", "camille.martin@exemple.fr")
+        model.loginEmail = language.ownerEmail
         model.reviewLogin(true)
         await screen("02-login", root: RootView(), expect: .init(identifiers: ["login-title"]))
         model.reviewLogin(true, twoFactor: [.authenticator, .email])
@@ -91,11 +91,11 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         let vault = LayoutAudit.Expectation(identifiers: ["search", "detail-title", "sidebar-footer"], columns: 3)
         let items: [(String, SidebarFilter, String, String)] = [
             ("10-login", .all, "", "GitHub"),
-            ("11-card", .category(category: .card), "", language.pick("Chase Visa", "Visa Boursorama")),
-            ("12-identity", .category(category: .identity), "", language.pick("Emily Parker", "Camille Martin")),
-            ("13-wifi", .template(template: .wifi), "", language.pick("Home Wi-Fi", "Wi-Fi maison")),
+            ("11-card", .category(category: .card), "", language.cardTitle),
+            ("12-identity", .category(category: .identity), "", language.ownerName),
+            ("13-wifi", .template(template: .wifi), "", language.wifiTitle),
             ("14-ssh-key", .category(category: .sshKey), "", ""),
-            ("15-shared-vault", .all, language.pick("family", "famille"), language.pick("Google — family", "Google — famille")),
+            ("15-shared-vault", .all, language.familyQuery, language.familyTitle),
         ]
         for (name, filter, query, title) in items {
             model.filter = filter
@@ -110,7 +110,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await screen("17-passkeys", root: RootView(), expect: vault)
         // Sort by last use (this Mac's log).
         model.filter = .all
-        for title in ["Netflix", "GitHub", language.pick("IRS", "Impôts")] {
+        for title in ["Netflix", "GitHub", language.taxTitle] {
             if let id = id(of: title) { model.session.recordItemUse(id: id) }
         }
         model.afterWrite(select: id(of: "Netflix"))
@@ -189,7 +189,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         // server would give for GitHub.
         if let github = id(of: "GitHub") {
             let draft = ItemDraft(name: "GitHub", folderId: nil, favorite: true, notes: "Codes de secours dans le coffre.",
-                                  login: LoginFields(username: language.pick("emily-dev", "camille-dev"),
+                                  login: LoginFields(username: language.devUsername,
                                                      password: "hunter2-hunter2-hunter2",
                                                      totp: "JBSWY3DPEHPK3PXP", urls: ["https://github.com"]),
                                   fields: [], template: nil)
@@ -211,7 +211,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         if let github = id(of: "GitHub") {
             // One rule per site: host for the site, never for the old address.
             let draft = ItemDraft(name: "GitHub", folderId: workFolder, favorite: true, notes: nil,
-                                  login: LoginFields(username: language.pick("emily-dev", "camille-dev"),
+                                  login: LoginFields(username: language.devUsername,
                                                      password: "hunter2-hunter2-hunter2",
                                                      totp: nil,
                                                      urls: ["https://github.com/login", "https://old.github.com",
@@ -256,10 +256,10 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         await sharingSheets(sheet)
 
         // Remove from sharing: the confirmation, with what is going to happen.
-        let familyTitle = language.pick("Google — family", "Google — famille")
+        let familyTitle = language.familyTitle
         if let family = id(of: familyTitle) {
             let request = UnshareRequest(itemIDs: [family], title: familyTitle,
-                                         organizations: [language.pick("Parker Family", "Famille Martin")])
+                                         organizations: [language.organization])
             await screen("47-remove-from-sharing", root: UnshareView(request: request), size: nil,
                          expect: withTitle(sheet, "sheet-title"), chrome: false)
         } else {
@@ -371,7 +371,7 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
 
     /// The mock vault's "Work" folder.
     private var workFolder: String? {
-        model.folders.first { $0.name == language.pick("Work", "Travail") }?.id
+        model.folders.first { $0.name == language.workFolder }?.id
     }
 
     private func id(of title: String) -> String? {

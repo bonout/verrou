@@ -112,16 +112,16 @@ final class DemoDriver {
 
         model.query = ""
         await pause(0.3)
-        // Without accents nor capitals (French), or a partial name (English).
-        await type(language.pick("bank of am", "societe gen"), into: \.query)
+        // A partial name, without accents nor capitals.
+        await type(language.bankQuery, into: \.query)
         await pause(0.5)
-        select(title: language.pick("Bank of America", "Société Générale"))
+        select(title: language.bankTitle)
         await snap("05-search-accents")
 
         model.query = ""
         model.filter = .category(category: .card)
         await pause(0.5)
-        select(title: language.pick("Chase Visa", "Visa Boursorama"))
+        select(title: language.cardTitle)
         await pause(0.5)
         if let id = model.selection {
             model.toggleReveal("number", of: id)
@@ -132,23 +132,23 @@ final class DemoDriver {
 
         model.filter = .category(category: .identity)
         await pause(0.4)
-        select(title: language.pick("Emily Parker", "Camille Martin"))
+        select(title: language.ownerName)
         await pause(0.5)
         await snap("07-identity")
 
         // Wi-Fi template: predefined fields.
         model.filter = .template(template: .wifi)
         await pause(0.4)
-        select(title: language.pick("Home Wi-Fi", "Wi-Fi maison"))
+        select(title: language.wifiTitle)
         await pause(0.6)
         await snap("08-wifi")
 
         // The family's shared vault (Vaultwarden organization).
         model.filter = .all
         await pause(0.3)
-        await type(language.pick("family", "famille"), into: \.query)
+        await type(language.familyQuery, into: \.query)
         await pause(0.4)
-        select(title: language.pick("Google — family", "Google — famille"))
+        select(title: language.familyTitle)
         await pause(0.6)
         await snap("09-shared-vault")
         model.query = ""

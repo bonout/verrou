@@ -6,8 +6,8 @@
 #   scripts/ios-showcase.sh                 # screenshots in target/ios-showcase/{clair,sombre}
 #   RECORD=docs/media/ios-app.mp4 scripts/ios-showcase.sh   # the video only
 #
-# Variables: OUT, SHOWCASE_LANG (simulator language, default en-US; fr-FR
-# gives the French UI and demo vault), SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
+# Variables: OUT, SHOWCASE_LANG (simulator language, default en-US; fr-FR,
+# de-DE, es-ES or it-IT give that UI and demo vault), SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
 # SIM_RUNTIME, APPEARANCES (default "light dark"), RECORD (video of
 # testRecording, with pauses of RECORD_PAUSE seconds, default 1;
 # RECORD_TEST picks another test, for example testMotionUnlock).
@@ -100,6 +100,7 @@ stop_shooter() {
 run_test() {
   local test="$1" log="$2"
   TEST_RUNNER_VERROU_SHOWCASE_DIR="$WORK" \
+  TEST_RUNNER_VERROU_CATALOG="$ROOT/apple/VerrouiOS/Localizable.xcstrings" \
   TEST_RUNNER_VERROU_SHOWCASE_PAUSE="$( [[ -n "$RECORD" ]] && echo "${RECORD_PAUSE:-1}" || echo 0 )" \
     xcodebuild test-without-building -project apple/Verrou.xcodeproj -scheme VerrouiOS \
       -destination "id=$DEV" -derivedDataPath "$DERIVED" \

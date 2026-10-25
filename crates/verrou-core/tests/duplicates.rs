@@ -5,11 +5,19 @@ use std::time::Instant;
 use verrou_core::duplicates::{Confidence, find_duplicates};
 use verrou_core::mock::{self, MockLanguage};
 
+const LANGUAGES: [MockLanguage; 5] = [
+    MockLanguage::En,
+    MockLanguage::Fr,
+    MockLanguage::De,
+    MockLanguage::Es,
+    MockLanguage::It,
+];
+
 #[test]
 fn the_mock_vault_has_no_duplicates() {
     // Nextcloud, Vaultwarden and Jellyfin: same domain, same username,
     // three services. Two GitHub accounts: two usernames.
-    for language in [MockLanguage::En, MockLanguage::Fr] {
+    for language in LANGUAGES {
         assert_eq!(
             find_duplicates(&mock::vault_items(0, 42, language)),
             Vec::new()
@@ -19,7 +27,7 @@ fn the_mock_vault_has_no_duplicates() {
 
 #[test]
 fn duplicate_fixtures_survive_a_large_vault() {
-    for language in [MockLanguage::En, MockLanguage::Fr] {
+    for language in LANGUAGES {
         let mut items = mock::vault_items(2_000, 42, language);
         items.extend(mock::duplicate_items(language));
         let groups = find_duplicates(&items);

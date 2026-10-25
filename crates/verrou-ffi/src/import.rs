@@ -621,6 +621,17 @@ mod tests {
         for (language, site, password) in [
             (crate::MockLanguage::English, "geico.com", "geico-Lilac-42"),
             (crate::MockLanguage::French, "maif.fr", "maif-Lilas-42"),
+            (
+                crate::MockLanguage::German,
+                "gothaer.de",
+                "gothaer-Flieder-42",
+            ),
+            (crate::MockLanguage::Spanish, "mapfre.es", "mapfre-Lila-42"),
+            (
+                crate::MockLanguage::Italian,
+                "generali.it",
+                "generali-Lilla-42",
+            ),
         ] {
             let groups = demo_duplicates(language);
             assert_eq!(groups.len(), 8);

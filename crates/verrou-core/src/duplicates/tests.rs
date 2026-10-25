@@ -364,6 +364,24 @@ fn imported_variants_of_the_same_accounts_are_grouped() {
         "Maif",
         "camille.martin@exemple.fr",
     );
+    imported_variants_are_grouped(
+        mock::MockLanguage::De,
+        "gothaer.de",
+        "Gothaer",
+        "anna.schneider@beispiel.de",
+    );
+    imported_variants_are_grouped(
+        mock::MockLanguage::Es,
+        "mapfre.es",
+        "Mapfre",
+        "lucia.garcia@ejemplo.es",
+    );
+    imported_variants_are_grouped(
+        mock::MockLanguage::It,
+        "generali.it",
+        "Generali",
+        "giulia.rossi@esempio.it",
+    );
 }
 
 /// The duplicate fixtures, in either language: the same groups.
