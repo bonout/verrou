@@ -3,6 +3,7 @@
 # installs it on the iPhone connected over USB (or paired over Wi-Fi).
 #
 #   VERROU_TEAM=ABCDE12345 scripts/install-ios.sh [iPhone identifier]
+#   VERROU_WATCH=0 …   # without the Apple Watch app (Xcode without watchOS)
 #
 # Prerequisites, once:
 # - an Apple Developer account (paid: the app group and AutoFill are not
@@ -12,7 +13,8 @@
 # - the app group created on developer.apple.com (Identifiers → App Groups):
 #   xcodebuild enables it but doesn't create it. By default
 #   group.app.verrou.<team in lowercase>, or VERROU_APP_GROUP. It must be
-#   checked in the App IDs app.verrou.ios and app.verrou.ios.autofill (created
+#   checked in the App IDs app.verrou.ios, app.verrou.ios.autofill and
+#   app.verrou.ios.widgets (created
 #   on the first attempt).
 #
 # A development profile carries get-task-allow: that is the price of an
@@ -40,7 +42,17 @@ fi
 [[ -n "$DEVICE" ]] || { echo "No iPhone found: connect it and unlock it." >&2; exit 1; }
 
 PLATFORMS=all scripts/build-apple.sh
-(cd apple && xcodegen generate --quiet)
+# VERROU_WATCH=0: without the Apple Watch app, for a Mac where Xcode
+# lacks the watchOS platform (Xcode › Settings › Components), which an
+# iPhone app embedding a Watch app requires.
+if [[ "${VERROU_WATCH:-1}" == 0 ]]; then
+  SPEC="apple/.project-without-watch.yml"
+  trap 'rm -f "$ROOT/$SPEC" "${JSON:-}"' EXIT
+  grep -v '^      - target: VerrouWatch$' apple/project.yml > "$SPEC"
+  (cd apple && xcodegen generate --quiet --spec "$(basename "$SPEC")")
+else
+  (cd apple && xcodegen generate --quiet)
+fi
 xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Release \
   -destination "id=$DEVICE" -derivedDataPath target/xcode-device.noindex \
   DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic VERROU_APP_GROUP="$GROUP" \
