@@ -16857,6 +16857,34 @@
         }
       }
     },
+    "Once approved, this key needs no further approval until the Mac's Verrou locks.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une fois approuvée, cette clé n’a plus besoin d’approbation jusqu’au verrouillage de Verrou sur le Mac."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nach der Freigabe braucht dieser Schlüssel keine weitere Freigabe, bis Verrou auf dem Mac sich sperrt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una vez aprobada, esta clave no necesita más aprobación hasta que Verrou se bloquee en el Mac."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una volta approvata, questa chiave non richiede altre approvazioni fino al blocco di Verrou sul Mac."
+          }
+        }
+      }
+    },
     "Once the invitation is accepted, an administrator confirms you by comparing your fingerprint phrase: the organization's key is then encrypted for your account.": {
       "localizations": {
         "fr": {

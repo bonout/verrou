@@ -870,9 +870,9 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   code) and each SSH signature. Verrou asks for Touch ID (or the session
   password, `.deviceOwnerAuthentication`): "allow the terminal to read
   "title"", "allow ssh to use the key "title"". The approval lasts **5
-  minutes for this client and this item** only; it is forgotten when the
-  vault locks and when the client is revoked. No answer within 90 s:
-  refused. A protected item ("master password re-prompt") requires the
+  minutes for this client and this item** only (SSH keys: see "SSH approval
+  scopes" below); it is forgotten when the vault locks and when the client
+  is revoked. No answer within 90 s: refused. A protected item ("master password re-prompt") requires the
   app's confirmation (Touch ID or master password), which the Rust core
   checks before handing over anything.
 - **Unlock and read in one approval**: when the terminal finds the vault
@@ -909,12 +909,28 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   (OpenSSH private key without passphrase, protected by the vault's
   encryption like the rest). The private key never goes through Swift: the
   app only receives the identifier of the created item.
+- **SSH approval scopes**: for each SSH key, on this Mac only, the user
+  chooses how long a terminal approval holds: *every time* (never
+  remembered), *for 5 minutes* (the default) or *until Verrou locks* (asked
+  once, no timer). The choice is a device preference
+  (`ssh-approvals.json` in the account folder: item identifiers and one of
+  two words, nothing else; absent means 5 minutes), never synced. Locking the
+  vault (manually, by the auto-lock, or by sleep and the screen lock while that setting is on, as by default) forgets every
+  approval, so "until Verrou locks" ends with it, and so does revoking the
+  terminal; changing a key's scope forgets that key's approvals at once.
+  Only the `ssh` and git signing purposes can use the two other scopes: the
+  bridge forces 5 minutes for a secret, a card, a passkey or a site link,
+  whatever the app answers (a test checks it). A protected key ("master
+  password re-prompt") never gets "until Verrou locks": the Rust core
+  clamps it to 5 minutes, and the Mac hides the setting for it. The approval
+  prompt (on the Mac and on a paired iPhone) says "until Verrou locks" when
+  that is what the user is granting.
 - **Git signatures**: `ssh-keygen -Y sign` (which git calls with
   `gpg.format=ssh`) has the agent sign an "SSHSIG" blob that carries its
   namespace. When it is `git`, Verrou says so ("sign a git commit with the
   key "title"") and the approval is **separate** from that of `ssh`:
-  accepting a connection doesn't allow signing commits for 5 minutes, nor
-  the reverse. The signed content stays chosen by the program that asks:
+  accepting a connection doesn't allow signing commits (for the duration of
+  the key's scope), nor the reverse. The signed content stays chosen by the program that asks:
   the approval doesn't show the commit. An SSH authentication can't pass as
   a git signature (it starts with the length of the session identifier,
   never with "SSHSIG"). `verrou git-signing` only writes git's

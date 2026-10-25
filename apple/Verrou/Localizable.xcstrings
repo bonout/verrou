@@ -57,6 +57,34 @@
         }
       }
     },
+    "%@ (until Verrou locks)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (jusqu’au verrouillage de Verrou)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (bis Verrou sich sperrt)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (hasta que Verrou se bloquee)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (fino al blocco di Verrou)"
+          }
+        }
+      }
+    },
     "%@ accesses at most": {
       "localizations": {
         "fr": {
@@ -16857,6 +16885,34 @@
         }
       }
     },
+    "Every time": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À chaque fois"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jedes Mal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cada vez"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ogni volta"
+          }
+        }
+      }
+    },
     "Exact": {
       "localizations": {
         "fr": {
@@ -18029,6 +18085,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Per %@"
+          }
+        }
+      }
+    },
+    "For 5 minutes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pendant 5 minutes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für 5 Minuten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durante 5 minutos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per 5 minuti"
           }
         }
       }
@@ -19541,6 +19625,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Provider di hosting"
+          }
+        }
+      }
+    },
+    "How often the terminal (ssh, git signing) asks for Touch ID to use this key. “Until Verrou locks” asks once; locking Verrou, sleep or the screen lock end it.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fréquence à laquelle le terminal (ssh, signature git) demande Touch ID pour utiliser cette clé. « Jusqu’au verrouillage de Verrou » ne demande qu’une fois ; le verrouillage de Verrou, la mise en veille ou le verrouillage de l’écran y mettent fin."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wie oft das Terminal (ssh, git-Signatur) Touch ID für diesen Schlüssel verlangt. „Bis Verrou sich sperrt“ fragt nur einmal; das Sperren von Verrou, der Ruhezustand oder die Bildschirmsperre beenden die Freigabe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con qué frecuencia el terminal (ssh, firma de git) pide Touch ID para usar esta clave. «Hasta que Verrou se bloquee» solo pregunta una vez; bloquear Verrou, la suspensión o el bloqueo de pantalla le ponen fin."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quanto spesso il terminale (ssh, firma git) chiede Touch ID per usare questa chiave. «Fino al blocco di Verrou» chiede una sola volta; il blocco di Verrou, la sospensione o il blocco dello schermo la terminano."
           }
         }
       }
@@ -31809,6 +31921,34 @@
         }
       }
     },
+    "Protected keys ask for approval at least every 5 minutes.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les clés protégées demandent une approbation au moins toutes les 5 minutes."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geschützte Schlüssel verlangen mindestens alle 5 Minuten eine Freigabe."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las claves protegidas piden aprobación al menos cada 5 minutos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le chiavi protette chiedono l’approvazione almeno ogni 5 minuti."
+          }
+        }
+      }
+    },
     "Protection": {
       "localizations": {
         "fr": {
@@ -38725,6 +38865,34 @@
         }
       }
     },
+    "Terminal approval": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approbation du terminal"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freigabe für das Terminal"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobación del terminal"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvazione del terminale"
+          }
+        }
+      }
+    },
     "Terminal, linked on %@": {
       "localizations": {
         "fr": {
@@ -43089,6 +43257,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seed illeggibile (previsto un link Base32 o otpauth://)"
+          }
+        }
+      }
+    },
+    "Until Verrou locks": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jusqu’au verrouillage de Verrou"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bis Verrou sich sperrt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hasta que Verrou se bloquee"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fino al blocco di Verrou"
           }
         }
       }

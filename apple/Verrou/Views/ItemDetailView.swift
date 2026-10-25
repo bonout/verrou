@@ -17,6 +17,7 @@ struct ItemDetailView: View {
                         .help("For ~/.ssh/authorized_keys, GitHub, GitLab…")
                         Spacer()
                     }
+                    SshApprovalSection(itemID: detail.summary.id, protected: detail.summary.reprompt)
                 }
                 if !detail.urls.isEmpty || !fields.isEmpty {
                     FieldCard {
@@ -200,6 +201,44 @@ struct ItemDetailView: View {
 }
 
 // MARK: Building blocks
+
+/// "Terminal approval" of an SSH key: how long a Touch ID covers the
+/// terminal's use of it (ssh, git signing). A device setting, kept by the
+/// Rust core; a protected key always asks at least every five minutes, so it
+/// only gets a note.
+private struct SshApprovalSection: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
+    let protected: Bool
+    @State private var scope = SshApprovalScope.fiveMinutes
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if protected {
+                Label("Protected keys ask for approval at least every 5 minutes.", systemImage: "lock.shield")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                Picker("Terminal approval", selection: $scope) {
+                    Text("Every time").tag(SshApprovalScope.everyTime)
+                    Text("For 5 minutes").tag(SshApprovalScope.fiveMinutes)
+                    Text("Until Verrou locks").tag(SshApprovalScope.untilLocked)
+                }
+                .accessibilityIdentifier("ssh-approval-scope")
+                Text("""
+                    How often the terminal (ssh, git signing) asks for Touch ID to use this key. \
+                    “Until Verrou locks” asks once; locking Verrou, sleep or the screen lock end it.
+                    """)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .task(id: itemID) { scope = model.session.sshApprovalScope(id: itemID) }
+        .onChange(of: scope) { _, new in
+            if new != model.session.sshApprovalScope(id: itemID) { model.setSshApprovalScope(itemID, new) }
+        }
+    }
+}
 
 struct FieldCard<Content: View>: View {
     @ViewBuilder var content: Content

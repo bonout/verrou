@@ -6,6 +6,13 @@ tagging (docs/RELEASING.md).
 
 ## Unreleased
 
+**Mac**
+- SSH keys: choose how long a Touch ID covers the terminal. On a key's page,
+  *Terminal approval* offers *Every time*, *For 5 minutes* (the default) and
+  *Until Verrou locks*, so signing commits or pushing all day asks once.
+  Locking Verrou, sleep and the screen lock still end it, and protected
+  keys keep asking at least every 5 minutes.
+
 **iPhone**
 - Folders nest as on the Mac: the home screen shows the top-level folders,
   and a folder lists its subfolders above its items.
@@ -26,6 +33,8 @@ tagging (docs/RELEASING.md).
 - A request from your Mac shows in the Dynamic Island and on the Lock
   Screen with the time left. *Approve* and *Deny* bring you back to it:
   Face ID still shows what is asked before you answer.
+- The approval request for an SSH key says when the Mac will not ask again
+  until Verrou locks.
 
 **Mac and iPhone**
 - Increase Contrast (system accessibility setting) draws stronger borders,

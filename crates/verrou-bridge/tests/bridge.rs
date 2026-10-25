@@ -16,7 +16,8 @@ use ssh_key::{Algorithm, LineEnding, PrivateKey, Signature};
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
 use verrou_bridge::protocol::{ClientKind, Credentials, SaveAction, Suggestion};
 use verrou_bridge::{
-    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan, access,
+    ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan,
+    access,
 };
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
@@ -32,6 +33,8 @@ struct FakeBackend {
     confirmations: Mutex<Vec<Confirmation>>,
     /// The vault locks while the user answers (screen locked meanwhile).
     lock_while_confirming: AtomicBool,
+    /// What the backend answers to `approval_scope`, for any purpose.
+    scope: Mutex<ApprovalScope>,
 }
 
 impl Backend for FakeBackend {
@@ -117,6 +120,10 @@ impl Backend for FakeBackend {
         }
         let approved = self.approve.load(Ordering::SeqCst);
         Box::pin(async move { approved })
+    }
+
+    fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
+        *self.scope.lock().unwrap()
     }
 }
 
@@ -282,6 +289,7 @@ fn start_with(
         approve: AtomicBool::new(false),
         confirmations: Mutex::new(Vec::new()),
         lock_while_confirming: AtomicBool::new(false),
+        scope: Mutex::new(ApprovalScope::FiveMinutes),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -961,4 +969,68 @@ fn approval_cut_by_a_lock_says_locked() {
     let reveal = cli.request(&json!({ "cmd": "reveal", "item": "github", "field": "password" }));
     assert_eq!(reveal["result"], "denied", "{reveal}");
     std::fs::remove_file(file).ok();
+}
+
+/// "Until Verrou locks" and "every time" for an SSH key, and the rule that
+/// no other purpose may use them.
+#[test]
+fn approval_scopes_for_ssh_keys() {
+    let (bridge, backend, pairings, file) = start();
+    let key = PrivateKey::random(
+        &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
+        Algorithm::Ed25519,
+    )
+    .unwrap();
+    *backend.vault.lock().unwrap() = Vault::new(vec![github(), ssh_item(&key)]);
+    let mut cli = paired(&bridge, &pairings, "cli");
+    let blob = BASE64.encode(&key.public_key().to_bytes().unwrap());
+    let sign = json!({ "cmd": "ssh_sign", "public_key": blob,
+        "data": BASE64.encode(b"x"), "flags": 0 });
+    let asked = |backend: &FakeBackend| backend.confirmations.lock().unwrap().len();
+    backend.approve.store(true, Ordering::SeqCst);
+
+    // Until locked: one approval, then none, whatever the "user" answers.
+    *backend.scope.lock().unwrap() = ApprovalScope::UntilLocked;
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(asked(&backend), 1);
+
+    // Changing the item's scope applies at once.
+    *backend.scope.lock().unwrap() = ApprovalScope::EveryTime;
+    bridge.forget_approvals_of_item("cle-ssh");
+    assert_eq!(cli.request(&sign)["result"], "denied");
+    assert_eq!(asked(&backend), 2);
+
+    // Every time: asked on each use.
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(asked(&backend), 4);
+
+    // Back to until locked; only locking the vault ends it.
+    *backend.scope.lock().unwrap() = ApprovalScope::UntilLocked;
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    assert_eq!(asked(&backend), 5);
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&sign)["result"], "signature");
+    bridge.forget_approvals();
+    assert_eq!(cli.request(&sign)["result"], "denied");
+    assert_eq!(asked(&backend), 6);
+
+    // Any other purpose ignores the backend's scope: a secret is still
+    // remembered for five minutes only, and never longer.
+    backend.approve.store(true, Ordering::SeqCst);
+    let reveal = json!({ "cmd": "reveal", "item": "github", "field": "password" });
+    *backend.scope.lock().unwrap() = ApprovalScope::EveryTime;
+    assert_eq!(cli.request(&reveal)["result"], "secret");
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(
+        cli.request(&reveal)["result"],
+        "secret",
+        "EveryTime is ignored for a secret: the five-minute approval holds"
+    );
+    // The extension revoked: its approvals go with it.
+    let _ = std::fs::remove_file(file);
 }

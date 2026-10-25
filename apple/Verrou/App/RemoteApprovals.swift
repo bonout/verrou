@@ -400,14 +400,15 @@ final class RemoteApprovals {
     /// Touch ID on the Mac, the iPhone, or both: the first answer decides.
     /// `local` gets an `LAContext` that is invalidated if the iPhone answers
     /// first.
-    func decide(client: String, purpose: String, title: String, site: String, reason: String,
+    func decide(client: String, purpose: String, title: String, site: String, reason: String, scope: String? = nil,
                 local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
         // The bridge may ask the same thing twice in a row: one request, one
         // answer for both.
-        let key = [client, purpose, title, site, reason].joined(separator: "\u{1F}")
+        let key = [client, purpose, title, site, reason, scope ?? ""].joined(separator: "\u{1F}")
         if let running = deciding[key] { return await running.value }
         let task = Task {
-            await decideOnce(client: client, purpose: purpose, title: title, site: site, reason: reason, local: local)
+            await decideOnce(client: client, purpose: purpose, title: title, site: site, reason: reason, scope: scope,
+                             local: local)
         }
         deciding[key] = task
         defer { deciding[key] = nil }
@@ -415,6 +416,7 @@ final class RemoteApprovals {
     }
 
     private func decideOnce(client: String, purpose: String, title: String, site: String, reason: String,
+                            scope: String?,
                             local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
         guard isReady else {
             log.notice("approval on the Mac only (available: \(self.available), iPhones: \(self.phones.count))")
@@ -438,8 +440,8 @@ final class RemoteApprovals {
                     guard !Task.isCancelled else { return }
                 }
                 let response = await ask(kind: .access, client: client, purpose: purpose, title: title, site: site,
-                                         reason: reason, field: nil, lifetime: RemoteApproval.requestLifetime,
-                                         escrows: [:])
+                                         reason: reason, field: nil, scope: scope,
+                                         lifetime: RemoteApproval.requestLifetime, escrows: [:])
                 if let response {
                     race.finish(.remote(response.approved))
                 } else if localTask == nil {
@@ -462,7 +464,7 @@ final class RemoteApprovals {
 
     /// The iPhone's answer for the Mac (nil: none in time, or withdrawn).
     private func ask(kind: RemoteApproval.Kind, client: String, purpose: String, title: String, site: String,
-                     reason: String, field: String?, lifetime: TimeInterval,
+                     reason: String, field: String?, scope: String? = nil, lifetime: TimeInterval,
                      escrows: [String: RemoteApproval.Escrow]) async -> RemoteApproval.Response? {
         guard let mac = stored?.mac else { return nil }
         let signingKey: SecureEnclave.P256.Signing.PrivateKey
@@ -482,7 +484,7 @@ final class RemoteApprovals {
             let request = RemoteApproval.Request(id: id, mac: mac, kind: kind, client: client, purpose: purpose,
                                                  title: title, site: site, expires: expires, escrow: escrows[phone.id],
                                                  reason: reason.isEmpty ? nil : reason,
-                                                 field: field.flatMap { $0.isEmpty ? nil : $0 })
+                                                 field: field.flatMap { $0.isEmpty ? nil : $0 }, scope: scope)
             let sealed: RemoteApproval.Sealed, ephemeral: P256.KeyAgreement.PrivateKey
             do {
                 (sealed, ephemeral) = try RemoteApproval.seal(request, to: key, signer: signingKey)

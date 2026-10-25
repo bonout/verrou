@@ -66,6 +66,13 @@ struct ApprovalScreen: View {
                     .multilineTextAlignment(.center)
                     .accessibilityIdentifier("remote-reason")
             }
+            if request.scope == "untilLocked" {
+                Text("Once approved, this key needs no further approval until the Mac's Verrou locks.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("remote-until-locked")
+            }
             if request.kind == .unlock {
                 Text("The Mac's window stays locked; the vault locks again 5 minutes after the last approval.")
                     .font(.footnote)

@@ -2627,6 +2627,13 @@ impl Backend for SessionBackend {
         false
     }
 
+    fn approval_scope(&self, purpose: Purpose, item: &str) -> verrou_bridge::ApprovalScope {
+        match (purpose, self.session.upgrade()) {
+            (Purpose::Ssh | Purpose::GitSign, Some(session)) => session.effective_ssh_scope(item),
+            _ => verrou_bridge::ApprovalScope::FiveMinutes,
+        }
+    }
+
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         let id = self
             .confirmations

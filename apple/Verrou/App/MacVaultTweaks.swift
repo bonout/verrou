@@ -69,6 +69,13 @@ extension AppModel {
         return words.contains { $0.hasPrefix("passkey:") || $0.hasPrefix("passkeys:") || $0 == "has:passkey" }
     }
 
+    // MARK: Terminal approval of SSH keys
+
+    /// How long the terminal's approval of an SSH key holds, on this Mac.
+    func setSshApprovalScope(_ itemID: String, _ scope: SshApprovalScope) {
+        try? session.setSshApprovalScope(id: itemID, scope: scope)
+    }
+
     // MARK: Match rules
 
     func setDefaultMatchRule(_ rule: UriMatchRule) {

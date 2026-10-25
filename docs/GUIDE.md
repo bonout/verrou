@@ -1013,7 +1013,7 @@ It listens on `~/.verrou/agent.sock` (`--socket PATH` to change it; directory
 700, socket 600) and offers the vault's SSH key items (Ed25519, ECDSA P-256 and
 P-384, RSA with `rsa-sha2-256`/`rsa-sha2-512`). Each signature is made **by the
 app**, after a Touch ID prompt (*allow ssh to use the key “…”*), cached
-5 minutes per key. Only `ssh` and `git` signing requests are served; adding or
+5 minutes per key by default (see [Approval per key](#approval-per-key)). Only `ssh` and `git` signing requests are served; adding or
 removing keys through the agent is refused.
 
 Use it for every host in `~/.ssh/config`:
@@ -1064,7 +1064,24 @@ line for `authorized_keys`, GitHub or GitLab.
 git signs with SSH keys (`gpg.format=ssh`) by running `ssh-keygen -Y sign -n
 git`, which asks the agent named by `SSH_AUTH_SOCK`. With Verrou's agent, the
 Touch ID prompt reads *sign a git commit with the key “…”* (a separate
-approval from `ssh` logins, also cached 5 minutes per key).
+approval from `ssh` logins, with the same cache per key).
+
+### Approval per key
+
+Signing commits all day, or pushing from a long-running script, should not
+ask for Touch ID every 5 minutes. On an SSH key's page in the app, **Terminal
+approval** sets how long one Touch ID covers the terminal's use of that key
+(`ssh` and git signing):
+
+- *Every time*: Touch ID for each connection or signature.
+- *For 5 minutes*: the default.
+- *Until Verrou locks*: Touch ID once. Locking Verrou, the auto-lock, and sleep
+  or the screen lock (*Lock on sleep…* on, the default) end it, and the next request asks again.
+
+The setting is per key and per Mac, and is not synced. A protected key
+(master password re-prompt) always asks at least every 5 minutes, so the
+setting is not offered for it. The prompt on the Mac, and on a paired iPhone
+when you are away, says *until Verrou locks* when that is what you grant.
 
 ```sh
 verrou git-signing github                 # prints the git settings, writes nothing

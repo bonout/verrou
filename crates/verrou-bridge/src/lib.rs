@@ -30,7 +30,8 @@ use std::time::Duration;
 
 pub use clients::ClientInfo;
 pub use server::{
-    APPROVAL_TTL, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan,
+    APPROVAL_TTL, ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose,
+    WritePlan,
 };
 
 /// The app's identifier, to open it (`open -b`).

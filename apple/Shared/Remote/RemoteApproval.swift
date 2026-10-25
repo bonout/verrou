@@ -192,6 +192,10 @@ enum RemoteApproval {
         /// Unlock: the field the terminal will read then, in the item
         /// `title` (as the terminal named it: the locked vault can't).
         var field: String? = nil
+        /// `untilLocked`: this approval will hold until the Mac's Verrou locks
+        /// (an SSH key the user chose to ask about once). Additive: absent
+        /// from older Macs, ignored by older iPhones.
+        var scope: String? = nil
     }
 
     /// A request as it travels: the Mac's ephemeral public key, the sealed

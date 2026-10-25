@@ -199,9 +199,14 @@ final class BrowserBridge {
             return
         }
         // The terminal's reason, as it declares it, after what is asked.
-        let prompt = motive.isEmpty ? reason : "\(reason) (\(motive))"
+        var prompt = motive.isEmpty ? reason : "\(reason) (\(motive))"
         Task {
             let protected = model.session.needsConfirmation(id: item)
+            // The user chose "until Verrou locks" for this key: say what this
+            // approval grants. A protected key is never given that scope.
+            let untilLocked = (purpose == .ssh || purpose == .gitSign) && !protected
+                && model.session.sshApprovalScope(id: item) == .untilLocked
+            if untilLocked { prompt = String(localized: "\(prompt) (until Verrou locks)") }
             let local: @MainActor (LAContext) async -> Bool = { [model] context in
                 protected ? await model.confirmAccess(itemID: item, title: title, context: context)
                           : await Biometrics.confirm(reason: prompt, context: context)
@@ -209,7 +214,8 @@ final class BrowserBridge {
             // At the Mac: Touch ID; away: the paired iPhone (`RemoteApprovals`).
             let outcome = if let remote = model.remote {
                 await remote.decide(client: clientName.isEmpty ? String(localized: "the terminal") : clientName,
-                                    purpose: purpose.wire, title: title, site: site, reason: motive, local: local)
+                                    purpose: purpose.wire, title: title, site: site, reason: motive,
+                                    scope: untilLocked ? "untilLocked" : nil, local: local)
             } else {
                 RemoteApprovals.Outcome.local(await local(LAContext()))
             }

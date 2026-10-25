@@ -10,7 +10,8 @@
 //! (`verrou`). Each only has its own commands ([`crate::access::allowed`]).
 //! For the terminal, a secret or an SSH signature awaits the user's
 //! approval ([`Backend::confirm`]), kept [`APPROVAL_TTL`] for this
-//! client and this item.
+//! client and this item, or until the vault locks for an SSH key whose
+//! owner chose [`ApprovalScope::UntilLocked`].
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -55,6 +56,23 @@ const PAIRING_INTERVAL: Duration = Duration::from_secs(3);
 /// an item: `verrou get` then `verrou totp`, or several SSH connections
 /// in a row, without asking for Touch ID again.
 pub const APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
+/// How long an approval holds, chosen by the user per SSH key.
+///
+/// Only [`Purpose::Ssh`] and [`Purpose::GitSign`] honour anything but the
+/// default: a developer signing commits all day should not face Touch ID
+/// every five minutes, but a secret revealed to the terminal should.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ApprovalScope {
+    /// Ask for every use: the approval is never remembered.
+    EveryTime,
+    /// Ask again after [`APPROVAL_TTL`].
+    #[default]
+    FiveMinutes,
+    /// Ask once: the approval holds until the vault locks
+    /// ([`Bridge::forget_approvals`]), which is the only thing that ends it.
+    UntilLocked,
+}
+
 /// The time given to the user to answer an approval request.
 const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(90);
 /// Extension: beyond `BULK_ITEMS` different items released to a
@@ -103,6 +121,12 @@ pub trait Backend: Send + Sync + 'static {
     /// confirmation: the app asks for it, and the answer is `false` until then.
     fn gate(&self, item: &verrou_core::Item) -> bool {
         !item.reprompt
+    }
+    /// How long an approval for this purpose and item holds. The default
+    /// keeps the historical five minutes; the server ignores any other
+    /// answer for a purpose other than SSH or signing.
+    fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
+        ApprovalScope::FiveMinutes
     }
 }
 
@@ -159,8 +183,9 @@ pub struct Confirmation {
     pub reason: String,
 }
 
-/// Approvals still valid: (client, purpose, item) → time of the approval.
-type Approvals = HashMap<(String, Purpose, String), Instant>;
+/// Approvals still valid: (client, purpose, item) → time of the approval
+/// and the scope it was given with.
+type Approvals = HashMap<(String, Purpose, String), (Instant, ApprovalScope)>;
 
 struct Shared {
     backend: Arc<dyn Backend>,
@@ -270,8 +295,15 @@ impl Bridge {
     }
 
     /// Forgets the approvals given to the terminal (when the vault locks).
+    /// This is what ends an [`ApprovalScope::UntilLocked`] approval.
     pub fn forget_approvals(&self) {
         lock(&self.shared.approvals).clear();
+    }
+
+    /// Forgets the approvals given for one item, so a change of its scope
+    /// (from "until locked" to "every time") applies at once.
+    pub fn forget_approvals_of_item(&self, item: &str) {
+        lock(&self.shared.approvals).retain(|(_, _, id), _| id != item);
     }
 }
 
@@ -533,6 +565,26 @@ async fn approved(
     approved_for_site(shared, client, purpose, item, title, "", "").await
 }
 
+/// Does an approval given at `at` with `scope` still hold at `now`?
+fn approval_holds(at: Instant, scope: ApprovalScope, now: Instant) -> bool {
+    match scope {
+        ApprovalScope::UntilLocked => true,
+        ApprovalScope::FiveMinutes => now.saturating_duration_since(at) < APPROVAL_TTL,
+        // Never inserted; dropped if one ever got there.
+        ApprovalScope::EveryTime => false,
+    }
+}
+
+/// The scope the user chose for this use. Defence in depth: whatever the
+/// backend says, only SSH and signing may be remembered longer than five
+/// minutes or not at all; a secret, a card or a passkey keeps the default.
+fn effective_scope(shared: &Shared, purpose: Purpose, item: &str) -> ApprovalScope {
+    match purpose {
+        Purpose::Ssh | Purpose::GitSign => shared.backend.approval_scope(purpose, item),
+        _ => ApprovalScope::FiveMinutes,
+    }
+}
+
 /// [`approved`], with the site the request is about (`LinkSite`) and the
 /// terminal's reason.
 async fn approved_for_site(
@@ -547,7 +599,7 @@ async fn approved_for_site(
     let entry = (client.id.clone(), purpose, item.to_owned());
     {
         let mut approvals = lock(&shared.approvals);
-        approvals.retain(|_, at| at.elapsed() < APPROVAL_TTL);
+        approvals.retain(|_, (at, scope)| approval_holds(*at, *scope, Instant::now()));
         if approvals.contains_key(&entry) {
             return true;
         }
@@ -565,7 +617,10 @@ async fn approved_for_site(
         .await
         .unwrap_or(false);
     if granted {
-        lock(&shared.approvals).insert(entry, Instant::now());
+        let scope = effective_scope(shared, purpose, item);
+        if scope != ApprovalScope::EveryTime {
+            lock(&shared.approvals).insert(entry, (Instant::now(), scope));
+        }
     }
     granted
 }
@@ -981,5 +1036,23 @@ async fn passkey(shared: &Shared, client: &ClientInfo, command: Command) -> Repl
             }
         }
         _ => denied("unexpected command".to_owned()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approvals_hold_according_to_their_scope() {
+        let at = Instant::now();
+        let later = at + APPROVAL_TTL + Duration::from_secs(1);
+        // Five minutes: fresh holds, stale does not.
+        assert!(approval_holds(at, ApprovalScope::FiveMinutes, at));
+        assert!(!approval_holds(at, ApprovalScope::FiveMinutes, later));
+        // Until locked: no timer at all.
+        assert!(approval_holds(at, ApprovalScope::UntilLocked, later));
+        // Every time: never.
+        assert!(!approval_holds(at, ApprovalScope::EveryTime, at));
     }
 }

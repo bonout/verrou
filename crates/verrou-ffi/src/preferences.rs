@@ -8,21 +8,74 @@
 //!
 //! - `match-rules.json`: the default rule and the folders' rules (by
 //!   folder identifier);
-//! - `usage.json`: item identifiers and timestamps, nothing else.
+//! - `usage.json`: item identifiers and timestamps, nothing else;
+//! - `ssh-approvals.json`: how long the terminal's approval of an SSH key
+//!   holds (item identifier → `every_time` or `until_locked`).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::PoisonError;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use verrou_core::UriMatch;
+use verrou_bridge::ApprovalScope;
 use verrou_core::matching::{DeviceMatchSettings, MatchRules};
 use verrou_core::search::fold;
 use verrou_core::usage::UsageLog;
+use verrou_core::{ItemKind, UriMatch};
 
 use crate::{VaultSession, VerrouError};
 
 pub(crate) const MATCH_RULES_FILE: &str = "match-rules.json";
 pub(crate) const USAGE_FILE: &str = "usage.json";
+pub(crate) const SSH_APPROVALS_FILE: &str = "ssh-approvals.json";
+
+/// How long the terminal's approval of an SSH key holds. A device
+/// preference: the SSH agent runs on this Mac, and Bitwarden has no such
+/// setting.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, uniffi::Enum)]
+pub enum SshApprovalScope {
+    /// Touch ID for every signature or connection.
+    EveryTime,
+    /// Touch ID again after five minutes (the default).
+    #[default]
+    FiveMinutes,
+    /// Touch ID once, until Verrou locks.
+    UntilLocked,
+}
+
+impl From<SshApprovalScope> for ApprovalScope {
+    fn from(scope: SshApprovalScope) -> Self {
+        match scope {
+            SshApprovalScope::EveryTime => Self::EveryTime,
+            SshApprovalScope::FiveMinutes => Self::FiveMinutes,
+            SshApprovalScope::UntilLocked => Self::UntilLocked,
+        }
+    }
+}
+
+/// The file's value for a scope; `None` for the default, which is never
+/// written.
+fn scope_name(scope: SshApprovalScope) -> Option<&'static str> {
+    match scope {
+        SshApprovalScope::EveryTime => Some("every_time"),
+        SshApprovalScope::UntilLocked => Some("until_locked"),
+        SshApprovalScope::FiveMinutes => None,
+    }
+}
+
+/// Parses `ssh-approvals.json`: unknown values (a newer version's) are
+/// ignored, so they fall back to five minutes.
+fn parse_ssh_approvals(data: &[u8]) -> BTreeMap<String, SshApprovalScope> {
+    let Ok(raw) = serde_json::from_slice::<BTreeMap<String, String>>(data) else {
+        return BTreeMap::new();
+    };
+    raw.into_iter()
+        .filter_map(|(id, name)| match name.as_str() {
+            "every_time" => Some((id, SshApprovalScope::EveryTime)),
+            "until_locked" => Some((id, SshApprovalScope::UntilLocked)),
+            _ => None,
+        })
+        .collect()
+}
 
 /// Match rule of a site (Bitwarden's `UriMatchType`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -171,6 +224,37 @@ impl VaultSession {
         Ok(())
     }
 
+    // MARK: SSH approvals
+
+    fn load_ssh_approvals(&self) -> BTreeMap<String, SshApprovalScope> {
+        self.store
+            .as_ref()
+            .and_then(|s| s.read_file(SSH_APPROVALS_FILE))
+            .map(|data| parse_ssh_approvals(&data))
+            .unwrap_or_default()
+    }
+
+    /// The scope of an SSH key as the bridge applies it: never beyond five
+    /// minutes for a protected item ("master password re-prompt"), whatever
+    /// the file says, and the default for anything that is not an SSH key
+    /// (a deleted item included: its entry is ignored, not cleaned up).
+    pub(crate) fn effective_ssh_scope(&self, id: &str) -> ApprovalScope {
+        let is_unprotected_key = self
+            .with_vault(|v| {
+                Ok(v.get(id)
+                    .is_some_and(|i| i.kind == ItemKind::SshKey && !i.reprompt))
+            })
+            .unwrap_or(false);
+        if !is_unprotected_key {
+            return ApprovalScope::FiveMinutes;
+        }
+        self.load_ssh_approvals()
+            .get(id)
+            .copied()
+            .unwrap_or_default()
+            .into()
+    }
+
     // MARK: Last use
 
     /// Rereads the log from disk (the `AutoFill` extension writes to it
@@ -312,6 +396,59 @@ impl VaultSession {
         self.save_match_settings(&settings)
     }
 
+    /// How long the terminal's approval of this SSH key holds, as chosen on
+    /// this device (five minutes if never changed).
+    pub fn ssh_approval_scope(&self, id: String) -> SshApprovalScope {
+        self.load_ssh_approvals()
+            .get(&id)
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Chooses how long the terminal's approval of an SSH key holds. Only
+    /// for SSH keys. The approvals already given for the key are forgotten,
+    /// so the change applies at once.
+    pub fn set_ssh_approval_scope(
+        &self,
+        id: String,
+        scope: SshApprovalScope,
+    ) -> Result<(), VerrouError> {
+        let is_key = self.with_vault(|v| Ok(v.get(&id).map(|i| i.kind == ItemKind::SshKey)))?;
+        if is_key != Some(true) {
+            return Err(VerrouError::Invalid {
+                message: "only an SSH key has a terminal approval setting".to_owned(),
+            });
+        }
+        let mut approvals = self.load_ssh_approvals();
+        match scope_name(scope) {
+            Some(_) => {
+                approvals.insert(id.clone(), scope);
+            }
+            None => {
+                approvals.remove(&id);
+            }
+        }
+        if let Some(store) = &self.store {
+            let raw: BTreeMap<&str, &str> = approvals
+                .iter()
+                .filter_map(|(id, scope)| Some((id.as_str(), scope_name(*scope)?)))
+                .collect();
+            let data = serde_json::to_vec_pretty(&raw).map_err(|e| VerrouError::Storage {
+                message: e.to_string(),
+            })?;
+            store.write_file(SSH_APPROVALS_FILE, &data)?;
+        }
+        if let Some(bridge) = self
+            .bridge
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            bridge.forget_approvals_of_item(&id);
+        }
+        Ok(())
+    }
+
     /// Records a use that Rust doesn't see (copy of a non-secret field, of
     /// a one-time code, opening the site).
     pub fn record_item_use(&self, id: String) {
@@ -444,6 +581,98 @@ mod tests {
         assert_eq!(session.match_settings().folder_rules.len(), 0);
         assert_eq!(uri_match_rules().len(), 6);
         assert_eq!(uri_match_label(UriMatchRule::StartsWith), "Starts with");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ssh_approval_scope_persists_and_is_clamped() {
+        let dir = std::env::temp_dir().join(format!("verrou-ssh-scope-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let session = VaultSession::with_storage(dir.to_string_lossy().into_owned());
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
+        let summaries = session.summaries().unwrap();
+        let key = summaries
+            .iter()
+            .find(|s| s.category == crate::ItemCategory::SshKey)
+            .unwrap()
+            .id
+            .clone();
+        let login = summaries
+            .iter()
+            .find(|s| s.category == crate::ItemCategory::Login)
+            .unwrap()
+            .id
+            .clone();
+
+        // Default, then a round trip through the file.
+        assert_eq!(
+            session.ssh_approval_scope(key.clone()),
+            SshApprovalScope::FiveMinutes
+        );
+        assert_eq!(
+            session.effective_ssh_scope(&key),
+            ApprovalScope::FiveMinutes
+        );
+        session
+            .set_ssh_approval_scope(key.clone(), SshApprovalScope::UntilLocked)
+            .unwrap();
+        assert_eq!(
+            session.ssh_approval_scope(key.clone()),
+            SshApprovalScope::UntilLocked
+        );
+        assert_eq!(
+            session.effective_ssh_scope(&key),
+            ApprovalScope::UntilLocked
+        );
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(SSH_APPROVALS_FILE)).unwrap()).unwrap();
+        assert_eq!(file[&key], "until_locked");
+
+        // Survives a new session on the same folder.
+        let again = VaultSession::with_storage(dir.to_string_lossy().into_owned());
+        again.unlock_mock(0, 42, crate::MockLanguage::English);
+        assert_eq!(
+            again.ssh_approval_scope(key.clone()),
+            SshApprovalScope::UntilLocked
+        );
+
+        // Only SSH keys have the setting.
+        assert!(matches!(
+            session.set_ssh_approval_scope(login.clone(), SshApprovalScope::UntilLocked),
+            Err(VerrouError::Invalid { .. })
+        ));
+        assert!(matches!(
+            session.set_ssh_approval_scope("inconnu".to_owned(), SshApprovalScope::EveryTime),
+            Err(VerrouError::Invalid { .. })
+        ));
+        assert_eq!(
+            session.effective_ssh_scope(&login),
+            ApprovalScope::FiveMinutes
+        );
+
+        // A protected key never goes beyond five minutes, whatever the file says.
+        let mut items = verrou_core::mock::vault_items(0, 42, crate::MockLanguage::English.into());
+        items.iter_mut().find(|i| i.id == key).unwrap().reprompt = true;
+        *session.vault.write().unwrap() = Some(verrou_core::Vault::new(items));
+        assert_eq!(
+            session.effective_ssh_scope(&key),
+            ApprovalScope::FiveMinutes
+        );
+
+        // Back to the default removes the entry; unknown values are ignored.
+        session
+            .set_ssh_approval_scope(key.clone(), SshApprovalScope::EveryTime)
+            .unwrap();
+        session
+            .set_ssh_approval_scope(key.clone(), SshApprovalScope::FiveMinutes)
+            .unwrap();
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(SSH_APPROVALS_FILE)).unwrap()).unwrap();
+        assert!(file.as_object().unwrap().is_empty());
+        let parsed = parse_ssh_approvals(br#"{"a":"until_locked","b":"forever","c":"every_time"}"#);
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed["a"], SshApprovalScope::UntilLocked);
+        assert!(parse_ssh_approvals(b"not json").is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
