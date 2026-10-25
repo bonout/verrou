@@ -931,30 +931,60 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   Threat model: the agent may be prompt-injected, so it is treated as able
   to ask for anything and trusted with nothing. It is a terminal client of
   the bridge like `verrou run` (same pairing, same approvals), and:
-  - a secret's value never reaches the model: `verrou_search` returns
-    titles, field names, `verrou://` references and the username, nothing
-    else; `verrou_run` returns masked output only (same masker as `verrou
-    run`, the last 32 KB of each stream), and every text sent to the client,
-    errors included, goes once more through a masker holding the values the
-    session handled; the tests assert that known passwords never appear in
-    the server's output;
-  - every use is approved by a human in Verrou, who sees the agent's name
-    (`clientInfo.name` of the MCP handshake) and the reason it declared,
-    cleaned like any reason (one line, 120 characters); `verrou_run` refuses
-    a call without a `verrou://` reference, so it cannot be used to run
-    commands without an approval, and refuses `env` values that are not
-    references;
+  - a secret's value never reaches the model on its own: `verrou_search`
+    returns titles, field names, `verrou://` references (by identifier) and
+    the username, nothing else; `verrou_run` returns masked output only
+    (same masker as `verrou run`, the last 32 KB of each stream), and every
+    string sent to the client, errors included, goes once more through a
+    masker holding the secret values the session handled, before it is
+    serialized (a value JSON would escape is still found); the tests assert
+    that known passwords never appear in the server's output;
+  - every `verrou_run` is approved by a human in Verrou, and on its own:
+    the request carries a flag (`ephemeral_approval`) that makes the bridge
+    ask every time for that request and neither reuse nor create a
+    remembered approval, so an approval given to `verrou get` or `verrou
+    run` (five minutes, same client) cannot cover an agent's call, and the
+    agent's approval covers nothing after it; one prompt per secret
+    reference;
+  - the approval shows what will run, not only what the agent says: the
+    command line (quoted, at most 200 characters) and the secret fields
+    ("GitHub › Password") travel in the request, are cleaned by the bridge
+    (control and invisible formatting characters, including bidirectional
+    overrides, are dropped, in the reason too), and are displayed on the Mac
+    and on the iPhone on lines of their own, apart from the agent's reason,
+    which is labelled as the agent's claim. The name in front of the reason
+    is `clientInfo.name` from the MCP handshake: self-declared, so it proves
+    nothing about which program asks;
+  - no approval is skipped: `verrou_run` needs at least one reference to a
+    secret field (password, hidden field, notes, one-time code, card number
+    or code, SSH private key), because a plain field (username, site) is
+    given without any approval, and refuses `env` values that are not
+    references; references resolve exactly (identifier, or a title only one
+    item has; no approximate search), and an unlock requested meanwhile
+    never carries an approval for the item;
+  - a refusal pauses the tool for 60 seconds, a call names at most 10
+    references, and commands run in their own process group, killed whole at
+    the time limit (600 seconds at most) or when the client closes its
+    input;
   - the server cannot write to the vault: it has no tool that creates or
     changes an item;
-  - limits: a command the user approved can do anything with the values it
-    gets (the mask does not see a value it transforms, such as encoded or
-    split text); the approval shows the reason, not the command line;
-    `verrou_run` stops a command at its time limit but does not confine it;
+  - limits, plainly: **approving a command an agent chose can give the
+    agent the value.** The mask hides exact values only; a command that
+    prints one encoded, reversed or split, or sends it elsewhere, gets it
+    out, and a prompt-injected agent can choose such a command. The only
+    defence is the human reading the *Command* line and refusing what they
+    do not understand. `verrou_run` stops a command at its time limit but
+    does not confine it (no sandbox, same user, full network);
   - the hooks are a guard rail, not a sandbox: they refuse the obvious ways
     an agent could read `.env` files, private keys, cloud credentials or
-    token variables into its context, and point it to `verrou run`; a
-    determined agent can get around them, and a hook that cannot read its
-    input allows the call. They add no network connection and read no vault.
+    token variables into its context (through the usual wrappers, `sh -c`,
+    a few interpreters' one-liners and `git show`), refuse `verrou get`,
+    `verrou totp` and `verrou run --no-masking`, and point it to `verrou
+    run`; a determined agent can get around them, and a hook that cannot
+    read its input allows the call. They add no network connection and read
+    no vault. The installer runs this `verrou` by its absolute path, writes
+    the agent's settings through a temporary file and a rename keeping the
+    permissions, and refuses a symbolic link in a project.
 - **SSH keys**: the private key (OpenSSH, as Vaultwarden keeps it) never
   leaves the app. Verrou signs (RustCrypto's `ssh-key` crate) and only
   returns the signature; the agent only sees the public keys. Keys

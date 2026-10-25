@@ -200,6 +200,12 @@ enum RemoteApproval {
         /// (`password, url, −Old token`: `−` for a removed one), never a
         /// value. Additive: absent from older Macs, ignored by older iPhones.
         var changes: String? = nil
+        /// An AI agent's request: the command line it wants to run and the
+        /// secret fields it gets (cleaned by the bridge). Shown apart from
+        /// the reason, which is only the agent's claim. Additive: absent
+        /// from older Macs and for anything but an agent.
+        var command: String? = nil
+        var fields: String? = nil
     }
 
     /// A request as it travels: the Mac's ephemeral public key, the sealed

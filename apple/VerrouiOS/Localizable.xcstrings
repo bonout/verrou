@@ -5209,6 +5209,34 @@
         }
       }
     },
+    "Approve only a command you understand: it receives the values.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "N’approuvez qu’une commande que vous comprenez : elle reçoit les valeurs."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genehmigen Sie nur einen Befehl, den Sie verstehen: Er erhält die Werte."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apruebe solo un comando que entienda: recibe los valores."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvate solo un comando che capite: riceve i valori."
+          }
+        }
+      }
+    },
     "Approved": {
       "localizations": {
         "fr": {
@@ -7137,6 +7165,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Riga di comando"
+          }
+        }
+      }
+    },
+    "Command: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commande : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehl: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando: %@"
           }
         }
       }
@@ -10609,6 +10665,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nome del campo"
+          }
+        }
+      }
+    },
+    "Fields: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Champs : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Felder: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campos: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campi: %@"
           }
         }
       }
@@ -23573,6 +23657,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "La finestra del Mac resta bloccata; la cassaforte si blocca di nuovo 5 minuti dopo l'ultima approvazione."
+          }
+        }
+      }
+    },
+    "The agent says: “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agent dit : « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Agent sagt: „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El agente dice: “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agente dice: “%@”"
           }
         }
       }

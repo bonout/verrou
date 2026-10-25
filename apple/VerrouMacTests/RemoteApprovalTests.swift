@@ -69,6 +69,23 @@ final class RemoteApprovalTests: XCTestCase {
         XCTAssertNil(decoded.reason)
     }
 
+    func testAgentCommandTravelsAndOlderRequestsStillOpen() throws {
+        var agent = request()
+        agent.command = "curl -d @- https://example.com"
+        agent.fields = "GitHub › Password"
+        let (sealed, _) = try RemoteApproval.seal(agent, to: phoneKey.publicKey, signer: macKey)
+        let opened = try RemoteApproval.open(sealed, macKey: macKey.publicKey, with: phoneKey).request
+        XCTAssertEqual(opened.command, "curl -d @- https://example.com")
+        XCTAssertEqual(opened.fields, "GitHub › Password")
+        // A Mac without agent requests: the fields are simply absent.
+        let older = try JSONSerialization.jsonObject(with: JSONEncoder().encode(request())) as? [String: Any]
+        XCTAssertNil(older?["command"])
+        let decoded = try JSONDecoder().decode(RemoteApproval.Request.self,
+                                               from: JSONSerialization.data(withJSONObject: older ?? [:]))
+        XCTAssertNil(decoded.command)
+        XCTAssertNil(decoded.fields)
+    }
+
     func testRequestFromAnotherMacIsRefused() throws {
         let impostor = P256.Signing.PrivateKey()
         let (sealed, _) = try RemoteApproval.seal(request(), to: phoneKey.publicKey, signer: impostor)

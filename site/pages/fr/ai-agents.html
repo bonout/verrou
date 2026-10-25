@@ -41,7 +41,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <p><code>verrou mcp</code> est un serveur MCP que Claude Code, Codex et Cursor peuvent utiliser (<code>claude mcp add verrou -- verrou mcp</code>). L'agent trouve des éléments et obtient des références, jamais des valeurs ; pour en utiliser une, il la demande à Verrou, et vous validez.</p>
   <ul>
     <li><strong>Des noms, jamais des valeurs.</strong> L'agent voit les titres, les noms de champs et les références <code>verrou://</code>. Il lance des commandes avec les secrets injectés et reçoit leur sortie masquée.</li>
-    <li><strong>Chaque usage validé.</strong> Vous voyez le nom de l'agent et son motif.</li>
+    <li><strong>Chaque appel validé à part.</strong> Verrou montre la ligne de commande et les champs qu’elle reçoit, et séparément ce que l’agent dit vouloir faire. N’approuvez que des commandes que vous comprenez : le masque ne cache que les valeurs exactes, donc une commande choisie par l’agent peut tout de même lui donner une valeur.</li>
     <li><strong>Un garde-fou.</strong> <code>verrou hook install</code> empêche l'agent de lire de lui-même les fichiers <code>.env</code> et les clés privées, et le renvoie vers <code>verrou run</code>.</li>
   </ul>
 

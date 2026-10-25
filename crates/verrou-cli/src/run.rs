@@ -77,10 +77,24 @@ fn percent_encode(text: &str) -> String {
 }
 
 /// The field a reference names: by its id (`password`, `custom-0`), else by
-/// its label, as shown in the app (`API token`), ignoring case.
+/// the label of the one custom field that has it (`API token`), ignoring
+/// case. A custom field never takes the place of a built-in one: a label
+/// is only looked at among custom fields, and not at all if a built-in
+/// field is called that (by id or by label, case aside).
 pub fn find_field<'a>(fields: &'a [FieldView], name: &str) -> Option<&'a FieldView> {
     fields.iter().find(|f| f.id == name).or_else(|| {
-        let mut by_label = fields.iter().filter(|f| f.label.eq_ignore_ascii_case(name));
+        let custom = |f: &&FieldView| f.id.starts_with("custom-");
+        let builtin_named = fields
+            .iter()
+            .filter(|f| !custom(f))
+            .any(|f| f.id.eq_ignore_ascii_case(name) || f.label.eq_ignore_ascii_case(name));
+        if builtin_named {
+            return None;
+        }
+        let mut by_label = fields
+            .iter()
+            .filter(custom)
+            .filter(|f| f.label.eq_ignore_ascii_case(name));
         // Two fields with the same label: the id must say which.
         by_label.next().filter(|_| by_label.next().is_none())
     })
@@ -317,6 +331,12 @@ mod tests {
         assert_eq!(find_field(&fields, "api token").unwrap().id, "custom-0");
         assert_eq!(find_field(&fields, "custom-2").unwrap().id, "custom-2");
         assert!(find_field(&fields, "Twin").is_none());
+        // A built-in field is only named by its id, and a custom field
+        // labelled like one never shadows it.
+        assert!(find_field(&fields, "Password").is_none());
+        let mut shadow = fields.to_vec();
+        shadow.push(field("custom-3", "password"));
+        assert_eq!(find_field(&shadow, "password").unwrap().id, "password");
         assert!(find_field(&fields, "missing").is_none());
     }
 

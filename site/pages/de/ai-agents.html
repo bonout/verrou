@@ -41,7 +41,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <p><code>verrou mcp</code> ist ein MCP-Server, den Claude Code, Codex und Cursor nutzen können (<code>claude mcp add verrou -- verrou mcp</code>). Der Agent findet Einträge und erhält Referenzen, nie Werte; um eine zu verwenden, fragt er Verrou, und Sie bestätigen.</p>
   <ul>
     <li><strong>Namen, nie Werte.</strong> Der Agent sieht Titel, Feldnamen und <code>verrou://</code>-Referenzen. Er startet Befehle mit eingesetzten Geheimnissen und erhält deren Ausgabe maskiert.</li>
-    <li><strong>Jede Nutzung bestätigt.</strong> Sie sehen den Namen des Agenten und seinen Grund.</li>
+    <li><strong>Jeder Aufruf einzeln bestätigt.</strong> Verrou zeigt die Befehlszeile und die Felder, die sie erhält, und getrennt davon, wofür der Agent sie angeblich braucht. Genehmigen Sie nur Befehle, die Sie verstehen: Die Maskierung verbirgt nur exakte Werte, ein vom Agenten gewählter Befehl kann ihm also trotzdem einen Wert liefern.</li>
     <li><strong>Eine Leitplanke.</strong> <code>verrou hook install</code> hindert den Agenten daran, von sich aus <code>.env</code>-Dateien und private Schlüssel zu lesen, und verweist ihn auf <code>verrou run</code>.</li>
   </ul>
 

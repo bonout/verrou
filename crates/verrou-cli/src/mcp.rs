@@ -2,36 +2,47 @@
 //! coding agents, over stdio.
 //!
 //! The rule that shapes everything here: **a secret's value never reaches
-//! the model**. The agent gets titles, field names, `verrou://` references
-//! and the masked output of a command; it asks Verrou to use a secret
-//! (`verrou_run`), and a human
-//! approves each use in Verrou, with the reason the agent declared and its
-//! name in front of it ("Claude Code: deploy to staging"). A prompt-injected
-//! agent can therefore only ask.
+//! the model on its own**. The agent gets titles, field names, `verrou://`
+//! references and the masked output of a command; it asks Verrou to use a
+//! secret (`verrou_run`), and a human approves each use in Verrou.
+//!
+//! What the approval is worth, said plainly: the user sees the **command
+//! line** and the fields it receives (what will really happen), and apart
+//! from them the agent's own reason, prefixed with the name the client gave
+//! in its handshake ("Claude Code: deploy to staging"; self-declared, so
+//! only as trustworthy as the client). The masker only hides exact values:
+//! a command that prints a value encoded, reversed or split, or sends it
+//! somewhere, gets it out, and so does the agent's next call if the user
+//! approves it. **Approving a command the agent chose can hand the agent
+//! the value**; the user should approve only commands they understand. What
+//! the design guarantees is that nothing happens without that decision:
+//! every `verrou_run` is approved on its own, never reusing an approval
+//! given earlier to `verrou run` or `verrou get` ([`Remote::ephemeral`]),
+//! needs at least one reference to a secret field, and a refusal pauses the
+//! tool for a minute.
 //!
 //! This is a client of the bridge like `verrou run`, paired with `verrou
 //! link`: the approvals (Touch ID, or the paired iPhone) are the app's, and
 //! the CLI's own checks are a second line, not the first. Two layers keep a
-//! value out of the output even if something went wrong upstream: the
+//! value out of the output when nothing went wrong on purpose: the
 //! command's output is masked as `verrou run` does, and every text sent to
-//! the client goes once more through a masker holding every secret this
-//! session has handled (errors included).
+//! the client goes once more through a masker holding the secret values
+//! this session has handled (each string of a result, errors included).
 //!
 //! Transport: JSON-RPC 2.0, one message per line on stdin and stdout, as the
 //! specification says for stdio (2025-06-18 and 2025-11-25); logs, if any,
 //! go to stderr. The tools are the whole surface: no resources, no prompts.
 
-use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
 use verrou_bridge::protocol::{
-    Command as Ask, FieldView, ItemView, ReplyResult, UnlockIntent, clean_reason,
+    Command as Ask, ItemView, ReplyResult, RunDetail, clean_reason, command_line,
 };
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions};
@@ -50,7 +61,12 @@ pub const SUPPORTED_VERSIONS: [&str; 2] = ["2025-06-18", "2025-11-25"];
 pub const MAX_OUTPUT: usize = 32 * 1024;
 /// `verrou_run`'s default and maximum time limit, in seconds.
 const DEFAULT_TIMEOUT: u64 = 300;
-const MAX_TIMEOUT: u64 = 3600;
+const MAX_TIMEOUT: u64 = 600;
+/// Most references one `verrou_run` may ask for.
+const MAX_REFERENCES: usize = 10;
+/// After a refusal in Verrou, `verrou_run` waits this long: an agent that
+/// is told no should not be able to ask again at once, and again.
+const REFUSAL_PAUSE: Duration = Duration::from_secs(60);
 /// Results of `verrou_search`: default and maximum.
 const DEFAULT_RESULTS: u64 = 10;
 const MAX_RESULTS: u64 = 25;
@@ -62,10 +78,12 @@ const MAX_CLIENT_NAME: usize = 40;
 const INSTRUCTIONS: &str = "Verrou is the user's password manager. You never see a secret's value: \
 you see item titles, field names and references of the form verrou://<Item>/<field> (an item or \
 field name with a slash or a space is percent-encoded). To use secrets, call verrou_run with an \
-env map from variable names to references: the command runs with the values in its environment and \
-you get its output with the values masked. Every use is approved by the user in Verrou, who sees \
-the reason you give: say what you are doing and why, in one short sentence. Do not \
-try to read, print, encode or exfiltrate a secret; the user approves each use.";
+env map from variable names to references, at least one of them to a secret field: the command runs \
+with the values in its environment and you get its output with the values masked. Every call is \
+approved by the user in Verrou, who sees the command line and the fields, and separately the reason \
+you give: say what you are doing and why, in one short sentence. Run only the command you say you \
+run. Do not try to read, print, encode or exfiltrate a secret; the user approves each use, and a \
+refusal pauses this tool for a minute.";
 
 // MARK: Gateway
 
@@ -81,12 +99,42 @@ pub trait Gateway {
         kind: Option<ItemKind>,
         limit: u32,
     ) -> Result<Vec<ItemView>, String>;
-    /// The value of each reference, in order, after the user's approval.
+    /// What each reference names, exactly (an item identifier, or a title that
+    /// only one item has; a field identifier, or a label that only one
+    /// custom field has), and whether the field is secret. No approval, no
+    /// secret value.
+    fn inspect(&mut self, references: &[Reference]) -> Result<Vec<Target>, String>;
+    /// The value of each target, in order, after the user's approval of
+    /// this request alone. `reason` is already cleaned and prefixed with the
+    /// client's name; `detail` is what will run.
     fn resolve(
         &mut self,
         reason: &str,
-        references: &[(String, Reference)],
-    ) -> Result<Vec<Zeroizing<String>>, String>;
+        detail: &RunDetail,
+        targets: &[Target],
+    ) -> Result<Vec<Zeroizing<String>>, Failure>;
+}
+
+/// A reference, resolved exactly.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Target {
+    pub item_id: String,
+    pub field_id: String,
+    pub title: String,
+    pub label: String,
+    /// A secret field: password, hidden custom field, notes, one-time code,
+    /// card number or code, SSH private key.
+    pub secret: bool,
+    /// The value of a field that is not secret (the vault shows it anyway).
+    pub plain: Option<String>,
+}
+
+/// Why a [`Gateway::resolve`] failed.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Failure {
+    pub message: String,
+    /// The user said no in Verrou.
+    pub refused: bool,
 }
 
 /// The state of the link, for `verrou_status`.
@@ -125,7 +173,11 @@ impl BridgeGateway {
         }
         let remote = self.remote.as_mut().ok_or("not connected")?;
         remote.reason = reason.map(str::to_owned);
+        // Never an unlock that also approves an item: the approval of an
+        // agent's request is asked on its own, showing the command.
         remote.intent = None;
+        remote.ephemeral = true;
+        remote.detail = None;
         Ok(remote)
     }
 
@@ -145,8 +197,15 @@ impl BridgeGateway {
     }
 }
 
+/// Only the kind of reply, never its content: a `Secret` reply must not
+/// be printed anywhere.
 fn unexpected(reply: &ReplyResult) -> Error {
-    Error::Protocol(format!("unexpected reply from Verrou: {reply:?}"))
+    let debug = format!("{reply:?}");
+    let kind = debug
+        .split(|c: char| !c.is_alphanumeric())
+        .next()
+        .unwrap_or("?");
+    Error::Protocol(format!("unexpected reply from Verrou: {kind}"))
 }
 
 impl Gateway for BridgeGateway {
@@ -207,100 +266,177 @@ impl Gateway for BridgeGateway {
         })
     }
 
+    fn inspect(&mut self, references: &[Reference]) -> Result<Vec<Target>, String> {
+        self.with(None, |remote| {
+            references
+                .iter()
+                .map(|reference| target_of(remote, reference))
+                .collect()
+        })
+    }
+
     fn resolve(
         &mut self,
         reason: &str,
-        references: &[(String, Reference)],
-    ) -> Result<Vec<Zeroizing<String>>, String> {
-        let mut items: HashMap<String, ItemView> = HashMap::new();
+        detail: &RunDetail,
+        targets: &[Target],
+    ) -> Result<Vec<Zeroizing<String>>, Failure> {
         let mut values = Vec::new();
-        for (name, reference) in references {
+        for target in targets {
             let value = self.with(Some(reason), |remote| {
-                remote.intent = Some(UnlockIntent {
-                    item: reference.item.clone(),
-                    field: reference.field.clone(),
-                });
-                if !items.contains_key(&reference.item) {
-                    let ReplyResult::Item { item } = remote.ask(&Ask::VaultItem {
-                        query: reference.item.clone(),
-                    })?
-                    else {
-                        return Err(Error::Protocol("unexpected reply".to_owned()));
-                    };
-                    items.insert(reference.item.clone(), item);
-                }
-                field_value(remote, &items[&reference.item], &reference.field)
+                remote.detail = Some(detail.clone());
+                target_value(remote, target)
             });
-            values.push(Zeroizing::new(value.map_err(|e| format!("{name}: {e}"))?));
+            match value {
+                Ok(value) => values.push(Zeroizing::new(value)),
+                Err(message) => {
+                    return Err(Failure {
+                        refused: message.starts_with("refused"),
+                        message,
+                    });
+                }
+            }
         }
         Ok(values)
     }
 }
 
-/// A field's value: visible in the item, or asked of Verrou (approval).
-/// The field is named by its id (`password`, `custom-0`) or its label.
-fn field_value(remote: &mut Remote, item: &ItemView, field: &str) -> Result<String, Error> {
-    let title = &item.summary.title;
-    let missing = |what: &str| Error::Denied(format!("\"{title}\" has no {what}"));
-    let secret = |remote: &mut Remote, id: &str| match remote.ask(&Ask::Reveal {
-        item: item.summary.id.clone(),
-        field: id.to_owned(),
-    })? {
-        ReplyResult::Secret(secret) => Ok(secret.value.clone()),
-        other => Err(unexpected(&other)),
+/// The item a reference names, exactly: the identifier, otherwise the one
+/// item with that title. No fuzzy match: what the user is shown and what
+/// the agent gets must be the same item.
+fn exact_item(remote: &mut Remote, name: &str) -> Result<ItemView, Error> {
+    match remote.ask(&Ask::VaultItem {
+        query: name.to_owned(),
+    }) {
+        // `find` falls back to a search: only the identifier counts.
+        Ok(ReplyResult::Item { item }) if item.summary.id == name => return Ok(item),
+        Ok(_) | Err(Error::Denied(_)) => {}
+        Err(other) => return Err(other),
+    }
+    let found = remote.ask(&Ask::VaultSearch {
+        query: name.to_owned(),
+        kind: None,
+        favorites: false,
+        limit: None,
+    })?;
+    let ReplyResult::Items { items, .. } = found else {
+        return Err(unexpected(&found));
     };
-    if field == "totp" {
-        if !item.summary.has_totp {
-            return Err(missing("one-time code"));
-        }
-        return match remote.ask(&Ask::Totp {
-            item: item.summary.id.clone(),
-        })? {
-            ReplyResult::Code { code, .. } => Ok(code),
-            other => Err(unexpected(&other)),
+    let mut exact = items.iter().filter(|i| i.title == name);
+    let (Some(first), None) = (exact.next(), exact.next()) else {
+        let message = if items.iter().any(|i| i.title == name) {
+            format!("several items are titled \"{name}\": use the identifier from verrou_search")
+        } else {
+            format!("no item with the identifier or exact title \"{name}\"")
         };
+        return Err(Error::Denied(message));
+    };
+    match remote.ask(&Ask::VaultItem {
+        query: first.id.clone(),
+    })? {
+        ReplyResult::Item { item } if item.summary.id == first.id => Ok(item),
+        other => Err(unexpected(&other)),
     }
-    if field == "notes" {
-        if !item.has_notes {
-            return Err(missing("notes"));
+}
+
+fn target_of(remote: &mut Remote, reference: &Reference) -> Result<Target, Error> {
+    let item = exact_item(remote, &reference.item)?;
+    let title = item.summary.title.clone();
+    let missing = |what: &str| Error::Denied(format!("\"{title}\" has no {what}"));
+    let (field_id, label, secret, plain) = match reference.field.as_str() {
+        "totp" => {
+            if !item.summary.has_totp {
+                return Err(missing("one-time code"));
+            }
+            ("totp".to_owned(), "One-time code".to_owned(), true, None)
         }
-        return secret(remote, "notes");
+        "notes" => {
+            if !item.has_notes {
+                return Err(missing("notes"));
+            }
+            ("notes".to_owned(), "Notes".to_owned(), true, None)
+        }
+        name => {
+            let found = run::find_field(&item.fields, name)
+                .ok_or_else(|| missing(&format!("field \"{name}\"")))?;
+            (
+                found.id.clone(),
+                found.label.clone(),
+                found.secret,
+                found.value.clone().filter(|_| !found.secret),
+            )
+        }
+    };
+    Ok(Target {
+        item_id: item.summary.id,
+        field_id,
+        title,
+        label,
+        secret,
+        plain,
+    })
+}
+
+/// A target's value: a plain field's as the vault shows it, a secret one
+/// asked of Verrou, which asks the user (for this request alone).
+fn target_value(remote: &mut Remote, target: &Target) -> Result<String, Error> {
+    if let Some(value) = &target.plain {
+        return Ok(value.clone());
     }
-    let found = run::find_field(&item.fields, field)
-        .ok_or_else(|| missing(&format!("field \"{field}\"")))?;
-    match &found.value {
-        Some(value) => Ok(value.clone()),
-        None => secret(remote, &found.id),
+    let asked = match target.field_id.as_str() {
+        "totp" => remote.ask(&Ask::Totp {
+            item: target.item_id.clone(),
+        })?,
+        id => remote.ask(&Ask::Reveal {
+            item: target.item_id.clone(),
+            field: id.to_owned(),
+        })?,
+    };
+    match asked {
+        ReplyResult::Secret(secret) => Ok(secret.value.clone()),
+        ReplyResult::Code { code, .. } => Ok(code),
+        other => Err(unexpected(&other)),
     }
 }
 
 // MARK: Server
 
-/// One MCP session. Holds the client's name (shown in approvals) and the
-/// secrets handled so far, to scrub whatever is sent back.
+/// One MCP session. Holds the client's name (shown in approvals, declared by
+/// the client itself: it proves nothing) and the secret values handled so
+/// far, to scrub whatever is sent back.
 pub struct Server<G: Gateway> {
     gateway: G,
     client: String,
     secrets: Vec<Zeroizing<String>>,
+    /// `verrou_run` is paused until then, after a refusal.
+    paused_until: Option<Instant>,
+    /// The client closed its input ([`serve`]): a command it was waiting
+    /// for is killed.
+    gone: Arc<AtomicBool>,
 }
 
-/// A tool's outcome: the text for the model, and whether it is an error.
+/// A tool's outcome: what goes to the model, and whether it is an error.
 struct Outcome {
-    text: String,
+    payload: Payload,
     error: bool,
+}
+
+enum Payload {
+    Json(Value),
+    Text(String),
 }
 
 impl Outcome {
     fn ok(value: &Value) -> Self {
         Self {
-            text: value.to_string(),
+            payload: Payload::Json(value.clone()),
             error: false,
         }
     }
 
     fn err(message: impl Into<String>) -> Self {
         Self {
-            text: message.into(),
+            payload: Payload::Text(message.into()),
             error: true,
         }
     }
@@ -312,6 +448,8 @@ impl<G: Gateway> Server<G> {
             gateway,
             client: String::new(),
             secrets: Vec::new(),
+            paused_until: None,
+            gone: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -385,8 +523,17 @@ impl<G: Gateway> Server<G> {
             "verrou_generate_password" => generate(arguments),
             other => return Err((-32602, format!("unknown tool: {other}"))),
         };
+        // Each string of a result is scrubbed before it is serialized: a value
+        // JSON would escape (a quote, a backslash) is still found.
+        let text = match outcome.payload {
+            Payload::Text(text) => self.scrub(&text),
+            Payload::Json(mut value) => {
+                self.scrub_value(&mut value);
+                value.to_string()
+            }
+        };
         Ok(json!({
-            "content": [{ "type": "text", "text": self.scrub(&outcome.text) }],
+            "content": [{ "type": "text", "text": text }],
             "isError": outcome.error,
         }))
     }
@@ -418,6 +565,21 @@ impl<G: Gateway> Server<G> {
         let mut out = masker.feed(text.as_bytes());
         out.extend(masker.finish());
         String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn scrub_value(&self, value: &mut Value) {
+        match value {
+            Value::String(text) => *text = self.scrub(text),
+            Value::Array(list) => list.iter_mut().for_each(|v| self.scrub_value(v)),
+            Value::Object(map) => {
+                let entries = std::mem::take(map);
+                for (key, mut entry) in entries {
+                    self.scrub_value(&mut entry);
+                    map.insert(self.scrub(&key), entry);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn status(&mut self) -> Outcome {
@@ -457,6 +619,15 @@ impl<G: Gateway> Server<G> {
     }
 
     fn run(&mut self, arguments: &Value) -> Outcome {
+        if let Some(until) = self.paused_until {
+            if Instant::now() < until {
+                return Outcome::err(format!(
+                    "the user refused a request a moment ago: wait {} seconds before asking again, and ask the user what they want",
+                    until.saturating_duration_since(Instant::now()).as_secs() + 1
+                ));
+            }
+            self.paused_until = None;
+        }
         let request = match RunRequest::parse(arguments) {
             Ok(request) => request,
             Err(message) => return Outcome::err(message),
@@ -465,20 +636,48 @@ impl<G: Gateway> Server<G> {
             Ok(reason) => reason,
             Err(outcome) => return outcome,
         };
-        let references: Vec<(String, Reference)> = request.env.clone();
-        let values = match self.gateway.resolve(&reason, &references) {
-            Ok(values) => values,
+        let references: Vec<Reference> = request.env.iter().map(|(_, r)| r.clone()).collect();
+        let targets = match self.gateway.inspect(&references) {
+            Ok(targets) => targets,
             Err(e) => return Outcome::err(e),
         };
-        let secrets: Vec<(String, Zeroizing<String>)> = references
-            .iter()
-            .map(|(name, _)| name.clone())
-            .zip(values)
-            .collect();
-        for (_, value) in &secrets {
-            self.secrets.push(value.clone());
+        if !targets.iter().any(|t| t.secret) {
+            // A run with only plain values (a username, a site) would ask
+            // nobody: this tool must not be a way to run a command unseen.
+            return Outcome::err(
+                "at least one reference must name a secret field (password, hidden field, notes, one-time code, card number…): a run with only plain values is not approved by anyone; run it in your own shell",
+            );
         }
-        match execute(&request, &secrets) {
+        // What the user will see: the command line, and the secret fields.
+        let detail = RunDetail {
+            command: command_line(&request.command),
+            fields: targets
+                .iter()
+                .filter(|t| t.secret)
+                .map(|t| format!("{} › {}", t.title, t.label))
+                .collect(),
+        };
+        let values = match self.gateway.resolve(&reason, &detail, &targets) {
+            Ok(values) => values,
+            Err(failure) => {
+                if failure.refused {
+                    self.paused_until = Some(Instant::now() + REFUSAL_PAUSE);
+                }
+                return Outcome::err(failure.message);
+            }
+        };
+        let mut env = Vec::new();
+        let mut masked = Vec::new();
+        for (((name, _), target), value) in request.env.iter().zip(&targets).zip(values) {
+            // Only secret values are masked: a username the command prints
+            // is not a leak, and masking it would garble the output.
+            if target.secret {
+                masked.push(value.clone());
+            }
+            env.push((name.clone(), value));
+        }
+        self.secrets.extend(masked.iter().cloned());
+        match execute(&request, &env, &masked, &self.gone) {
             Ok(result) => Outcome::ok(&result),
             Err(e) => Outcome::err(e),
         }
@@ -540,27 +739,18 @@ fn search_result(items: &[ItemView]) -> Value {
         .iter()
         .map(|item| {
             let summary = &item.summary;
-            // A title shared by several results can't name one: the id does.
-            let shared = items
-                .iter()
-                .filter(|other| other.summary.title == summary.title)
-                .count()
-                > 1;
-            let name = if shared { &summary.id } else { &summary.title };
             let mut fields: Vec<Value> = item
                 .fields
                 .iter()
                 .filter(|f| !f.id.starts_with("history-") && !f.id.starts_with("verrou:"))
                 .map(|f| {
-                    let by = if f.id.starts_with("custom-") && !label_repeats(&item.fields, f) {
-                        &f.label
-                    } else {
-                        &f.id
-                    };
+                    // Titles and labels are for reading; the reference names
+                    // the item and the field by identifier, so that what the
+                    // user approves is exactly what the agent got.
                     json!({
                         "name": f.label,
                         "secret": f.secret,
-                        "reference": Reference { item: name.clone(), field: by.clone() }.to_uri(),
+                        "reference": Reference { item: summary.id.clone(), field: f.id.clone() }.to_uri(),
                     })
                 })
                 .collect();
@@ -568,7 +758,7 @@ fn search_result(items: &[ItemView]) -> Value {
                 fields.push(json!({
                     "name": "Notes",
                     "secret": true,
-                    "reference": Reference { item: name.clone(), field: "notes".to_owned() }.to_uri(),
+                    "reference": Reference { item: summary.id.clone(), field: "notes".to_owned() }.to_uri(),
                 }));
             }
             let username = item
@@ -588,10 +778,6 @@ fn search_result(items: &[ItemView]) -> Value {
         })
         .collect();
     json!({ "items": list })
-}
-
-fn label_repeats(fields: &[FieldView], field: &FieldView) -> bool {
-    fields.iter().filter(|f| f.label == field.label).count() > 1
 }
 
 // MARK: Running a command
@@ -652,6 +838,9 @@ impl RunRequest {
                 "\"env\" needs at least one verrou:// reference; run commands without secrets in your own shell"
                     .to_owned(),
             );
+        }
+        if env.len() > MAX_REFERENCES {
+            return Err(format!("at most {MAX_REFERENCES} references per call"));
         }
         let timeout = arguments
             .get("timeout_seconds")
@@ -728,7 +917,13 @@ impl Write for SharedTail {
 /// Runs the command with the secrets in its environment, no shell. Its
 /// output goes through the same masker as `verrou run`, then is cut to its
 /// end ([`MAX_OUTPUT`]). A command that outlives the time limit is killed.
-fn execute(request: &RunRequest, secrets: &[(String, Zeroizing<String>)]) -> Result<Value, String> {
+#[allow(clippy::too_many_lines)] // spawn, pumps, wait, result: one story
+fn execute(
+    request: &RunRequest,
+    env: &[(String, Zeroizing<String>)],
+    masked: &[Zeroizing<String>],
+    gone: &AtomicBool,
+) -> Result<Value, String> {
     let (program, arguments) = request
         .command
         .split_first()
@@ -742,10 +937,17 @@ fn execute(request: &RunRequest, secrets: &[(String, Zeroizing<String>)]) -> Res
     if let Some(cwd) = &request.cwd {
         child.current_dir(cwd);
     }
-    for (name, value) in secrets {
+    for (name, value) in env {
         child.env(name, value.as_str());
     }
+    // Its own process group: what it starts goes down with it.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt as _;
+        child.process_group(0);
+    }
     let mut child = child.spawn().map_err(|e| format!("{program}: {e}"))?;
+    let group = child.id();
     let (done, finished) = mpsc::channel();
     let tails = [
         SharedTail(Arc::new(Mutex::new(Tail::new(MAX_OUTPUT)))),
@@ -757,21 +959,28 @@ fn execute(request: &RunRequest, secrets: &[(String, Zeroizing<String>)]) -> Res
     ];
     for (stream, tail) in streams.into_iter().zip(&tails) {
         let Some(stream) = stream else { continue };
-        let masker = Masker::new(secrets.iter().map(|(_, v)| v.as_str()));
+        let scrubber = Masker::new(masked.iter().map(|v| v.as_str()));
         let (tail, done) = (tail.clone(), done.clone());
         std::thread::spawn(move || {
-            let _ = run::pump(stream, tail, masker);
+            let _ = run::pump(stream, tail, scrubber);
             let _ = done.send(());
         });
     }
     drop(done);
     let start = Instant::now();
     let mut timed_out = false;
+    // An input already closed when the command starts (a script that sent
+    // its request and left) is not "the client went away".
+    let was_gone = gone.load(Ordering::SeqCst);
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if start.elapsed() >= request.timeout => {
-                timed_out = true;
+            Ok(None)
+                if start.elapsed() >= request.timeout
+                    || (!was_gone && gone.load(Ordering::SeqCst)) =>
+            {
+                timed_out = start.elapsed() >= request.timeout;
+                kill_group(group);
                 let _ = child.kill();
                 break child.wait().map_err(|e| format!("{program}: {e}"))?;
             }
@@ -817,9 +1026,26 @@ fn execute(request: &RunRequest, secrets: &[(String, Zeroizing<String>)]) -> Res
             request.timeout.as_secs()
         ));
     }
+    if !was_gone && gone.load(Ordering::SeqCst) && !timed_out {
+        notes.push("stopped: the client closed the connection".to_owned());
+    }
     notes.push("secrets are replaced by <concealed by Verrou>".to_owned());
     result["note"] = Value::String(notes.join("; "));
     Ok(result)
+}
+
+/// Kills a whole process group (`kill -s KILL -- -PGID`: no unsafe code
+/// here). Nothing to do where there are none.
+fn kill_group(group: u32) {
+    #[cfg(unix)]
+    let _ = std::process::Command::new("kill")
+        .args(["-s", "KILL", "--"])
+        .arg(format!("-{group}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    #[cfg(not(unix))]
+    let _ = group;
 }
 
 /// The exit code; killed by a signal: 128 + the signal, as a shell says it.
@@ -867,7 +1093,7 @@ fn tools() -> Value {
         {
             "name": "verrou_run",
             "title": "Run a command with secrets",
-            "description": "Run a command (no shell) with secrets in its environment. env maps variable names to verrou://<item>/<field> references; the user approves in Verrou, seeing your reason. Returns exit_code, stdout and stderr with every secret value replaced by <concealed by Verrou>, the last 32 KB of each. At least one reference is required; run other commands in your own shell. To use a shell, pass it as the program (for example [\"sh\", \"-c\", \"...\"]).",
+            "description": "Run a command (no shell) with secrets in its environment. env maps variable names to verrou://<item>/<field> references; the user approves in Verrou, seeing your reason. Returns exit_code, stdout and stderr with every secret value replaced by <concealed by Verrou>, the last 32 KB of each. At least one reference to a secret field is required; run other commands in your own shell. The user sees the command line and the fields in the approval, and approves each call on its own: run only what you say you run. A command that prints a value encoded, reversed or split is not masked. To use a shell, pass it as the program (for example [\"sh\", \"-c\", \"...\"]).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -875,7 +1101,7 @@ fn tools() -> Value {
                     "env": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^verrou://" }, "description": "Variable name to verrou://<item>/<field> reference." },
                     "cwd": { "type": "string", "description": "Working directory (default: the server's)." },
                     "reason": reason,
-                    "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "description": "Default 300, at most 3600." }
+                    "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": MAX_TIMEOUT, "description": "Default 300, at most 600." }
                 },
                 "required": ["command", "env", "reason"],
                 "additionalProperties": false
@@ -902,13 +1128,25 @@ fn tools() -> Value {
 // MARK: Loop
 
 /// Serves one client: a line in, at most a line out, until the input ends
-/// (the client closing its side is the shutdown).
+/// (the client closing its side is the shutdown). The input is read on a
+/// thread of its own, so that a client that goes away while a command runs
+/// is noticed and the command (with what it started) is killed.
 pub fn serve<G: Gateway>(
-    input: impl BufRead,
+    input: impl BufRead + Send + 'static,
     mut output: impl Write,
     server: &mut Server<G>,
 ) -> io::Result<()> {
-    for line in input.lines() {
+    let (lines, incoming) = mpsc::channel();
+    let gone = Arc::clone(&server.gone);
+    std::thread::spawn(move || {
+        for line in input.lines() {
+            if lines.send(line).is_err() {
+                return;
+            }
+        }
+        gone.store(true, Ordering::SeqCst);
+    });
+    for line in incoming {
         let line = line?;
         if line.trim().is_empty() {
             continue;
@@ -925,17 +1163,30 @@ pub fn serve<G: Gateway>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use verrou_bridge::protocol::ItemSummary;
+    use verrou_bridge::protocol::{FieldView, ItemSummary};
 
-    /// A fake that records what it is asked, and "has" one password.
+    /// A fake that records what it is asked, and "has" one password. A
+    /// reference to a field named in `plain` is a plain one (a username).
     #[derive(Default)]
     struct Fake {
-        reasons: Vec<String>,
+        /// (reason, detail) of each approval asked.
+        asked: Vec<(String, RunDetail)>,
         items: Vec<ItemView>,
-        fail: Option<String>,
+        plain: Vec<String>,
+        fail: Option<Failure>,
+        inspected: usize,
     }
 
     const PASSWORD: &str = "correct-horse-9!";
+
+    impl Fake {
+        fn refusing() -> Failure {
+            Failure {
+                message: "refused in Verrou".to_owned(),
+                refused: true,
+            }
+        }
+    }
 
     impl Gateway for Fake {
         fn status(&mut self) -> LinkStatus {
@@ -955,18 +1206,37 @@ mod tests {
             Ok(self.items.clone())
         }
 
+        fn inspect(&mut self, references: &[Reference]) -> Result<Vec<Target>, String> {
+            self.inspected += 1;
+            Ok(references
+                .iter()
+                .map(|r| {
+                    let plain = self.plain.contains(&r.field);
+                    Target {
+                        item_id: r.item.clone(),
+                        field_id: r.field.clone(),
+                        title: format!("Item {}", r.item),
+                        label: r.field.clone(),
+                        secret: !plain,
+                        plain: plain.then(|| "alice".to_owned()),
+                    }
+                })
+                .collect())
+        }
+
         fn resolve(
             &mut self,
             reason: &str,
-            references: &[(String, Reference)],
-        ) -> Result<Vec<Zeroizing<String>>, String> {
-            self.reasons.push(reason.to_owned());
-            if let Some(message) = &self.fail {
-                return Err(message.clone());
+            detail: &RunDetail,
+            targets: &[Target],
+        ) -> Result<Vec<Zeroizing<String>>, Failure> {
+            self.asked.push((reason.to_owned(), detail.clone()));
+            if let Some(failure) = self.fail.take() {
+                return Err(failure);
             }
-            Ok(references
+            Ok(targets
                 .iter()
-                .map(|_| Zeroizing::new(PASSWORD.to_owned()))
+                .map(|t| Zeroizing::new(t.plain.clone().unwrap_or_else(|| PASSWORD.to_owned())))
                 .collect())
         }
     }
@@ -1106,7 +1376,12 @@ mod tests {
         let mut server = Server::new(Fake::default());
         let input = "\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"ping\"}\n";
         let mut out = Vec::new();
-        serve(input.as_bytes(), &mut out, &mut server).unwrap();
+        serve(
+            std::io::Cursor::new(input.to_owned()),
+            &mut out,
+            &mut server,
+        )
+        .unwrap();
         let out = String::from_utf8(out).unwrap();
         let lines: Vec<&str> = out.lines().collect();
         assert_eq!(lines.len(), 2);
@@ -1156,7 +1431,7 @@ mod tests {
     }
 
     #[test]
-    fn search_gives_names_and_references_never_values() {
+    fn search_gives_names_and_identifier_references_never_values() {
         let mut server = initialized("x");
         server.gateway.items = vec![
             item(
@@ -1184,21 +1459,22 @@ mod tests {
         let body: Value = serde_json::from_str(text(&reply)).unwrap();
         let first = &body["items"][0];
         assert_eq!(first["username"], "camille");
-        let references: Vec<&str> = first["fields"]
-            .as_array()
-            .unwrap()
+        assert_eq!(first["title"], "GitHub/work");
+        let fields = first["fields"].as_array().unwrap();
+        let references: Vec<&str> = fields
             .iter()
             .map(|f| f["reference"].as_str().unwrap())
             .collect();
+        // By identifier: what is displayed (titles, labels) never names the target.
         assert_eq!(
             references,
             [
-                "verrou://GitHub%2Fwork/username",
-                "verrou://GitHub%2Fwork/password",
-                "verrou://GitHub%2Fwork/API%20token"
+                "verrou://id-1/username",
+                "verrou://id-1/password",
+                "verrou://id-1/custom-0"
             ]
         );
-        // Two items with one title: the id says which.
+        assert_eq!(fields[2]["name"], "API token");
         assert_eq!(
             body["items"][1]["fields"][0]["reference"],
             "verrou://id-2/password"
@@ -1219,7 +1495,7 @@ mod tests {
             json!({"command":["true"],"env":{"TOKEN":"plain-value"},"reason":"x"}),
         );
         assert!(message.contains("references"), "{message}");
-        // No secret at all: nothing to approve, so no way around the client's own permissions.
+        // No reference at all: nothing to approve, so no way around the client's own permissions.
         let message = run(
             &mut server,
             json!({"command":["true"],"env":{},"reason":"x"}),
@@ -1236,22 +1512,68 @@ mod tests {
             json!({"command":["true"],"env":{"1BAD":"verrou://A/password"},"reason":"x"}),
         );
         assert!(message.contains("variable name"), "{message}");
+        // Too many references.
+        let env: Map<String, Value> = (0..=MAX_REFERENCES)
+            .map(|i| (format!("V{i}"), json!(format!("verrou://A/f{i}"))))
+            .collect();
+        let message = run(
+            &mut server,
+            json!({"command":["true"],"env":env,"reason":"x"}),
+        );
+        assert!(message.contains("at most"), "{message}");
         assert!(
-            server.gateway.reasons.is_empty(),
+            server.gateway.asked.is_empty(),
             "no approval was asked for any of these"
         );
     }
 
     #[cfg(unix)]
     #[test]
-    fn run_masks_the_secret_and_prefixes_the_reason() {
-        let mut server = initialized("Claude Code");
+    fn a_run_needs_a_reference_to_a_secret_field() {
+        // Only a username: nothing would be approved, so nothing runs.
+        let mut server = initialized("x");
+        server.gateway.plain = vec!["username".to_owned()];
+        let marker = std::env::temp_dir().join(format!("vm-ran-{}", std::process::id()));
         let reply = call(
             &mut server,
             "verrou_run",
             &json!({
-                "command": ["sh", "-c", "echo token=$TOKEN; echo err=$TOKEN >&2; exit 3"],
-                "env": {"TOKEN": "verrou://Staging/token"},
+                "command": ["touch", marker.to_str().unwrap()],
+                "env": {"U": "verrou://GitHub/username"},
+                "reason": "x"
+            }),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(text(&reply).contains("secret field"), "{}", text(&reply));
+        assert!(!marker.exists(), "the command did not run");
+        assert_eq!(server.gateway.asked.len(), 0);
+        // With one secret reference next to it: asked, and run.
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({
+                "command": ["touch", marker.to_str().unwrap()],
+                "env": {"U": "verrou://GitHub/username", "P": "verrou://GitHub/password"},
+                "reason": "x"
+            }),
+        );
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        assert!(marker.exists());
+        assert_eq!(server.gateway.asked.len(), 1);
+        std::fs::remove_file(&marker).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_masks_the_secret_and_asks_with_the_command() {
+        let mut server = initialized("Claude Code");
+        server.gateway.plain = vec!["username".to_owned()];
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({
+                "command": ["sh", "-c", "echo token=$TOKEN user=$USER_NAME; echo err=$TOKEN >&2; exit 3"],
+                "env": {"TOKEN": "verrou://Staging/token", "USER_NAME": "verrou://Staging/username"},
                 "reason": "deploy to\nstaging"
             }),
         );
@@ -1259,10 +1581,20 @@ mod tests {
         assert!(!text(&reply).contains(PASSWORD));
         let body: Value = serde_json::from_str(text(&reply)).unwrap();
         assert_eq!(body["exit_code"], 3);
-        assert_eq!(body["stdout"], "token=<concealed by Verrou>\n");
+        // A plain value (a username) is not masked, a secret is.
+        assert_eq!(body["stdout"], "token=<concealed by Verrou> user=alice\n");
         assert_eq!(body["stderr"], "err=<concealed by Verrou>\n");
         assert_eq!(body["truncated"], false);
-        assert_eq!(server.gateway.reasons, ["Claude Code: deploy to staging"]);
+        // The approval says what will run, apart from the agent's reason.
+        let (reason, detail) = &server.gateway.asked[0];
+        assert_eq!(reason, "Claude Code: deploy to staging");
+        assert!(detail.command.starts_with("sh -c '"), "{}", detail.command);
+        assert!(detail.command.contains("echo token=$TOKEN"));
+        assert_eq!(
+            detail.fields,
+            ["Item Staging › token"],
+            "only secret fields"
+        );
     }
 
     #[cfg(unix)]
@@ -1287,31 +1619,97 @@ mod tests {
     }
 
     #[cfg(unix)]
+    fn alive(pid: &str) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    }
+
+    #[cfg(unix)]
     #[test]
-    fn run_kills_a_command_over_its_time_limit() {
+    fn run_kills_a_command_and_what_it_started_over_its_time_limit() {
         let mut server = initialized("x");
+        let pidfile = std::env::temp_dir().join(format!("vm-pid-{}", std::process::id()));
+        let script = format!("sleep 60 & echo $! > {}; wait", pidfile.display());
         let started = Instant::now();
         let reply = call(
             &mut server,
             "verrou_run",
-            &json!({"command":["sleep","30"],"env":{"T":"verrou://A/password"},"reason":"x","timeout_seconds":1}),
+            &json!({"command":["sh","-c",script],"env":{"T":"verrou://A/password"},"reason":"x","timeout_seconds":1}),
         );
         assert!(started.elapsed() < Duration::from_secs(10));
         let body: Value = serde_json::from_str(text(&reply)).unwrap();
         assert_eq!(body["timed_out"], true);
+        // The `sleep` it started is gone with it (its own process group).
+        let pid = std::fs::read_to_string(&pidfile).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(!alive(pid.trim()), "the grandchild survived");
+        std::fs::remove_file(&pidfile).ok();
     }
 
+    #[cfg(unix)]
     #[test]
-    fn a_refusal_comes_back_as_a_tool_error_without_a_value() {
+    fn run_is_killed_when_the_client_goes_away() {
         let mut server = initialized("x");
-        server.gateway.fail = Some("refused in Verrou".to_owned());
+        let gone = Arc::clone(&server.gone);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            gone.store(true, Ordering::SeqCst);
+        });
+        let started = Instant::now();
         let reply = call(
             &mut server,
             "verrou_run",
-            &json!({"command":["true"],"env":{"T":"verrou://A/password"},"reason":"x"}),
+            &json!({"command":["sleep","60"],"env":{"T":"verrou://A/password"},"reason":"x"}),
         );
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert!(body["note"].as_str().unwrap().contains("client closed"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_input_closed_before_the_command_starts_does_not_kill_it() {
+        // A script that sends its request and leaves still gets its answer.
+        let mut server = initialized("x");
+        server.gone.store(true, Ordering::SeqCst);
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["sh","-c","sleep 1; echo done"],"env":{"T":"verrou://A/password"},"reason":"x"}),
+        );
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["stdout"], "done\n");
+    }
+
+    #[test]
+    fn a_refusal_comes_back_as_a_tool_error_and_pauses_the_tool() {
+        let mut server = initialized("x");
+        server.gateway.fail = Some(Fake::refusing());
+        let arguments = json!({"command":["true"],"env":{"T":"verrou://A/password"},"reason":"x"});
+        let reply = call(&mut server, "verrou_run", &arguments);
         assert_eq!(reply["result"]["isError"], true);
         assert_eq!(text(&reply), "refused in Verrou");
+        // Asked again at once: not even sent to Verrou.
+        let reply = call(&mut server, "verrou_run", &arguments);
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(text(&reply).contains("a moment ago"), "{}", text(&reply));
+        assert_eq!(server.gateway.asked.len(), 1);
+        // After the pause, it asks again.
+        server.paused_until = Some(Instant::now().checked_sub(Duration::from_secs(1)).unwrap());
+        let reply = call(&mut server, "verrou_run", &arguments);
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        assert_eq!(server.gateway.asked.len(), 2);
+        // Another kind of failure does not pause anything.
+        server.gateway.fail = Some(Failure {
+            message: "the vault stayed locked".to_owned(),
+            refused: false,
+        });
+        let reply = call(&mut server, "verrou_run", &arguments);
+        assert_eq!(text(&reply), "the vault stayed locked");
+        assert!(server.paused_until.is_none());
     }
 
     #[test]
@@ -1323,6 +1721,34 @@ mod tests {
             scrubbed,
             "the server said <concealed by Verrou>, twice: <concealed by Verrou>"
         );
+    }
+
+    #[test]
+    fn a_secret_that_json_would_escape_is_still_scrubbed() {
+        // A value with a quote and a backslash is written `\"` and `\\` in
+        // JSON: scrubbing the text after serializing would miss it.
+        let mut server = initialized("x");
+        let secret = "pa\"ss\\word\n1";
+        server.secrets.push(Zeroizing::new(secret.to_owned()));
+        let mut value = json!({ (secret): [format!("before {secret} after")], "n": 1 });
+        server.scrub_value(&mut value);
+        let sent = value.to_string();
+        assert!(!sent.contains("pa\\\"ss"), "{sent}");
+        assert!(sent.contains("before <concealed by Verrou> after"));
+        assert!(
+            sent.contains("\"<concealed by Verrou>\""),
+            "keys too: {sent}"
+        );
+    }
+
+    #[test]
+    fn an_unexpected_reply_is_named_never_shown() {
+        let reply = ReplyResult::Secret(verrou_bridge::protocol::SecretValue {
+            value: PASSWORD.to_owned(),
+        });
+        let message = unexpected(&reply).to_string();
+        assert!(message.ends_with("Secret"), "{message}");
+        assert!(!message.contains(PASSWORD));
     }
 
     #[test]

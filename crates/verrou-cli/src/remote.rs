@@ -12,7 +12,7 @@ use serde::Serialize;
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
 use verrou_bridge::protocol::{
     ClientKind, Command, ErrorCode, Incoming, MAX_FRAME, Outgoing, Reply, ReplyResult, Request,
-    UnlockIntent,
+    RunDetail, UnlockIntent,
 };
 use zeroize::Zeroize as _;
 
@@ -165,6 +165,12 @@ pub struct Remote {
     /// What the next commands read: sent with an unlock request, so that
     /// one approval on the iPhone unlocks and lets this item out.
     pub intent: Option<UnlockIntent>,
+    /// An AI agent's requests (`verrou mcp`): each approval is asked on its
+    /// own and never remembered ([`Request::ephemeral_approval`]).
+    pub ephemeral: bool,
+    /// What the next commands are for, shown in the approval: the command
+    /// line and the fields ([`RunDetail`]).
+    pub detail: Option<RunDetail>,
 }
 
 impl Remote {
@@ -177,6 +183,8 @@ impl Remote {
             next: 1,
             reason: None,
             intent: None,
+            ephemeral: false,
+            detail: None,
         })
     }
 
@@ -188,6 +196,8 @@ impl Remote {
             id,
             ts: now_ms(),
             reason: self.reason.clone(),
+            ephemeral_approval: self.ephemeral,
+            detail: self.detail.clone(),
             command: command.clone(),
         })
         .map_err(|e| Error::Protocol(e.to_string()))?;

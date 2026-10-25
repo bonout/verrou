@@ -173,7 +173,8 @@ final class BrowserBridge {
     /// Protected item ("master password re-prompt"): the same confirmation
     /// as in the app (Touch ID or master password).
     fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String,
-                                      site: String, reason motive: String, changes: String) {
+                                      site: String, reason motive: String, changes: String, command: String,
+                                      fields: String) {
         // The name announced at pairing ("Brave", "Firefox").
         let browser = clientName.isEmpty ? String(localized: "the browser") : clientName
         let reason = switch purpose {
@@ -208,7 +209,16 @@ final class BrowserBridge {
         // A write names the fields it changes (`password, url, −Old token`),
         // never their values; then the terminal's reason, as it declares it.
         let asked = changes.isEmpty ? reason : "\(reason): \(changes)"
+        // The terminal's reason, as it declares it, after what is asked. An
+        // AI agent's request also says what will run, on lines of its own:
+        // the reason is the agent's claim, the command is what happens.
         var prompt = motive.isEmpty ? asked : "\(asked) (\(motive))"
+        if !command.isEmpty {
+            prompt = asked
+            prompt += "\n" + String(localized: "Command: \(command)")
+            if !fields.isEmpty { prompt += "\n" + String(localized: "Fields: \(fields)") }
+            if !motive.isEmpty { prompt += "\n" + String(localized: "The agent says: “\(motive)”") }
+        }
         Task {
             let protected = model.session.needsConfirmation(id: item)
             // The user chose "until Verrou locks" for this key: say what this
@@ -224,7 +234,8 @@ final class BrowserBridge {
             let outcome = if let remote = model.remote {
                 await remote.decide(client: clientName.isEmpty ? String(localized: "the terminal") : clientName,
                                     purpose: purpose.wire, title: title, site: site, reason: motive,
-                                    changes: changes, scope: untilLocked ? "untilLocked" : nil, local: local)
+                                    changes: changes, command: command, fields: fields,
+                                    scope: untilLocked ? "untilLocked" : nil, local: local)
             } else {
                 RemoteApprovals.Outcome.local(await local(LAContext()))
             }
@@ -327,12 +338,12 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
     }
 
     func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String, site: String,
-                          reason: String, changes: String) {
+                          reason: String, changes: String, command: String, fields: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
                 // Bridge stopped in the meantime: the request expires by itself.
                 bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title,
-                                         site: site, reason: reason, changes: changes)
+                                         site: site, reason: reason, changes: changes, command: command, fields: fields)
             }
         }
     }

@@ -37,8 +37,8 @@ use crate::crypto::{Direction, KeyPair};
 use crate::passkeys;
 use crate::protocol::{
     CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
-    MAX_FRAME, Outgoing, Reply, ReplyResult, Request, SaveAction, SecretValue, Suggestion,
-    UnlockIntent,
+    MAX_FRAME, Outgoing, Reply, ReplyResult, Request, RunDetail, SaveAction, SecretValue,
+    Suggestion, UnlockIntent,
 };
 use crate::ssh;
 
@@ -192,6 +192,11 @@ pub struct Confirmation {
     /// only, never a value (`password, url, −Old token`: `−` for a field
     /// removed; [`crate::items::summary`]); empty otherwise.
     pub changes: String,
+    /// An agent's command line and the fields it gets
+    /// ([`crate::protocol::RunDetail`], cleaned); empty if the request came
+    /// without. Unlike the reason, this is what will actually run.
+    pub command: String,
+    pub fields: String,
 }
 
 /// Approvals still valid: (client, purpose, item) → time of the approval
@@ -482,6 +487,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     }
     let backend = &shared.backend;
     let reason = crate::protocol::clean_reason(request.reason.as_deref());
+    let terminal_ask = Terminal::of(&request, &reason);
     let result = match request.command {
         command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
             reason: "command not allowed for this client".to_owned(),
@@ -539,7 +545,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
                 }))
                 .await,
         ),
-        command => terminal(shared, &info, command, &reason).await,
+        command => terminal(shared, &info, command, &terminal_ask).await,
     };
     let Ok(mut body) = serde_json::to_vec(&Reply {
         id: request.id,
@@ -610,8 +616,53 @@ async fn approved_for_site(
     site: &str,
     reason: &str,
 ) -> bool {
+    let ask = Terminal {
+        reason,
+        ..Terminal::default()
+    };
     approve(
         shared,
+        ask.confirmation(client, purpose, item, title, site),
+        false,
+    )
+    .await
+}
+
+/// What the terminal said about a request, for its approval.
+#[derive(Default)]
+struct Terminal<'a> {
+    reason: &'a str,
+    /// An agent's request: asked on its own, never remembered
+    /// ([`Request::ephemeral_approval`]).
+    ephemeral: bool,
+    detail: RunDetail,
+}
+
+impl<'a> Terminal<'a> {
+    /// From the request, with its reason already cleaned and its detail
+    /// cleaned here: nothing the client sent is shown as it came.
+    fn of(request: &Request, reason: &'a str) -> Self {
+        Self {
+            reason,
+            ephemeral: request.ephemeral_approval,
+            detail: request
+                .detail
+                .as_ref()
+                .map(RunDetail::cleaned)
+                .unwrap_or_default(),
+        }
+    }
+
+    /// The confirmation the user is asked: the reason and the agent's detail
+    /// as the terminal gave them; no write changes.
+    fn confirmation(
+        &self,
+        client: &ClientInfo,
+        purpose: Purpose,
+        item: &str,
+        title: &str,
+        site: &str,
+    ) -> Confirmation {
         Confirmation {
             client: client.id.clone(),
             client_name: client.name.clone(),
@@ -619,19 +670,21 @@ async fn approved_for_site(
             item: item.to_owned(),
             title: title.to_owned(),
             site: site.to_owned(),
-            reason: reason.to_owned(),
+            reason: self.reason.to_owned(),
             changes: String::new(),
-        },
-    )
-    .await
+            command: self.detail.command.clone(),
+            fields: self.detail.fields_line(),
+        }
+    }
 }
 
 /// Asks the user for `request`, unless an approval for the same client,
-/// purpose and item still holds.
-async fn approve(shared: &Shared, request: Confirmation) -> bool {
+/// purpose and item still holds. `ephemeral`: an agent's request, asked on
+/// its own and never remembered.
+async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> bool {
     let (purpose, item) = (request.purpose, request.item.clone());
     let entry = (request.client.clone(), purpose, item.clone());
-    {
+    if !ephemeral {
         let mut approvals = lock(&shared.approvals);
         approvals.retain(|_, (at, scope)| approval_holds(*at, *scope, Instant::now()));
         if approvals.contains_key(&entry) {
@@ -641,7 +694,7 @@ async fn approve(shared: &Shared, request: Confirmation) -> bool {
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
         .unwrap_or(false);
-    if granted {
+    if granted && !ephemeral {
         let scope = effective_scope(shared, purpose, &item);
         if scope != ApprovalScope::EveryTime {
             lock(&shared.approvals).insert(entry, (Instant::now(), scope));
@@ -726,8 +779,9 @@ async fn terminal(
     shared: &Shared,
     client: &ClientInfo,
     command: Command,
-    reason: &str,
+    ask: &Terminal<'_>,
 ) -> ReplyResult {
+    let reason = ask.reason;
     let backend = &*shared.backend;
     let denied = |reason: String| ReplyResult::Denied { reason };
     match command {
@@ -761,14 +815,10 @@ async fn terminal(
                 None => return ReplyResult::Locked,
                 Some(Err(reason)) => return denied(reason),
                 Some(Ok((true, title))) => {
-                    if !approved_for_site(
+                    if !approve(
                         shared,
-                        client,
-                        Purpose::Reveal,
-                        &item,
-                        &title,
-                        "",
-                        reason,
+                        ask.confirmation(client, Purpose::Reveal, &item, &title, ""),
+                        ask.ephemeral,
                     )
                     .await
                     {
@@ -795,7 +845,12 @@ async fn terminal(
                 }
                 Some(Some((title, true))) => title,
             };
-            if !approved_for_site(shared, client, Purpose::Reveal, &item, &title, "", reason).await
+            if !approve(
+                shared,
+                ask.confirmation(client, Purpose::Reveal, &item, &title, ""),
+                ask.ephemeral,
+            )
+            .await
             {
                 return refused_or_locked(backend);
             }
@@ -957,16 +1012,14 @@ async fn item_write(
     };
     // Never remembered (`effective_scope`): each write asks.
     let request = Confirmation {
-        client: client.id.clone(),
-        client_name: client.name.clone(),
-        purpose,
-        item,
-        title,
-        site: folder,
-        reason: reason.to_owned(),
         changes,
+        ..Terminal {
+            reason,
+            ..Terminal::default()
+        }
+        .confirmation(client, purpose, &item, &title, &folder)
     };
-    if !approve(shared, request).await {
+    if !approve(shared, request, false).await {
         return refused_or_locked(backend);
     }
     match plan(command) {

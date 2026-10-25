@@ -15,8 +15,10 @@ tagging (docs/RELEASING.md).
 - `verrou mcp`: an MCP server for coding agents (Claude Code, Codex, Cursor).
   The agent finds items and gets `verrou://` references, never a value; it
   runs commands with secrets injected and masked in their output
-  (`verrou_run`) and generates passwords. Each use is approved in Verrou
-  with the agent's name and its reason.
+  (`verrou_run`) and generates passwords. Each call is approved in Verrou
+  on its own, on the Mac and the iPhone, which show the command line and the
+  fields it receives apart from the agent's reason. Approve only commands
+  you understand: the mask hides exact values only.
 - `verrou hook install claude|cursor|codex`: a guard rail that stops an
   agent from reading `.env` files, private keys and cloud credentials, or
   printing a token, and points it to `verrou run`.

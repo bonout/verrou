@@ -11509,6 +11509,34 @@
         }
       }
     },
+    "Command: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commande : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Befehl: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Comando: %@"
+          }
+        }
+      }
+    },
     "Company": {
       "localizations": {
         "fr": {
@@ -17357,6 +17385,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nome del campo"
+          }
+        }
+      }
+    },
+    "Fields: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Champs : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Felder: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campos: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Campi: %@"
           }
         }
       }
@@ -39085,6 +39141,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "L'accesso tra te e %@ verrà rimosso."
+          }
+        }
+      }
+    },
+    "The agent says: “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agent dit : « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Agent sagt: „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El agente dice: “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’agente dice: “%@”"
           }
         }
       }

@@ -58,9 +58,26 @@ struct ApprovalScreen: View {
             Text("\(request.client.capitalizedFirst) wants to \(request.action).")
                 .font(.body.weight(.medium))
                 .multilineTextAlignment(.center)
+            if let command = request.command, !command.isEmpty {
+                // What an AI agent will actually run: not its word for it.
+                VStack(spacing: 4) {
+                    Text("Command: \(command)")
+                        .font(.callout.monospaced())
+                        .accessibilityIdentifier("remote-command")
+                    if let fields = request.fields, !fields.isEmpty {
+                        Text("Fields: \(fields)")
+                            .font(.callout)
+                            .accessibilityIdentifier("remote-fields")
+                    }
+                    Text("Approve only a command you understand: it receives the values.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
+            }
             if let reason = request.reason, !reason.isEmpty {
                 // Declared by whoever asks: shown as such.
-                Text("Reason given: “\(reason)”")
+                Text(request.command?.isEmpty == false ? "The agent says: “\(reason)”" : "Reason given: “\(reason)”")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

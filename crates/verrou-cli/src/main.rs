@@ -705,7 +705,7 @@ fn mcp_server() -> Result<(), String> {
     let gateway = mcp::BridgeGateway::new(Config::default_path()?, Endpoint::from_env());
     let mut server = mcp::Server::new(gateway);
     mcp::serve(
-        std::io::stdin().lock(),
+        std::io::BufReader::new(std::io::stdin()),
         std::io::stdout().lock(),
         &mut server,
     )
@@ -747,7 +747,16 @@ fn hook_install(agent: hooks::Agent, project: bool) -> ExitCode {
         hooks::Scope::User
     };
     let path = hooks::config_path(agent, scope, &home, &cwd);
-    match hooks::install(agent, &path) {
+    // The hook runs this very program, by its path: the agent's `PATH` may
+    // not hold `verrou`, or another one.
+    let program = match std::env::current_exe().and_then(std::fs::canonicalize) {
+        Ok(program) if program.is_file() => program,
+        _ => {
+            eprintln!("verrou: cannot tell where this program is installed");
+            return ExitCode::FAILURE;
+        }
+    };
+    match hooks::install(agent, &path, &program, scope) {
         Ok(done) if done.added.is_empty() => {
             eprintln!(
                 "Already installed in {}: nothing changed.",
@@ -758,7 +767,7 @@ fn hook_install(agent: hooks::Agent, project: bool) -> ExitCode {
         Ok(done) => {
             eprintln!(
                 "Added `{}` to {}: {}.",
-                agent.command(),
+                agent.command(&program),
                 done.path.display(),
                 done.added.join(", ")
             );

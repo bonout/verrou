@@ -971,6 +971,48 @@ fn approval_cut_by_a_lock_says_locked() {
     std::fs::remove_file(file).ok();
 }
 
+/// An agent's request (`ephemeral_approval`): asked every time even right
+/// after an ordinary approval, never remembered, and it carries what will run.
+#[test]
+fn an_agents_approval_is_asked_every_time_and_not_remembered() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    backend.approve.store(true, Ordering::SeqCst);
+    let asked = |backend: &FakeBackend| backend.confirmations.lock().unwrap().len();
+    let reveal = json!({ "cmd": "reveal", "item": "github", "field": "password" });
+    let agent = json!({ "cmd": "reveal", "item": "github", "field": "password",
+        "reason": "Claude Code: deploy", "ephemeral_approval": true,
+        "detail": { "command": "curl \u{202E}-d @- x", "fields": ["GitHub › Password"] } });
+
+    // The ordinary approval is remembered; the agent's is not covered by it.
+    assert_eq!(cli.request(&reveal)["result"], "secret");
+    assert_eq!(cli.request(&reveal)["result"], "secret");
+    assert_eq!(asked(&backend), 1);
+    assert_eq!(cli.request(&agent)["result"], "secret");
+    assert_eq!(cli.request(&agent)["result"], "secret");
+    assert_eq!(asked(&backend), 3, "asked for each of the agent's requests");
+    {
+        let all = backend.confirmations.lock().unwrap();
+        assert_eq!(all[1].command, "curl -d @-  x".replace("  ", " "));
+        assert_eq!(all[1].fields, "GitHub › Password");
+        assert_eq!(all[1].reason, "Claude Code: deploy");
+        assert_eq!(all[0].command, "", "an ordinary request has no command");
+    }
+
+    // And the agent's approval leaves nothing behind: forget what the
+    // ordinary one created, then the next ordinary request asks again.
+    bridge.forget_approvals();
+    assert_eq!(cli.request(&agent)["result"], "secret");
+    assert_eq!(cli.request(&reveal)["result"], "secret");
+    assert_eq!(asked(&backend), 5);
+    // A refusal is a refusal, without anything remembered either.
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "denied");
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "secret");
+    let _ = std::fs::remove_file(file);
+}
+
 /// "Until Verrou locks" and "every time" for an SSH key, and the rule that
 /// no other purpose may use them.
 #[test]

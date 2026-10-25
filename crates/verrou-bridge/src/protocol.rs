@@ -86,8 +86,117 @@ pub struct Request {
     /// ([`clean_reason`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// An agent's request (`verrou mcp`): this approval is asked for this
+    /// request alone. The server neither reuses an approval given earlier
+    /// to the same client (a `verrou run` approved a minute ago must not
+    /// cover whatever else the agent asks) nor remembers this one.
+    /// Additive: absent means the usual five minutes.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub ephemeral_approval: bool,
+    /// What the secrets are for: the command line and the fields it gets,
+    /// shown in the approval apart from the reason, because the command is
+    /// what actually decides what happens to the values ([`RunDetail`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<RunDetail>,
     #[serde(flatten)]
     pub command: Command,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // the signature serde wants
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+/// The command an agent wants to run with secrets, and the secret fields it
+/// will receive ("GitHub › Password"), for the approval. Cleaned by the
+/// bridge, whatever the client sent ([`RunDetail::cleaned`]).
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct RunDetail {
+    pub command: String,
+    pub fields: Vec<String>,
+}
+
+/// Longest command line shown, in characters.
+pub const MAX_COMMAND: usize = 200;
+/// Most fields listed, and the longest one.
+const MAX_FIELDS: usize = 10;
+const MAX_FIELD: usize = 60;
+
+impl RunDetail {
+    /// As shown: one line each, no control or format characters, the command
+    /// at most [`MAX_COMMAND`] characters.
+    #[must_use]
+    pub fn cleaned(&self) -> Self {
+        let mut fields: Vec<String> = self
+            .fields
+            .iter()
+            .take(MAX_FIELDS)
+            .map(|f| truncate(&flatten(f), MAX_FIELD))
+            .collect();
+        if self.fields.len() > MAX_FIELDS {
+            fields.push("…".to_owned());
+        }
+        Self {
+            command: truncate(&flatten(&self.command), MAX_COMMAND),
+            fields,
+        }
+    }
+
+    /// The fields as one line.
+    #[must_use]
+    pub fn fields_line(&self) -> String {
+        self.fields.join(", ")
+    }
+}
+
+/// The program and arguments as one line a person can read: an argument
+/// with a space or a quote is single-quoted, as a shell would need it.
+#[must_use]
+pub fn command_line(argv: &[String]) -> String {
+    argv.iter()
+        .map(|arg| {
+            let plain = !arg.is_empty()
+                && arg
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || "_-./:=@%+,".contains(c));
+            if plain {
+                arg.clone()
+            } else {
+                format!("'{}'", arg.replace('\'', r"'\''"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Control and invisible formatting characters (Unicode `Cf`: bidirectional
+/// overrides and isolates, zero-width characters, the byte order mark…) are
+/// dropped: they can reorder or hide what an approval says.
+fn is_invisible(c: char) -> bool {
+    matches!(c,
+        '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}' | '\u{180E}'
+        | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
+        | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{E0001}'
+        | '\u{E0020}'..='\u{E007F}')
+}
+
+/// One line: control characters become spaces, invisible ones vanish,
+/// runs of white space shrink to one space.
+fn flatten(text: &str) -> String {
+    let spaced: String = text
+        .chars()
+        .filter(|c| !is_invisible(*c))
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect();
+    spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        text.to_owned()
+    } else {
+        format!("{}…", text.chars().take(max - 1).collect::<String>())
+    }
 }
 
 /// What the terminal reads after an unlock: the item as it asked for it
@@ -113,23 +222,10 @@ impl UnlockIntent {
 /// Longest reason shown, in characters.
 pub const MAX_REASON: usize = 120;
 
-/// The reason as shown: one line, no control characters, at most
-/// [`MAX_REASON`] characters.
+/// The reason as shown: one line, no control or invisible formatting
+/// characters, at most [`MAX_REASON`] characters.
 pub fn clean_reason(reason: Option<&str>) -> String {
-    let flat: String = reason
-        .unwrap_or_default()
-        .chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect();
-    let trimmed = flat.split_whitespace().collect::<Vec<_>>().join(" ");
-    if trimmed.chars().count() <= MAX_REASON {
-        trimmed
-    } else {
-        format!(
-            "{}…",
-            trimmed.chars().take(MAX_REASON - 1).collect::<String>()
-        )
-    }
+    truncate(&flatten(reason.unwrap_or_default()), MAX_REASON)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -688,6 +784,65 @@ mod reason_tests {
         let cleaned = clean_reason(Some(&long));
         assert_eq!(cleaned.chars().count(), MAX_REASON);
         assert!(cleaned.ends_with('…'));
+    }
+
+    #[test]
+    fn invisible_formatting_characters_are_dropped() {
+        // Bidirectional overrides and isolates, zero-width characters, the
+        // byte order mark: they can reorder or hide what an approval says.
+        let tricky = "deploy \u{202E}evil\u{202C} to\u{200B} prod\u{2066}\u{FEFF}";
+        assert_eq!(clean_reason(Some(tricky)), "deploy evil to prod");
+        let detail = RunDetail {
+            command: "cat \u{202E}\u{2069}x\n\ty".to_owned(),
+            fields: vec!["A\u{200D} › B".to_owned()],
+        }
+        .cleaned();
+        assert_eq!(detail.command, "cat x y");
+        assert_eq!(detail.fields, ["A › B"]);
+    }
+
+    #[test]
+    fn a_run_detail_is_shown_cleaned_and_short() {
+        let detail = RunDetail {
+            command: "x".repeat(500),
+            fields: (0..30)
+                .map(|i| format!("Item {i} › {}", "y".repeat(100)))
+                .collect(),
+        }
+        .cleaned();
+        assert_eq!(detail.command.chars().count(), MAX_COMMAND);
+        assert!(detail.command.ends_with('…'));
+        assert_eq!(detail.fields.len(), MAX_FIELDS + 1);
+        assert_eq!(detail.fields[MAX_FIELDS], "…");
+        assert!(detail.fields[0].chars().count() <= MAX_FIELD);
+    }
+
+    #[test]
+    fn a_command_line_is_quoted_as_a_shell_would_need_it() {
+        let line =
+            |args: &[&str]| command_line(&args.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>());
+        assert_eq!(line(&["cargo", "test", "-p", "x"]), "cargo test -p x");
+        assert_eq!(
+            line(&["sh", "-c", "echo $T; cat .env"]),
+            "sh -c 'echo $T; cat .env'"
+        );
+        assert_eq!(line(&["echo", "it's"]), "echo 'it'\\''s'");
+        assert_eq!(line(&["a", ""]), "a ''");
+    }
+
+    #[test]
+    fn requests_from_an_agent_travel_additively() {
+        let request: Request = serde_json::from_str(
+            r#"{"id":1,"ts":0,"cmd":"status","ephemeral_approval":true,"detail":{"command":"ls","fields":["A › B"]}}"#,
+        )
+        .unwrap();
+        assert!(request.ephemeral_approval);
+        assert_eq!(request.detail.as_ref().unwrap().command, "ls");
+        // Older terminals send neither, and the flag is not written when off.
+        let plain: Request = serde_json::from_str(r#"{"id":1,"ts":0,"cmd":"status"}"#).unwrap();
+        assert!(!plain.ephemeral_approval && plain.detail.is_none());
+        let json = serde_json::to_string(&plain).unwrap();
+        assert!(!json.contains("ephemeral") && !json.contains("detail"));
     }
 
     #[test]
