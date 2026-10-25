@@ -7,7 +7,7 @@
 #   RECORD=docs/media/ios-app.mp4 scripts/ios-showcase.sh   # the video only
 #
 # Variables: OUT, SHOWCASE_LANG (simulator language, default en-US; fr-FR,
-# de-DE, es-ES or it-IT give that UI and demo vault), SKIP_BUILD=1, KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
+# de-DE, es-ES or it-IT give that UI and demo vault), SKIP_BUILD=1, VERROU_WATCH=0 (generate-project.sh), KEEP_SIMULATOR=1, SIM_DEVICE_TYPE,
 # SIM_RUNTIME, APPEARANCES (default "light dark"), RECORD (video of
 # testRecording, with pauses of RECORD_PAUSE seconds, default 1;
 # RECORD_TEST picks another test, for example testMotionUnlock).
@@ -48,7 +48,7 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   HOST="$(uname -m | sed 's/arm64/aarch64/')-apple-darwin"
   SIM="$( [[ "$(uname -m)" == arm64 ]] && echo aarch64-apple-ios-sim || echo x86_64-apple-ios )"
   PROFILE="${PROFILE:-release}" PLATFORMS=all TARGETS="$HOST" IOS_TARGETS="" SIM_TARGETS="$SIM" scripts/build-apple.sh
-  (cd apple && xcodegen generate --quiet)
+  scripts/generate-project.sh
   xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath "$DERIVED" \
     ARCHS="$(uname -m)" build-for-testing -quiet

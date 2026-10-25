@@ -17,11 +17,11 @@ packages:
     exactVersion: 2.10.0
 settings:
   base:
-    SWIFT_VERSION: "5.0"
-    # Every data race the compiler can see is reported (the CI fails on
-    # any): the code already builds in the Swift 6 language mode, which also
-    # adds runtime isolation checks; that switch waits for a release tested
-    # on devices.
+    # Swift 6 language mode: data races are compile errors, and isolation is
+    # also checked at run time (a main-actor callback reached from another
+    # thread stops the app instead of corrupting memory). Checked by the
+    # iPhone showcase on every screen of the demo vault.
+    SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.5.0"
     CURRENT_PROJECT_VERSION: "1"

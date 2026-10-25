@@ -42,17 +42,7 @@ fi
 [[ -n "$DEVICE" ]] || { echo "No iPhone found: connect it and unlock it." >&2; exit 1; }
 
 PLATFORMS=all scripts/build-apple.sh
-# VERROU_WATCH=0: without the Apple Watch app, for a Mac where Xcode
-# lacks the watchOS platform (Xcode › Settings › Components), which an
-# iPhone app embedding a Watch app requires.
-if [[ "${VERROU_WATCH:-1}" == 0 ]]; then
-  SPEC="apple/.project-without-watch.yml"
-  trap 'rm -f "$ROOT/$SPEC" "${JSON:-}"' EXIT
-  grep -v '^      - target: VerrouWatch$' apple/project.yml > "$SPEC"
-  (cd apple && xcodegen generate --quiet --spec "$(basename "$SPEC")")
-else
-  (cd apple && xcodegen generate --quiet)
-fi
+scripts/generate-project.sh
 xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme VerrouiOS -configuration Release \
   -destination "id=$DEVICE" -derivedDataPath target/xcode-device.noindex \
   DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic VERROU_APP_GROUP="$GROUP" \
