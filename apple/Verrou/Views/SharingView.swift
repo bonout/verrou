@@ -5,6 +5,9 @@ import SwiftUI
 /// confirm; what's needed to create or join an organization.
 struct SharedVaultsSection: View {
     @Environment(AppModel.self) private var model
+    /// Organizations folded in the sidebar (their collections and members
+    /// hidden), by identifier: a choice of this Mac, never synced.
+    @AppStorage("collapsedOrganizations") private var collapsedIDs = ""
 
     var body: some View {
         let admin = model.organizationAdmin
@@ -17,18 +20,20 @@ struct SharedVaultsSection: View {
                     PendingMembershipRow(pending: pending)
                 }
                 ForEach(model.organizations, id: \.id) { org in
-                    row(.organization(id: org.id), org.name, "person.2.fill", count: org.count, tint: .indigo)
-                        .contextMenu { organizationMenu(org) }
-                    ForEach(org.collections, id: \.id) { collection in
-                        row(.collection(id: collection.id), collection.name,
-                            collection.readOnly ? "eye" : "square.stack",
-                            count: collection.count, tint: .secondary)
-                            .padding(.leading, 14)
-                            .help(help(for: collection))
-                            .contextMenu { collectionMenu(org, collection) }
-                    }
-                    if org.canViewMembers && model.showsAccountPanes {
-                        MembersSidebarRow(organization: org)
+                    DisclosureGroup(isExpanded: expanded(org.id)) {
+                        ForEach(org.collections, id: \.id) { collection in
+                            row(.collection(id: collection.id), collection.name,
+                                collection.readOnly ? "eye" : "square.stack",
+                                count: collection.count, tint: .secondary)
+                                .help(help(for: collection))
+                                .contextMenu { collectionMenu(org, collection) }
+                        }
+                        if org.canViewMembers && model.showsAccountPanes {
+                            MembersSidebarRow(organization: org)
+                        }
+                    } label: {
+                        row(.organization(id: org.id), org.name, "person.2.fill", count: org.count, tint: .indigo)
+                            .contextMenu { organizationMenu(org) }
                     }
                 }
                 if model.organizations.isEmpty && admin.pending.isEmpty && model.canEdit {
@@ -109,6 +114,21 @@ struct SharedVaultsSection: View {
         } else {
             Text(collection.readOnly ? "Read-only" : "You don't manage this collection")
         }
+    }
+
+    /// Unfolded unless the user folded it on this Mac.
+    private func expanded(_ id: String) -> Binding<Bool> {
+        Binding {
+            !collapsed.contains(id)
+        } set: { open in
+            var ids = collapsed
+            if open { ids.remove(id) } else { ids.insert(id) }
+            collapsedIDs = ids.sorted().joined(separator: ",")
+        }
+    }
+
+    private var collapsed: Set<String> {
+        Set(collapsedIDs.split(separator: ",").map(String.init))
     }
 
     /// The displayed organization (itself or one of its collections).
