@@ -1,0 +1,37 @@
+<!--{"title": "Informativa sulla privacy di Verrou", "description": "Verrou non raccoglie nulla: nessun account, nessuna analisi, nessun tracciamento. Le poche connessioni dell'app e cosa resta sul tuo dispositivo."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Privacy</div>
+    <h1>Informativa sulla privacy.</h1>
+  </div>
+</header>
+
+<article class="prose">
+  <p>Ultimo aggiornamento: 2026-10-25. In caso di differenze tra questa pagina e la versione inglese su GitHub, prevale la versione inglese: <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+
+  <p>Verrou è un client per un server Vaultwarden (compatibile con Bitwarden) che scegli e gestisci tu, o che gestisce per te una persona di fiducia. Gli sviluppatori di Verrou non gestiscono alcun server, non raccolgono alcun dato e non hanno alcun accesso alla tua cassaforte.</p>
+
+  <h2>Cosa raccoglie Verrou</h2>
+  <p>Nulla. Verrou non ha un account proprio, né analisi, né pubblicità, né segnalazioni di arresti anomali, né tracciamento. I manifest della privacy dell'app non dichiarano alcun dato raccolto.</p>
+
+  <h2>Dove vanno i tuoi dati</h2>
+  <ul>
+    <li><strong>Il tuo server Vaultwarden</strong>: la tua cassaforte, cifrata sul tuo dispositivo prima dell'invio (cifratura end-to-end di Bitwarden), e i nomi dei siti per le icone dei siti web. Il gestore del tuo server è responsabile di ciò che conserva.</li>
+    <li><strong>Have I Been Pwned</strong> («Pwned Passwords», api.pwnedpasswords.com): quando viene eseguito il controllo delle violazioni, vengono inviati solo i primi 5 caratteri dell'hash SHA-1 di una password (k-anonimato), mai la password né l'hash completo. Il controllo delle nuove password può essere disattivato in Impostazioni.</li>
+    <li><strong>Il tuo account iCloud</strong>, solo se associ un iPhone per approvare le richieste del Mac: le richieste e le risposte passano dal tuo database privato iCloud (CloudKit), sigillate end-to-end tra i tuoi due dispositivi, poi vengono cancellate; il servizio di notifiche push di Apple avvisa l'iPhone che una richiesta è in attesa, senza il suo contenuto.</li>
+    <li><strong>GitHub</strong>, per l'app Mac scaricata dal sito web: una volta al giorno e quando scegli «Controlla aggiornamenti…» (i controlli automatici possono essere disattivati in Impostazioni), Verrou scarica la descrizione dell'ultima versione e, se è più recente, la sua immagine disco. GitHub vede il tuo indirizzo IP e la versione di Verrou e di macOS (nello User-Agent della richiesta); non viene inviato altro.</li>
+    <li><strong>Il sito di un elemento</strong>, solo quando tocchi «Cambia password» o «Crea una passkey» per quell'elemento: Verrou chiede a quel sito se pubblica gli indirizzi standard per quelle pagine (<code>/.well-known/change-password</code>, <code>/.well-known/passkey-endpoints</code>), senza cookie.</li>
+  </ul>
+
+  <h2>Sul tuo dispositivo</h2>
+  <p>La cassaforte è conservata cifrata sul tuo dispositivo; su iPhone è esclusa dai backup di iCloud e del computer. Face ID e Touch ID sono gestiti dal sistema: Verrou non vede mai i tuoi dati biometrici. La fotocamera serve solo a scansionare il codice QR di un codice monouso, e nessuna immagine viene salvata.</p>
+
+  <p>Su iPhone, i codici monouso che scegli di mostrare nei widget («Mostra nei widget e su Apple Watch» nella pagina di un elemento) sono conservati nel portachiavi di questo iPhone, fuori dalla cassaforte, finché non lo disattivi o non esci dall'account: il loro titolo, il sito e il seed, mai sincronizzati e mai inviati altrove. Se hai un Apple Watch con Verrou, l'iPhone gli passa direttamente lo stesso elenco (WatchConnectivity di Apple, tra i tuoi dispositivi associati), e il Watch lo conserva nel proprio portachiavi: nulla lascia i tuoi dispositivi Apple. Quando scegli un elemento della cassaforte in un comando rapido, l'app Comandi rapidi ne conserva il titolo e l'identificatore; Verrou non aggiunge nulla della tua cassaforte a Spotlight.</p>
+
+  <p>Quando Verrou si arresta in modo anomalo o si blocca, macOS e iOS gli consegnano un rapporto (MetricKit) circa una volta al giorno: stack di chiamate e versioni, nulla della tua cassaforte. Verrou conserva i 20 più recenti sul dispositivo e non li invia mai; Impostazioni → Diagnostica indica quanti sono e permette di condividerli (scegli tu con chi) o di eliminarli.</p>
+
+  <h2>Contatti</h2>
+  <p>Domande: apri una segnalazione su <a href="https://github.com/bonout/verrou/issues">https://github.com/bonout/verrou/issues</a>, oppure scrivi a <a href="mailto:contact@bonout.com">contact@bonout.com</a>. Segnalazioni di sicurezza: vedi <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+
+  <p>I dettagli tecnici di ogni connessione sono in <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+</article>

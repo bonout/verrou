@@ -1,0 +1,37 @@
+<!--{"title": "Datenschutzerklärung von Verrou", "description": "Verrou erhebt nichts: kein Konto, keine Analyse, kein Tracking. Die wenigen Verbindungen der App und was auf deinem Gerät bleibt."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Datenschutz</div>
+    <h1>Datenschutzerklärung.</h1>
+  </div>
+</header>
+
+<article class="prose">
+  <p>Zuletzt aktualisiert: 2026-10-25. Weicht diese Seite von der englischen Version auf GitHub ab, gilt die englische Version: <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+
+  <p>Verrou ist ein Client für einen Vaultwarden-Server (Bitwarden-kompatibel), den du selbst auswählst und betreibst oder den eine Person deines Vertrauens für dich betreibt. Die Entwickler von Verrou betreiben keinen Server, erheben keine Daten und haben keinen Zugriff auf deinen Tresor.</p>
+
+  <h2>Was Verrou erhebt</h2>
+  <p>Nichts. Verrou hat kein eigenes Konto, keine Analyse, keine Werbung, keine Absturzberichte und kein Tracking. Die Datenschutzmanifeste der App deklarieren keine erhobenen Daten.</p>
+
+  <h2>Wohin deine Daten gehen</h2>
+  <ul>
+    <li><strong>Dein Vaultwarden-Server</strong>: dein Tresor, vor dem Senden auf deinem Gerät verschlüsselt (Ende-zu-Ende-Verschlüsselung von Bitwarden), und Websitenamen für die Website-Symbole. Der Betreiber deines Servers ist für das verantwortlich, was er speichert.</li>
+    <li><strong>Have I Been Pwned</strong> („Pwned Passwords“, api.pwnedpasswords.com): Wenn die Prüfung auf Datenlecks läuft, werden nur die ersten 5 Zeichen des SHA-1-Hashs eines Passworts gesendet (k-Anonymität), nie das Passwort oder der vollständige Hash. Die Prüfung neuer Passwörter lässt sich in den Einstellungen ausschalten.</li>
+    <li><strong>Dein iCloud-Account</strong>, nur wenn du ein iPhone koppelst, um Anfragen des Macs zu genehmigen: Die Anfragen und Antworten laufen über deine eigene private iCloud-Datenbank (CloudKit), zwischen deinen beiden Geräten Ende-zu-Ende versiegelt, und werden danach gelöscht; der Push-Benachrichtigungsdienst von Apple teilt dem iPhone mit, dass eine Anfrage wartet, ohne deren Inhalt.</li>
+    <li><strong>GitHub</strong>, für die Mac-App, die von der Website geladen wurde: Einmal am Tag und wenn du „Nach Updates suchen …“ wählst (automatische Prüfungen lassen sich in den Einstellungen ausschalten), lädt Verrou die Beschreibung der neuesten Version und, falls sie neuer ist, deren Disk-Image. GitHub sieht deine IP-Adresse sowie die Version von Verrou und macOS (im User-Agent der Anfrage); sonst wird nichts gesendet.</li>
+    <li><strong>Die Website eines Eintrags</strong>, nur wenn du dafür „Passwort ändern“ oder „Passkey erstellen“ tippst: Verrou fragt diese Website, ob sie die Standardadressen für diese Seiten veröffentlicht (<code>/.well-known/change-password</code>, <code>/.well-known/passkey-endpoints</code>), ohne Cookies.</li>
+  </ul>
+
+  <h2>Auf deinem Gerät</h2>
+  <p>Der Tresor wird verschlüsselt auf deinem Gerät gespeichert; auf dem iPhone ist er von iCloud- und Computer-Backups ausgeschlossen. Face ID und Touch ID werden vom System verwaltet: Verrou sieht deine biometrischen Daten nie. Die Kamera dient nur zum Scannen des QR-Codes eines Einmalcodes, und es wird kein Bild gespeichert.</p>
+
+  <p>Auf dem iPhone werden die Einmalcodes, die du in Widgets anzeigen lässt („In Widgets und auf der Apple Watch zeigen“ auf der Seite eines Eintrags), im Schlüsselbund dieses iPhones aufbewahrt, außerhalb des Tresors, bis du das ausschaltest oder dich abmeldest: ihr Titel, ihre Website und ihr Seed, nie synchronisiert und nie irgendwohin gesendet. Hast du eine Apple Watch mit Verrou, übergibt das iPhone ihr dieselbe Liste direkt (WatchConnectivity von Apple, zwischen deinen gekoppelten Geräten), und die Watch bewahrt sie in ihrem eigenen Schlüsselbund auf: Nichts verlässt deine Apple-Geräte. Wenn du in einem Kurzbefehl einen Tresoreintrag auswählst, behält die Kurzbefehle-App dessen Titel und Kennung; Verrou fügt nichts aus deinem Tresor zu Spotlight hinzu.</p>
+
+  <p>Wenn Verrou abstürzt oder hängt, übergeben macOS und iOS etwa einmal am Tag einen Bericht (MetricKit): Aufrufstapel und Versionen, nichts aus deinem Tresor. Verrou behält die 20 neuesten auf dem Gerät und sendet sie nie; Einstellungen → Diagnose zeigt, wie viele es sind, und lässt dich sie teilen (du wählst, mit wem) oder löschen.</p>
+
+  <h2>Kontakt</h2>
+  <p>Fragen: Eröffne ein Issue unter <a href="https://github.com/bonout/verrou/issues">https://github.com/bonout/verrou/issues</a> oder schreibe an <a href="mailto:contact@bonout.com">contact@bonout.com</a>. Sicherheitsmeldungen: siehe <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+
+  <p>Die technischen Details jeder Verbindung stehen in <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+</article>

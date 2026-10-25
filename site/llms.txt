@@ -22,6 +22,8 @@ Key facts:
 - [Verrou vs the Bitwarden app](https://verrou.bonout.com/bitwarden-alternative/): comparison, when to use which
 - [Verrou vs 1Password](https://verrou.bonout.com/1password-alternative/): comparison, moving from 1Password
 - [FAQ](https://verrou.bonout.com/faq/)
+- [Privacy policy](https://verrou.bonout.com/privacy/): what Verrou collects (nothing) and every connection it makes
+- [Support](https://verrou.bonout.com/support/): e-mail, GitHub issues, bug reports, AutoFill setup
 - [All pages as text](https://verrou.bonout.com/llms-full.txt)
 
 ## Docs

@@ -1,0 +1,37 @@
+<!--{"title": "Politique de confidentialité de Verrou", "description": "Verrou ne collecte rien : ni compte, ni statistiques, ni suivi. Les quelques connexions de l'app et ce qui reste sur votre appareil."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Confidentialité</div>
+    <h1>Politique de confidentialité.</h1>
+  </div>
+</header>
+
+<article class="prose">
+  <p>Dernière mise à jour : 2026-10-25. En cas de différence entre cette page et la version anglaise sur GitHub, la version anglaise prévaut : <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+
+  <p>Verrou est un client pour un serveur Vaultwarden (compatible Bitwarden) que vous choisissez et exploitez, ou qu'une personne de confiance exploite pour vous. Les développeurs de Verrou n'exploitent aucun serveur, ne collectent aucune donnée et n'ont aucun accès à votre coffre.</p>
+
+  <h2>Ce que Verrou collecte</h2>
+  <p>Rien. Verrou n'a pas de compte propre, ni statistiques d'usage, ni publicité, ni rapport de plantage, ni suivi. Les manifestes de confidentialité de l'app ne déclarent aucune donnée collectée.</p>
+
+  <h2>Où vont vos données</h2>
+  <ul>
+    <li><strong>Votre serveur Vaultwarden</strong> : votre coffre, chiffré sur votre appareil avant l'envoi (chiffrement de bout en bout de Bitwarden), et les noms de sites pour les icônes des sites web. L'exploitant de votre serveur est responsable de ce qu'il stocke.</li>
+    <li><strong>Have I Been Pwned</strong> (« Pwned Passwords », api.pwnedpasswords.com) : lorsque la vérification des fuites s'exécute, seuls les 5 premiers caractères de l'empreinte SHA-1 d'un mot de passe sont envoyés (k-anonymat), jamais le mot de passe ni l'empreinte complète. La vérification des nouveaux mots de passe peut être désactivée dans les Réglages.</li>
+    <li><strong>Votre compte iCloud</strong>, uniquement si vous associez un iPhone pour approuver les demandes du Mac : les demandes et les réponses transitent par votre propre base de données privée iCloud (CloudKit), scellées de bout en bout entre vos deux appareils, puis sont effacées ; le service de notifications push d'Apple indique à l'iPhone qu'une demande est en attente, sans son contenu.</li>
+    <li><strong>GitHub</strong>, pour l'app Mac téléchargée depuis le site : une fois par jour et lorsque vous choisissez « Rechercher des mises à jour… » (les vérifications automatiques peuvent être désactivées dans les Réglages), Verrou télécharge la description de la dernière version et, si elle est plus récente, son image disque. GitHub voit votre adresse IP ainsi que la version de Verrou et de macOS (dans le User-Agent de la requête) ; rien d'autre n'est envoyé.</li>
+    <li><strong>Le site d'un élément</strong>, uniquement lorsque vous touchez « Changer le mot de passe » ou « Créer une passkey » pour cet élément : Verrou demande à ce site s'il publie les adresses standard de ces pages (<code>/.well-known/change-password</code>, <code>/.well-known/passkey-endpoints</code>), sans cookies.</li>
+  </ul>
+
+  <h2>Sur votre appareil</h2>
+  <p>Le coffre est stocké chiffré sur votre appareil ; sur iPhone, il est exclu des sauvegardes iCloud et sur ordinateur. Face ID et Touch ID sont gérés par le système : Verrou ne voit jamais vos données biométriques. L'appareil photo sert uniquement à scanner le QR code d'un code à usage unique, et aucune image n'est enregistrée.</p>
+
+  <p>Sur iPhone, les codes à usage unique que vous choisissez d'afficher dans les widgets (« Afficher dans les widgets et sur l'Apple Watch » sur la page d'un élément) sont conservés dans le trousseau de cet iPhone, en dehors du coffre, jusqu'à ce que vous le désactiviez ou que vous vous déconnectiez : leur titre, leur site et leur clé secrète, jamais synchronisés et jamais envoyés nulle part. Si vous avez une Apple Watch avec Verrou, l'iPhone lui transmet directement la même liste (WatchConnectivity d'Apple, entre vos appareils associés), et la Watch la conserve dans son propre trousseau : rien ne quitte vos appareils Apple. Lorsque vous choisissez un élément du coffre dans un raccourci, l'app Raccourcis en conserve le titre et l'identifiant ; Verrou n'ajoute rien de votre coffre à Spotlight.</p>
+
+  <p>Lorsque Verrou plante ou se fige, macOS et iOS lui transmettent un rapport (MetricKit) environ une fois par jour : piles d'appels et versions, rien de votre coffre. Verrou conserve les 20 plus récents sur l'appareil et ne les envoie jamais ; Réglages → Diagnostics indiquent combien il y en a, permettent de les partager (vous choisissez avec qui) ou de les supprimer.</p>
+
+  <h2>Contact</h2>
+  <p>Questions : ouvrez un ticket sur <a href="https://github.com/bonout/verrou/issues">https://github.com/bonout/verrou/issues</a>, ou écrivez à <a href="mailto:contact@bonout.com">contact@bonout.com</a>. Signalements de sécurité : voir <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+
+  <p>Le détail technique de chaque connexion se trouve dans <a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md</a>.</p>
+</article>
