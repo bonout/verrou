@@ -10529,6 +10529,34 @@
         }
       }
     },
+    "Fill without %@ for 5 minutes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplir sans %@ pendant 5 minutes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 Minuten lang ohne %@ ausfüllen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rellenar sin %@ durante 5 minutos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compila senza %@ per 5 minuti"
+          }
+        }
+      }
+    },
     "Filling…": {
       "localizations": {
         "fr": {
@@ -23633,30 +23661,30 @@
         }
       }
     },
-    "The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after %@ or your master password.": {
+    "The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after %@ or your master password. After that, the next fills skip %@ for 5 minutes while the iPhone stays unlocked, until Verrou locks; protected items and passkeys always ask.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le système ne reçoit que les sites et noms d'utilisateur, pour ses suggestions. Les mots de passe, codes et passkeys ne sortent du coffre qu'après %@ ou votre mot de passe principal."
+            "value": "Le système ne reçoit que les sites et les noms d'utilisateur, pour ses suggestions. Les mots de passe, codes et clés d'accès ne sortent du coffre qu'après %1$@ ou votre mot de passe principal. Ensuite, les remplissages suivants se passent de %2$@ pendant 5 minutes tant que l'iPhone reste déverrouillé, jusqu'au verrouillage de Verrou ; les éléments protégés et les clés d'accès demandent toujours."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Das System erhält für seine Vorschläge nur die Websites und Benutzernamen. Passwörter, Codes und Passkeys verlassen den Tresor nur nach %@ oder deinem Master-Passwort."
+            "value": "Das System erhält nur die Websites und Benutzernamen für seine Vorschläge. Passwörter, Codes und Passkeys verlassen den Tresor erst nach %1$@ oder deinem Master-Passwort. Danach kommen die nächsten Ausfüllvorgänge 5 Minuten lang ohne %2$@ aus, solange das iPhone entsperrt bleibt und bis Verrou sperrt; geschützte Einträge und Passkeys fragen immer."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "El sistema solo recibe los sitios y los nombres de usuario, para sus sugerencias. Las contraseñas, los códigos y las llaves de acceso solo salen de la bóveda tras %@ o tu contraseña maestra."
+            "value": "El sistema solo recibe los sitios y los nombres de usuario, para sus sugerencias. Las contraseñas, los códigos y las llaves de acceso solo salen de la bóveda tras %1$@ o tu contraseña maestra. Después, los siguientes rellenos se saltan %2$@ durante 5 minutos mientras el iPhone siga desbloqueado, hasta que Verrou se bloquee; los elementos protegidos y las llaves de acceso siempre lo piden."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Il sistema riceve solo i siti e i nomi utente, per i suoi suggerimenti. Password, codici e passkey lasciano la cassaforte solo dopo %@ o la password principale."
+            "value": "Il sistema riceve solo i siti e i nomi utente, per i suoi suggerimenti. Password, codici e passkey escono dalla cassaforte solo dopo %1$@ o la password principale. Dopo, i riempimenti successivi saltano %2$@ per 5 minuti finché l'iPhone resta sbloccato, fino al blocco di Verrou; gli elementi protetti e le passkey chiedono sempre."
           }
         }
       }

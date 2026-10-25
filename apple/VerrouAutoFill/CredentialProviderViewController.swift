@@ -96,9 +96,15 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             return extensionContext.completeRequest(
                 withSelectedCredential: ASPasswordCredential(user: recent.user, password: recent.password))
         }
-        // Vault locked in this new process: Face ID is needed.
-        extensionContext.cancelRequest(withError: NSError(
-            domain: ASExtensionErrorDomain, code: ASExtensionError.userInteractionRequired.rawValue))
+        // Within 5 minutes of a Face ID (`AutofillSession`): straight away.
+        // Otherwise, vault locked in this new process: Face ID is needed.
+        Task {
+            if let completion = await model.fillWithoutInteraction(credentialRequest) {
+                complete(completion)
+            } else {
+                cancel(.userInteractionRequired)
+            }
+        }
     }
 
     override func prepareInterfaceToProvideCredential(for credentialRequest: any ASCredentialRequest) {

@@ -19,6 +19,12 @@ tagging (docs/RELEASING.md).
 - Locks when the screen saver starts too, along with sleep and the screen
   lock (Settings → Security).
 
+**iPhone**
+- After one Face ID in AutoFill, the next fills on any site skip it for
+  5 minutes while the iPhone stays unlocked: a tapped suggestion fills at
+  once, without a sheet. Locking Verrou ends it; protected items and
+  passkeys always ask. Settings → AutoFill turns it off.
+
 **Mac and iPhone**
 - AutoFill is quicker: Face ID shows up as soon as the sheet opens, and on
   a two-step sign-in (username, then password on the next page) the second

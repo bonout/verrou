@@ -149,6 +149,7 @@ final class AutoFillModel {
     /// gesture). `appeared`: the sheet is on screen (`viewDidAppear`), no
     /// need to wait for it.
     func autoUnlock(appeared: Bool = false) async {
+        if await unlockWithSession() { return }
         guard phase == .locked, canUseBiometrics else { return }
         // The extension's interface is only in the foreground once its sheet
         // is presented: before that, LocalAuthentication refuses ("caller is
@@ -162,6 +163,80 @@ final class AutoFillModel {
         }
     }
 
+    /// Within 5 minutes of a Face ID (`AutofillSession`): the vault opens
+    /// without asking. Not for passkeys, whose signature tells the site that
+    /// the user was verified.
+    private func unlockWithSession() async -> Bool {
+        #if os(iOS)
+        guard let vault, phase == .locked, !wantsPasskey, let key = AutofillSession.userKey() else { return false }
+        phase = .unlocking
+        do {
+            _ = try await vault.session.unlockWithUserKey(userKey: key)
+            Perf.mark("vault opened without \(Biometrics.name) (session)")
+            didUnlock()
+            return true
+        } catch {
+            AutofillSession.forget()
+            phase = .locked
+            return false
+        }
+        #else
+        return false
+        #endif
+    }
+
+    /// A tapped suggestion within 5 minutes of a Face ID: the login, without
+    /// an interface; `nil` if Face ID is needed (no session, protected item,
+    /// not a password).
+    func fillWithoutInteraction(_ request: ASCredentialRequest) async -> Completion? {
+        #if os(iOS)
+        guard request.type == .password,
+              let id = request.credentialIdentity.recordIdentifier,
+              let key = AutofillSession.userKey(), let vault else { return nil }
+        let session = vault.session
+        do {
+            _ = try await session.unlockWithUserKey(userKey: key)
+        } catch {
+            AutofillSession.forget()
+            return nil
+        }
+        defer { vault.lock() }
+        guard !session.needsConfirmation(id: id), let credential = try? session.autofillPassword(id: id) else { return nil }
+        if #available(iOS 18.0, *) {
+            _ = try? await session.preparePasskeyUpgrade(id: id)
+        }
+        Perf.mark("filled without \(Biometrics.name) (session)")
+        return .password(user: credential.username, password: credential.password)
+        #else
+        return nil
+        #endif
+    }
+
+    /// The request involves a passkey (list with the site's passkeys,
+    /// assertion, creation).
+    private var wantsPasskey: Bool {
+        switch request {
+        case .list(_, let passkeys): passkeys != nil
+        case .provide(let request): request.type != .password && !Self.isOneTimeCode(request)
+        case .register: true
+        case .oneTimeCodes, .none: false
+        }
+    }
+
+    private static func isOneTimeCode(_ request: ASCredentialRequest) -> Bool {
+        if #available(iOS 18.0, macOS 15.0, *) { return request.type == .oneTimeCode }
+        return false
+    }
+
+    /// Face ID or the master password passed: the next fills skip it for
+    /// 5 minutes (iPhone).
+    private func startSession() async {
+        #if os(iOS)
+        guard AutofillSession.isEnabled, let key = try? await vault?.session.userKey() else { return }
+        AutofillSession.remember(userKey: key)
+        #endif
+    }
+
     /// Returns `false` if the prompt could not be shown (extension not yet in
     /// the foreground) and `quietWhenNotForeground` allows retrying.
     @discardableResult
@@ -172,6 +247,7 @@ final class AutoFillModel {
         do {
             _ = try await vault.unlockForAutofill(reason: String(localized: "fill with Verrou"))
             userVerified = true
+            await startSession()
             didUnlock()
         } catch BiometricVault.Failure.cancelled, BiometricVault.Failure.interrupted {
             phase = .locked
@@ -200,6 +276,7 @@ final class AutoFillModel {
             _ = try await vault.unlock(masterPassword: masterPassword)
             userVerified = true
             await vault.enrollAutofillBiometrics()
+            await startSession()
             didUnlock()
         } catch {
             unlockError = ErrorText.describe(error)

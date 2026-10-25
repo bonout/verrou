@@ -697,6 +697,7 @@ struct SettingsLabel: View {
 /// AutoFill: how to choose Verrou in iOS Settings, and where it stands.
 private struct AutoFillSection: View {
     @Environment(PhoneModel.self) private var model
+    @State private var withoutFaceID = AutofillSession.isEnabled
 
     var body: some View {
         Section {
@@ -730,10 +731,14 @@ private struct AutoFillSection: View {
                 SettingsLabel(model.autofillEnabled == true ? String(localized: "AutoFill settings") : String(localized: "Open Settings"),
                               symbol: "gear", tint: .gray)
             }
+            Toggle(isOn: $withoutFaceID) {
+                SettingsLabel(String(localized: "Fill without \(Biometrics.name) for 5 minutes"), symbol: "bolt.fill", tint: .orange)
+            }
+            .onChange(of: withoutFaceID) { _, on in AutofillSession.isEnabled = on }
         } header: {
             SectionHeader("AutoFill")
         } footer: {
-            Text("The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after \(Biometrics.name) or your master password.")
+            Text("The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after \(Biometrics.name) or your master password. After that, the next fills skip \(Biometrics.name) for 5 minutes while the iPhone stays unlocked, until Verrou locks; protected items and passkeys always ask.")
         }
         .task { await model.refreshAutofillStatus() }
     }
