@@ -162,6 +162,8 @@ jobs:
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      DEV_CERT_P12: ${{ secrets.APPLE_DEVELOPMENT_P12 }}
+      DEV_CERT_PASSWORD: ${{ secrets.APPLE_DEVELOPMENT_PASSWORD }}
     steps:
       - if: env.VERROU_TEAM == ''
         run: echo '::notice::No Apple team secrets in the release environment, TestFlight skipped.'
@@ -171,14 +173,33 @@ jobs:
         run: rustup toolchain install stable --profile minimal --target aarch64-apple-ios,aarch64-apple-ios-sim,aarch64-apple-darwin,x86_64-apple-darwin && rustup default stable
       - if: env.VERROU_TEAM != ''
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)" && brew install xcodegen
-      # Distribution certificate and profiles are managed by Xcode through the
-      # API key (Admin role): -allowProvisioningUpdates in testflight-ios.sh.
+      # The archive needs a signing certificate on the runner (iOS requires a
+      # profile for every extension, even to archive): the team's existing
+      # Apple Development certificate, from the secrets, in a throwaway
+      # keychain. Without it, Xcode creates a new one on every release until
+      # Apple's cap refuses. Distribution signing (cloud-managed by Apple)
+      # and the profiles go through the API key (Admin role):
+      # -allowProvisioningUpdates in testflight-ios.sh.
+      - if: env.VERROU_TEAM != '' && env.DEV_CERT_P12 != ''
+        run: |
+          keychain="$RUNNER_TEMP/release.keychain-db"
+          password="$(openssl rand -hex 16)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          echo "$DEV_CERT_P12" | base64 --decode > "$RUNNER_TEMP/dev.p12"
+          security import "$RUNNER_TEMP/dev.p12" -k "$keychain" -P "$DEV_CERT_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/dev.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
       - if: env.VERROU_TEAM != ''
         run: |
           printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
           ASC_KEY_PATH="$RUNNER_TEMP/asc.p8" scripts/testflight-ios.sh
       - if: always()
-        run: rm -f "$RUNNER_TEMP/asc.p8"
+        run: |
+          security delete-keychain "$RUNNER_TEMP/release.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/asc.p8"
 
   publish:
     name: Publish the release

@@ -130,6 +130,9 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_ENTITLEMENTS: $(VERROU_MAC_ENTITLEMENTS)
+        # Release (scripts/release-macos.sh): the Developer ID profile, signed
+        # manually; empty for local builds.
+        PROVISIONING_PROFILE_SPECIFIER: $(VERROU_MAC_PROFILE)
         OTHER_LDFLAGS: ["-lc++"]
         # The "Extension version" phase rewrites the manifest copied into the
         # bundle and adds the Firefox extension next to it.
@@ -181,6 +184,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.autofill
         PRODUCT_NAME: VerrouAutoFillMac
         CODE_SIGN_ENTITLEMENTS: $(VERROU_MAC_AUTOFILL_ENTITLEMENTS)
+        PROVISIONING_PROFILE_SPECIFIER: $(VERROU_MAC_AUTOFILL_PROFILE)
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         OTHER_LDFLAGS: ["-lc++"]

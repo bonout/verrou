@@ -9,7 +9,10 @@
 # `xattr -dr com.apple.quarantine /Applications/Verrou.app`.
 #
 # With VERROU_TEAM and an App Store Connect API key (ASC_KEY_PATH, ASC_KEY_ID,
-# ASC_ISSUER_ID): archive signed by the team, exported for Developer ID (with
+# ASC_ISSUER_ID, for notarization): archive signed directly with the
+# Developer ID certificate and profiles, never a development certificate
+# (a fresh CI machine would otherwise create one at every release, until
+# Apple's cap), exported for Developer ID (with
 # the VerrouAutoFillMac credential provider and the app group
 # <team>.app.verrou), notarized and stapled, in Verrou-<version>-macos.dmg.
 # The Developer ID Application certificate must be in the keychain, and the
@@ -59,13 +62,14 @@ scripts/build-apple.sh
 xcodebuild -project apple/Verrou.xcodeproj -packageAuthorizationProvider netrc -scheme Verrou -configuration Release \
   -destination 'generic/platform=macOS' -derivedDataPath target/xcode-release.noindex \
   -archivePath "$ARCHIVE" \
-  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" \
+  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="Developer ID Application" \
+  VERROU_MAC_PROFILE="Verrou Developer ID" VERROU_MAC_AUTOFILL_PROFILE="Verrou AutoFill Developer ID" \
   VERROU_MAC_APP_GROUP="$TEAM.app.verrou" VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-team.entitlements \
   VERROU_MAC_AUTOFILL_ENTITLEMENTS=VerrouAutoFillMac/VerrouAutoFillMac.entitlements \
   CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO MARKETING_VERSION="$VERSION" \
   CURRENT_PROJECT_VERSION="$BUILD" VERROU_SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" \
   ${VERROU_SPARKLE_FEED:+VERROU_SPARKLE_FEED="$VERROU_SPARKLE_FEED"} \
-  -allowProvisioningUpdates "${AUTH[@]}" archive -quiet
+  archive -quiet
 
 cat > "$OUT/ExportOptions.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
