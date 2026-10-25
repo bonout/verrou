@@ -196,6 +196,10 @@ enum RemoteApproval {
         /// (an SSH key the user chose to ask about once). Additive: absent
         /// from older Macs, ignored by older iPhones.
         var scope: String? = nil
+        /// `create`, `edit`: the fields the terminal writes, names only
+        /// (`password, url, −Old token`: `−` for a removed one), never a
+        /// value. Additive: absent from older Macs, ignored by older iPhones.
+        var changes: String? = nil
     }
 
     /// A request as it travels: the Mac's ephemeral public key, the sealed

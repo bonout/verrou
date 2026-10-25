@@ -860,7 +860,8 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
 - **Commands per client kind** (`access::allowed`, checked by the bridge
   for each request, with tests): the extension only has its commands
   (suggest, fill, save); the terminal only has its own (search, read an
-  item, reveal, code, SSH keys, sign). Neither can borrow the other's.
+  item, reveal, code, SSH keys, sign, write an item). Neither can borrow the
+  other's.
 - **What the terminal gets without asking**: search results and items
   **without any secret** (title, username, sites, folder, tags, value of
   non-hidden fields); hidden fields, notes and TOTP seeds are not included
@@ -900,6 +901,32 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   value it transforms (encoded, split by other characters); `--no-masking`
   turns it off. It is meant to keep secrets out of the terminal and of an
   agent's context, not to confine a program the user doesn't trust.
+- **`verrou read`, `verrou inject`**: the same references and the same
+  approval as `run`, but the value comes out **in clear**. `read` prints
+  it in the terminal, so it lands in its scrollback and, unlike `run`, in
+  the context of an AI agent working there. `inject` writes the filled
+  template to its output, or with `-o` to a file created with mode 600
+  (`--file-mode`), replaced only with `--force`. The secrets then sit in
+  that file, outside Verrou, until it is deleted. Use `run` when the
+  program only needs an environment variable.
+- **Writes** (`verrou item create`, `edit`, `delete`, `archive`,
+  `restore`): the terminal can create items in the personal vault, modify
+  them (fields, sites, folder, favorite), move them to the trash or the
+  archive and back. Each write is checked against the vault by the bridge
+  (`verrou_bridge::items`) before anything is asked: an item shared
+  read-only, a trashed item to edit, an unreadable TOTP seed, a reserved
+  field are refused without an approval request. Then Verrou asks every
+  time, **never remembered**: approving one change is not approving the
+  next (`ApprovalScope::EveryTime`, whatever the backend says). The
+  approval names the item, the folder it goes to, and the fields written,
+  names only, never a value: "allow the terminal to modify “GitHub”:
+  password, url, −Old token" (`−`: removed). The app checks the write
+  again and carries it out through the edit screen's draft, like an edit
+  in the app: old password into the history, offline queue, sync. Values
+  are passed as command arguments (`password=…`): they can land in the
+  shell's history and be seen by other processes of the user (`ps`) while
+  the command runs; `--generate-password` avoids typing one. A write's
+  values never appear in the bridge's `Debug` output.
 - **SSH keys**: the private key (OpenSSH, as Vaultwarden keeps it) never
   leaves the app. Verrou signs (RustCrypto's `ssh-key` crate) and only
   returns the signature; the agent only sees the public keys. Keys

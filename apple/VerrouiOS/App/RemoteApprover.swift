@@ -387,8 +387,14 @@ final class RemoteApprover {
 }
 
 extension RemoteApproval.Request {
-    /// "read “GitHub”", in the request's words.
+    /// "read “GitHub”", in the request's words; a write adds the fields it
+    /// changes ("modify “GitHub”: password, url").
     var action: String {
+        guard let changes, !changes.isEmpty, purpose == "create" || purpose == "edit" else { return asked }
+        return "\(asked): \(changes)"
+    }
+
+    private var asked: String {
         switch purpose {
         case "unlock" where title.isEmpty: String(localized: "unlock the vault")
         case "unlock" where field == "totp": String(localized: "unlock the vault and get the code of “\(title)”")
