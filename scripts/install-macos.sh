@@ -32,7 +32,10 @@ if [[ -n "$TEAM" ]]; then
            VERROU_MAC_AUTOFILL_ENTITLEMENTS=VerrouAutoFillMac/VerrouAutoFillMac.entitlements
            -allowProvisioningUpdates)
 else
-  SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=)
+  # Without a team, macOS refuses the embedded Sparkle.framework (hardened
+  # runtime): Verrou-adhoc.entitlements lets the app load it.
+  SIGNING=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+           VERROU_MAC_ENTITLEMENTS=Verrou/Verrou-adhoc.entitlements)
 fi
 
 [[ "${SKIP_RUST:-}" == 1 ]] || TARGETS="$TARGET" scripts/build-apple.sh
