@@ -90,6 +90,9 @@ final class AutoFillModel {
     /// the "user verified" flag.
     private var userVerified = false
     private var finished = false
+    /// Items that asked for their confirmation: never kept for the next step
+    /// (`RecentFill`).
+    private var protectedItems: Set<String> = []
 
     init(complete: @escaping (Completion) -> Void) {
         self.complete = complete
@@ -142,14 +145,17 @@ final class AutoFillModel {
     // MARK: Unlocking
 
     /// Face ID right away if possible (the request comes from a user
-    /// gesture).
-    func autoUnlock() async {
+    /// gesture). `appeared`: the sheet is on screen (`viewDidAppear`), no
+    /// need to wait for it.
+    func autoUnlock(appeared: Bool = false) async {
         guard phase == .locked, canUseBiometrics else { return }
         // The extension's interface is only in the foreground once its sheet
         // is presented: before that, LocalAuthentication refuses ("caller is
         // not running foreground"). We wait, then retry a little.
         for attempt in 0..<6 {
-            try? await Task.sleep(for: .milliseconds(attempt == 0 ? 350 : 500))
+            if attempt > 0 || !appeared {
+                try? await Task.sleep(for: .milliseconds(attempt == 0 ? 350 : 500))
+            }
             guard phase == .locked else { return }
             if await unlockWithBiometrics(quietWhenNotForeground: attempt < 5) { return }
         }
@@ -211,6 +217,11 @@ final class AutoFillModel {
     private func load() {
         guard let vault else { return }
         let session = vault.session
+        // A tapped suggestion fills right away: no list to read.
+        if case .provide(let request) = request {
+            Task { await provide(request) }
+            return
+        }
         everything = ((try? session.summaries()) ?? []).filter { $0.category == .login && $0.state == .active }
         switch request {
         case .list(let services, let query):
@@ -225,9 +236,7 @@ final class AutoFillModel {
             if let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity {
                 targets = (try? session.autofillPasskeyTargets(rpId: identity.relyingPartyIdentifier)) ?? []
             }
-        case .provide(let request):
-            Task { await provide(request) }
-        case .none:
+        case .provide, .none:
             break
         }
     }
@@ -316,6 +325,7 @@ final class AutoFillModel {
     private func guarded(_ itemID: String, title: String, _ action: @escaping () async -> Void) {
         guard let session = vault?.session else { return }
         if session.needsConfirmation(id: itemID) {
+            protectedItems.insert(itemID)
             confirmation = Confirmation(itemID: itemID, title: title, action: action)
             Task { await confirmWithBiometrics() }
         } else {
@@ -352,6 +362,13 @@ final class AutoFillModel {
         guard let session = vault?.session else { return }
         do {
             let credential = try session.autofillPassword(id: id)
+            // The next step of the form fills without Face ID; a protected
+            // item asks again each time.
+            if protectedItems.contains(id) {
+                RecentFill.forget()
+            } else {
+                RecentFill.remember(itemID: id, user: credential.username, password: credential.password)
+            }
             // Conditional creation (iOS 18): Safari may request, right after,
             // a passkey for this account, in the background with the vault
             // closed. The key is prepared now (see conditional.rs).

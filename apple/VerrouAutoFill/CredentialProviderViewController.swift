@@ -52,6 +52,19 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         hosted = true
     }
 
+    // Face ID as soon as the sheet is on screen, rather than after a delay.
+    #if os(macOS)
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        Task { await model.autoUnlock(appeared: true) }
+    }
+    #else
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        Task { await model.autoUnlock(appeared: true) }
+    }
+    #endif
+
     // MARK: Lists
 
     override func prepareCredentialList(for serviceIdentifiers: [ASCredentialServiceIdentifier]) {
@@ -77,6 +90,15 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     // MARK: Tapped suggestion
 
     override func provideCredentialWithoutUserInteraction(for credentialRequest: any ASCredentialRequest) {
+        // The second step of a form (password after username): the login
+        // filled a moment ago, without Face ID (`RecentFill`).
+        if credentialRequest.type == .password,
+           let id = credentialRequest.credentialIdentity.recordIdentifier,
+           let recent = RecentFill.credential(for: id) {
+            Self.log.notice("recent login filled again")
+            return extensionContext.completeRequest(
+                withSelectedCredential: ASPasswordCredential(user: recent.user, password: recent.password))
+        }
         // Vault locked in this new process: Face ID is needed.
         extensionContext.cancelRequest(withError: NSError(
             domain: ASExtensionErrorDomain, code: ASExtensionError.userInteractionRequired.rawValue))

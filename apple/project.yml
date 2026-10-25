@@ -146,6 +146,7 @@ targets:
       - path: VerrouAutoFill/AutoFillModel.swift
       - path: VerrouAutoFill/CredentialProviderViewController.swift
       - path: VerrouAutoFill/Memory.swift
+      - path: VerrouAutoFill/RecentFill.swift
       - path: VerrouAutoFill/PasskeyPrf.swift
       - path: VerrouAutoFill/PasskeyPrfSystem.swift
       # Approving from the iPhone is the app's business.
