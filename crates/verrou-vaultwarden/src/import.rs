@@ -246,21 +246,7 @@ impl Connection {
         let mut ids = HashMap::new();
         for name in wanted {
             // The name only goes out encrypted, even for an existing folder.
-            // As for reading, the SDK's "high-level" method: Verrou doesn't
-            // use its state storage.
-            #[allow(deprecated)]
-            let encrypted = self
-                .sdk
-                .vault()
-                .folders()
-                .encrypt(FolderView {
-                    id: None,
-                    name: name.clone(),
-                    revision_date: Utc::now(),
-                })
-                .map_err(Error::crypto)?
-                .name
-                .to_string();
+            let encrypted = self.encrypt_folder_name(&name)?;
             let id = match existing.get(&name) {
                 Some(id) => id.clone(),
                 None => self.api.create_folder(access, &encrypted).await?,
@@ -268,6 +254,26 @@ impl Connection {
             ids.insert(name, (id, encrypted));
         }
         Ok(ids)
+    }
+
+    /// A folder name encrypted by the SDK, as the server stores it.
+    pub(crate) fn encrypt_folder_name(&self, name: &str) -> Result<String, Error> {
+        // As for reading, the SDK's "high-level" method: Verrou doesn't
+        // use its state storage.
+        #[allow(deprecated)]
+        let encrypted = self
+            .sdk
+            .vault()
+            .folders()
+            .encrypt(FolderView {
+                id: None,
+                name: name.to_owned(),
+                revision_date: Utc::now(),
+            })
+            .map_err(Error::crypto)?
+            .name
+            .to_string();
+        Ok(encrypted)
     }
 }
 

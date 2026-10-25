@@ -332,3 +332,98 @@ async fn offline_bulk_actions_wait_in_the_outbox_then_reach_the_server() {
     std::fs::remove_dir_all(store.dir()).unwrap();
     std::fs::remove_dir_all(other.dir()).unwrap();
 }
+
+fn folder_names(vault: &Decrypted) -> Vec<&str> {
+    vault
+        .folders
+        .iter()
+        .map(|(_, name)| name.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn folders_are_created_renamed_with_their_subfolders_and_deleted() {
+    let Some(server) = server() else { return };
+    let email = register(&server).await;
+    let store = temp_store();
+    let (mut connection, _) = sign_in(&store, &server, &email).await;
+    let [a, b, ..] = four_items(&mut connection).await;
+
+    // An empty folder exists right away; bad names are refused.
+    let (work, vault) = connection.create_folder("Work").await.unwrap();
+    assert_eq!(folder_names(&vault), ["Work"]);
+    for bad in ["", "a//b", "/a", "a/"] {
+        assert!(matches!(
+            connection.create_folder(bad).await,
+            Err(Error::Invalid(_))
+        ));
+    }
+    let (clients, _) = connection.create_folder("Work/Clients").await.unwrap();
+    let (home, _) = connection.create_folder("Home").await.unwrap();
+    let (outcome, _) = bulk(
+        &mut connection,
+        &[&a],
+        BulkAction::MoveToFolder(Some(work.clone())),
+    )
+    .await;
+    assert_eq!(item(&outcome.vault, &a).folder.as_deref(), Some("Work"));
+    sent(&mut connection).await;
+    let (outcome, _) = bulk(
+        &mut connection,
+        &[&b],
+        BulkAction::MoveToFolder(Some(clients.clone())),
+    )
+    .await;
+    assert_eq!(
+        item(&outcome.vault, &b).folder.as_deref(),
+        Some("Work/Clients")
+    );
+    sent(&mut connection).await;
+
+    // Refusals: a taken name, an unknown folder, an empty name.
+    let taken = connection.rename_folder(&work, "Home").await;
+    assert!(matches!(&taken, Err(Error::Invalid(m)) if m.contains("already exists")));
+    assert!(matches!(
+        connection.rename_folder(&work, " ").await,
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        connection
+            .rename_folder(&uuid::Uuid::new_v4().to_string(), "X")
+            .await,
+        Err(Error::NotFound)
+    ));
+
+    // Renaming the parent renames the subfolder, items stay filed.
+    let vault = connection.rename_folder(&work, "Job").await.unwrap();
+    assert_eq!(folder_names(&vault), ["Home", "Job", "Job/Clients"]);
+    assert_eq!(item(&vault, &a).folder.as_deref(), Some("Job"));
+    assert_eq!(item(&vault, &b).folder.as_deref(), Some("Job/Clients"));
+
+    // Deleting without the subfolders keeps them; the items are unfiled.
+    let (unfiled, vault) = connection.delete_folder(&work, false).await.unwrap();
+    assert_eq!(unfiled, 1);
+    assert_eq!(folder_names(&vault), ["Home", "Job/Clients"]);
+    assert_eq!(item(&vault, &a).folder, None);
+    assert_eq!(item(&vault, &b).folder.as_deref(), Some("Job/Clients"));
+
+    // With the subfolders: gone too, items kept.
+    let (job, _) = connection.create_folder("Job").await.unwrap();
+    let (unfiled, vault) = connection.delete_folder(&job, true).await.unwrap();
+    assert_eq!(unfiled, 1);
+    assert_eq!(folder_names(&vault), ["Home"]);
+    assert_eq!(item(&vault, &b).folder, None);
+    assert!(matches!(
+        connection.delete_folder(&job, true).await,
+        Err(Error::NotFound)
+    ));
+    let (unfiled, _) = connection.delete_folder(&home, false).await.unwrap();
+    assert_eq!(unfiled, 0);
+
+    // Another device sees the same folders.
+    let other = temp_store();
+    let (_, seen) = sign_in(&other, &server, &email).await;
+    assert_eq!(folder_names(&seen).len(), 0);
+    std::fs::remove_dir_all(store.dir()).unwrap();
+    std::fs::remove_dir_all(other.dir()).unwrap();
+}

@@ -169,6 +169,8 @@ final class AppModel {
     var bulkProgress: (done: Int, total: Int)?
     /// "Move to folder…" open, for these items.
     var moveRequest: MoveRequest?
+    /// "New folder…" or "Rename…" open (see `FolderManagement.swift`).
+    var folderRequest: FolderRequest?
     /// Fields revealed for the selected item, cleared as soon as it changes.
     var revealed: [String: String] = [:]
     var toast: Toast?

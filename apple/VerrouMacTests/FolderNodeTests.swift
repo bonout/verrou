@@ -41,4 +41,32 @@ final class FolderNodeTests: XCTestCase {
         XCTAssertEqual(FolderNode.path(of: "/Work//Clients/"), "Work/Clients")
         XCTAssertEqual(FolderNode.path(of: "Personal"), "Personal")
     }
+
+    /// A folder created empty is on the server but not in the counts.
+    func testAnEmptyFolderShowsWithAZeroCount() {
+        let tree = FolderNode.tree(counts: [("Work", 2)], folders: ["Work", "/Ideas/", "Work/Clients"])
+        XCTAssertEqual(tree.map(\.path), ["Ideas", "Work"])
+        XCTAssertEqual(tree[0].count, 0)
+        XCTAssertEqual(tree[1].count, 2)
+        XCTAssertEqual(tree[1].children?.map(\.path), ["Work/Clients"])
+        XCTAssertEqual(tree[1].children?[0].count, 0)
+    }
+
+    /// Renaming or deleting acts on the outermost server folders: the rest follow.
+    func testRootsAreTheOutermostFoldersOfABranch() {
+        let folders = [(id: "1", name: "Work/Clients"), (id: "2", name: "Work/Clients/Acme"),
+                       (id: "3", name: "Workshop"), (id: "4", name: "Work/Admin")]
+        XCTAssertEqual(FolderNode.roots(of: "Work", in: folders).map(\.id), ["1", "4"],
+                       "Work has no folder of its own; Workshop is not below it")
+        XCTAssertEqual(FolderNode.roots(of: "Work/Clients", in: folders).map(\.id), ["1"])
+        XCTAssertEqual(FolderNode.roots(of: "Workshop", in: folders).map(\.id), ["3"])
+        XCTAssertTrue(FolderNode.roots(of: "Home", in: folders).isEmpty)
+    }
+
+    func testMovedFollowsTheRenamedParent() {
+        XCTAssertEqual(FolderNode.moved("Work/Clients", from: "Work", to: "Job"), "Job/Clients")
+        XCTAssertEqual(FolderNode.moved("Work", from: "Work", to: "Job/Work"), "Job/Work")
+        XCTAssertEqual(FolderNode.parent(of: "Work/Clients"), "Work")
+        XCTAssertNil(FolderNode.parent(of: "Work"))
+    }
 }

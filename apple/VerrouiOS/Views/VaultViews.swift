@@ -142,7 +142,9 @@ struct VaultHomeView: View {
                 SectionHeader("Categories")
             }
         }
-        if let folders = counts?.folders, !folders.isEmpty {
+        // The section stays when it is empty, for the button that creates the
+        // first folder.
+        if !model.folderTree.isEmpty || model.canEdit {
             Section {
                 // Top-level folders only ("Work/Clients" is inside "Work"),
                 // counted with their subfolders: a folder's screen lists
@@ -150,9 +152,22 @@ struct VaultHomeView: View {
                 ForEach(model.folderTree) { folder in
                     FilterLink(title: folder.name, symbol: "folder.fill", tint: .blue, count: folder.count,
                                filter: .folder(name: folder.path))
+                        .folderActions(folder)
                 }
             } header: {
-                SectionHeader("Folders")
+                HStack {
+                    SectionHeader("Folders")
+                    Spacer()
+                    if model.canEdit {
+                        Button {
+                            model.folderRequest = FolderRequest(kind: .create(parent: nil))
+                        } label: {
+                            Image(systemName: "folder.badge.plus")
+                        }
+                        .accessibilityLabel("New Folder")
+                        .accessibilityIdentifier("new-folder")
+                    }
+                }
             }
         }
         SharedVaultsHomeSection()
@@ -550,6 +565,7 @@ struct ItemListView: View {
                 NavigationLink(value: PhoneModel.Route.list(.folder(name: folder.path))) {
                     HomeRow(title: folder.name, symbol: "folder.fill", tint: .blue, count: folder.count)
                 }
+                .folderActions(folder)
             }
             ForEach(rows) { row in
                 ItemRowLink(row: row, showsPasskey: showsPasskey)
@@ -579,6 +595,16 @@ struct ItemListView: View {
                     }
                     .accessibilityLabel("Sort")
                     .accessibilityIdentifier("sort-menu")
+                    if model.canEdit, case .folder(let path) = filter,
+                       let folder = FolderNode.find(path, in: model.folderTree) {
+                        Menu {
+                            FolderMenuItems(node: folder)
+                        } label: {
+                            Image(systemName: "folder.badge.gearshape")
+                        }
+                        .accessibilityLabel("Folder")
+                        .accessibilityIdentifier("folder-menu")
+                    }
                     NewItemMenu(folderID: folderID, destination: destination)
                 }
             }

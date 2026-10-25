@@ -17,6 +17,9 @@ struct EditItemView: View {
     /// overestimate it by a lot.
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
+    /// "New Folder…" of the Folder picker, and the folders created from it.
+    @State private var newFolder: FolderRequest?
+    @State private var created: [FolderOption] = []
     @FocusState private var titleFocused: Bool
 
     init(editor: AppModel.Editor) {
@@ -27,6 +30,28 @@ struct EditItemView: View {
 
     private var isNew: Bool { editor.itemID == nil }
     private var isLogin: Bool { draft.login != nil }
+
+    /// The picker's "New Folder…" entry: never a real folder ID.
+    private static let newFolderTag = "\u{0}new-folder"
+
+    /// The vault's folders, and the one created from this sheet in case the
+    /// list has not caught up with it.
+    private var folderOptions: [FolderOption] {
+        model.folders + created.filter { new in !model.folders.contains { $0.id == new.id } }
+    }
+
+    /// Choosing "New Folder…" opens the name sheet and keeps the previous
+    /// choice until the folder exists.
+    private var folderSelection: Binding<String?> {
+        Binding(get: { draft.folderId },
+                set: { choice in
+                    if choice == Self.newFolderTag {
+                        newFolder = FolderRequest(kind: .create(parent: nil))
+                    } else {
+                        draft.folderId = choice
+                    }
+                })
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -93,10 +118,14 @@ struct EditItemView: View {
                 CustomFieldsSection(fields: $draft.fields, template: draft.template)
 
                 Section {
-                    Picker("Folder", selection: $draft.folderId) {
+                    Picker("Folder", selection: folderSelection) {
                         Text("No folder").tag(String?.none)
-                        ForEach(model.folders, id: \.id) { folder in
+                        ForEach(folderOptions, id: \.id) { folder in
                             Text(folder.name).tag(Optional(folder.id))
+                        }
+                        if model.canEdit {
+                            Divider()
+                            Text("New Folder…").tag(Optional(Self.newFolderTag))
                         }
                     }
                     Toggle("Favorite", isOn: $draft.favorite)
@@ -142,6 +171,14 @@ struct EditItemView: View {
         .frame(minHeight: isLogin ? 640 : 520, maxHeight: 700)
         .navigationTitle(windowTitle)
         .onAppear { titleFocused = isNew }
+        .sheet(item: $newFolder) { request in
+            FolderNameView(request: request) { id in
+                // The core lists it under its full name.
+                if let folder = model.folders.first(where: { $0.id == id }) { created.append(folder) }
+                draft.folderId = id
+            }
+            .environment(model)
+        }
         .confirmationDialog("Move “\(draft.name)” to the trash?", isPresented: $confirmTrash) {
             Button("Move to Trash", role: .destructive) {
                 if let id = editor.itemID { Task { await model.trash(id) } }

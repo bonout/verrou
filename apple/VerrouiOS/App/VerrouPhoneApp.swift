@@ -280,6 +280,7 @@ struct MainTabs: View {
         .quickLookPreview($model.preview)
         .modifier(SharingPresentations())
         .modifier(UnsharePresentation())
+        .modifier(FolderPresentations())
     }
 
     /// QR code sheet opened from an item page (the edit screen presents its
