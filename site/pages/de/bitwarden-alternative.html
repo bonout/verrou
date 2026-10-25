@@ -1,0 +1,50 @@
+<!--{"title": "Native Bitwarden Alternative für Mac und iPhone | Verrou", "description": "Verrou oder die Bitwarden-App: ein nativer Client für deinen Vaultwarden-Tresor mit Sofortsuche, Schnellzugriff und Ausfüllen in Apps. Beide parallel nutzbar."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vergleich</div>
+    <h1>Verrou oder die Bitwarden-App?</h1>
+    <p class="lede">Derselbe Tresor, dasselbe Format, derselbe Server. Verrou ist eine native App für alle, die mit Vaultwarden selbst hosten und mit Mac und iPhone arbeiten.</p>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>Die kurze Antwort</h2>
+  <p><strong>Verrou ist kein Fork und kein Ersatz für Bitwarden, sondern ein weiterer Client für denselben Tresor.</strong> Verrou arbeitet mit deinem Vaultwarden-Server im Standard-Bitwarden-Format. Du kannst also die offiziellen Bitwarden-Apps, die Browser-Erweiterung und den Web-Tresor behalten und Verrou dort nutzen, wo du es lieber magst. Hörst du irgendwann auf, Verrou zu nutzen, ändert sich auf deinem Server nichts.</p>
+
+  <div class="table">
+    <table>
+      <tr><th></th><th>Verrou</th><th>Bitwarden-Apps</th></tr>
+      <tr><td>Mac-App</td><td>Nativ (SwiftUI und Rust)</td><td>Electron</td></tr>
+      <tr><td>Suche</td><td>Beim Tippen, unter 5 ms bei 10.000 Einträgen, unscharf und unabhängig von Akzenten</td><td>Suchfeld im Tresor</td></tr>
+      <tr><td>Schnellzugriff aus jeder App</td><td>⌘⇧Leertaste, dann ein Passwort oder einen Code kopieren</td><td>App-Fenster öffnen</td></tr>
+      <tr><td>Jede Mac-App ausfüllen</td><td>⌘\ tippt das Login in die App im Vordergrund</td><td>Browser und automatisches Ausfüllen des Systems</td></tr>
+      <tr><td>Secrets für Befehle und KI-Agenten</td><td><code>verrou run</code>, maskierte Ausgabe, Genehmigung vom iPhone</td><td>Bitwarden CLI und Secrets Manager</td></tr>
+      <tr><td>Server</td><td>Vaultwarden (dafür gebaut und damit getestet)</td><td>Bitwarden-Cloud, selbst gehostetes Bitwarden und Vaultwarden</td></tr>
+      <tr><td>Plattformen</td><td>macOS, iPhone, Brave, Chrome, Firefox, CLI unter Linux</td><td>Alle Plattformen, auch Windows und Android</td></tr>
+      <tr><td>Preis</td><td>Kostenlos, Open Source (GPL-3.0)</td><td>Kostenlose Version und Bezahlpläne, Open Source</td></tr>
+    </table>
+  </div>
+  <p class="note">Verglichen mit den öffentlich dokumentierten Funktionen der Bitwarden-Apps im Oktober 2026; Bitwarden ist eine Marke von Bitwarden, Inc., und Verrou ist nicht mit dem Unternehmen verbunden.</p>
+
+  <h2>Wann Verrou besser passt</h2>
+  <ul>
+    <li>Du betreibst <strong>Vaultwarden</strong> zu Hause oder für dein Team und nutzt einen Mac und ein iPhone.</li>
+    <li>Du willst einen Tresor, der sich <strong>sofort öffnet und schon beim Tippen findet</strong>, aus jeder App.</li>
+    <li>Du arbeitest im Terminal oder mit <strong>KI-Agenten</strong> und willst Secrets einzeln genehmigen, vom iPhone aus, wenn du weg bist.</li>
+  </ul>
+
+  <h2>Wann du bei den offiziellen Apps bleiben solltest</h2>
+  <ul>
+    <li>Du nutzt <strong>bitwarden.com</strong>: Verrou ist nur für Vaultwarden gebaut und getestet.</li>
+    <li>Du brauchst Apps für <strong>Windows, Linux-Desktop oder Android</strong>.</li>
+    <li>Du bist auf die Business-Funktionen von Bitwarden angewiesen (SSO, Admin-Konsole, Secrets Manager).</li>
+  </ul>
+
+  <h2>Der Wechsel ist umkehrbar</h2>
+  <p>Alles bleibt auf deinem Server im Bitwarden-Format, auch Passkeys, Anhänge und geteilte Tresore. Installiere Verrou neben der Bitwarden-App, melde dich beim selben Server an und vergleiche.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Verrou {{version}} laden</a>
+    <a class="button ghost" href="/de/1password-alternative/">Verrou oder 1Password</a>
+  </div>
+</article>

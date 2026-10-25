@@ -40,11 +40,15 @@ jobs:
           version="$(gh release view -R "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
           python3 site/build.py _site "${version#v}"
           # The videos and the icon come from docs/media (kept in one place):
-          # docs/media for English (the README's), docs/media/fr for French.
-          mkdir -p _site/media/en _site/media/fr
+          # docs/media for English (the README's), docs/media/<lang> for the
+          # other languages.
+          mkdir -p _site/media/en
           cp docs/media/icon.png _site/media/
           cp docs/media/demo.mp4 docs/media/ios-app.mp4 _site/media/en/
-          cp docs/media/fr/demo.mp4 docs/media/fr/ios-app.mp4 _site/media/fr/
+          for lang in fr de es it; do
+            mkdir -p "_site/media/$lang"
+            cp "docs/media/$lang/demo.mp4" "docs/media/$lang/ios-app.mp4" "_site/media/$lang/"
+          done
           # Every local file a page names must be there.
           find _site -name index.html -exec grep -ho '"/[a-z][^"#]*\.[a-z0-9]*"' {} + | tr -d '"' | sort -u | while read -r file; do
             test -f "_site$file" || { echo "missing: $file"; exit 1; }

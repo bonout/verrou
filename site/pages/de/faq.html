@@ -1,0 +1,53 @@
+<!--{"title": "Verrou FAQ: die Vaultwarden-App für Mac und iPhone", "description": "Antworten zu Verrou: was es ist, Kompatibilität mit Vaultwarden und Bitwarden, Sicherheit, die iPhone-App, KI-Agenten, Updates und Preis.", "schema": "faq"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">FAQ</div>
+    <h1>Fragen zu Verrou.</h1>
+  </div>
+</header>
+
+<article class="prose">
+<section class="faq">
+  <h3>Was ist Verrou?</h3>
+  <p>Verrou ist ein kostenloser Open-Source-Passwort-Manager für Mac und iPhone, der mit deinem eigenen Vaultwarden-Server arbeitet. Es ist eine native App (SwiftUI auf einem Rust-Kern) mit Touch ID und Face ID, Suche beim Tippen, Schnellzugriff, einer Browser-Erweiterung, einem Kommandozeilen-Tool und einem SSH-Agenten.</p>
+
+  <h3>Funktioniert Verrou mit Vaultwarden?</h3>
+  <p>Ja: Verrou ist für Vaultwarden gebaut und damit getestet; jede Änderung durchläuft ihre End-to-End-Tests gegen Vaultwarden 1.37.4. Melde dich mit der Adresse deines Servers, deiner E-Mail und deinem Master-Passwort an, dann mit deinem zweiten Faktor.</p>
+
+  <h3>Funktioniert es mit bitwarden.com?</h3>
+  <p>Verrou ist nur für Vaultwarden gebaut und getestet. Es nutzt das Format und das Protokoll von Bitwarden, aber bitwarden.com ist derzeit kein unterstützter Server.</p>
+
+  <h3>Kann ich die offiziellen Bitwarden-Apps weiter nutzen?</h3>
+  <p>Ja. Verrou speichert alles auf deinem Server im Standard-Bitwarden-Format, auch Passkeys, Anhänge und geteilte Tresore, sodass die Bitwarden-Apps und der Web-Tresor daneben weiter funktionieren. Wenn du Verrou nicht mehr nutzt, ändert sich nichts.</p>
+
+  <h3>Ist Verrou sicher?</h3>
+  <p>Der Tresor wird nur auf deinen Geräten entschlüsselt, vom offiziellen Rust-SDK von Bitwarden, und der Schlüssel ist für Touch ID und Face ID in der Secure Enclave versiegelt. Die Browser-Erweiterung erhält nur die Logins der geöffneten Website, und kopierte Geheimnisse werden nach 90 Sekunden gelöscht. Jede Verbindung und ihre bekannten Grenzen sind in SECURITY.md dokumentiert, und jede veröffentlichte Datei hat eine Build-Attestierung.</p>
+
+  <h3>Ist Verrou kostenlos?</h3>
+  <p>Ja. Verrou ist kostenlos und Open Source, unter der Lizenz GPL-3.0.</p>
+
+  <h3>Wie installiere ich Verrou auf dem Mac?</h3>
+  <p>Lade das Disk-Image aus den GitHub-Releases (macOS 15 oder neuer), zieh Verrou in den Ordner „Programme“ und melde dich bei deinem Vaultwarden-Server an. Die App ist von Apple signiert und notarisiert und aktualisiert sich selbst, nachdem sie die Signatur jedes Updates geprüft hat.</p>
+
+  <h3>Gibt es eine iPhone-App?</h3>
+  <p>Ja, mit Face ID und automatischem Ausfüllen von Passwörtern, Einmalcodes und Passkeys (iOS 17 oder neuer). Sie kommt bald in den App Store; bis dahin kannst du sie aus dem Quellcode bauen.</p>
+
+  <h3>Wie hält Verrou Secrets von KI-Agenten fern?</h3>
+  <p>Mit verrou run erhält ein Befehl die Secrets, die er braucht, in seiner Umgebung, während deine Dateien nur verrou://-Referenzen enthalten. Gibt der Befehl ein Secret aus, maskiert Verrou es, bevor es das Terminal oder den Agenten erreicht. Jedes Secret fragt nach Touch ID, oder nach Face ID auf deinem gekoppelten iPhone, wenn du nicht am Mac bist.</p>
+
+  <h3>Kann ich Anfragen auf meinem iPhone genehmigen?</h3>
+  <p>Ja. Ist der Mac gesperrt oder inaktiv, gehen Anfragen vom Terminal oder von einem KI-Agenten an Verrou auf deinem iPhone, über deinen eigenen iCloud-Account und Ende-zu-Ende-verschlüsselt. Face ID genehmigt sie; der Tresorschlüssel des Mac verlässt den Mac nie.</p>
+
+  <h3>Welche Browser werden unterstützt?</h3>
+  <p>Brave, Chrome und Firefox, mit einer Erweiterung, die Logins, Einmalcodes, Karten und Passkeys ausfüllt. Safari und andere Mac-Apps werden über das automatische Ausfüllen des Systems und das Kürzel ⌘\ von Verrou ausgefüllt.</p>
+
+  <h3>Kann ich aus 1Password oder Apple Passwörter importieren?</h3>
+  <p>Ja: Verrou importiert aus 1Password, Apple Passwörter und Proton Pass, findet dann Duplikate (dasselbe Konto unter verschiedenen URLs, Titeln oder Benutzernamen) und führt sie zusammen.</p>
+
+  <h3>In welchen Sprachen gibt es Verrou?</h3>
+  <p>Deutsch, Englisch, Französisch, Spanisch und Italienisch: Die Mac-App, die iPhone-App, das automatische Ausfüllen und die Browser-Erweiterung folgen der Sprache deines Geräts. Diese Website gibt es in denselben fünf Sprachen.</p>
+
+  <h3>Wer steht hinter Verrou?</h3>
+  <p>Verrou ist ein unabhängiges Open-Source-Projekt, veröffentlicht von Bonout. Es ist weder mit Bitwarden, Inc. noch mit dem Vaultwarden-Projekt verbunden. Kontakt: contact@bonout.com.</p>
+</section>
+</article>

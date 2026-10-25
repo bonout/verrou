@@ -1,0 +1,50 @@
+<!--{"title": "Segreti per gli agenti IA, approvati dal tuo iPhone | Verrou", "description": "Dai a Claude Code, Codex e agli altri agenti IA le chiavi che servono senza mostrarle: verrou run inietta i segreti, li maschera e chiede Touch ID o il tuo iPhone."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Terminale e agenti IA</div>
+    <h1>I tuoi agenti usano i tuoi segreti. Senza mai vederli.</h1>
+    <p class="lede">Verrou passa chiavi API e password ai comandi che un agente IA esegue, le tiene fuori dal suo contesto e dalla cronologia del terminale, e prima chiede a te: Touch ID sul Mac, Face ID sul tuo iPhone quando non ci sei.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Scarica Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/docs/GUIDE.md#command-line-and-ssh-agent">Guida alla riga di comando</a>
+    </div>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>Il problema dei segreti con gli agenti IA</h2>
+  <p>Un agente di programmazione come Claude Code o Codex esegue comandi nel tuo terminale. Se un token si trova in un file <code>.env</code>, in una variabile d'ambiente o nell'output di un comando, finisce nel contesto dell'agente, nei log e a volte in una trascrizione inviata altrove. Incollare i segreti a mano non è sostenibile, e dare all'agente l'intero password manager è anche peggio.</p>
+
+  <h2>verrou run: i segreti entrano, non escono</h2>
+  <p><code>verrou run</code> avvia un comando con i segreti che gli servono nel suo ambiente. I tuoi file contengono solo riferimenti, quindi puoi farne il commit:</p>
+  <pre><span class="c"># .env: nessun segreto qui dentro</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "deploy" run --env-file .env -- ./deploy.sh
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
+  <ul>
+    <li><strong>Output mascherato.</strong> Se il comando stampa un segreto, Verrou lo sostituisce con <code>&lt;concealed by Verrou&gt;</code> prima che arrivi al terminale o all'agente.</li>
+    <li><strong>Approvati uno per uno.</strong> Ogni segreto chiede Touch ID, con il motivo indicato dall'agente (<code>--reason</code> o <code>VERROU_REASON</code>). Un'approvazione vale 5 minuti per quell'elemento e quel terminale.</li>
+    <li><strong>Ricerca senza segreti.</strong> <code>verrou search</code> mostra titoli, nomi utente e siti, mai le password, così un agente trova da solo il riferimento giusto.</li>
+  </ul>
+
+  <h2>Lontano dal Mac? Approva dall'iPhone.</h2>
+  <p>Quando lo schermo del Mac è bloccato o sei inattivo da un po', la richiesta arriva a Verrou sull'iPhone abbinato: "Il Terminale vuole leggere GitHub, motivo: deploy". Face ID, un tocco, e il comando prosegue. Se la cassaforte del Mac era bloccata, una sola approvazione la sblocca per quell'unico elemento.</p>
+  <ul>
+    <li><strong>End-to-end.</strong> Richieste e risposte passano dal tuo database privato iCloud, cifrate tra il Mac e le chiavi del Secure Enclave dell'iPhone. Nessun nostro server.</li>
+    <li><strong>La chiave della cassaforte resta sul Mac.</strong> L'iPhone si limita ad approvare; non riceve mai la chiave della cassaforte del Mac.</li>
+    <li><strong>La notifica non rivela nulla.</strong> Ti dice solo che c'è una richiesta in attesa; il motivo compare nell'app, dopo Face ID.</li>
+  </ul>
+
+  <h2>Agente SSH e firma git</h2>
+  <p><code>eval "$(verrou ssh-agent)"</code> serve le chiavi SSH salvate nella tua cassaforte: <code>ssh</code>, <code>git push</code> e <code>git commit -S</code> funzionano, e ogni firma chiede la tua approvazione.</p>
+
+  <h2>Il confronto</h2>
+  <p>1Password offre un comando <code>op run</code> simile nella sua CLI, legato al suo cloud. Verrou fa lo stesso per una cassaforte sul tuo server Vaultwarden, con le approvazioni dal tuo iPhone; vedi <a href="/it/alternativa-1password/">Verrou o 1Password</a>.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Scarica per Mac</a>
+    <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/SECURITY.md#terminal-and-ssh-agent">Dettagli sulla sicurezza</a>
+  </div>
+</article>

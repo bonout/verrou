@@ -7,8 +7,7 @@
 <meta name="description" content="{{description}}">
 <meta name="color-scheme" content="dark">
 <link rel="canonical" href="{{canonical}}">
-<link rel="alternate" hreflang="en" href="{{alternate_en}}">
-<link rel="alternate" hreflang="fr" href="{{alternate_fr}}">
+{{alternates}}
 <link rel="alternate" hreflang="x-default" href="{{alternate_en}}">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Verrou">
@@ -40,7 +39,10 @@
       <a href="{{faq}}">{{w_faq}}</a>
       <a href="https://github.com/bonout/verrou">GitHub</a>
     </div>
-    <a class="lang" href="{{other_href}}" hreflang="{{other_lang}}" lang="{{other_lang}}" title="{{w_other_name}}">{{w_other}}</a>
+    <details class="lang">
+      <summary aria-label="{{w_language}}">{{lang_code}}</summary>
+      <div class="menu">{{lang_menu}}</div>
+    </details>
     <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">{{w_download}}</a>
   </div>
 </nav>

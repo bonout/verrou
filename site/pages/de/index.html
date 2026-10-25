@@ -1,0 +1,148 @@
+<!--{"title": "Verrou: dein Vaultwarden-Tresor, nativ auf Mac und iPhone", "description": "Ein schneller, nativer Passwort-Manager für deinen eigenen Vaultwarden-Server: Mac-App, iPhone-App, Browser-Erweiterung, Kommandozeile und SSH-Agent. Open Source.", "schema": "app", "preload": "/img/{lang}/mac.webp"}-->
+<header class="hero" id="top">
+  <div class="notch-stage" aria-hidden="true">
+    <div class="notch" id="notch">
+      <div class="slot" id="notch-slot"></div>
+    </div>
+  </div>
+  <div class="wrap">
+    <h1>Dein Tresor, nativ und sofort da.</h1>
+    <p class="lede">Verrou ist eine Mac- und iPhone-App für deinen eigenen Vaultwarden-Server. Sie öffnet sich im Handumdrehen, findet alles schon beim Tippen und hält deine Geheimnisse von allem anderen fern.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Verrou {{version}} laden</a>
+      <a class="button ghost" href="#iphone">iPhone-App</a>
+    </div>
+    <p class="small">Version {{version}} · <a href="https://github.com/bonout/verrou/releases/tag/v{{version}}">Versionshinweise</a> · Kostenlos und Open Source · macOS 15 oder neuer · iOS 17 oder neuer · funktioniert mit deinem bestehenden Bitwarden-Tresor · auf Deutsch, Englisch, Französisch, Spanisch und Italienisch</p>
+    <div class="window reveal">
+      <video src="/media/de/demo.mp4" poster="/img/de/mac.webp" width="1600" height="1000" muted loop playsinline preload="none" data-play aria-label="Verrou auf dem Mac: Entsperren, Suchen, ein Passwort mit seinem Einmalcode anzeigen, Schnellzugriff"></video>
+    </div>
+  </div>
+</header>
+
+<section id="features">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">Im Alltag</div>
+      <h2>So schnell, dass du ihn vergisst.</h2>
+      <p class="sub">Eine native SwiftUI-App auf einem Rust-Kern, gebaut auf der Kryptografie von Bitwarden. Dein Tresor bleibt auf deinem Server, im Bitwarden-Format: Die offiziellen Apps funktionieren weiter daneben.</p>
+    </div>
+    <div class="grid">
+      <div class="card wide reveal">
+        <div class="icon">⌘</div>
+        <h3>Schnellzugriff, aus jeder App</h3>
+        <p><kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Leertaste</kbd> und lostippen: Die Treffer erscheinen in Millisekunden, auch bei Tausenden Einträgen. <kbd>⌘</kbd> <kbd>\</kbd> füllt die App im Vordergrund aus, auch außerhalb des Browsers.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">◎</div>
+        <h3>Touch ID und Face ID</h3>
+        <p>Der Tresorschlüssel ist in der Secure Enclave versiegelt. Zum Entsperren genügt ein Blick.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">⧉</div>
+        <h3>Browser-Erweiterung</h3>
+        <p>Brave, Chrome und Firefox: Logins, Codes, Karten und Passkeys, nur für die geöffnete Website.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">⇄</div>
+        <h3>Geteilte Tresore</h3>
+        <p>Organisationen, Sammlungen und Mitglieder, bestätigt per Fingerabdruck-Phrase. Familie und Team in derselben App.</p>
+      </div>
+      <div class="card reveal">
+        <div class="icon">✓</div>
+        <h3>Sicherheitsprüfung</h3>
+        <p>Schwache, wiederverwendete und geleakte Passwörter, der Umstieg auf Passkeys und Duplikate, zu einem Eintrag zusammengeführt.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="iphone-approval">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="eyebrow">Neu</div>
+      <h2>Nicht am Mac? Genehmige vom iPhone aus.</h2>
+      <p class="sub">Braucht das Terminal oder ein KI-Agent ein Geheimnis, während du weg bist, landet die Anfrage in Verrou auf deinem iPhone. Face ID, ein Tippen, fertig. Selbst wenn der Tresor auf dem Mac gesperrt war.</p>
+      <p class="sub">Ende-zu-Ende-verschlüsselt über deinen eigenen iCloud-Account. Dein iPhone sieht den Tresorschlüssel nie, und kein Server von uns ist beteiligt.</p>
+    </div>
+    <div class="flow reveal" id="flow">
+      <div class="bubble"><div class="icon">›_</div><div><div class="who">Terminal · MacBook</div><div class="what">möchte „GitHub“ lesen</div></div><span class="badge">Mac gesperrt</span></div>
+      <div class="bubble"><div class="icon">📱</div><div><div class="who">Verrou · iPhone</div><div class="what">Entsperren und „GitHub“ lesen · Grund: Deployment</div></div><span class="badge">Face ID</span></div>
+      <div class="bubble"><div class="icon">✓</div><div><div class="who">Terminal</div><div class="what">Geheimnis an den Befehl übergeben, maskiert</div></div><span class="badge">in Sekunden</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="terminal">
+  <div class="wrap split">
+    <div class="reveal">
+      <div class="eyebrow">Terminal und KI-Agenten</div>
+      <h2>Geheimnisse für deine Befehle, nicht für deinen Verlauf.</h2>
+      <p class="sub"><code>verrou run</code> übergibt Geheimnisse einem Befehl in seiner Umgebung. Sie landen nie im Terminal, in seinem Verlauf oder im Kontext eines KI-Agenten, und alles, was der Befehl ausgibt, wird maskiert.</p>
+      <p class="sub">Dazu ein SSH-Agent, der mit den Schlüsseln aus deinem Tresor signiert, und das Signieren von Git-Commits. Jedes Geheimnis fragt nach deiner Zustimmung.</p>
+    </div>
+    <pre class="reveal"><span class="c"># .env: ruhig committen, sie enthält kein Geheimnis</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "deploy" run --env-file .env -- ./deploy.sh
+<span class="c">Touch ID · oder dein iPhone, wenn du weg bist</span>
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span>
+<span class="g">✓ done</span>
+
+<span class="p">$</span> eval "$(verrou ssh-agent)" &amp;&amp; git commit -S</pre>
+  </div>
+</section>
+
+<section id="iphone">
+  <div class="wrap">
+    <div class="reveal" style="text-align:center">
+      <div class="eyebrow">iPhone</div>
+      <h2>Derselbe Tresor, in deiner Tasche.</h2>
+      <p class="sub" style="margin:0 auto">Automatisches Ausfüllen von Logins, Einmalcodes und Passkeys in Safari und in Apps. Scanne einen QR-Code für die Zwei-Faktor-Authentifizierung, oder lass Verrou jeden Link zum Einrichten eines Codes öffnen. Liquid Glass unter iOS 26.</p>
+    </div>
+    <div class="phones reveal">
+      <div class="phone"><img src="/img/de/ios-vault.webp" alt="Verrou auf dem iPhone: der Startbildschirm des Tresors" width="520" height="1130" loading="lazy"></div>
+      <div class="phone"><video src="/media/de/ios-app.mp4" poster="/img/de/ios-search.webp" width="600" height="1304" muted loop playsinline preload="none" data-play aria-label="Verrou auf dem iPhone: Entsperren, Suchen, ein Passwort kopieren, Einmalcode"></video></div>
+      <div class="phone"><img src="/img/de/ios-item.webp" alt="Verrou auf dem iPhone: ein Eintrag mit seinem Einmalcode" width="520" height="1130" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="security">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="eyebrow">Privat aus Prinzip</div>
+      <h2>Vertrauen musst du nur deinem eigenen Server.</h2>
+      <p class="sub">Kein Account bei uns, keine Statistiken, kein Tracking. Jede Verbindung ist dokumentiert, samt ihren bekannten Grenzen.</p>
+    </div>
+    <ul class="checks reveal">
+      <li><strong>Die Kryptografie von Bitwarden</strong>, Ende zu Ende: Der Tresor wird nur auf deinen Geräten entschlüsselt.</li>
+      <li><strong>Schlüssel in der Secure Enclave</strong> für Touch ID, Face ID und Genehmigungen auf dem iPhone.</li>
+      <li><strong>Die Erweiterung</strong> erhält nur die Logins der geöffneten Website, über einen verschlüsselten lokalen Kanal.</li>
+      <li><strong>Kopierte Geheimnisse</strong> bleiben vor Zwischenablage-Managern verborgen und werden nach 90 Sekunden gelöscht.</li>
+      <li><strong>Das Terminal</strong> sucht, ohne je ein Geheimnis zu sehen; jedes fragt nach deiner Zustimmung.</li>
+      <li><strong>Open Source</strong>, GPL-3.0, mit einer Build-Attestierung für jede veröffentlichte Datei.</li>
+    </ul>
+    <p class="sub" style="margin-top:36px"><a href="https://github.com/bonout/verrou/blob/main/SECURITY.md">SECURITY.md lesen</a> · <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Datenschutzerklärung</a></p>
+  </div>
+</section>
+
+<section style="text-align:center; padding-top: 40px">
+  <div class="wrap reveal">
+    <h2>Probier Verrou aus.</h2>
+    <p class="sub" style="margin: 0 auto 30px">Mit deinem Vaultwarden-Server, oder zum Start mit dem Demo-Tresor.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Verrou {{version}} laden</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Auf GitHub ansehen</a>
+    </div>
+  </div>
+</section>
+
+<script type="application/json" id="notch-scenes">[
+  "<span>🔒</span><span>Verrou</span>",
+  "<span>›_</span><span>Terminal möchte „GitHub“ lesen</span><span class=\"dim\">Touch ID</span>",
+  "<span>📱</span><span class=\"dim\">An dein iPhone gesendet …</span>",
+  "<span class=\"ok\">✓</span><span>Auf dem iPhone genehmigt</span><span class=\"dim\">Face ID</span>",
+  "<span>GitHub</span><span class=\"code\">482 913</span>{ring}",
+  "<span>📋</span><span>Passwort kopiert</span><span class=\"dim\">wird in 90 s gelöscht</span>"
+]</script>

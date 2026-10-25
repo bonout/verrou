@@ -1,0 +1,50 @@
+<!--{"title": "Secrets für KI-Agenten, genehmigt auf deinem iPhone | Verrou", "description": "Gib Claude Code, Codex und anderen KI-Agenten ihre Schlüssel, ohne sie zu zeigen: verrou run übergibt und maskiert Secrets, mit Touch ID oder iPhone."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Terminal und KI-Agenten</div>
+    <h1>Deine Agenten nutzen deine Secrets. Sehen werden sie sie nie.</h1>
+    <p class="lede">Verrou übergibt API-Schlüssel und Passwörter an die Befehle, die ein KI-Agent ausführt, hält sie aus seinem Kontext und deinem Terminalverlauf heraus und fragt dich vorher: Touch ID auf dem Mac, Face ID auf dem iPhone, wenn du weg bist.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Verrou {{version}} laden</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/docs/GUIDE.md#command-line-and-ssh-agent">Anleitung zur Kommandozeile</a>
+    </div>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>Das Problem mit Secrets und KI-Agenten</h2>
+  <p>Ein KI-Coding-Agent wie Claude Code oder Codex führt Befehle in deinem Terminal aus. Steht ein Token in einer <code>.env</code>-Datei, in einer Umgebungsvariable oder in der Ausgabe eines Befehls, landet es im Kontext des Agenten, in Logs und manchmal in einem Transkript, das anderswohin geschickt wird. Secrets von Hand einzufügen skaliert nicht, und dem Agenten deinen ganzen Passwort-Manager zu geben, ist noch schlimmer.</p>
+
+  <h2>verrou run: Secrets rein, nie wieder raus</h2>
+  <p><code>verrou run</code> startet einen Befehl mit den Secrets, die er braucht, in seiner Umgebung. Deine Dateien enthalten nur Referenzen und können deshalb committet werden:</p>
+  <pre><span class="c"># .env: kein Secret darin</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "deploy" run --env-file .env -- ./deploy.sh
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
+  <ul>
+    <li><strong>Maskierte Ausgabe.</strong> Gibt der Befehl ein Secret aus, ersetzt Verrou es durch <code>&lt;concealed by Verrou&gt;</code>, bevor es das Terminal oder den Agenten erreicht.</li>
+    <li><strong>Einzeln genehmigt.</strong> Jedes Secret fragt nach Touch ID, mit dem Grund, den der Agent angegeben hat (<code>--reason</code> oder <code>VERROU_REASON</code>). Eine Genehmigung gilt 5 Minuten für diesen Eintrag und dieses Terminal.</li>
+    <li><strong>Suchen ohne Secrets.</strong> <code>verrou search</code> zeigt Titel, Benutzernamen und Websites, nie Passwörter, sodass ein Agent die richtige Referenz selbst findet.</li>
+  </ul>
+
+  <h2>Nicht am Mac? Genehmige vom iPhone aus.</h2>
+  <p>Ist der Bildschirm deines Mac gesperrt oder warst du eine Weile inaktiv, geht die Anfrage an Verrou auf deinem gekoppelten iPhone: „Terminal möchte GitHub lesen, Grund: deploy“. Face ID, ein Tippen, und der Befehl läuft weiter. War der Tresor auf dem Mac gesperrt, entsperrt eine einzige Genehmigung ihn für genau diesen Eintrag.</p>
+  <ul>
+    <li><strong>Ende zu Ende.</strong> Anfragen und Antworten laufen über deine eigene private iCloud-Datenbank, versiegelt zwischen den Secure-Enclave-Schlüsseln von Mac und iPhone. Kein Server von uns.</li>
+    <li><strong>Der Tresorschlüssel bleibt auf dem Mac.</strong> Das iPhone genehmigt nur; den Tresorschlüssel deines Mac erhält es nie.</li>
+    <li><strong>Die Mitteilung verrät nichts.</strong> Sie sagt dir nur, dass eine Anfrage wartet; den Grund siehst du in der App, nach Face ID.</li>
+  </ul>
+
+  <h2>SSH-Agent und Git-Signaturen</h2>
+  <p><code>eval "$(verrou ssh-agent)"</code> stellt die SSH-Schlüssel aus deinem Tresor bereit: <code>ssh</code>, <code>git push</code> und <code>git commit -S</code> funktionieren, und jede Signatur fragt nach deiner Zustimmung.</p>
+
+  <h2>Der Vergleich</h2>
+  <p>1Password bietet mit <code>op run</code> etwas Ähnliches in seiner CLI, gebunden an seine Cloud. Verrou macht das für einen Tresor auf deinem eigenen Vaultwarden-Server, mit Genehmigungen vom iPhone; siehe <a href="/de/1password-alternative/">Verrou im Vergleich mit 1Password</a>.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Für Mac laden</a>
+    <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/SECURITY.md#terminal-and-ssh-agent">Details zur Sicherheit</a>
+  </div>
+</article>

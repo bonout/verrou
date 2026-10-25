@@ -1,0 +1,54 @@
+<!--{"title": "Vaultwarden Mac-App: Verrou, der native Client für deinen Server", "description": "Eine native macOS-App für Vaultwarden: Touch ID, Suche beim Tippen, Schnellzugriff aus jeder App, Browser-Erweiterung und SSH-Agent. Kostenlos und Open Source.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden für Mac</div>
+    <h1>Eine native Mac-App für deinen Vaultwarden-Server.</h1>
+    <p class="lede">Verrou öffnet den Tresor, den du schon auf Vaultwarden hast, in einer echten Mac-App: SwiftUI auf einem Rust-Kern, Touch ID und Treffer schon beim Tippen.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Verrou {{version}} laden</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Quellcode</a>
+    </div>
+    <p class="small">Kostenlos und Open Source (GPL-3.0) · macOS 15 oder neuer · von Apple signiert und notarisiert · aktualisiert sich selbst</p>
+  </div>
+</header>
+
+<article class="prose">
+  <figure>
+    <img src="/img/de/mac.webp" srcset="/img/de/mac-800.webp 800w, /img/de/mac.webp 1600w" sizes="(max-width: 792px) calc(100vw - 32px), 760px" alt="Verrou auf dem Mac: der Tresor, ein Login mit seinem Einmalcode" width="1600" height="1000" fetchpriority="high">
+    <figcaption>Verrou auf dem Mac, mit dem Demo-Tresor.</figcaption>
+  </figure>
+
+  <h2>Was ist Verrou?</h2>
+  <p><strong>Verrou ist ein kostenloser Open-Source-Passwort-Manager für macOS und iPhone, der mit deinem eigenen Vaultwarden-Server arbeitet.</strong> Er liest und schreibt deinen Tresor im Standard-Bitwarden-Format, sodass die offiziellen Bitwarden-Apps und der Web-Tresor daneben weiter funktionieren. Nichts zu migrieren, nichts zu exportieren.</p>
+
+  <h2>Warum ein nativer Vaultwarden-Client für den Mac</h2>
+  <ul>
+    <li><strong>Öffnet sich im Handumdrehen, findet schon beim Tippen.</strong> Unscharfe Suche, unabhängig von Akzenten, in unter 5 ms bei 10.000 Einträgen, mit Filtern wie <code>type:card</code>.</li>
+    <li><strong>Schnellzugriff aus jeder App.</strong> <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Leertaste</kbd>, tippen, dann ein Passwort oder einen Einmalcode kopieren, ohne das Hauptfenster zu öffnen.</li>
+    <li><strong>Füllt jede Mac-App aus.</strong> <kbd>⌘</kbd> <kbd>\</kbd> tippt Benutzername und Passwort in die App im Vordergrund, ob Browser oder nicht.</li>
+    <li><strong>Touch ID, ein YubiKey oder dein Master-Passwort.</strong> Der Tresorschlüssel ist in der Secure Enclave versiegelt; der Tresor sperrt sich nach Inaktivität, im Ruhezustand und mit dem Bildschirm.</li>
+    <li><strong>Funktioniert offline.</strong> Änderungen, neue Einträge, Papierkorb und Archiv bleiben erhalten und werden der Reihe nach synchronisiert, sobald der Server antwortet.</li>
+  </ul>
+
+  <h2>Alles, was dein Vaultwarden-Tresor enthält</h2>
+  <p>Logins mit Einmalcodes (TOTP), Passkeys, Karten, Identitäten, sichere Notizen, SSH-Schlüssel, Anhänge, WLAN-Netzwerke mit QR-Code zum Verbinden und eigene Felder. Auch geteilte Tresore: Organisationen, Sammlungen, Gruppen und Mitglieder, bestätigt per Fingerabdruck-Phrase, dazu Send und Notfallzugriff.</p>
+
+  <h2>Browser-Erweiterung, Terminal und SSH-Agent</h2>
+  <p>Die Verrou-Erweiterung füllt Logins, Einmalcodes, Karten und Passkeys in Brave, Chrome und Firefox aus, nur für die geöffnete Website, über einen verschlüsselten lokalen Kanal. Im Terminal sucht <code>verrou</code>, ohne je ein Geheimnis zu sehen, signiert mit den SSH-Schlüsseln aus deinem Tresor und übergibt Geheimnisse an Befehle, ohne sie anzuzeigen: siehe <a href="/de/secrets-ki-agenten/">Secrets für KI-Agenten</a>.</p>
+
+  <h2>Installation</h2>
+  <ol>
+    <li>Lade <code>Verrou-{{version}}-macos.dmg</code>, öffne die Datei und zieh Verrou in den Ordner „Programme“. Die App ist mit einer Developer ID signiert und von Apple notarisiert.</li>
+    <li>Öffne Verrou, gib die Adresse deines Vaultwarden, deine E-Mail und dein Master-Passwort ein, dann deinen zweiten Faktor. Danach entsperrt Touch ID die App.</li>
+    <li>Optional: Verknüpfe in den Einstellungen die Browser-Erweiterung und den Befehl <code>verrou</code>.</li>
+  </ol>
+  <p>Verrou aktualisiert sich selbst: Die App sucht einmal am Tag nach Updates, lädt sie im Hintergrund und installiert sie beim Beenden, nachdem sie die Signatur des Updates geprüft hat.</p>
+
+  <h2>Privat aus Prinzip</h2>
+  <p>Dein Tresor wird nur auf deinem Mac entschlüsselt, vom offiziellen Rust-SDK von Bitwarden. Verrou spricht mit deinem Server; die einzigen anderen Verbindungen (Prüfung auf Datenlecks mit 5 Zeichen eines Hashes, Suche nach Updates) stehen in der <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">Datenschutzerklärung</a>. Kein Account bei uns, keine Statistiken.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Für Mac laden</a>
+    <a class="button ghost" href="/de/vaultwarden-client-iphone/">Die iPhone-App</a>
+  </div>
+</article>

@@ -1,0 +1,54 @@
+<!--{"title": "App de Vaultwarden para Mac: Verrou, cliente nativo para tu servidor", "description": "App nativa de macOS para Vaultwarden: Touch ID, búsqueda mientras escribes, Acceso rápido desde cualquier app, extensión de navegador y agente SSH. Gratis y de código abierto.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden para Mac</div>
+    <h1>Una app nativa de Mac para tu servidor Vaultwarden.</h1>
+    <p class="lede">Verrou abre la bóveda que ya tienes en Vaultwarden en una app de Mac de verdad: SwiftUI sobre un núcleo en Rust, Touch ID y resultados mientras escribes.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Descargar Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Código fuente</a>
+    </div>
+    <p class="small">Gratis y de código abierto (GPL-3.0) · macOS 15 o posterior · firmada y notarizada por Apple · se actualiza sola</p>
+  </div>
+</header>
+
+<article class="prose">
+  <figure>
+    <img src="/img/es/mac.webp" srcset="/img/es/mac-800.webp 800w, /img/es/mac.webp 1600w" sizes="(max-width: 792px) calc(100vw - 32px), 760px" alt="Verrou en Mac: la bóveda y un inicio de sesión con su código de un solo uso" width="1600" height="1000" fetchpriority="high">
+    <figcaption>Verrou en un Mac, con la bóveda de demostración.</figcaption>
+  </figure>
+
+  <h2>¿Qué es Verrou?</h2>
+  <p><strong>Verrou es un gestor de contraseñas gratuito y de código abierto para macOS y iPhone que funciona con tu propio servidor Vaultwarden.</strong> Lee y escribe tu bóveda en el formato estándar de Bitwarden, así que las apps oficiales de Bitwarden y la bóveda web siguen funcionando a la vez. Nada que migrar, nada que exportar.</p>
+
+  <h2>Por qué un cliente nativo de Vaultwarden en Mac</h2>
+  <ul>
+    <li><strong>Se abre en un instante y encuentra mientras escribes.</strong> Búsqueda aproximada que ignora los acentos, en menos de 5 ms con 10.000 elementos, con filtros como <code>type:card</code>.</li>
+    <li><strong>Acceso rápido desde cualquier app.</strong> <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Espacio</kbd>, escribe y copia una contraseña o un código de un solo uso sin abrir la ventana principal.</li>
+    <li><strong>Rellena cualquier app del Mac.</strong> <kbd>⌘</kbd> <kbd>\</kbd> escribe el nombre de usuario y la contraseña en la app que tienes delante, sea o no un navegador.</li>
+    <li><strong>Touch ID, una YubiKey o tu contraseña maestra.</strong> La clave de la bóveda está sellada por el Secure Enclave; la bóveda se bloquea tras un tiempo de inactividad, al entrar en reposo y con la pantalla.</li>
+    <li><strong>Funciona sin conexión.</strong> Los cambios, los elementos nuevos, la papelera y el archivo se guardan y se sincronizan en orden en cuanto el servidor responde.</li>
+  </ul>
+
+  <h2>Todo lo que guarda tu bóveda Vaultwarden</h2>
+  <p>Inicios de sesión con códigos de un solo uso (TOTP), llaves de acceso, tarjetas, identidades, notas seguras, claves SSH, archivos adjuntos, redes Wi-Fi con un código QR para conectarse y campos personalizados. También bóvedas compartidas: organizaciones, colecciones, grupos y miembros, confirmados con la frase de huella digital, además de Send y el acceso de emergencia.</p>
+
+  <h2>Extensión de navegador, terminal y agente SSH</h2>
+  <p>La extensión de Verrou rellena inicios de sesión, códigos de un solo uso, tarjetas y llaves de acceso en Brave, Chrome y Firefox, solo para el sitio que tienes abierto, por un canal local cifrado. Desde el terminal, <code>verrou</code> busca sin ver nunca un secreto, firma con las claves SSH de tu bóveda y entrega secretos a los comandos sin imprimirlos: consulta <a href="/es/secretos-agentes-ia/">secretos para agentes de IA</a>.</p>
+
+  <h2>Instalación</h2>
+  <ol>
+    <li>Descarga <code>Verrou-{{version}}-macos.dmg</code>, ábrelo y arrastra Verrou a Aplicaciones. Está firmada con un Developer ID y notarizada por Apple.</li>
+    <li>Abre Verrou, introduce la dirección de tu Vaultwarden, tu correo electrónico y tu contraseña maestra, y después tu segundo factor. A partir de ahí, Touch ID la desbloquea.</li>
+    <li>Opcional: en Ajustes, vincula la extensión de navegador y el comando <code>verrou</code>.</li>
+  </ol>
+  <p>Verrou se actualiza sola: lo comprueba una vez al día, descarga en segundo plano e instala al salir, tras verificar la firma de la actualización.</p>
+
+  <h2>Privado por diseño</h2>
+  <p>Tu bóveda solo se descifra en tu Mac, con el SDK oficial de Bitwarden en Rust. Verrou habla con tu servidor; las únicas otras conexiones (comprobación de filtraciones con 5 caracteres de un hash y búsqueda de actualizaciones) figuran en la <a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">política de privacidad</a>. Sin cuentas nuestras, sin analíticas.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Descargar para Mac</a>
+    <a class="button ghost" href="/es/cliente-vaultwarden-iphone/">La app para iPhone</a>
+  </div>
+</article>

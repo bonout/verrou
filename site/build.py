@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Builds verrou.bonout.com into a folder: every page in English and French.
+"""Builds verrou.bonout.com into a folder: every page in English, French,
+German, Spanish and Italian.
 
     python3 site/build.py _site 0.3.1
 
@@ -24,34 +25,67 @@ from pathlib import Path
 
 SITE = "https://verrou.bonout.com"
 REPO = "https://github.com/bonout/verrou"
-LANGS = ("en", "fr")
+LANGS = ("en", "fr", "de", "es", "it")
+# The language menu: each language under its own name.
+LANG_NAMES = {"en": "English", "fr": "Français", "de": "Deutsch", "es": "Español", "it": "Italiano"}
+OG_LOCALES = {"en": "en_US", "fr": "fr_FR", "de": "de_DE", "es": "es_ES", "it": "it_IT"}
 
 # Page: its file in pages/<lang>/, then its path in each language.
 PAGES = [
-    ("index", {"en": "/", "fr": "/fr/"}),
-    ("vaultwarden-mac", {"en": "/vaultwarden-mac/", "fr": "/fr/client-vaultwarden-mac/"}),
-    ("vaultwarden-iphone", {"en": "/vaultwarden-iphone/", "fr": "/fr/client-vaultwarden-iphone/"}),
-    ("ai-agents", {"en": "/ai-agents-secrets/", "fr": "/fr/secrets-agents-ia/"}),
-    ("bitwarden-alternative", {"en": "/bitwarden-alternative/", "fr": "/fr/alternative-app-bitwarden/"}),
-    ("1password-alternative", {"en": "/1password-alternative/", "fr": "/fr/alternative-1password/"}),
-    ("faq", {"en": "/faq/", "fr": "/fr/faq/"}),
+    ("index", {"en": "/", "fr": "/fr/", "de": "/de/", "es": "/es/", "it": "/it/"}),
+    ("vaultwarden-mac", {"en": "/vaultwarden-mac/", "fr": "/fr/client-vaultwarden-mac/",
+                         "de": "/de/vaultwarden-client-mac/", "es": "/es/cliente-vaultwarden-mac/",
+                         "it": "/it/client-vaultwarden-mac/"}),
+    ("vaultwarden-iphone", {"en": "/vaultwarden-iphone/", "fr": "/fr/client-vaultwarden-iphone/",
+                            "de": "/de/vaultwarden-client-iphone/", "es": "/es/cliente-vaultwarden-iphone/",
+                            "it": "/it/client-vaultwarden-iphone/"}),
+    ("ai-agents", {"en": "/ai-agents-secrets/", "fr": "/fr/secrets-agents-ia/", "de": "/de/secrets-ki-agenten/",
+                   "es": "/es/secretos-agentes-ia/", "it": "/it/segreti-agenti-ia/"}),
+    ("bitwarden-alternative", {"en": "/bitwarden-alternative/", "fr": "/fr/alternative-app-bitwarden/",
+                               "de": "/de/bitwarden-alternative/", "es": "/es/alternativa-app-bitwarden/",
+                               "it": "/it/alternativa-app-bitwarden/"}),
+    ("1password-alternative", {"en": "/1password-alternative/", "fr": "/fr/alternative-1password/",
+                               "de": "/de/1password-alternative/", "es": "/es/alternativa-1password/",
+                               "it": "/it/alternativa-1password/"}),
+    ("faq", {"en": "/faq/", "fr": "/fr/faq/", "de": "/de/faq/", "es": "/es/faq/", "it": "/it/faq/"}),
 ]
 PATHS = {name: paths for name, paths in PAGES}
 
 WORDS = {
     "en": {
         "mac": "Mac", "iphone": "iPhone", "agents": "AI agents", "compare": "Compare",
-        "faq": "FAQ", "download": "Download", "other": "FR", "other_name": "Français",
+        "faq": "FAQ", "download": "Download", "language": "Language",
         "footer": "Open source, GPL-3.0. Not affiliated with Bitwarden.",
         "privacy": "Privacy", "contact": "Contact", "security": "Security",
         "vs_bitwarden": "Verrou vs the Bitwarden app", "vs_1password": "Verrou vs 1Password",
     },
     "fr": {
         "mac": "Mac", "iphone": "iPhone", "agents": "Agents IA", "compare": "Comparer",
-        "faq": "FAQ", "download": "Télécharger", "other": "EN", "other_name": "English",
+        "faq": "FAQ", "download": "Télécharger", "language": "Langue",
         "footer": "Open source, GPL-3.0. Non affilié à Bitwarden.",
         "privacy": "Confidentialité", "contact": "Contact", "security": "Sécurité",
         "vs_bitwarden": "Verrou ou l'app Bitwarden", "vs_1password": "Verrou ou 1Password",
+    },
+    "de": {
+        "mac": "Mac", "iphone": "iPhone", "agents": "KI-Agenten", "compare": "Vergleich",
+        "faq": "FAQ", "download": "Laden", "language": "Sprache",
+        "footer": "Open Source, GPL-3.0. Nicht mit Bitwarden verbunden.",
+        "privacy": "Datenschutz", "contact": "Kontakt", "security": "Sicherheit",
+        "vs_bitwarden": "Verrou oder die Bitwarden-App", "vs_1password": "Verrou oder 1Password",
+    },
+    "es": {
+        "mac": "Mac", "iphone": "iPhone", "agents": "Agentes de IA", "compare": "Comparar",
+        "faq": "FAQ", "download": "Descargar", "language": "Idioma",
+        "footer": "Código abierto, GPL-3.0. Sin relación con Bitwarden.",
+        "privacy": "Privacidad", "contact": "Contacto", "security": "Seguridad",
+        "vs_bitwarden": "Verrou o la app de Bitwarden", "vs_1password": "Verrou o 1Password",
+    },
+    "it": {
+        "mac": "Mac", "iphone": "iPhone", "agents": "Agenti IA", "compare": "Confronta",
+        "faq": "FAQ", "download": "Scarica", "language": "Lingua",
+        "footer": "Open source, GPL-3.0. Non affiliato a Bitwarden.",
+        "privacy": "Privacy", "contact": "Contatti", "security": "Sicurezza",
+        "vs_bitwarden": "Verrou o l'app Bitwarden", "vs_1password": "Verrou o 1Password",
     },
 }
 
@@ -163,7 +197,6 @@ def build(out, version):
     full_text = []
     for name, paths in PAGES:
         for lang in LANGS:
-            other = "fr" if lang == "en" else "en"
             meta, body = meta_and_body(root / "pages" / lang / f"{name}.html")
             words = WORDS[lang]
             schema = None
@@ -171,22 +204,29 @@ def build(out, version):
                 schema = app_schema(lang, version, meta["description"])
             elif meta.get("schema") == "faq":
                 schema = faq_schema(body)
-            # French browsers landing on an English page get its French
-            # version, until their reader picks a language with the switch.
+            # Browsers in French, German, Spanish or Italian landing on an
+            # English page get their version, until their reader picks a
+            # language in the menu.
             redirect = ""
             if lang == "en":
+                others = json.dumps({code: paths[code] for code in LANGS if code != "en"})
                 redirect = ("<script>try{const p=((navigator.languages||[navigator.language])[0]||'')"
-                            ".toLowerCase();if(!localStorage.getItem('lang')&&p.startsWith('fr'))"
-                            f"location.replace({json.dumps(paths['fr'])}+location.hash)}}catch{{}}</script>")
+                            f".toLowerCase().slice(0,2),t={others}[p];"
+                            "if(!localStorage.getItem('lang')&&t)location.replace(t+location.hash)}catch{}</script>")
+            alternates = "\n".join(f'<link rel="alternate" hreflang="{code}" href="{SITE}{paths[code]}">'
+                                   for code in LANGS)
+            menu = "".join(f'<a href="{paths[code]}" hreflang="{code}" lang="{code}"'
+                           + (' aria-current="page"' if code == lang else "") + f">{LANG_NAMES[code]}</a>"
+                           for code in LANGS)
             values = {
                 "lang": lang,
                 "title": html.escape(meta["title"]),
                 "description": html.escape(meta["description"]),
                 "canonical": SITE + paths[lang],
                 "alternate_en": SITE + paths["en"],
-                "alternate_fr": SITE + paths["fr"],
+                "alternates": alternates,
                 "og_image": f"{SITE}/img/og-{lang}.png",
-                "og_locale": "en_US" if lang == "en" else "fr_FR",
+                "og_locale": OG_LOCALES[lang],
                 "schema": (f'<script type="application/ld+json">{json.dumps(schema, ensure_ascii=False)}</script>'
                            if schema else ""),
                 "redirect": redirect,
@@ -200,8 +240,8 @@ def build(out, version):
                 "bitwarden": PATHS["bitwarden-alternative"][lang],
                 "onepassword": PATHS["1password-alternative"][lang],
                 "faq": PATHS["faq"][lang],
-                "other_href": paths[other],
-                "other_lang": other,
+                "lang_code": lang.upper(),
+                "lang_menu": menu,
                 "body": body,
                 **{f"w_{key}": value for key, value in words.items()},
             }

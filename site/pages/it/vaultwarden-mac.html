@@ -1,0 +1,54 @@
+<!--{"title": "App Vaultwarden per Mac: Verrou, il client nativo per il tuo server", "description": "Un'app macOS nativa per Vaultwarden: Touch ID, ricerca mentre digiti, Accesso rapido da qualsiasi app, estensione del browser e agente SSH. Gratuita e open source.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden per Mac</div>
+    <h1>Un'app Mac nativa per il tuo server Vaultwarden.</h1>
+    <p class="lede">Verrou apre la cassaforte che hai già su Vaultwarden, in una vera app per Mac: SwiftUI su un nucleo Rust, Touch ID e risultati mentre digiti.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Scarica Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou">Codice sorgente</a>
+    </div>
+    <p class="small">Gratuita e open source (GPL-3.0) · macOS 15 o successivo · firmata e autenticata da Apple · si aggiorna da sola</p>
+  </div>
+</header>
+
+<article class="prose">
+  <figure>
+    <img src="/img/it/mac.webp" srcset="/img/it/mac-800.webp 800w, /img/it/mac.webp 1600w" sizes="(max-width: 792px) calc(100vw - 32px), 760px" alt="Verrou su Mac: la cassaforte, un login con il suo codice monouso" width="1600" height="1000" fetchpriority="high">
+    <figcaption>Verrou su un Mac, con la cassaforte demo.</figcaption>
+  </figure>
+
+  <h2>Che cos'è Verrou?</h2>
+  <p><strong>Verrou è un password manager gratuito e open source per macOS e iPhone che funziona con il tuo server Vaultwarden.</strong> Legge e scrive la tua cassaforte nel formato Bitwarden standard, così le app ufficiali di Bitwarden e la cassaforte web continuano a funzionare accanto. Niente da migrare, niente da esportare.</p>
+
+  <h2>Perché un client Vaultwarden nativo su Mac</h2>
+  <ul>
+    <li><strong>Si apre in un attimo, trova mentre digiti.</strong> Ricerca approssimata e insensibile agli accenti, sotto i 5 ms su 10.000 elementi, con filtri come <code>type:card</code>.</li>
+    <li><strong>Accesso rapido da qualsiasi app.</strong> <kbd>⌘</kbd> <kbd>⇧</kbd> <kbd>Spazio</kbd>, digita, poi copia una password o un codice monouso senza aprire la finestra principale.</li>
+    <li><strong>Compila qualsiasi app del Mac.</strong> <kbd>⌘</kbd> <kbd>\</kbd> digita nome utente e password nell'app in primo piano, browser o no.</li>
+    <li><strong>Touch ID, una YubiKey o la password principale.</strong> La chiave della cassaforte è protetta dal Secure Enclave; la cassaforte si blocca dopo un periodo di inattività, in stop e con lo schermo.</li>
+    <li><strong>Funziona offline.</strong> Modifiche, nuovi elementi, Cestino e archivio vengono conservati e sincronizzati in ordine appena il server risponde.</li>
+  </ul>
+
+  <h2>Tutto ciò che contiene la tua cassaforte Vaultwarden</h2>
+  <p>Login con codici monouso (TOTP), passkey, carte, identità, note sicure, chiavi SSH, allegati, reti Wi-Fi con un codice QR per connettersi e campi personalizzati. Anche le casseforti condivise: organizzazioni, raccolte, gruppi e membri, confermati con la frase impronta, più Send e l'accesso di emergenza.</p>
+
+  <h2>Estensione del browser, terminale e agente SSH</h2>
+  <p>L'estensione Verrou compila login, codici monouso, carte e passkey in Brave, Chrome e Firefox, solo per il sito che hai davanti, tramite un canale locale cifrato. Dal terminale, <code>verrou</code> cerca senza mai vedere un segreto, firma con le chiavi SSH della tua cassaforte e passa i segreti ai comandi senza stamparli: vedi <a href="/it/segreti-agenti-ia/">segreti per gli agenti IA</a>.</p>
+
+  <h2>Installazione</h2>
+  <ol>
+    <li>Scarica <code>Verrou-{{version}}-macos.dmg</code>, aprilo e trascina Verrou in Applicazioni. È firmata con un Developer ID e autenticata da Apple.</li>
+    <li>Apri Verrou, inserisci l'indirizzo del tuo Vaultwarden, l'email e la password principale, poi il secondo fattore. Da quel momento la sblocchi con Touch ID.</li>
+    <li>Facoltativo: nelle Impostazioni, collega l'estensione del browser e il comando <code>verrou</code>.</li>
+  </ol>
+  <p>Verrou si aggiorna da sola: controlla una volta al giorno, scarica in background e installa quando esci, dopo aver verificato la firma dell'aggiornamento.</p>
+
+  <h2>Privacy by design</h2>
+  <p>La tua cassaforte viene decifrata solo sul tuo Mac, dall'SDK Rust ufficiale di Bitwarden. Verrou parla con il tuo server; le uniche altre connessioni (verifica delle violazioni con 5 caratteri di un hash, controllo degli aggiornamenti) sono elencate nell'<a href="https://github.com/bonout/verrou/blob/main/PRIVACY.md">informativa sulla privacy</a>. Nessun account da noi, nessuna analisi.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Scarica per Mac</a>
+    <a class="button ghost" href="/it/client-vaultwarden-iphone/">L'app per iPhone</a>
+  </div>
+</article>

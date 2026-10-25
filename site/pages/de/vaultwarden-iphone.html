@@ -1,0 +1,41 @@
+<!--{"title": "Vaultwarden iPhone-App mit automatischem Ausfüllen: Verrou für iOS", "description": "Verrou für iPhone öffnet deinen Vaultwarden-Tresor mit Face ID: automatisches Ausfüllen von Passwörtern, Einmalcodes und Passkeys, QR-Scan, geteilte Tresore.", "schema": "app"}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Vaultwarden für iPhone</div>
+    <h1>Dein Vaultwarden-Tresor, nativ auf dem iPhone.</h1>
+    <p class="lede">Face ID, automatisches Ausfüllen in Safari und in Apps, Einmalcodes und Passkeys: derselbe Tresor wie auf deinem Mac, in einer App, die für iOS gemacht ist.</p>
+    <p class="small">Kostenlos und Open Source (GPL-3.0) · iOS 17 oder neuer · Liquid Glass unter iOS 26 · bald im App Store</p>
+  </div>
+</header>
+
+<article class="prose">
+  <div class="phones">
+    <div class="phone"><img src="/img/de/ios-vault.webp" alt="Verrou auf dem iPhone: der Startbildschirm des Tresors" width="520" height="1130" fetchpriority="high"></div>
+    <div class="phone"><img src="/img/de/ios-item.webp" alt="Verrou auf dem iPhone: ein Login mit seinem Einmalcode" width="520" height="1130"></div>
+  </div>
+
+  <h2>Was ist Verrou für iPhone?</h2>
+  <p><strong>Verrou ist eine kostenlose Open-Source-iPhone-App für Vaultwarden.</strong> Sie meldet sich bei deinem eigenen Server an (mit TOTP oder E-Mail als zweitem Faktor), hält den Tresor im Standard-Bitwarden-Format und entsperrt mit Face ID. Die offiziellen Bitwarden-Apps funktionieren daneben weiter.</p>
+
+  <h2>Automatisch ausfüllen, überall</h2>
+  <ul>
+    <li><strong>Passwörter</strong> in Safari und in Apps, über die Vorschlagsleiste der Tastatur, nach Face ID.</li>
+    <li><strong>Einmalcodes</strong>, direkt im Codefeld vorgeschlagen und für dich kopiert.</li>
+    <li><strong>Passkeys</strong>: erstellen und verwenden, gespeichert in deinem Tresor im Bitwarden-Format.</li>
+    <li><strong>Codes in Verrou einrichten</strong>: Scanne einen Zwei-Faktor-QR-Code (Kamera, Bildschirmfoto, Zwischenablage oder Export aus dem Google Authenticator), oder mach Verrou zur App, die jeden Link zum Einrichten eines Codes öffnet.</li>
+  </ul>
+
+  <h2>Alles auch unterwegs</h2>
+  <p>Suche beim Tippen, Kopieren per Tippen (in eine nur lokale Zwischenablage, die iOS nach 90 Sekunden leert), Karten, Identitäten, WLAN-QR-Codes, Anhänge, ein Generator für Passwörter und Passphrasen, eine Sicherheitsprüfung, Offline-Änderungen und geteilte Tresore mit Familie oder Team: Einträge teilen, Organisationen, Sammlungen und Mitglieder verwalten und einen Text oder eine Datei mit Send verschicken.</p>
+
+  <h2>Anfragen deines Mac genehmigen</h2>
+  <p>Braucht das Terminal oder ein KI-Agent auf deinem Mac ein Geheimnis, während du weg bist, kommt die Anfrage in Verrou auf deinem iPhone an, mit dem angegebenen Grund. Face ID genehmigt sie; der Tresorschlüssel verlässt den Mac nie. Wie das funktioniert, liest du unter <a href="/de/secrets-ki-agenten/">Secrets für KI-Agenten</a>.</p>
+
+  <h2>Privat aus Prinzip</h2>
+  <p>Der Tresor wird nur auf deinem iPhone entschlüsselt. Verrou sperrt sich im Hintergrund, verbirgt seinen Inhalt im App-Umschalter und spricht nur mit deinem Server (und, wenn du deinen Mac koppelst, mit deinem eigenen iCloud-Account, Ende-zu-Ende-verschlüsselt).</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou#iphone">Installationsanleitung</a>
+    <a class="button ghost" href="/de/vaultwarden-client-mac/">Die Mac-App</a>
+  </div>
+</article>

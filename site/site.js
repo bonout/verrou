@@ -1,8 +1,9 @@
 // Shared by every page (site/build.py); the home page gives the notch's
 // words in <script type="application/json" id="notch-scenes">.
 
-// The language switch remembers the reader's choice (the English page's
-// <head> sends French browsers to /fr/ until they pick one).
+// The language menu remembers the reader's choice (the English page's
+// <head> sends French, German, Spanish and Italian browsers to their
+// version until they pick one).
 for (const link of document.querySelectorAll("a[hreflang]")) {
   link.addEventListener("click", () => {
     try { localStorage.setItem("lang", link.hreflang); } catch {}

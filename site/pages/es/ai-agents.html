@@ -1,0 +1,50 @@
+<!--{"title": "Secretos para agentes de IA, aprobados desde tu iPhone | Verrou", "description": "Da a Claude Code, Codex y otros agentes de IA las claves que necesitan sin mostrárselas: verrou run inyecta los secretos, los enmascara y te pide Touch ID o tu iPhone."}-->
+<header class="page-hero">
+  <div class="wrap">
+    <div class="eyebrow">Terminal y agentes de IA</div>
+    <h1>Tus agentes usan tus secretos. Nunca los ven.</h1>
+    <p class="lede">Verrou entrega claves de API y contraseñas a los comandos que ejecuta un agente de IA, las mantiene fuera de su contexto y de tu historial, y te pregunta antes: Touch ID en el Mac, Face ID en tu iPhone cuando no estás.</p>
+    <div class="cta">
+      <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Descargar Verrou {{version}}</a>
+      <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/docs/GUIDE.md#command-line-and-ssh-agent">Guía de la línea de comandos</a>
+    </div>
+  </div>
+</header>
+
+<article class="prose">
+  <h2>El problema de los secretos y los agentes de IA</h2>
+  <p>Un agente de programación con IA como Claude Code o Codex ejecuta comandos en tu terminal. Si un token está en un archivo <code>.env</code>, en una variable de entorno o en la salida de un comando, acaba en el contexto del agente, en los registros y, a veces, en una transcripción que se envía a otra parte. Pegar secretos a mano no escala, y darle al agente todo tu gestor de contraseñas es peor.</p>
+
+  <h2>verrou run: los secretos entran, nunca salen</h2>
+  <p><code>verrou run</code> inicia un comando con los secretos que necesita en su entorno. Tus archivos solo contienen referencias, así que puedes hacer commit de ellos:</p>
+  <pre><span class="c"># .env: sin ningún secreto dentro</span>
+GITHUB_TOKEN=verrou://GitHub/token
+DATABASE_URL=verrou://Production%20DB/url
+
+<span class="p">$</span> verrou --reason "deploy" run --env-file .env -- ./deploy.sh
+Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
+  <ul>
+    <li><strong>Salida enmascarada.</strong> Si el comando imprime un secreto, Verrou lo sustituye por <code>&lt;concealed by Verrou&gt;</code> antes de que llegue al terminal o al agente.</li>
+    <li><strong>Aprobados uno a uno.</strong> Cada secreto pide Touch ID, con el motivo que ha dado el agente (<code>--reason</code> o <code>VERROU_REASON</code>). Una aprobación dura 5 minutos para ese elemento y ese terminal.</li>
+    <li><strong>Buscar sin secretos.</strong> <code>verrou search</code> muestra títulos, nombres de usuario y sitios, nunca contraseñas, para que un agente encuentre por sí solo la referencia correcta.</li>
+  </ul>
+
+  <h2>¿Lejos del Mac? Aprueba desde el iPhone.</h2>
+  <p>Cuando la pantalla de tu Mac está bloqueada o llevas un rato sin usarlo, la solicitud va a Verrou en tu iPhone enlazado: "El terminal quiere leer GitHub, motivo: deploy". Face ID, un toque y el comando continúa. Si la bóveda del Mac estaba bloqueada, una sola aprobación la desbloquea para ese elemento.</p>
+  <ul>
+    <li><strong>De extremo a extremo.</strong> Las solicitudes y las respuestas pasan por tu propia base de datos privada de iCloud, selladas entre las claves del Secure Enclave del Mac y del iPhone. Sin servidores nuestros.</li>
+    <li><strong>La clave de la bóveda se queda en el Mac.</strong> El iPhone solo aprueba; nunca recibe la clave de la bóveda de tu Mac.</li>
+    <li><strong>La notificación no dice nada.</strong> Solo te avisa de que hay una solicitud pendiente; el motivo aparece en la app, tras Face ID.</li>
+  </ul>
+
+  <h2>Agente SSH y firma de git</h2>
+  <p><code>eval "$(verrou ssh-agent)"</code> sirve las claves SSH guardadas en tu bóveda: <code>ssh</code>, <code>git push</code> y <code>git commit -S</code> funcionan, y cada firma pide tu aprobación.</p>
+
+  <h2>Cómo se compara</h2>
+  <p>1Password ofrece un <code>op run</code> parecido en su CLI, ligado a su nube. Verrou lo hace para una bóveda en tu propio servidor Vaultwarden, con aprobaciones desde tu iPhone; consulta <a href="/es/alternativa-1password/">Verrou frente a 1Password</a>.</p>
+
+  <div class="cta">
+    <a class="button" href="https://github.com/bonout/verrou/releases/download/v{{version}}/Verrou-{{version}}-macos.dmg">Descargar para Mac</a>
+    <a class="button ghost" href="https://github.com/bonout/verrou/blob/main/SECURITY.md#terminal-and-ssh-agent">Detalles de seguridad</a>
+  </div>
+</article>
