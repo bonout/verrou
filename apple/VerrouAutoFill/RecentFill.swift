@@ -20,12 +20,14 @@ enum RecentFill {
         let expires: Date
     }
 
-    private static let base: [CFString: Any] = [
-        kSecClass: kSecClassGenericPassword,
-        kSecAttrService: "app.verrou.autofill.recent-fill",
-        kSecAttrAccount: "last",
-        kSecUseDataProtectionKeychain: true,
-    ]
+    private static var base: [CFString: Any] {
+        [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: "app.verrou.autofill.recent-fill",
+            kSecAttrAccount: "last",
+            kSecUseDataProtectionKeychain: true,
+        ]
+    }
 
     static func remember(itemID: String, user: String, password: String) {
         let entry = Entry(itemID: itemID, user: user, password: password, expires: Date().addingTimeInterval(lifetime))
