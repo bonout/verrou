@@ -143,7 +143,12 @@ async fn a_known_device_logs_in_after_approval() {
     assert_eq!(request.answer_now().await.unwrap(), Answer::Pending);
     let shown = pending(&mut approver, request.id()).await;
     assert_eq!(shown.fingerprint, request.fingerprint());
-    assert_eq!(shown.fingerprint.split('-').count(), 5);
+    // Five words, some of which have a hyphen of their own ("felt-tip").
+    assert!(
+        shown.fingerprint.split('-').count() >= 5,
+        "{}",
+        shown.fingerprint
+    );
     assert_eq!(shown.device, "Mac (desktop app)", "{shown:?}");
     assert_ne!(shown.ip, "");
     assert!(shown.created_at.abs_diff(now().cast_signed()) < 60);

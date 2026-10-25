@@ -151,7 +151,8 @@ async fn invite_confirm_request_approve_and_view() {
         .emergency_contact_fingerprint(&grantee_id)
         .await
         .unwrap();
-    assert_eq!(fingerprint.split('-').count(), 5, "{fingerprint}");
+    // Five words, some of which have a hyphen of their own ("felt-tip").
+    assert!(fingerprint.split('-').count() >= 5, "{fingerprint}");
     assert!(matches!(
         camille
             .confirm_emergency_contact(&contact.id, &grantee_id, "faux-faux-faux-faux-faux")

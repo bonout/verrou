@@ -479,7 +479,8 @@ async fn invite_register_confirm_and_manage_members() {
     // her account (Settings → Verrou account).
     let fingerprint = admin.member_fingerprint(&org, &member_id).await.unwrap();
     assert_eq!(fingerprint, lea.own_fingerprint().unwrap());
-    assert_eq!(fingerprint.split('-').count(), 5);
+    // Five words, some of which have a hyphen of their own ("felt-tip").
+    assert!(fingerprint.split('-').count() >= 5, "{fingerprint}");
     // Another fingerprint (key swapped in the meantime): nothing is sent.
     let refused = admin
         .confirm_member(&org, &member_id, "turban-deftly-anime-chatroom-unselfish")
