@@ -49,6 +49,17 @@ around a Rust core.
   request per 500 items, one sync at the end; favorites go one by one);
   read-only shared items and items in the trash are skipped and counted, and
   trashing more than one item asks first.
+- **Folders**: the **+** next to *Folders* in the sidebar (or File → *New
+  Folder…*, ⌥⌘N) creates a folder, empty or inside another one. Right-click a
+  folder for *New Subfolder…*, *Rename…* and *Delete…*. Nested folders are
+  names with a slash (`Work/Clients`, as in the other Bitwarden clients), so
+  renaming `Work` renames its subfolders too, and deleting it asks first and
+  deletes them as well. Deleting never deletes items: they go to *No folder*.
+  A single item goes into a folder (or a new one) with *Move to Folder…* in
+  its context menu, and the *Folder* picker of the edit screen ends with *New
+  Folder…*. A name can't be empty or have an empty part (`a//b`), and a
+  folder can't take the name of an existing one. Folder changes need the
+  server (like creating a folder always did).
 - **Import and duplicates** (File → *Import…*, ⌘⇧I): exports from Apple
   Passwords, 1Password and Proton Pass, compared with the vault before
   anything is written (new, already there, different password), sent in one
@@ -364,6 +375,12 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
 - **Select several items** (*Select*): favorite, move to a folder (existing
   or new), archive, trash (with confirmation), restore from the trash or
   unarchive, in one go through Vaultwarden's bulk routes.
+- **Folders**: the folder button next to *Folders* on the home screen creates
+  a folder, empty included. Swipe a folder row left (or long-press it) for
+  *Rename* and *Delete*; inside a folder, the folder menu in the toolbar adds
+  a *New Subfolder*. Renaming a folder renames its subfolders, and deleting
+  it (with a confirmation) deletes them too; the items are kept, outside any
+  folder. These changes need the server.
 - **Item details**: tap a field to copy it, the eye reveals it, one-time
   codes count down. Logins, cards, identities, secure notes, SSH keys (copy
   the public key) and templates; custom fields, websites (copy, open in

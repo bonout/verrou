@@ -194,6 +194,32 @@ impl VaultSession {
         self.install_if_current(&connection, vault)?;
         Ok(id)
     }
+
+    /// Renames a folder and its subfolders (network needed).
+    pub async fn rename_folder(&self, id: String, name: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let vault = connection.lock().await.rename_folder(&id, &name).await?;
+        self.install_if_current(&connection, vault)?;
+        Ok(())
+    }
+
+    /// Deletes a folder, and its subfolders if `include_subfolders`
+    /// (network needed). The items are kept, outside any folder; returns
+    /// how many were filed there.
+    pub async fn delete_folder(
+        &self,
+        id: String,
+        include_subfolders: bool,
+    ) -> Result<u32, VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let (unfiled, vault) = connection
+            .lock()
+            .await
+            .delete_folder(&id, include_subfolders)
+            .await?;
+        self.install_if_current(&connection, vault)?;
+        Ok(unfiled)
+    }
 }
 
 #[cfg(test)]

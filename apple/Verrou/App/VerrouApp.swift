@@ -48,6 +48,10 @@ struct VerrouApp: App {
                     .disabled(!delegate.model.canEdit)
                 Button("New Document…") { delegate.model.newDocument() }
                     .disabled(!delegate.model.canEdit)
+                // ⇧⌘N is the secure note.
+                Button("New Folder…") { delegate.model.folderRequest = FolderRequest(kind: .create(parent: nil)) }
+                    .keyboardShortcut("n", modifiers: [.command, .option])
+                    .disabled(!delegate.model.canEdit)
                 Divider()
                 Button("Import…") { delegate.model.startImport() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])

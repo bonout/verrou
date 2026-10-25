@@ -109,9 +109,10 @@ final class PhoneModel {
     @ObservationIgnored private var summaryIndex: [String: Int] = [:]
     private(set) var counts: SidebarCounts?
     /// Folders nested by name, counted with their subfolders (home screen,
-    /// folder screens).
+    /// folder screens), empty folders included.
     var folderTree: [FolderNode] {
-        FolderNode.tree((counts?.folders ?? []).map { ($0.name, $0.count) })
+        FolderNode.tree(counts: (counts?.folders ?? []).map { ($0.name, $0.count) },
+                        folders: folders.map(\.name))
     }
     private(set) var organizations: [OrganizationView] = []
     private(set) var folders: [FolderOption] = []
@@ -174,6 +175,8 @@ final class PhoneModel {
     var e2eSaveEditor = 0
     #endif
     var moveRequest: MoveRequest?
+    /// New folder, rename or delete open (see `FolderManagement.swift`).
+    var folderRequest: FolderRequest?
     /// "Remove from sharing…" awaiting confirmation.
     var unshareRequest: UnshareRequest?
     /// Removal from sharing in progress.

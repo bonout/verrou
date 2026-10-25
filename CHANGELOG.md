@@ -10,6 +10,19 @@ tagging (docs/RELEASING.md).
 - ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
   prompts expect, instead of the username, Tab and the password.
+- Folders: create, rename and delete them from the sidebar. The **+** next to
+  *Folders* (or File → *New Folder…*, ⌥⌘N) creates an empty folder, at the top
+  or inside another one; right-click a folder for *New Subfolder…*, *Rename…*
+  and *Delete…*. Renaming a folder renames its subfolders, deleting one asks
+  first and keeps your items (they go to *No folder*).
+- A single item can now go into a folder, or a new one, from *Move to
+  Folder…* in its context menu, and the Folder picker of the edit screen ends
+  with *New Folder…*.
+
+**iPhone**
+- Folders: the home screen has a button to create a folder (empty folders
+  show), swipe or long-press a folder to rename or delete it, and inside a
+  folder the toolbar menu adds a subfolder. Deleting keeps your items.
 
 ## 0.5.1
 

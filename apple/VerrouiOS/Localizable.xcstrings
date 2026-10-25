@@ -1597,6 +1597,34 @@
         }
       }
     },
+    "%lld items will be moved out of the folder, to no folder. The items are not deleted.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld éléments seront sortis du dossier, sans dossier. Les éléments ne sont pas supprimés."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Einträge werden aus dem Ordner herausgenommen und haben dann keinen Ordner. Die Einträge werden nicht gelöscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elementos saldrán de la carpeta y quedarán sin carpeta. Los elementos no se eliminan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elementi verranno tolti dalla cartella e resteranno senza cartella. Gli elementi non vengono eliminati."
+          }
+        }
+      }
+    },
     "%lld member": {
       "localizations": {
         "fr": {
@@ -3109,6 +3137,34 @@
         }
       }
     },
+    "1 item will be moved out of the folder, to no folder. The item is not deleted.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 élément sera sorti du dossier, sans dossier. L’élément n’est pas supprimé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 Eintrag wird aus dem Ordner herausgenommen und hat dann keinen Ordner. Der Eintrag wird nicht gelöscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 elemento saldrá de la carpeta y quedará sin carpeta. El elemento no se elimina."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 elemento verrà tolto dalla cartella e resterà senza cartella. L’elemento non viene eliminato."
+          }
+        }
+      }
+    },
     "1 new item in %@.": {
       "localizations": {
         "fr": {
@@ -3469,6 +3525,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "7 giorni"
+          }
+        }
+      }
+    },
+    "A folder name can't contain a slash. Choose the parent folder instead.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nom de dossier ne peut pas contenir de barre oblique. Choisissez plutôt le dossier parent."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Ordnername darf keinen Schrägstrich enthalten. Wähle stattdessen den übergeordneten Ordner."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El nombre de una carpeta no puede contener una barra. Elige la carpeta principal."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il nome di una cartella non può contenere una barra. Scegli invece la cartella superiore."
+          }
+        }
+      }
+    },
+    "A folder named “%@” already exists.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un dossier nommé « %@ » existe déjà."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Ordner namens „%@“ existiert bereits."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya existe una carpeta llamada «%@»."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esiste già una cartella chiamata “%@”."
           }
         }
       }
@@ -7897,6 +8009,34 @@
         }
       }
     },
+    "Could not delete folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de supprimer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner konnte nicht gelöscht werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo eliminar la carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile eliminare la cartella"
+          }
+        }
+      }
+    },
     "Could not edit": {
       "localizations": {
         "fr": {
@@ -8145,6 +8285,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Impossibile rimuovere dalla condivisione"
+          }
+        }
+      }
+    },
+    "Could not rename folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible de renommer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner konnte nicht umbenannt werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo renombrar la carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile rinominare la cartella"
           }
         }
       }
@@ -8737,6 +8905,34 @@
         }
       }
     },
+    "Delete Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner löschen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina cartella"
+          }
+        }
+      }
+    },
     "Delete Reports": {
       "localizations": {
         "fr": {
@@ -8873,6 +9069,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eliminare la raccolta “%@”?"
+          }
+        }
+      }
+    },
+    "Delete the folder “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le dossier « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner „%@“ löschen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eliminar la carpeta «%@»?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminare la cartella “%@”?"
           }
         }
       }
@@ -11061,6 +11285,34 @@
         }
       }
     },
+    "Folder deleted": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier supprimé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner gelöscht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta eliminada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella eliminata"
+          }
+        }
+      }
+    },
     "Folder name": {
       "localizations": {
         "fr": {
@@ -11085,6 +11337,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nome della cartella"
+          }
+        }
+      }
+    },
+    "Folder renamed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier renommé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner umbenannt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta renombrada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella rinominata"
           }
         }
       }
@@ -12545,6 +12825,34 @@
         }
       }
     },
+    "Inside": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dentro de"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In"
+          }
+        }
+      }
+    },
     "Invalid one-time code: %@": {
       "localizations": {
         "fr": {
@@ -13241,6 +13549,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il suo nome è cifrato con la chiave dell'organizzazione. Proprietari e amministratori vedono tutte le raccolte."
+          }
+        }
+      }
+    },
+    "Its subfolders will be deleted too.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses sous-dossiers seront aussi supprimés."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Unterordner werden ebenfalls gelöscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sus subcarpetas también se eliminarán."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anche le sue sottocartelle verranno eliminate."
           }
         }
       }
@@ -15345,6 +15681,34 @@
         }
       }
     },
+    "New Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cartella"
+          }
+        }
+      }
+    },
     "New Send": {
       "localizations": {
         "fr": {
@@ -15369,6 +15733,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuovo Send"
+          }
+        }
+      }
+    },
+    "New Subfolder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau sous-dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Unterordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva subcarpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova sottocartella"
           }
         }
       }
@@ -16125,6 +16517,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nessun login per questo sito: cerca nella cassaforte."
+          }
+        }
+      }
+    },
+    "No parent (top level)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun parent (niveau supérieur)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein übergeordneter Ordner (oberste Ebene)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin carpeta principal (nivel superior)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna cartella superiore (primo livello)"
           }
         }
       }
@@ -19569,6 +19989,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rinomina"
+          }
+        }
+      }
+    },
+    "Rename Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renommer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner umbenennen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renombrar carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rinomina cartella"
           }
         }
       }
@@ -23685,6 +24133,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il file viene eliminato dal server. Questa azione è definitiva."
+          }
+        }
+      }
+    },
+    "The folder is empty.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le dossier est vide."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Ordner ist leer."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La carpeta está vacía."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La cartella è vuota."
           }
         }
       }

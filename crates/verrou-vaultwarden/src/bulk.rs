@@ -134,10 +134,7 @@ impl Connection {
     /// Creates a folder (name encrypted by the SDK); returns its id and the
     /// resynced vault. A folder with the same name is reused.
     pub async fn create_folder(&mut self, name: &str) -> Result<(String, Decrypted), Error> {
-        let name = name.trim().to_owned();
-        if name.is_empty() {
-            return Err(Error::Invalid("the folder name is required".to_owned()));
-        }
+        let name = checked_folder_name(name)?;
         let access = self.require_online("Creating a folder").await?;
         let folders = self
             .ensure_folders(&access, BTreeSet::from([name.clone()]))
@@ -147,6 +144,45 @@ impl Connection {
             .map(|(id, _)| id.clone())
             .ok_or(Error::NotFound)?;
         Ok((id, self.sync_with(&access).await?))
+    }
+
+    /// Renames a folder, and with it every subfolder (`Work/...` follows
+    /// `Work`: nesting is only in the names). One request per folder, then
+    /// one sync. The items are not rewritten: they point at the folder by
+    /// its id. Refused if a folder already has the new name.
+    pub async fn rename_folder(&mut self, id: &str, name: &str) -> Result<Decrypted, Error> {
+        let name = checked_folder_name(name)?;
+        let access = self.require_online("Renaming a folder").await?;
+        let folders = self.cached_folders()?;
+        let renames = rename_plan(&folders, id, &name)?;
+        for (id, name) in &renames {
+            let encrypted = self.encrypt_folder_name(name)?;
+            self.api.rename_folder(&access, id, &encrypted).await?;
+        }
+        self.sync_with(&access).await
+    }
+
+    /// Deletes a folder, and its subfolders if `include_subfolders`. The
+    /// items are kept, outside any folder. Returns the number of items
+    /// that were filed there (trash included) and the resynced vault.
+    pub async fn delete_folder(
+        &mut self,
+        id: &str,
+        include_subfolders: bool,
+    ) -> Result<(u32, Decrypted), Error> {
+        let access = self.require_online("Deleting a folder").await?;
+        let folders = self.cached_folders()?;
+        let doomed = delete_plan(&folders, id, include_subfolders)?;
+        let unfiled = self
+            .cached_ciphers()?
+            .iter()
+            .filter(|c| c.folder_id.is_some_and(|f| doomed.contains(&f.to_string())))
+            .count();
+        for id in &doomed {
+            self.api.delete_folder(&access, id).await?;
+        }
+        let vault = self.sync_with(&access).await?;
+        Ok((u32::try_from(unfiled).unwrap_or(u32::MAX), vault))
     }
 
     /// The items to write (decrypted, from the displayed vault), the number
@@ -200,5 +236,151 @@ fn fit(view: &CipherView, action: &BulkAction) -> Fit {
         BulkAction::Unarchive => done(!archived),
         BulkAction::Favorite(favorite) => done(view.favorite == *favorite),
         BulkAction::MoveToFolder(folder) => done(view.folder_id.map(|f| f.to_string()) == *folder),
+    }
+}
+
+/// The folder name without the surrounding spaces. Nested folders are
+/// names with `/` (Bitwarden's convention): every segment must have a
+/// name, or the web vault and the other clients draw a broken tree.
+fn checked_folder_name(name: &str) -> Result<String, Error> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(Error::Invalid("the folder name is required".to_owned()));
+    }
+    if name.split('/').any(|segment| segment.trim().is_empty()) {
+        return Err(Error::Invalid(format!(
+            "\"{name}\" is not a valid folder name: each part between the slashes needs a name"
+        )));
+    }
+    Ok(name.to_owned())
+}
+
+/// The folders to rename (`id`, new name) so that `id` becomes `name`
+/// and its subfolders follow. Refuses an unknown folder and a new name
+/// that is already taken by a folder that stays as it is.
+fn rename_plan(
+    folders: &HashMap<String, String>,
+    id: &str,
+    name: &str,
+) -> Result<Vec<(String, String)>, Error> {
+    let old = folders.get(id).ok_or(Error::NotFound)?;
+    if old == name {
+        return Ok(Vec::new());
+    }
+    let prefix = format!("{old}/");
+    let mut renames: Vec<(String, String)> = folders
+        .iter()
+        .filter_map(|(other, other_name)| {
+            let new = if other == id {
+                name.to_owned()
+            } else {
+                format!("{name}/{}", other_name.strip_prefix(&prefix)?)
+            };
+            Some((other.clone(), new))
+        })
+        .collect();
+    renames.sort();
+    let moved: HashSet<&str> = renames.iter().map(|(id, _)| id.as_str()).collect();
+    for (_, new) in &renames {
+        let taken = folders
+            .iter()
+            .any(|(other, other_name)| !moved.contains(other.as_str()) && other_name == new);
+        if taken {
+            return Err(Error::Invalid(format!(
+                "a folder named \"{new}\" already exists"
+            )));
+        }
+    }
+    Ok(renames)
+}
+
+/// The ids of the folders to delete: `id`, and its subfolders if asked.
+fn delete_plan(
+    folders: &HashMap<String, String>,
+    id: &str,
+    include_subfolders: bool,
+) -> Result<Vec<String>, Error> {
+    let name = folders.get(id).ok_or(Error::NotFound)?;
+    let prefix = format!("{name}/");
+    let mut doomed: Vec<String> = folders
+        .iter()
+        .filter(|(other, other_name)| {
+            other.as_str() == id || (include_subfolders && other_name.starts_with(&prefix))
+        })
+        .map(|(other, _)| other.clone())
+        .collect();
+    doomed.sort();
+    Ok(doomed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tree() -> HashMap<String, String> {
+        [
+            ("1", "Work"),
+            ("2", "Work/Clients"),
+            ("3", "Home"),
+            ("4", "Workshop"),
+        ]
+        .into_iter()
+        .map(|(id, name)| (id.to_owned(), name.to_owned()))
+        .collect()
+    }
+
+    #[test]
+    fn names_need_every_segment() {
+        assert_eq!(
+            checked_folder_name("  Work/Clients ").unwrap(),
+            "Work/Clients"
+        );
+        for bad in ["", "   ", "a//b", "/a", "a/", "a/ /b"] {
+            assert!(
+                matches!(checked_folder_name(bad), Err(Error::Invalid(_))),
+                "{bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn rename_carries_the_subfolders_only() {
+        let renames = rename_plan(&tree(), "1", "Job").unwrap();
+        // "Workshop" shares the prefix text but is not a subfolder.
+        assert_eq!(
+            renames,
+            [
+                ("1".into(), "Job".into()),
+                ("2".into(), "Job/Clients".into())
+            ]
+        );
+        assert_eq!(rename_plan(&tree(), "1", "Work").unwrap().len(), 0);
+        assert!(matches!(
+            rename_plan(&tree(), "9", "x"),
+            Err(Error::NotFound)
+        ));
+    }
+
+    #[test]
+    fn rename_refuses_a_taken_name() {
+        let taken = rename_plan(&tree(), "1", "Home");
+        assert!(matches!(&taken, Err(Error::Invalid(m)) if m.contains("already exists")));
+        // A subfolder landing on an existing folder is refused too.
+        let mut folders = tree();
+        folders.insert("5".into(), "Job/Clients".into());
+        assert!(rename_plan(&folders, "1", "Job").is_err());
+        // Renaming a subfolder alone.
+        let renames = rename_plan(&tree(), "2", "Work/Accounts").unwrap();
+        assert_eq!(renames, [("2".into(), "Work/Accounts".into())]);
+    }
+
+    #[test]
+    fn delete_with_or_without_subfolders() {
+        assert_eq!(delete_plan(&tree(), "1", false).unwrap(), ["1"]);
+        assert_eq!(delete_plan(&tree(), "1", true).unwrap(), ["1", "2"]);
+        assert!(matches!(
+            delete_plan(&tree(), "9", true),
+            Err(Error::NotFound)
+        ));
     }
 }

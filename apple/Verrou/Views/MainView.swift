@@ -155,6 +155,10 @@ struct MainView: View {
             MoveToFolderView(request: request)
                 .environment(model)
         }
+        .sheet(item: $model.folderRequest) { request in
+            FolderNameView(request: request)
+                .environment(model)
+        }
         .sheet(item: $model.sharingFlow) { flow in
             SharingView(flow: flow)
                 .environment(model)
@@ -264,13 +268,32 @@ struct SidebarView: View {
                         count: entry.count, tint: entry.template.tint)
                 }
             }
-            if let folders = model.counts?.folders, !folders.isEmpty {
-                Section("Folders") {
+            // The section stays when it is empty, for the "+" that creates
+            // the first folder.
+            let folderTree = model.folderTree
+            if !folderTree.isEmpty || model.canEdit {
+                Section {
                     // Nested by name ("Work/Clients"); items dropped on a
                     // folder move into it.
-                    OutlineGroup(FolderNode.tree(folders.map { ($0.name, $0.count) }), children: \.children) { node in
+                    OutlineGroup(folderTree, children: \.children) { node in
                         row(.folder(name: node.path), node.name, "folder", count: node.count, tint: .secondary)
                             .modifier(FolderDropTarget(path: node.path))
+                            .contextMenu { FolderMenu(node: node) }
+                    }
+                } header: {
+                    HStack {
+                        Text("Folders")
+                        Spacer()
+                        if model.canEdit {
+                            Button {
+                                model.folderRequest = FolderRequest(kind: .create(parent: nil))
+                            } label: {
+                                Image(systemName: "plus")
+                                    .accessibilityLabel("New Folder…")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("New Folder…")
+                        }
                     }
                 }
             }
@@ -757,9 +780,11 @@ struct RowMenu: View {
                 Button(summary.favorite ? "Remove from Favorites" : "Add to Favorites") {
                     Task { await model.setFavorite(summary.id, !summary.favorite) }
                 }
+                Button("Move to Folder…") { model.moveRequest = MoveRequest(itemIDs: [summary.id]) }
                 Button("Archive") { Task { await model.setArchived(summary.id, true) } }
                 Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .archived:
+                Button("Move to Folder…") { model.moveRequest = MoveRequest(itemIDs: [summary.id]) }
                 Button("Unarchive") { Task { await model.setArchived(summary.id, false) } }
                 Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .trashed:

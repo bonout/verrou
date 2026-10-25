@@ -399,6 +399,35 @@ impl Api {
             .ok_or_else(|| Error::Server("folder created without an id".to_owned()))
     }
 
+    /// Renames a folder (name already encrypted), `PUT /api/folders/{id}`.
+    pub async fn rename_folder(
+        &self,
+        access_token: &str,
+        id: &str,
+        name: &str,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/folders/{id}", self.base))
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({ "name": name }))
+            .send_retrying()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Deletes a folder, `DELETE /api/folders/{id}`. The server only
+    /// removes the folder: its items stay in the vault, outside any folder.
+    pub async fn delete_folder(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        let response = self
+            .http
+            .delete(format!("{}/api/folders/{id}", self.base))
+            .bearer_auth(access_token)
+            .send_retrying()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
     /// Moves several items to the trash in one request (restorable).
     pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
         self.bulk_cipher_action(access_token, ids, "delete")
