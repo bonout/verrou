@@ -100,7 +100,7 @@ impl Backend for Fake {
         true
     }
 
-    /// Automatic approval, announced (`CONFIRM reveal|ssh|passkey|git|link|card|bulk <title>`).
+    /// Automatic approval, announced (`CONFIRM reveal|ssh|passkey|git|link|card|bulk|create|edit|delete <title>`).
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         let purpose = match request.purpose {
             Purpose::Reveal => "reveal",
@@ -110,6 +110,9 @@ impl Backend for Fake {
             Purpose::LinkSite => "link",
             Purpose::Card => "card",
             Purpose::Bulk => "bulk",
+            Purpose::Create => "create",
+            Purpose::Edit => "edit",
+            Purpose::Delete => "delete",
         };
         println!("CONFIRM {purpose} {}", request.title);
         let _ = std::io::stdout().flush();

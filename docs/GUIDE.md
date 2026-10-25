@@ -1006,6 +1006,75 @@ writes, while the rest of the output (a prompt without a newline) shows at
 once. `--no-masking` connects the command straight to the terminal, for
 interactive programs. The exit code is the command's.
 
+### A reference, a template (`verrou read`, `verrou inject`)
+
+The same references work outside `run`. `verrou read` prints one value, or
+writes it to a file (mode 600 by default, `--file-mode` to change it; an
+existing file is only replaced with `--force`):
+
+```sh
+verrou read verrou://GitHub/token
+verrou read verrou://Production%20database/url -o .db-url -n   # -n: no newline
+```
+
+`verrou inject` fills a template: each `{{ verrou://<item>/<field> }}`
+gets its value, the rest passes as is, other `{{ … }}` included (a Helm or
+Jinja template). It reads the standard input and writes the output, or
+`-i` / `-o`:
+
+```sh
+# config.yml.tpl
+database:
+  user: {{ verrou://Production database/username }}
+  password: {{ verrou://Production database/password }}
+```
+
+```sh
+verrou inject -i config.yml.tpl -o config.yml
+```
+
+Inside the braces, the reference ends at `}}`: a title may keep its
+spaces; only a `/` needs percent-encoding (`%2F`). The written file holds
+the secrets: keep it out of git.
+
+### Writing items (`verrou item`)
+
+The terminal also writes the vault, the 1Password CLI way. Each write asks
+for your approval in Verrou, on the Mac or the paired iPhone: *allow the
+terminal to create “Stripe”*, *to modify “GitHub”*, *to move “GitHub” to
+the trash*. A write that would be refused (an item shared read-only, an
+unreadable one-time code seed) is refused before anything is asked.
+
+```sh
+verrou item create --title Stripe --url https://dashboard.stripe.com \
+  username=ops@example.com --generate-password 'API key[password]=sk_live_…'
+verrou item create --kind card --title "Visa pro" number=4242424242424242 expiry=04/29 cvv=123
+verrou item create --kind note --title "Alarm code" notes="1234#"
+verrou item edit GitHub password=… --folder Work --favorite true
+verrou item edit GitHub "Old token[delete]" notes=
+verrou item delete GitHub              # to the trash, restorable 30 days
+verrou item delete GitHub --archive    # or: verrou item archive GitHub
+verrou item restore GitHub             # out of the trash or the archive
+```
+
+Fields are assignments: `name=value` sets one of the item's own fields
+(`username`, `password`, `totp`, `notes`; a card's `cardholder`, `brand`,
+`number`, `expiry`, `code`; an identity's `first_name`, `email`,
+`postal_code`…), otherwise a custom field by its name, as `verrou get`
+shows it. An empty value clears the field; `name[password]=value` makes a
+new custom field hidden; `name[delete]` removes one.
+`--generate-password` generates the password (20 characters), or follows a
+recipe: `--generate-password=letters,digits,32`. `--url` replaces the
+login's sites; `--folder` files the item in a folder by its name, created if
+it is missing (`Work/Clients` nests inside `Work`, as in the app; online
+only); the approval names it, and `""` takes the item out of its folder.
+A new item goes to the personal vault: logins, notes, cards and
+identities. `verrou item restore` finds the item by its title in the trash
+and the archive too.
+
+A value typed on the command line stays in the shell's history: prefer
+`--generate-password`, or a variable (`password="$NEW_PASSWORD"`).
+
 ### SSH agent
 
 ```sh

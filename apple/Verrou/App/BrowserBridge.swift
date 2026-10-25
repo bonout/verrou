@@ -187,6 +187,13 @@ final class BrowserBridge {
         case .card: String(localized: "allow \(browser) to fill the card “\(title)”")
         // Many items requested in a short time: maybe not you.
         case .bulk: String(localized: "\(browser) is requesting many items in a short time: allow “\(title)”")
+        // `verrou item create|edit|delete|archive|restore`.
+        // `site`: the folder the item goes to, created if missing.
+        case .create where !site.isEmpty: String(localized: "allow the terminal to create “\(title)” in the folder “\(site)”")
+        case .create: String(localized: "allow the terminal to create “\(title)”")
+        case .edit where !site.isEmpty: String(localized: "allow the terminal to modify “\(title)” and file it in the folder “\(site)”")
+        case .edit: String(localized: "allow the terminal to modify “\(title)”")
+        case .delete: String(localized: "allow the terminal to move “\(title)” to the trash")
         }
         // Already approved on the iPhone with the unlock: "unlock and read
         // this item".
@@ -360,6 +367,9 @@ extension AccessPurpose {
         case .linkSite: "linkSite"
         case .card: "card"
         case .bulk: "bulk"
+        case .create: "create"
+        case .edit: "edit"
+        case .delete: "delete"
         }
     }
 }

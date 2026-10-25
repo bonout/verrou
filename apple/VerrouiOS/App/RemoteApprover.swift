@@ -401,6 +401,11 @@ extension RemoteApproval.Request {
         case "linkSite": String(localized: "link the site \(site) to “\(title)”")
         case "card": String(localized: "fill the card “\(title)”")
         case "bulk": String(localized: "release one more item: “\(title)”")
+        case "create" where !site.isEmpty: String(localized: "create “\(title)” in the folder “\(site)”")
+        case "create": String(localized: "create “\(title)”")
+        case "edit" where !site.isEmpty: String(localized: "modify “\(title)” and file it in the folder “\(site)”")
+        case "edit": String(localized: "modify “\(title)”")
+        case "delete": String(localized: "move “\(title)” to the trash")
         default: String(localized: "access “\(title)”")
         }
     }

@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::io::Write as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{ExitCode, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -15,12 +15,17 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use verrou_bridge::access;
-use verrou_bridge::protocol::{Command as Ask, ItemSummary, ItemView, ReplyResult, UnlockIntent};
+use verrou_bridge::protocol::{
+    Command as Ask, FieldChange, ItemChanges, ItemMove, ItemSummary, ItemView, ReplyResult,
+    UnlockIntent,
+};
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
 use verrou_cli::git_signing;
+use verrou_cli::inject::{self, Piece};
+use verrou_cli::items as item_args;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
-use verrou_cli::run;
+use verrou_cli::run::{self, Reference};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
@@ -73,6 +78,12 @@ enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
+    /// Create, modify, delete, archive or restore an item. Each write asks
+    /// for your approval in Verrou.
+    Item {
+        #[command(subcommand)]
+        action: ItemAction,
+    },
     /// Show an item (title or id). Secrets stay hidden without `--reveal` or
     /// `--field`; Verrou then asks for your approval.
     Get {
@@ -82,6 +93,40 @@ enum Command {
         field: Option<String>,
         #[arg(long)]
         reveal: bool,
+    },
+    /// Print the value of a reference `verrou://<item>/<field>` (approval
+    /// asked in Verrou), or write it to a file.
+    Read {
+        reference: String,
+        /// Write the value to this file rather than to the output.
+        #[arg(short, long)]
+        out_file: Option<PathBuf>,
+        /// Permissions of the file written (octal).
+        #[arg(long, default_value = "0600", value_parser = parse_mode)]
+        file_mode: u32,
+        /// Replace the file if it exists.
+        #[arg(long)]
+        force: bool,
+        /// No newline after the value.
+        #[arg(short, long)]
+        no_newline: bool,
+    },
+    /// Fill a template: each `{{ verrou://<item>/<field> }}` gets the
+    /// field's value, after your approval in Verrou. Reads the standard
+    /// input and writes the output without `-i` / `-o`.
+    Inject {
+        /// Template (default: the standard input).
+        #[arg(short, long)]
+        in_file: Option<PathBuf>,
+        /// File to write (default: the output).
+        #[arg(short, long)]
+        out_file: Option<PathBuf>,
+        /// Permissions of the file written (octal).
+        #[arg(long, default_value = "0600", value_parser = parse_mode)]
+        file_mode: u32,
+        /// Replace the file if it exists.
+        #[arg(long)]
+        force: bool,
     },
     /// One-time code of the item found (approval asked in Verrou).
     Totp { query: Vec<String> },
@@ -170,10 +215,85 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum ItemAction {
+    /// Create an item in the personal vault. Fields as assignments:
+    /// `username=camille password=… 'API key[password]=…' notes=…`.
+    Create {
+        #[arg(long, alias = "category", value_enum, default_value_t = KindArg::Login)]
+        kind: KindArg,
+        #[arg(long)]
+        title: String,
+        /// Website (repeatable).
+        #[arg(long)]
+        url: Vec<String>,
+        /// A folder, by name (`Work/Clients` nests): created if missing.
+        #[arg(long)]
+        folder: Option<String>,
+        #[arg(long)]
+        favorite: bool,
+        /// Generate the password: `--generate-password`, or a recipe
+        /// `--generate-password=letters,digits,symbols,32`.
+        #[arg(long, value_name = "RECIPE", num_args = 0..=1, require_equals = true, default_missing_value = "")]
+        generate_password: Option<String>,
+        /// `name=value`, `name[password]=value` (hidden custom field).
+        #[arg(value_name = "ASSIGNMENT")]
+        assignments: Vec<String>,
+    },
+    /// Modify an item (title or id): what is given changes, the rest stays.
+    Edit {
+        item: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// Websites: they replace the item's (repeatable).
+        #[arg(long)]
+        url: Vec<String>,
+        /// A folder, by name, created if missing; `""`: out of any folder.
+        #[arg(long)]
+        folder: Option<String>,
+        /// `--favorite true` or `--favorite false`.
+        #[arg(long)]
+        favorite: Option<bool>,
+        /// A new generated password (see `item create`).
+        #[arg(long, value_name = "RECIPE", num_args = 0..=1, require_equals = true, default_missing_value = "")]
+        generate_password: Option<String>,
+        /// `name=value` (empty value: cleared), `name[password]=value`,
+        /// `name[delete]`.
+        #[arg(value_name = "ASSIGNMENT")]
+        assignments: Vec<String>,
+    },
+    /// Move an item to the trash (restorable for 30 days), or to the
+    /// archive with `--archive`.
+    #[command(visible_alias = "rm")]
+    Delete {
+        #[arg(required = true)]
+        item: Vec<String>,
+        #[arg(long)]
+        archive: bool,
+    },
+    /// Archive an item: out of the list and of autofill, not deleted.
+    Archive {
+        #[arg(required = true)]
+        item: Vec<String>,
+    },
+    /// Take an item out of the trash or of the archive.
+    Restore {
+        #[arg(required = true)]
+        item: Vec<String>,
+    },
+}
+
 #[derive(Clone, Copy, ValueEnum)]
 enum LangArg {
     Fr,
     En,
+}
+
+fn parse_mode(value: &str) -> Result<u32, String> {
+    u32::from_str_radix(value, 8)
+        .ok()
+        .filter(|mode| *mode <= 0o777)
+        .ok_or_else(|| format!("\"{value}\": expected octal permissions, like 0600"))
 }
 
 fn parse_separator(value: &str) -> Result<Separator, String> {
@@ -380,6 +500,33 @@ impl Source {
         }
     }
 
+    /// Writes an item (`ItemCreate`, `ItemEdit`, `ItemMove`), after the
+    /// user's approval in Verrou: the item's identifier. The mock vault is
+    /// written in memory, for the time of the command.
+    fn write(&mut self, command: Ask) -> Result<String, String> {
+        match self {
+            Self::Mock(vault) => {
+                let write = match command {
+                    Ask::ItemCreate { changes } => verrou_bridge::items::plan_create(changes)?,
+                    Ask::ItemEdit { item, changes } => {
+                        verrou_bridge::items::plan_edit(vault, &item, changes)?
+                    }
+                    Ask::ItemMove { item, to } => {
+                        verrou_bridge::items::plan_move(vault, &item, to)?.0
+                    }
+                    other => return Err(format!("not a write: {other:?}")),
+                };
+                let (written, id) = access::apply_in_memory(vault, write, "mock-new-item");
+                *vault = written;
+                Ok(id)
+            }
+            Self::App(remote) => match Self::ask(remote, &command)? {
+                ReplyResult::Saved { item } => Ok(item),
+                other => Err(unexpected(&other)),
+            },
+        }
+    }
+
     /// The vault's SSH keys: public keys only, no approval needed.
     fn ssh_keys(&mut self) -> Result<Vec<git_signing::SigningKey>, String> {
         let identities = match self {
@@ -469,6 +616,21 @@ fn run(cli: &Cli) -> Result<(), String> {
             }
         }
         Command::Run { .. } => {}
+        Command::Item { action } => item_command(cli, action, &mut out)?,
+        Command::Read { .. } => read_reference(cli, &mut out)?,
+        Command::Inject {
+            in_file,
+            out_file,
+            file_mode,
+            force,
+        } => inject_template(
+            cli,
+            &mut out,
+            in_file.as_deref(),
+            out_file.as_deref(),
+            *file_mode,
+            *force,
+        )?,
         Command::Generate { .. } => generate(cli, &mut out),
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
@@ -583,6 +745,272 @@ fn git_signing_setup(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), Str
     Ok(())
 }
 
+/// `verrou item …`: the write, then the item as it now is.
+fn item_command(
+    cli: &Cli,
+    action: &ItemAction,
+    out: &mut impl std::io::Write,
+) -> Result<(), String> {
+    let mut source = Source::open(cli)?;
+    let (command, done) = match action {
+        ItemAction::Create {
+            kind,
+            title,
+            url,
+            folder,
+            favorite,
+            generate_password,
+            assignments,
+        } => {
+            let changes = ItemChanges {
+                kind: Some((*kind).into()),
+                title: Some(title.clone()),
+                urls: (!url.is_empty()).then(|| url.clone()),
+                folder: folder.clone(),
+                favorite: favorite.then_some(true),
+                fields: field_changes(assignments, generate_password.as_deref(), None)?,
+            };
+            (Ask::ItemCreate { changes }, "created")
+        }
+        ItemAction::Edit {
+            item,
+            title,
+            url,
+            folder,
+            favorite,
+            generate_password,
+            assignments,
+        } => {
+            let view = source.item(item)?;
+            let changes = ItemChanges {
+                kind: None,
+                title: title.clone(),
+                urls: (!url.is_empty()).then(|| url.clone()),
+                folder: folder.clone(),
+                favorite: *favorite,
+                fields: field_changes(assignments, generate_password.as_deref(), Some(&view))?,
+            };
+            let command = Ask::ItemEdit {
+                item: view.summary.id,
+                changes,
+            };
+            (command, "modified")
+        }
+        ItemAction::Delete { item, archive } => {
+            let (to, done) = if *archive {
+                (ItemMove::Archive, "archived")
+            } else {
+                (ItemMove::Trash, "moved to the trash")
+            };
+            let command = Ask::ItemMove {
+                item: item.join(" "),
+                to,
+            };
+            (command, done)
+        }
+        ItemAction::Archive { item } => (
+            Ask::ItemMove {
+                item: item.join(" "),
+                to: ItemMove::Archive,
+            },
+            "archived",
+        ),
+        ItemAction::Restore { item } => (
+            Ask::ItemMove {
+                item: item.join(" "),
+                to: ItemMove::Restore,
+            },
+            "restored",
+        ),
+    };
+    let moved = matches!(command, Ask::ItemMove { .. });
+    let id = source.write(command)?;
+    let item = source.item(&id)?;
+    if cli.json {
+        let json = ItemDetailJson {
+            item: ItemJson::from(&item.summary),
+            fields: &item.fields,
+            has_notes: item.has_notes,
+        };
+        writeln!(
+            out,
+            "{}",
+            serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?
+        )
+        .ok();
+        return Ok(());
+    }
+    eprintln!("\"{}\" {done}.", item.summary.title);
+    if !moved {
+        print_item(out, &mut source, &item, false)?;
+    }
+    Ok(())
+}
+
+/// The assignments, with the generated password; for an edit, a field
+/// named as `get` shows it (`custom-2`, its label) becomes the name the
+/// app knows.
+fn field_changes(
+    assignments: &[String],
+    generate: Option<&str>,
+    item: Option<&ItemView>,
+) -> Result<Vec<FieldChange>, String> {
+    let mut changes = assignments
+        .iter()
+        .map(|a| item_args::parse_assignment(a))
+        .collect::<Result<Vec<_>, _>>()?;
+    if let Some(item) = item {
+        for change in &mut changes {
+            let shown = item.fields.iter().find(|f| {
+                f.id.eq_ignore_ascii_case(&change.name)
+                    || f.label.eq_ignore_ascii_case(&change.name)
+            });
+            if let Some(field) = shown {
+                change.name = if field.id.starts_with("custom-") {
+                    field.label.clone()
+                } else {
+                    field.id.clone()
+                };
+            }
+        }
+    }
+    if let Some(recipe) = generate {
+        if changes
+            .iter()
+            .any(|c| c.name.eq_ignore_ascii_case("password"))
+        {
+            return Err("--generate-password and password=…: one or the other".to_owned());
+        }
+        let options = item_args::password_recipe(Some(recipe))?;
+        changes.push(FieldChange {
+            name: "password".to_owned(),
+            value: Some(generator::password(&options)),
+            hidden: false,
+        });
+    }
+    Ok(changes)
+}
+
+/// Resolves `verrou://` references, each item asked once.
+struct Resolver {
+    source: Source,
+    items: HashMap<String, ItemView>,
+}
+
+impl Resolver {
+    fn new(source: Source) -> Self {
+        Self {
+            source,
+            items: HashMap::new(),
+        }
+    }
+
+    fn resolve(&mut self, reference: &Reference) -> Result<Zeroizing<String>, String> {
+        self.source.intend(&reference.item, &reference.field);
+        if !self.items.contains_key(&reference.item) {
+            let item = self.source.item(&reference.item)?;
+            self.items.insert(reference.item.clone(), item);
+        }
+        let item = &self.items[&reference.item];
+        field_value(&mut self.source, item, &reference.field).map(Zeroizing::new)
+    }
+}
+
+/// Writes a secret to `path` with the permissions `mode`; an existing file
+/// is only replaced with `force`.
+fn write_secret_file(path: &Path, data: &[u8], mode: u32, force: bool) -> Result<(), String> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true);
+    if force {
+        options.create(true).truncate(true);
+    } else {
+        options.create_new(true);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        options.mode(mode);
+    }
+    let error = |e: std::io::Error| format!("{}: {e}", path.display());
+    let mut file = options.open(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            format!("{}: already exists (--force to replace it)", path.display())
+        } else {
+            error(e)
+        }
+    })?;
+    // A replaced file keeps its permissions otherwise.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        file.set_permissions(std::fs::Permissions::from_mode(mode))
+            .map_err(error)?;
+    }
+    file.write_all(data).map_err(error)
+}
+
+/// `verrou read`: one reference's value, printed or written to a file.
+fn read_reference(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), String> {
+    let Command::Read {
+        reference,
+        out_file,
+        file_mode,
+        force,
+        no_newline,
+    } = &cli.command
+    else {
+        return Ok(());
+    };
+    let reference = Reference::parse(reference).unwrap_or_else(|| {
+        Err(format!(
+            "\"{reference}\": expected {}<item>/<field>",
+            run::SCHEME
+        ))
+    })?;
+    let mut value = Resolver::new(Source::open(cli)?).resolve(&reference)?;
+    if !no_newline {
+        value.push('\n');
+    }
+    match out_file {
+        Some(path) => write_secret_file(path, value.as_bytes(), *file_mode, *force),
+        None => out.write_all(value.as_bytes()).map_err(|e| e.to_string()),
+    }
+}
+
+/// `verrou inject`: the template, its references replaced.
+fn inject_template(
+    cli: &Cli,
+    out: &mut impl std::io::Write,
+    in_file: Option<&Path>,
+    out_file: Option<&Path>,
+    mode: u32,
+    force: bool,
+) -> Result<(), String> {
+    let template = match in_file {
+        Some(path) => {
+            std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?
+        }
+        None => std::io::read_to_string(std::io::stdin()).map_err(|e| format!("input: {e}"))?,
+    };
+    let pieces = inject::parse(&template)?;
+    let mut filled = Zeroizing::new(String::with_capacity(template.len()));
+    if pieces.iter().any(|p| matches!(p, Piece::Secret(_))) {
+        let mut resolver = Resolver::new(Source::open(cli)?);
+        for piece in &pieces {
+            match piece {
+                Piece::Text(text) => filled.push_str(text),
+                Piece::Secret(reference) => filled.push_str(&resolver.resolve(reference)?),
+            }
+        }
+    } else {
+        filled.push_str(&template);
+    }
+    match out_file {
+        Some(path) => write_secret_file(path, filled.as_bytes(), mode, force),
+        None => out.write_all(filled.as_bytes()).map_err(|e| e.to_string()),
+    }
+}
+
 /// `verrou run`: resolves the `verrou://` references, then runs the
 /// command with them, its output masked (see `verrou_cli::run`).
 fn run_command(cli: &Cli) -> Result<ExitCode, String> {
@@ -604,20 +1032,12 @@ fn run_command(cli: &Cli) -> Result<ExitCode, String> {
     let references = run::references(std::env::vars(), &file)?;
     let mut secrets: Vec<(String, Zeroizing<String>)> = Vec::new();
     if !references.is_empty() {
-        let mut source = Source::open(cli)?;
-        let mut items: HashMap<String, ItemView> = HashMap::new();
+        let mut resolver = Resolver::new(Source::open(cli)?);
         for (name, reference) in &references {
-            source.intend(&reference.item, &reference.field);
-            if !items.contains_key(&reference.item) {
-                let item = source
-                    .item(&reference.item)
-                    .map_err(|e| format!("{name}: {e}"))?;
-                items.insert(reference.item.clone(), item);
-            }
-            let item = &items[&reference.item];
-            let value = field_value(&mut source, item, &reference.field)
+            let value = resolver
+                .resolve(reference)
                 .map_err(|e| format!("{name}: {e}"))?;
-            secrets.push((name.clone(), Zeroizing::new(value)));
+            secrets.push((name.clone(), value));
         }
     }
     let (program, arguments) = command.split_first().ok_or("missing command")?;

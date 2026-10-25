@@ -33,6 +33,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use verrou_bridge::access::Write;
+use verrou_bridge::items::StateChange;
 use verrou_bridge::protocol::{
     CONFIRM_IN_APP, ClientKind, Credentials, SaveAction, Suggestion, UnlockIntent,
 };
@@ -69,6 +70,7 @@ mod sharing;
 mod signals;
 mod ssh;
 mod templates;
+mod terminal;
 mod watchtower;
 
 pub use bulk::{
@@ -1231,6 +1233,11 @@ impl VaultSession {
                 open.save_passkey(item.as_deref(), title, uri, username, &passkey)
                     .await?
             }
+            // Apart and boxed: they would make every write's future
+            // (passkeys included) larger.
+            write @ (Write::NewItem { .. } | Write::EditItem { .. } | Write::MoveItem { .. }) => {
+                Box::pin(self.terminal_write(&mut open, write)).await?
+            }
             Write::PasskeyCounter {
                 item,
                 credential_id,
@@ -1249,6 +1256,64 @@ impl VaultSession {
         drop(open);
         self.install_written(connection, decrypted)?;
         Ok(id)
+    }
+
+    /// The vault's folders, with `name` created if it is missing (online
+    /// only, as in the app): `verrou item … --folder`.
+    async fn folders_with(
+        &self,
+        open: &mut Connection,
+        name: Option<&str>,
+    ) -> Result<Vec<FolderOption>, VerrouError> {
+        let mut folders = self.folders();
+        let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) else {
+            return Ok(folders);
+        };
+        if !folders.iter().any(|f| f.name.eq_ignore_ascii_case(name)) {
+            let (id, _) = open.create_folder(name).await?;
+            folders.push(FolderOption {
+                id,
+                name: name.to_owned(),
+            });
+        }
+        Ok(folders)
+    }
+
+    /// A write from the terminal (`verrou item …`), already checked by
+    /// `verrou_bridge::items`: through the edit screen's draft.
+    async fn terminal_write(
+        &self,
+        open: &mut Connection,
+        write: Write,
+    ) -> Result<(String, Decrypted), VerrouError> {
+        Ok(match write {
+            Write::NewItem { changes } => {
+                let folders = self.folders_with(open, changes.folder.as_deref()).await?;
+                open.create(terminal::new_draft(&changes, &folders)?)
+                    .await?
+            }
+            Write::EditItem { item, changes } => {
+                let folders = self.folders_with(open, changes.folder.as_deref()).await?;
+                let mut draft = open.draft(&item).await?;
+                terminal::apply(&mut draft, &changes, &folders)?;
+                let decrypted = open.update(&item, draft).await?;
+                (item, decrypted)
+            }
+            Write::MoveItem { item, to } => {
+                let decrypted = match to {
+                    StateChange::Trash => open.trash(&item).await?,
+                    StateChange::Restore => open.restore(&item).await?,
+                    StateChange::Archive => open.set_archived(&item, true).await?,
+                    StateChange::Unarchive => open.set_archived(&item, false).await?,
+                };
+                (item, decrypted)
+            }
+            _ => {
+                return Err(VerrouError::Invalid {
+                    message: "not a terminal write".to_owned(),
+                });
+            }
+        })
     }
 
     async fn sync_shared(&self, patient: bool) -> Result<SyncOutcome, VerrouError> {
@@ -2381,6 +2446,12 @@ pub enum AccessPurpose {
     /// The browser: one more item, after many items requested in a short
     /// time.
     Bulk,
+    /// The terminal creates an item; `title`: the new item's.
+    Create,
+    /// The terminal modifies, archives or restores an item.
+    Edit,
+    /// The terminal moves an item to the trash.
+    Delete,
 }
 
 impl From<Purpose> for AccessPurpose {
@@ -2393,6 +2464,9 @@ impl From<Purpose> for AccessPurpose {
             Purpose::LinkSite => Self::LinkSite,
             Purpose::Card => Self::Card,
             Purpose::Bulk => Self::Bulk,
+            Purpose::Create => Self::Create,
+            Purpose::Edit => Self::Edit,
+            Purpose::Delete => Self::Delete,
         }
     }
 }

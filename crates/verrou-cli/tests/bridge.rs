@@ -15,7 +15,8 @@ use ssh_key::encoding::Decode as _;
 use ssh_key::private::{KeypairData, RsaKeypair};
 use ssh_key::{Algorithm, LineEnding, PrivateKey, Signature};
 use verrou_bridge::protocol::{
-    ClientKind, Command, Credentials, ReplyResult, SaveAction, Suggestion,
+    ClientKind, Command, Credentials, FieldChange, ItemChanges, ItemMove, ReplyResult, SaveAction,
+    Suggestion,
 };
 use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
 use verrou_cli::agent::{self, BridgeKeys, Keys};
@@ -32,6 +33,8 @@ struct Fake {
     reasons: Mutex<Vec<String>>,
     /// What each unlock request announced.
     intents: Mutex<Vec<Option<verrou_bridge::protocol::UnlockIntent>>>,
+    /// The writes the app was asked to carry out, checked.
+    writes: Mutex<Vec<String>>,
 }
 
 impl Backend for Fake {
@@ -57,8 +60,17 @@ impl Backend for Fake {
         None
     }
 
-    fn write(&self, _: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
-        Box::pin(async { None })
+    fn write(&self, plan: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
+        let outcome = plan(&self.vault).map(|write| {
+            let id = match &write {
+                verrou_bridge::access::Write::EditItem { item, .. }
+                | verrou_bridge::access::Write::MoveItem { item, .. } => item.clone(),
+                _ => "new".to_owned(),
+            };
+            self.writes.lock().unwrap().push(format!("{write:?}"));
+            id
+        });
+        Box::pin(async { Some(outcome) })
     }
 
     /// Like Touch ID succeeding a moment later.
@@ -198,6 +210,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
+        writes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -304,6 +317,67 @@ fn link_then_ssh_agent_signs_through_verrou() {
     unknown.extend_from_slice(&0u32.to_be_bytes());
     assert_eq!(agent_call(&mut ssh, &unknown), agent::failure());
 
+    // Writes: checked, approved in Verrou, then carried out by the app.
+    let created = remote.ask(&Command::ItemCreate {
+        changes: ItemChanges {
+            title: Some("Stripe".to_owned()),
+            fields: vec![FieldChange {
+                name: "API key".to_owned(),
+                value: Some("sk_live".to_owned()),
+                hidden: true,
+            }],
+            ..ItemChanges::default()
+        },
+    });
+    assert_eq!(
+        created,
+        Ok(ReplyResult::Saved {
+            item: "new".to_owned()
+        })
+    );
+    let edited = remote.ask(&Command::ItemEdit {
+        item: "github".to_owned(),
+        changes: ItemChanges {
+            favorite: Some(true),
+            ..ItemChanges::default()
+        },
+    });
+    assert_eq!(
+        edited,
+        Ok(ReplyResult::Saved {
+            item: "github".to_owned()
+        })
+    );
+    let trashed = remote.ask(&Command::ItemMove {
+        item: "GitHub".to_owned(),
+        to: ItemMove::Trash,
+    });
+    assert_eq!(
+        trashed,
+        Ok(ReplyResult::Saved {
+            item: "github".to_owned()
+        })
+    );
+    // Refused before any approval: an active item is not restored.
+    let restored = remote.ask(&Command::ItemMove {
+        item: "github".to_owned(),
+        to: ItemMove::Restore,
+    });
+    assert!(matches!(restored, Err(Error::Denied(_))), "{restored:?}");
+    assert_eq!(
+        backend.confirmations.lock().unwrap()[2..],
+        [
+            (Purpose::Create, "Stripe".to_owned()),
+            (Purpose::Edit, "GitHub".to_owned()),
+            (Purpose::Delete, "GitHub".to_owned()),
+        ]
+    );
+    assert_eq!(backend.writes.lock().unwrap().len(), 3);
+    assert!(
+        !backend.writes.lock().unwrap()[0].contains("sk_live"),
+        "a write's debug output shows no secret"
+    );
+
     // Unlinked in Verrou: the CLI says so, the agent fails.
     bridge.revoke(&config.client);
     assert_eq!(remote.call(&Command::Status), Err(Error::UnknownClient));
@@ -376,6 +450,7 @@ fn git_signs_through_the_agent() {
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
+        writes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -540,6 +615,7 @@ fn run_hands_a_secret_to_a_command_masked() {
         confirmations: Mutex::new(Vec::new()),
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
+        writes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
