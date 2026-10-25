@@ -1,26 +1,29 @@
 <p align="center">
-  <img src="docs/media/icon.png" width="128" height="128" alt="Verrou icon">
+  <img src="docs/media/icon.png" width="112" height="112" alt="Verrou icon">
 </p>
 
 <h1 align="center">Verrou</h1>
 
-<p align="center"><b>Your Vaultwarden vault, native on your Mac.</b></p>
+<p align="center">
+  <b>A native Mac and iPhone password manager for your self-hosted
+  <a href="https://github.com/dani-garcia/vaultwarden">Vaultwarden</a>.</b>
+</p>
 
 <p align="center">
-  A fast macOS password manager for a self-hosted
-  <a href="https://github.com/dani-garcia/vaultwarden">Vaultwarden</a> server,
-  with a Brave and Firefox extension, a command line and an SSH agent, all built around a
-  Rust core and Bitwarden's official crypto.
+  <a href="https://github.com/bonout/verrou/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/bonout/verrou?label=release"></a>
+  <a href="https://github.com/bonout/verrou/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/bonout/verrou/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <img alt="macOS 15 or later" src="https://img.shields.io/badge/macOS-15%2B-black">
+  <img alt="iOS 17 or later" src="https://img.shields.io/badge/iOS-17%2B-black">
+  <a href="LICENSE"><img alt="License GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
 </p>
 
 <p align="center">
   <a href="https://verrou.bonout.com"><b>Website</b></a> ·
-  <a href="https://x.com/verrou_app"><b>X</b></a> ·
   <a href="https://github.com/bonout/verrou/releases/latest"><b>Download</b></a> ·
-  <a href="#install">Install</a> ·
-  <a href="docs/GUIDE.md">Full guide</a> ·
+  <a href="https://x.com/verrou_app">X</a> ·
+  <a href="docs/GUIDE.md">Guide</a> ·
   <a href="SECURITY.md">Security</a> ·
-  <a href="ACCESSIBILITY.md">Accessibility</a>
+  <a href="#support-the-project">Support</a>
 </p>
 
 <p align="center">
@@ -29,13 +32,44 @@
   </a>
 </p>
 
-Verrou works with the vault you already have on your Vaultwarden server, so
-the official Bitwarden apps and web vault keep working next to it. It opens
-in a fraction of a second, searches thousands of items as you type, and fills
-your logins in Brave, Firefox and any other Mac app. In English, French,
-German, Spanish and Italian.
+Verrou works with the vault you already have on your Vaultwarden server, in
+the standard Bitwarden format, so the official Bitwarden apps and web vault
+keep working next to it.
 
-## What you can do
+- **Fast**: opens in a fraction of a second, searches 10,000 items as you type
+  (under 5 ms).
+- **Fills everywhere**: Brave, Chrome and Firefox, Safari and iPhone apps
+  through AutoFill, and any Mac app with ⌘\\.
+- **Unlocks with Touch ID and Face ID**, or a YubiKey.
+- **Keeps secrets away from AI agents**: `verrou run` hands them to a command,
+  masked in its output, after your approval on the Mac or the iPhone.
+- **Private**: no account of ours, no analytics; the vault is decrypted only on
+  your devices, by Bitwarden's official crypto.
+- **Free and open source** (GPL-3.0), in English, French, German, Spanish and
+  Italian.
+
+## Download
+
+| | |
+| --- | --- |
+| **Mac** (macOS 15+) | [`Verrou-<version>-macos.dmg`](https://github.com/bonout/verrou/releases/latest): signed and notarized by Apple, updates itself |
+| **Browser extension** | Installed from the Mac app (Settings → *Browsers and Terminal*), or `verrou-<version>-chromium.zip` / `verrou-<version>-firefox.xpi` (signed by Mozilla) from the [release](https://github.com/bonout/verrou/releases/latest) |
+| **Command line and SSH agent** | Shipped with the Mac app, or `verrou-<version>-<target>.tar.gz` for Linux and Macs without the app |
+| **iPhone** (iOS 17+) | Heading to the App Store; build it yourself meanwhile ([below](#the-iphone-app)) |
+
+You need a [Vaultwarden](https://github.com/dani-garcia/vaultwarden) server
+(the end-to-end tests run against 1.37.4). Every file of a release has a
+`SHA256SUMS` entry and a build attestation that proves GitHub built it from
+this repository: `gh attestation verify <file> -R bonout/verrou`.
+
+<p align="center">
+  <img src="docs/media/11-quick-access.png" width="760" alt="Quick Access over the Verrou window: typing net lists Netflix, PlayStation Network and Nextcloud, with the selected login's details on the right and shortcuts to copy the password, the username or the one-time code">
+  <br><sub>Quick Access (⌘⇧Space), from any app.</sub>
+</p>
+
+## Features
+
+### On the Mac
 
 - **Unlock** with Touch ID, a YubiKey (FIDO2 PIN and a touch) or your master
   password. It locks itself after inactivity, on sleep and with the screen.
@@ -45,6 +79,25 @@ German, Spanish and Italian.
   one-time code without opening the main window.
 - **Fill in any app** (⌘\\): Verrou types the username and password into the
   app in front of you, like 1Password's Universal Autofill.
+- **Copy from the keyboard**: ⌃⌘C the username, ⇧⌘C the password, ⌥⌘C the
+  one-time code, ⌥⇧⌘C the website (the *Item* menu); hold ⌥ to show the
+  hidden fields of the item.
+- **Sort your way**: by relevance, title, modification, creation or last use
+  (what you filled, copied or revealed on this device, kept only there), and
+  open the list you want at unlock.
+- **Act on many items at once**: select them like in Finder, then archive,
+  trash, restore, favorite or move them to a folder in one go.
+- **Nest folders** the Bitwarden way (`Work/Clients` sits inside `Work`, in
+  a tree in the sidebar), and drag items, or a whole selection, onto a
+  folder to move them.
+- **Save without waiting**: edits show at once and are sent to the server
+  in the background, so a slow link never holds up the window.
+- **Work offline**: edit, create, trash or archive items without network;
+  changes are synced, in order, as soon as the server answers.
+
+
+### In the browser
+
 - **Fill in Brave and Firefox**: logins, one-time codes, cards and addresses,
   from a 1Password-style pill at the top left of the page (*Sign in*,
   other logins in a tab under it; logins are submitted once filled, unless
@@ -57,11 +110,35 @@ German, Spanish and Italian.
   Bitwarden format, so they work with the official apps too. Sites with
   passkey autofill get them as the pill's top suggestion, before passwords.
   In Brave, the extension reloads itself when Verrou is updated.
+- **Choose where a login is offered**: Bitwarden's per-site match rule
+  (base domain, host, starts with, exact, regular expression, never), a
+  default for the device and one per folder, and your account's equivalent
+  domains, honoured by the extension, ⌘\ and iPhone AutoFill alike.
+
+
+### In your vault
+
+- **Store more than passwords**: cards, identities, secure notes, SSH keys,
+  attachments and documents, Wi-Fi networks (with a QR code to join),
+  passports, licenses, bank accounts, servers, API keys, and custom fields on
+  any item.
+- **Find your passkeys**: a *Passkeys* list with a count (site and user name
+  on each row), and `passkey:github` or `has:passkey` in the search.
 - **Audit your vault**: reused, weak and old passwords, plain-HTTP sites,
   known breaches (Have I Been Pwned), expiring cards, and sites that offer
   two-factor authentication you haven't turned on. *Change Password*
   opens the site's change-password page in one click, and the extension then
   suggests a strong password and saves it.
+- **Generate** strong passwords or memorable passphrases (French or English
+  words, like `fixe-pivoine-monceaux-couteau-ponctue`), with their real
+  strength, in the app and with `verrou generate`.
+- **Move in**: import from Apple Passwords, 1Password and Proton Pass, then
+  clean up duplicates: the same account under different URLs, titles or
+  usernames is found (certain, probable, to check) and merged into one item.
+
+
+### With family and teams
+
 - **Share**: shared vaults with family or a team (Vaultwarden organizations):
   create an organization, its collections and groups, share one item or a
   whole selection into it, and choose who sees what (view, hide passwords,
@@ -79,37 +156,10 @@ German, Spanish and Italian.
   with you, and for emergency access requests (Mac). Computed on the device
   after each sync, never through a push service; on the Mac they arrive
   within seconds through Vaultwarden's live notifications channel.
-- **Store more than passwords**: cards, identities, secure notes, SSH keys,
-  attachments and documents, Wi-Fi networks (with a QR code to join),
-  passports, licenses, bank accounts, servers, API keys, and custom fields on
-  any item.
-- **Act on many items at once**: select them like in Finder, then archive,
-  trash, restore, favorite or move them to a folder in one go.
-- **Nest folders** the Bitwarden way (`Work/Clients` sits inside `Work`, in
-  a tree in the sidebar), and drag items, or a whole selection, onto a
-  folder to move them.
-- **Copy from the keyboard**: ⌃⌘C the username, ⇧⌘C the password, ⌥⌘C the
-  one-time code, ⌥⇧⌘C the website (the *Item* menu); hold ⌥ to show the
-  hidden fields of the item.
-- **Find your passkeys**: a *Passkeys* list with a count (site and user name
-  on each row), and `passkey:github` or `has:passkey` in the search.
-- **Sort your way**: by relevance, title, modification, creation or last use
-  (what you filled, copied or revealed on this device, kept only there), and
-  open the list you want at unlock.
-- **Choose where a login is offered**: Bitwarden's per-site match rule
-  (base domain, host, starts with, exact, regular expression, never), a
-  default for the device and one per folder, and your account's equivalent
-  domains, honoured by the extension, ⌘\ and iPhone AutoFill alike.
-- **Save without waiting**: edits show at once and are sent to the server
-  in the background, so a slow link never holds up the window.
-- **Work offline**: edit, create, trash or archive items without network;
-  changes are synced, in order, as soon as the server answers.
-- **Generate** strong passwords or memorable passphrases (French or English
-  words, like `fixe-pivoine-monceaux-couteau-ponctue`), with their real
-  strength, in the app and with `verrou generate`.
-- **Move in**: import from Apple Passwords, 1Password and Proton Pass, then
-  clean up duplicates: the same account under different URLs, titles or
-  usernames is found (certain, probable, to check) and merged into one item.
+
+
+### In the terminal and with AI agents
+
 - **Work from the terminal**: `verrou search`, `get` and `totp`, an SSH agent
   that signs with the keys in your vault, and git commit signing. Each secret
   is approved with Touch ID. `verrou run` hands secrets to a command in its
@@ -122,10 +172,14 @@ German, Spanish and Italian.
   vault key ever leaving the Mac. Through your own iCloud account, sealed
   end to end ([details](SECURITY.md#approving-from-the-iphone)).
 
-## Private
 
-Your vault is decrypted only on your Mac, by Bitwarden's official Rust SDK.
-Verrou talks to your own server, with two exceptions:
+## Privacy and security
+
+Your vault is decrypted only on your devices, by
+[Bitwarden's official Rust SDK](https://github.com/bitwarden/sdk-internal).
+Verrou has no account of its own, no analytics, no crash reporting sent
+anywhere and no server: it talks to your own Vaultwarden, with a few
+exceptions you can check:
 
 - **Breach checks** send only the first 5 characters of a password's SHA-1
   hash to Have I Been Pwned. The whole vault is checked when you ask; new
@@ -138,20 +192,25 @@ Verrou talks to your own server, with two exceptions:
   and only when you click. **Create a Passkey** does the same for the site's
   [passkey page](https://w3c.github.io/webappsec-passkey-endpoints/)
   (`/.well-known/passkey-endpoints`).
+- **Updates**: the Mac app checks GitHub once a day for a new release.
 
-The browser extension only receives the logins of the site in front of it, over
-an end-to-end encrypted channel. Copied secrets are hidden from clipboard
-managers and cleared after 90 seconds. Details and known limits are in
-[SECURITY.md](SECURITY.md).
+The browser extension only receives the logins of the site in front of it,
+over an end-to-end encrypted channel. Copied secrets are hidden from clipboard
+managers and cleared after 90 seconds.
 
-## Install
+How it is built and checked:
 
-You need a [Vaultwarden](https://github.com/dani-garcia/vaultwarden) server
-(the end-to-end tests run against 1.37.4).
+- **Signed releases** with build attestations and `SHA256SUMS`; the Mac app is
+  notarized by Apple and its updates are signed (EdDSA).
+- **End-to-end tests** against a real Vaultwarden on every change; the Apple
+  code builds in the Swift 6 language mode (data races are compile errors).
+- **Fuzzing** of the parsers and of `verrou run`'s masker, and dependency
+  checks (`cargo-deny`) in CI.
+- **Not audited yet**: [SECURITY.md](SECURITY.md) describes what Verrou adds on
+  top of Bitwarden's crypto, every network connection, and the known limits.
+  The privacy policy is on the [website](https://verrou.bonout.com/privacy/).
 
-Every release is on the [Releases page](https://github.com/bonout/verrou/releases/latest),
-with `SHA256SUMS` and a build attestation for each file
-(`gh attestation verify <file> -R bonout/verrou`).
+## Setting it up
 
 ### Mac app
 
@@ -205,14 +264,6 @@ browser, macOS blocks it until you run
 [guide](docs/GUIDE.md#command-line-and-ssh-agent). With Rust installed,
 `cargo install --git https://github.com/bonout/verrou verrou-cli` works too.
 
-### iPhone
-
-There is no public iPhone build yet (releases go to TestFlight for internal
-testing only): build it yourself, see [iPhone](#iphone) below. Once both apps
-are installed, pair them for approvals: on the Mac, Settings → Security →
-*Pair an iPhone*; on the iPhone, Settings → *Approve from the Mac*, then scan
-the code. Both devices must use the same iCloud account.
-
 ### Build it yourself
 
 No Apple developer account needed for the Mac app: it is then signed
@@ -230,7 +281,7 @@ entitlement Apple only grants to builds signed by a developer team
 iPhone use the `iCloud.app.verrou` container, which only the released apps
 can open.
 
-## Using it
+## Keyboard shortcuts
 
 | Keys | Action |
 | --- | --- |
@@ -283,7 +334,7 @@ throwaway Vaultwarden, the end-to-end walkthrough and the demo recording
 (`scripts/demo-capture.sh`) are described in the
 [full guide](docs/GUIDE.md#build).
 
-## iPhone
+## The iPhone app
 
 The iPhone app (`apple/VerrouiOS`, iOS 17 or later) shares
 the Rust core and a Swift layer with the Mac app: sign in to Vaultwarden
@@ -399,11 +450,11 @@ You can use both side by side.
 It's built and tested against Vaultwarden only: every change runs the end-to-end tests against Vaultwarden 1.37.4.
 
 **Is there an iPhone app?**
-Yes, in progress: the iPhone app and its system-wide AutoFill (passwords,
-one-time codes, passkeys). You build and install it yourself on your iPhone
-with your own Apple Developer account (`scripts/install-ios.sh`), or try it in
-the iOS Simulator without one (see [iPhone](#iphone)). There is no App Store
-release.
+Yes: the iPhone app, its system-wide AutoFill (passwords, one-time codes,
+passkeys), widgets and an Apple Watch app. It is heading to the App Store;
+until then, you can build and install it yourself with your own Apple
+Developer account (`scripts/install-ios.sh`), or try it in the iOS Simulator
+without one (see [The iPhone app](#the-iphone-app)).
 
 **Someone I invited got nothing. Where is the invitation?**
 Vaultwarden sends it by e-mail only: until it is accepted, the server shows
@@ -421,6 +472,23 @@ Bitwarden format, including passkeys, attachments and shared vaults.
 **Has it been audited?**
 No. The cryptography comes from Bitwarden's SDK; [SECURITY.md](SECURITY.md)
 lists what Verrou adds on top and its known limits.
+
+## Support the project
+
+Verrou is an independent open source project, made in France in spare time,
+with no company, investors or tracking behind it. If it is useful to you:
+
+- **Star the repository** and tell people who self-host Vaultwarden: it is the
+  best way for them to find it.
+- **Report bugs and ideas** in [issues](https://github.com/bonout/verrou/issues);
+  on the Mac and the iPhone, Settings → Diagnostics lets you attach crash
+  reports, which never leave your device otherwise.
+- **Improve a translation**: the apps, the extension and the website are in
+  five languages, written with care but not by native speakers for all of
+  them.
+- **Sponsor it**: sponsorship is being set up. Until then, write to
+  [contact@bonout.com](mailto:contact@bonout.com) if you or your company want to
+  help fund the work (an independent security audit is the first goal).
 
 ## License
 
