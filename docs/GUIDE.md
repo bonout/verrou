@@ -1040,10 +1040,13 @@ the secrets: keep it out of git.
 ### Writing items (`verrou item`)
 
 The terminal also writes the vault, the 1Password CLI way. Each write asks
-for your approval in Verrou, on the Mac or the paired iPhone: *allow the
-terminal to create “Stripe”*, *to modify “GitHub”*, *to move “GitHub” to
-the trash*. A write that would be refused (an item shared read-only, an
-unreadable one-time code seed) is refused before anything is asked.
+for your approval in Verrou, on the Mac or the paired iPhone, every time
+(an approval is never remembered), and says what changes, field names
+only: *allow the terminal to create “Stripe”: username, password*, *to
+modify “GitHub”: password, url, −Old token* (`−`: removed), *to move
+“GitHub” to the trash*. A write that would be refused (an item shared
+read-only, an unreadable one-time code seed) is refused before anything is
+asked.
 
 ```sh
 verrou item create --title Stripe --url https://dashboard.stripe.com \

@@ -35,6 +35,8 @@ struct Fake {
     intents: Mutex<Vec<Option<verrou_bridge::protocol::UnlockIntent>>>,
     /// The writes the app was asked to carry out, checked.
     writes: Mutex<Vec<String>>,
+    /// What each approval said a write changes.
+    changes: Mutex<Vec<String>>,
 }
 
 impl Backend for Fake {
@@ -103,6 +105,7 @@ impl Backend for Fake {
             .unwrap()
             .push((request.purpose, request.title));
         self.reasons.lock().unwrap().push(request.reason);
+        self.changes.lock().unwrap().push(request.changes);
         Box::pin(async { true })
     }
 }
@@ -211,6 +214,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
+        changes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -335,19 +339,32 @@ fn link_then_ssh_agent_signs_through_verrou() {
             item: "new".to_owned()
         })
     );
-    let edited = remote.ask(&Command::ItemEdit {
-        item: "github".to_owned(),
-        changes: ItemChanges {
+    // Each edit asks: approving one change is not approving the next.
+    for changes in [
+        ItemChanges {
             favorite: Some(true),
             ..ItemChanges::default()
         },
-    });
-    assert_eq!(
-        edited,
-        Ok(ReplyResult::Saved {
-            item: "github".to_owned()
-        })
-    );
+        ItemChanges {
+            fields: vec![FieldChange {
+                name: "password".to_owned(),
+                value: Some("new-secret".to_owned()),
+                hidden: false,
+            }],
+            ..ItemChanges::default()
+        },
+    ] {
+        let edited = remote.ask(&Command::ItemEdit {
+            item: "github".to_owned(),
+            changes,
+        });
+        assert_eq!(
+            edited,
+            Ok(ReplyResult::Saved {
+                item: "github".to_owned()
+            })
+        );
+    }
     let trashed = remote.ask(&Command::ItemMove {
         item: "GitHub".to_owned(),
         to: ItemMove::Trash,
@@ -369,10 +386,16 @@ fn link_then_ssh_agent_signs_through_verrou() {
         [
             (Purpose::Create, "Stripe".to_owned()),
             (Purpose::Edit, "GitHub".to_owned()),
+            (Purpose::Edit, "GitHub".to_owned()),
             (Purpose::Delete, "GitHub".to_owned()),
         ]
     );
-    assert_eq!(backend.writes.lock().unwrap().len(), 3);
+    // The approval names what changes, never a value.
+    assert_eq!(
+        backend.changes.lock().unwrap()[2..],
+        ["API key", "favorite", "password", ""]
+    );
+    assert_eq!(backend.writes.lock().unwrap().len(), 4);
     assert!(
         !backend.writes.lock().unwrap()[0].contains("sk_live"),
         "a write's debug output shows no secret"
@@ -451,6 +474,7 @@ fn git_signs_through_the_agent() {
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
+        changes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -616,6 +640,7 @@ fn run_hands_a_secret_to_a_command_masked() {
         reasons: Mutex::new(Vec::new()),
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
+        changes: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());

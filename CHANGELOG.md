@@ -26,8 +26,9 @@ tagging (docs/RELEASING.md).
 - `verrou item create`, `edit`, `delete`, `archive` and `restore` write
   the vault from the terminal, the 1Password CLI way (`username=…
   'API key[password]=…' --generate-password`). Each write asks for your
-  approval in Verrou, on the Mac or the paired iPhone. `--folder` files the
-  item, and creates the folder if it is missing.
+  approval in Verrou, on the Mac or the paired iPhone, every time, and the
+  approval names the fields it changes (never their values). `--folder`
+  files the item, and creates the folder if it is missing.
 
 ## 0.5.0
 

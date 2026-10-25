@@ -2484,8 +2484,11 @@ pub trait BridgeDelegate: Send + Sync {
     /// password; for a protected item, the `needs_confirmation`
     /// confirmation), then answer with `answer_bridge_confirmation(id, …)`.
     /// `site`: for `LinkSite`, the host of the site to link to the item
-    /// (empty otherwise). `reason`: why the terminal asks, as it declares
-    /// it (empty if it didn't say).
+    /// (empty otherwise); for `Create` and `Edit`, the folder the item goes
+    /// to. `reason`: why the terminal asks, as it declares it (empty if it
+    /// didn't say). `changes`: for `Create` and `Edit`, the names of the
+    /// fields written (`password, url, −Old token`: `−` for a removed one),
+    /// never a value; empty otherwise.
     #[allow(clippy::too_many_arguments)]
     fn confirm_requested(
         &self,
@@ -2496,6 +2499,7 @@ pub trait BridgeDelegate: Send + Sync {
         title: String,
         site: String,
         reason: String,
+        changes: String,
     );
     /// A client found the vault locked. `kind`: the terminal may be
     /// unlocked from the iPhone, the browser brings Verrou forward.
@@ -2732,6 +2736,7 @@ impl Backend for SessionBackend {
             request.title,
             request.site,
             request.reason,
+            request.changes,
         );
         let pending = PendingConfirmation {
             confirmations: &self.confirmations,
@@ -3035,6 +3040,7 @@ mod tests {
             _: String,
             _: String,
             _: String,
+            _: String,
         ) {
             self.0.answer(&id, true);
         }
@@ -3067,6 +3073,7 @@ mod tests {
                 title: String::new(),
                 site: String::new(),
                 reason: String::new(),
+                changes: String::new(),
             }))
         };
         assert!(confirm(&plain));
@@ -3244,6 +3251,7 @@ mod optimistic_tests {
             _: String,
             _: String,
             _: AccessPurpose,
+            _: String,
             _: String,
             _: String,
             _: String,

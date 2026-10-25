@@ -188,6 +188,10 @@ pub struct Confirmation {
     /// Why the terminal asks, as it declares it ([`crate::protocol::clean_reason`]);
     /// empty if it didn't say.
     pub reason: String,
+    /// [`Purpose::Create`], [`Purpose::Edit`]: what the write changes, names
+    /// only, never a value (`password, url, −Old token`: `−` for a field
+    /// removed; [`crate::items::summary`]); empty otherwise.
+    pub changes: String,
 }
 
 /// Approvals still valid: (client, purpose, item) → time of the approval
@@ -585,9 +589,12 @@ fn approval_holds(at: Instant, scope: ApprovalScope, now: Instant) -> bool {
 /// The scope the user chose for this use. Defence in depth: whatever the
 /// backend says, only SSH and signing may be remembered longer than five
 /// minutes or not at all; a secret, a card or a passkey keeps the default.
+/// A write from the terminal is never remembered: approving one change to
+/// an item is not approving the next.
 fn effective_scope(shared: &Shared, purpose: Purpose, item: &str) -> ApprovalScope {
     match purpose {
         Purpose::Ssh | Purpose::GitSign => shared.backend.approval_scope(purpose, item),
+        Purpose::Create | Purpose::Edit | Purpose::Delete => ApprovalScope::EveryTime,
         _ => ApprovalScope::FiveMinutes,
     }
 }
@@ -603,7 +610,27 @@ async fn approved_for_site(
     site: &str,
     reason: &str,
 ) -> bool {
-    let entry = (client.id.clone(), purpose, item.to_owned());
+    approve(
+        shared,
+        Confirmation {
+            client: client.id.clone(),
+            client_name: client.name.clone(),
+            purpose,
+            item: item.to_owned(),
+            title: title.to_owned(),
+            site: site.to_owned(),
+            reason: reason.to_owned(),
+            changes: String::new(),
+        },
+    )
+    .await
+}
+
+/// Asks the user for `request`, unless an approval for the same client,
+/// purpose and item still holds.
+async fn approve(shared: &Shared, request: Confirmation) -> bool {
+    let (purpose, item) = (request.purpose, request.item.clone());
+    let entry = (request.client.clone(), purpose, item.clone());
     {
         let mut approvals = lock(&shared.approvals);
         approvals.retain(|_, (at, scope)| approval_holds(*at, *scope, Instant::now()));
@@ -611,20 +638,11 @@ async fn approved_for_site(
             return true;
         }
     }
-    let request = Confirmation {
-        client: client.id.clone(),
-        client_name: client.name.clone(),
-        purpose,
-        item: item.to_owned(),
-        title: title.to_owned(),
-        site: site.to_owned(),
-        reason: reason.to_owned(),
-    };
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
         .unwrap_or(false);
     if granted {
-        let scope = effective_scope(shared, purpose, item);
+        let scope = effective_scope(shared, purpose, &item);
         if scope != ApprovalScope::EveryTime {
             lock(&shared.approvals).insert(entry, (Instant::now(), scope));
         }
@@ -893,10 +911,24 @@ async fn item_write(
         check(v).map(|write| match &write {
             access::Write::NewItem { changes } => {
                 let title = changes.title.clone().unwrap_or_default();
-                (Purpose::Create, title.clone(), title, folder(changes))
+                let summary = crate::items::summary(changes, true);
+                (
+                    Purpose::Create,
+                    title.clone(),
+                    title,
+                    folder(changes),
+                    summary,
+                )
             }
             access::Write::EditItem { item, changes } => {
-                (Purpose::Edit, item.clone(), title_of(item), folder(changes))
+                let summary = crate::items::summary(changes, false);
+                (
+                    Purpose::Edit,
+                    item.clone(),
+                    title_of(item),
+                    folder(changes),
+                    summary,
+                )
             }
             access::Write::MoveItem { item, to } => (
                 if *to == crate::items::StateChange::Trash {
@@ -907,22 +939,34 @@ async fn item_write(
                 item.clone(),
                 title_of(item),
                 String::new(),
+                String::new(),
             ),
-            _ => (Purpose::Edit, String::new(), String::new(), String::new()),
+            _ => (
+                Purpose::Edit,
+                String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
+            ),
         })
     });
-    let (purpose, item, title, folder) = match checked {
+    let (purpose, item, title, folder, changes) = match checked {
         None => return ReplyResult::Locked,
         Some(Err(reason)) => return ReplyResult::Denied { reason },
         Some(Ok(found)) => found,
     };
-    // An approval holds for one folder: another one asks again.
-    let key = if folder.is_empty() {
-        item
-    } else {
-        format!("{item} {folder}")
+    // Never remembered (`effective_scope`): each write asks.
+    let request = Confirmation {
+        client: client.id.clone(),
+        client_name: client.name.clone(),
+        purpose,
+        item,
+        title,
+        site: folder,
+        reason: reason.to_owned(),
+        changes,
     };
-    if !approved_for_site(shared, client, purpose, &key, &title, &folder, reason).await {
+    if !approve(shared, request).await {
         return refused_or_locked(backend);
     }
     match plan(command) {

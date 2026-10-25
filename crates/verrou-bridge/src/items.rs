@@ -221,6 +221,30 @@ pub fn plan_move(vault: &Vault, query: &str, to: ItemMove) -> Result<(Write, Str
     ))
 }
 
+/// What a write changes, for its approval: the names of the fields set
+/// and, after `−`, of those removed; never a value. `new`: an item being
+/// created (its title is not a change). One line, cut like a reason.
+pub fn summary(changes: &ItemChanges, new: bool) -> String {
+    let mut names: Vec<String> = Vec::new();
+    if !new && changes.title.is_some() {
+        names.push("title".to_owned());
+    }
+    if changes.urls.is_some() {
+        names.push("url".to_owned());
+    }
+    if changes.favorite.is_some() {
+        names.push("favorite".to_owned());
+    }
+    for field in &changes.fields {
+        let name = field.name.trim();
+        match field.value {
+            Some(_) => names.push(name.to_owned()),
+            None => names.push(format!("−{name}")),
+        }
+    }
+    crate::protocol::clean_reason(Some(&names.join(", ")))
+}
+
 /// The values make sense for an item of `kind`.
 fn check(kind: ItemKind, changes: &ItemChanges) -> Result<(), String> {
     if changes
@@ -431,6 +455,26 @@ mod tests {
         assert_eq!(field_target(ItemKind::SecureNote, "notes"), Some("notes"));
         assert_eq!(field_target(ItemKind::Login, "API key"), None);
         assert_eq!(field_target(ItemKind::SecureNote, "password"), None);
+    }
+
+    #[test]
+    fn a_summary_names_fields_never_values() {
+        let changes = ItemChanges {
+            title: Some("GitHub".into()),
+            urls: Some(vec!["https://github.com".into()]),
+            fields: vec![
+                set("password", "hunter2"),
+                FieldChange {
+                    name: "Old token".into(),
+                    value: None,
+                    hidden: false,
+                },
+            ],
+            ..ItemChanges::default()
+        };
+        assert_eq!(summary(&changes, false), "title, url, password, −Old token");
+        assert_eq!(summary(&changes, true), "url, password, −Old token");
+        assert!(!summary(&changes, false).contains("hunter2"));
     }
 
     #[test]
