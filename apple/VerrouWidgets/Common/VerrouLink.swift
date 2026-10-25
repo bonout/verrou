@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where a widget, a control, a Live Activity or a Shortcut leads in the
+/// Where a widget, a control or a Shortcut leads in the
 /// iPhone app: `verrou://` links (the app's URL scheme), and the same
 /// destinations handed over by App Intents running in the app.
 ///
@@ -74,7 +74,7 @@ enum VerrouLink: Equatable, Sendable {
 /// App Intents that run in the app hand their destination over here; the
 /// app's model takes it (`setHandler`), or finds it waiting at launch. In
 /// the widget extension, nothing is installed: the intents it shows run in
-/// the app (`openAppWhenRun`, `LiveActivityIntent`).
+/// the app (`openAppWhenRun`).
 @MainActor
 enum VerrouLinkCenter {
     private static var handler: ((VerrouLink) -> Void)?

@@ -4,6 +4,13 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**iPhone**
+- The Dynamic Island for requests from the Mac is gone: iOS only allows it
+  while Verrou is open, where the approval screen already shows. The
+  notification and the approval screen are unchanged.
+
 ## 0.5.0
 
 **Mac**

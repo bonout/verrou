@@ -992,9 +992,6 @@ default: nothing happens until an iPhone is paired. Code:
   the other request is withdrawn. A protected item approved on the iPhone
   counts as confirmed for 5 minutes, as with Touch ID. Approvals last 5
   minutes per client and item, as before.
-- **Dynamic Island**: the request shown has a Live Activity with only the
-  Mac's name and the time left; its buttons bring the app back to the
-  request, they never answer (see "Widgets, Shortcuts and Live Activity").
 - **Unlock**: the Mac never sends the vault key. At each unlock **on the
   Mac** (password, Touch ID, security key), it draws a key K, seals the
   vault key with K (AES-GCM) and K for each iPhone (ECDH with an ephemeral
@@ -1096,8 +1093,7 @@ above; what changes:
   its private folder, and the extension doesn't see the vault. The
   `app.verrou.shared` keychain group (the default group of the app and its
   extensions) only holds the AutoFill session (5 minutes), the last filled
-  login (90 s) and the pinned one-time codes (see "Widgets, Shortcuts and
-  Live Activity").
+  login (90 s) and the pinned one-time codes (see "Widgets and Shortcuts").
 
 ### Scanning a QR code (one-time codes)
 
@@ -1135,10 +1131,10 @@ since Bitwarden only stores TOTP.
   protected item first asks for Face ID or the master password, and a
   read-only item is never offered.
 
-## Widgets, Shortcuts and Live Activity
+## Widgets and Shortcuts
 
 The `VerrouWidgets` extension (`apple/VerrouWidgets`: widgets, the Control
-Center control, the Live Activity) never opens the vault and doesn't link
+Center control) never opens the vault and doesn't link
 the Rust core. The App Intents (Shortcuts, Siri, Spotlight) run in the app
 (`VerrouiOS/App/AppIntents.swift`). Everything that needs the vault opens
 the app, which unlocks with Face ID or the master password as usual.
@@ -1226,28 +1222,20 @@ Watch" on an item's page (`Shared/Core/PinnedCodes.swift`,
 
 ### `verrou://` links
 
-The widgets, the control and the Live Activity open the app with
+The widgets and the control open the app with
 `verrou://search`, `generator`, `scan`, `item?id=` and `approval`
 (`VerrouWidgets/Common/VerrouLink.swift`). Any app or web page can open
 them, so a link only navigates: no copy, no reveal, no answer to a request.
 A destination given with the vault locked waits in memory for the unlock,
 2 minutes at most; an item that doesn't exist is reported as not found.
 
-### Live Activity (requests from the Mac)
+### No Live Activity
 
-While a request from the Mac is shown (see "Approving from the iPhone"), a
-Live Activity (Dynamic Island, lock screen) shows **the Mac's name** (from
-the pairing) and **the time left** (the request's expiry, signed by the
-Mac): not what is asked, which stays sealed until Face ID in the app, as
-for the notification. Its Approve and Deny buttons (`LiveActivityIntent`)
-only bring the app back to the request: Face ID opens it and the answer is
-given there, sealed by the Secure Enclave key. The activity is started
-locally when the app finds the request (in the foreground: the request's
-notification doesn't wake the app); starting it by push would need an APNs
-server holding the activity's token, which Verrou doesn't have. It ends
-when the request is answered (the outcome stays 4 s), put aside, withdrawn
-or expired; past the expiry while the app is suspended, it shows "Expired"
-until the app ends it.
+A request from the Mac arrives as a notification and, with the app open,
+its approval screen. A Live Activity (Dynamic Island) was tried in 0.5.0 and
+removed: iOS only lets an app start one while it is in the foreground,
+where the approval screen already shows, and starting it from a push needs
+an APNs server holding a token per iPhone, which Verrou doesn't run.
 
 ## AutoFill on iPhone
 

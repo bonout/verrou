@@ -46,8 +46,8 @@ struct VerrouPhoneApp: App {
                     model.scenePhaseChanged(to: phase)
                 }
                 // `otpauth://` links: Verrou can be the app chosen to set up
-                // verification codes. `verrou://`: the widgets, the control
-                // and the Live Activity.
+                // verification codes. `verrou://`: the widgets and the
+                // control.
                 .onOpenURL { url in
                     if let link = VerrouLink(url: url) {
                         model.open(link)
@@ -58,7 +58,7 @@ struct VerrouPhoneApp: App {
                 .task {
                     if model.mode != .vaultwarden { ActivityNotifier.shared.silent = true }
                     ActivityNotifier.shared.setHandler { [weak model] route in model?.openActivity(route) }
-                    // Shortcuts and the Live Activity's buttons (App Intents).
+                    // Shortcuts (App Intents).
                     VerrouLinkCenter.setHandler { [weak model] link in model?.open(link) }
                     // A request from the Mac (iCloud notification): fetched
                     // and shown above everything.

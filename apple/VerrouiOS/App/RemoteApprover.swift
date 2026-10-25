@@ -56,10 +56,7 @@ final class RemoteApprover {
     static let contextReuse: TimeInterval = 60
 
     private(set) var macs: [Mac] = []
-    private(set) var current: Pending? {
-        // The Live Activity follows the request shown.
-        didSet { activities.update(current) }
-    }
+    private(set) var current: Pending?
     /// Requests waiting behind the current one.
     private(set) var queue: [Pending] = []
     private(set) var pairingBusy = false
@@ -82,7 +79,6 @@ final class RemoteApprover {
     /// yet.
     @ObservationIgnored private var handled: Set<String> = []
     @ObservationIgnored private lazy var presenter = ApprovalWindow(approver: self)
-    @ObservationIgnored private let activities = ApprovalActivities()
     private let log = Logger(subsystem: "app.verrou", category: "remote-approval")
 
     private static var file: URL {
@@ -251,8 +247,6 @@ final class RemoteApprover {
             if current == nil, !queue.isEmpty { current = queue.removeFirst() }
         } while refreshAgain
         presenter.update()
-        // Also ends what a previous launch left (expired while suspended).
-        activities.update(current)
     }
 
     /// Face ID, then the content. Within `contextReuse` of the last Face

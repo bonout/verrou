@@ -223,8 +223,8 @@ targets:
     sources:
       - path: VerrouiOS
       - path: Shared
-      # Links, the pinned code entity and the Live Activity's attributes and
-      # buttons: the widgets draw them, the app runs them.
+      # Links and the pinned code entity: the widgets show them, the app
+      # runs them.
       - path: VerrouWidgets/Common
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
@@ -248,8 +248,7 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
         # Two-factor links: Verrou appears in Settings › General › AutoFill
         # & Passwords › Set Up Codes In (OTPScanFlow.Purpose.link).
-        # verrou://: the widgets, the control and the Live Activity open the
-        # app at a place (VerrouLink); a link only navigates.
+        # verrou://: the widgets and the control open the app at a place (VerrouLink); a link only navigates.
         CFBundleURLTypes:
           - CFBundleURLName: app.verrou.ios.otpauth
             CFBundleTypeRole: Editor
@@ -257,9 +256,6 @@ targets:
           - CFBundleURLName: app.verrou.ios.links
             CFBundleTypeRole: Viewer
             CFBundleURLSchemes: [verrou]
-        # The Mac's requests in the Dynamic Island and on the lock screen
-        # (ApprovalActivities), started locally: no push server.
-        NSSupportsLiveActivities: true
     scheme:
       testTargets:
         - VerrouAutoFillUITests
@@ -380,11 +376,11 @@ targets:
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
   # Widgets, inside the iPhone app: pinned one-time codes (home screen, lock
-  # screen, StandBy), quick actions, the Control Center control and the
-  # Live Activity of the Mac's requests. No vault, no Rust core: it reads
+  # screen, StandBy), quick actions and the Control Center control. No
+  # vault, no Rust core: it reads
   # only the codes the user pinned (Shared/Core/PinnedCodes.swift, this
   # device's keychain, the group shared with the app) and opens the app with
-  # verrou:// links. See SECURITY.md, "Widgets, Shortcuts and Live Activity".
+  # verrou:// links. See SECURITY.md, "Widgets and Shortcuts".
   VerrouWidgets:
     type: app-extension
     platform: iOS

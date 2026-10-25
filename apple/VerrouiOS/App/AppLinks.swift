@@ -1,7 +1,6 @@
 import Foundation
 
-/// Destinations from the widgets, the control, the Live Activity
-/// (`verrou://` links) and Shortcuts (`VerrouLinkCenter`).
+/// Destinations from the widgets and the control (`verrou://` links) and Shortcuts (`VerrouLinkCenter`).
 extension PhoneModel {
     /// A destination given with the vault locked waits this long for the
     /// unlock: unlocking much later doesn't copy or open something
