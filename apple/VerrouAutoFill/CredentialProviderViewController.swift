@@ -52,15 +52,12 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         hosted = true
     }
 
-    // Face ID as soon as the sheet is on screen, rather than after a delay.
+    // Mac: Face ID as soon as the sheet is on screen. On the iPhone the
+    // sheet only accepts it once its presentation ends (about 600 ms after
+    // launch, measured): `AutoFillRootView`'s retries cover it.
     #if os(macOS)
     override func viewDidAppear() {
         super.viewDidAppear()
-        Task { await model.autoUnlock(appeared: true) }
-    }
-    #else
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
         Task { await model.autoUnlock(appeared: true) }
     }
     #endif

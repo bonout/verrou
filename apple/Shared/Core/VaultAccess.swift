@@ -66,10 +66,13 @@ final class VaultAccess: @unchecked Sendable {
     /// extension's. `Failure.invalidated`: neither, the master password is
     /// needed (then `enrollAutofillBiometrics`).
     func unlockForAutofill(reason: String) async throws -> UInt32 {
-        if BiometricVault.isEnrolled(in: directory) {
+        // The extension's own seal only exists because the app's didn't open
+        // here: straight to it, rather than a first Face ID for nothing.
+        let ownSeal = BiometricVault.isEnrolled(in: directory, file: BiometricVault.autofillFile)
+        if !ownSeal, BiometricVault.isEnrolled(in: directory) {
             do {
                 let key = try await BiometricVault.open(in: directory, reason: reason)
-                return try await session.unlockWithUserKey(userKey: key)
+                return try await Perf.measure("vault opened") { try await session.unlockWithUserKey(userKey: key) }
             } catch BiometricVault.Failure.invalidated {
                 // The app's seal doesn't open in the extension: its own,
                 // if it exists.
@@ -80,7 +83,7 @@ final class VaultAccess: @unchecked Sendable {
         }
         do {
             let key = try await BiometricVault.open(in: directory, reason: reason, file: BiometricVault.autofillFile)
-            return try await session.unlockWithUserKey(userKey: key)
+            return try await Perf.measure("vault opened") { try await session.unlockWithUserKey(userKey: key) }
         } catch BiometricVault.Failure.invalidated {
             BiometricVault.remove(in: directory, file: BiometricVault.autofillFile)
             throw BiometricVault.Failure.invalidated

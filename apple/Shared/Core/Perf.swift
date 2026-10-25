@@ -37,25 +37,39 @@ enum Perf {
             fflush(stdout)
         }
         #endif
-        #if os(iOS) && !AUTOFILL_EXTENSION
+        #if os(iOS)
         journal(message)
         #endif
     }
 
-    #if os(iOS) && !AUTOFILL_EXTENSION
+    #if os(iOS)
     /// The same steps, timestamped, in `Library/Caches/perf.log` (64 KB at
     /// most): readable on an iPhone without the root rights its system log
     /// requires, with
     /// `xcrun devicectl device copy from --domain-type appDataContainer
     ///  --domain-identifier app.verrou.ios --source Library/Caches/perf.log`.
-    /// Durations only, never vault data.
+    /// The AutoFill extension writes `perf-autofill.log` in the app group's
+    /// `Library/Caches` (`--domain-type appGroupDataContainer
+    /// --domain-identifier <group>`). Durations only, never vault data.
     private static let journalQueue = DispatchQueue(label: "verrou.perf.journal", qos: .utility)
+    #if AUTOFILL_EXTENSION
+    private static let journalURL = (VerrouStorage.groupCachesDirectory()
+        ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0])
+        .appending(path: "perf-autofill.log")
+    #else
     private static let journalURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
         .appending(path: "perf.log")
+    #endif
 
     private static func journal(_ message: String) {
         let line = "\(Date().formatted(.iso8601.time(includingFractionalSeconds: true))) [\(getpid())] \(message)\n"
-        journalQueue.async {
+        // The extension ends as soon as it answers: written right away.
+        #if AUTOFILL_EXTENSION
+        let write: (@escaping @Sendable () -> Void) -> Void = { journalQueue.sync(execute: $0) }
+        #else
+        let write: (@escaping @Sendable () -> Void) -> Void = { journalQueue.async(execute: $0) }
+        #endif
+        write {
             guard let data = line.data(using: .utf8) else { return }
             let url = journalURL
             if let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 64 * 1024 {

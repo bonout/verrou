@@ -138,6 +138,7 @@ final class AutoFillModel {
     // MARK: Request
 
     func start(_ request: Request) {
+        Perf.mark("request at +\(Perf.msSinceLaunch) ms from launch")
         self.request = request
         if phase == .ready { load() }
     }
@@ -361,7 +362,7 @@ final class AutoFillModel {
     private func fillPassword(_ id: String) async {
         guard let session = vault?.session else { return }
         do {
-            let credential = try session.autofillPassword(id: id)
+            let credential = try await Perf.measure("password read") { try session.autofillPassword(id: id) }
             // The next step of the form fills without Face ID; a protected
             // item asks again each time.
             if protectedItems.contains(id) {
@@ -374,7 +375,7 @@ final class AutoFillModel {
             // closed. The key is prepared now (see conditional.rs).
             if #available(iOS 18.0, *) {
                 do {
-                    _ = try await session.preparePasskeyUpgrade(id: id)
+                    _ = try await Perf.measure("passkey prepared") { try await session.preparePasskeyUpgrade(id: id) }
                 } catch {
                     log.notice("passkey key not prepared: \(String(describing: error), privacy: .public)")
                 }
@@ -477,7 +478,9 @@ final class AutoFillModel {
         guard !finished else { return }
         finished = true
         Memory.log("response")
-        vault?.lock()
+        Perf.mark("response at +\(Perf.msSinceLaunch) ms from launch")
+        // The answer first: the system fills while the vault closes.
         complete(completion)
+        vault?.lock()
     }
 }

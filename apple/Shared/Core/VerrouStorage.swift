@@ -90,6 +90,15 @@ enum VerrouStorage {
         #endif
     }
 
+    /// The app group's `Library/Caches` (performance journal of the
+    /// extension, `Perf`).
+    static func groupCachesDirectory(fileManager: FileManager = .default) -> URL? {
+        guard let container = groupContainer(fileManager) else { return nil }
+        let caches = container.appending(path: "Library/Caches", directoryHint: .isDirectory)
+        try? fileManager.createDirectory(at: caches, withIntermediateDirectories: true)
+        return caches
+    }
+
     private static func groupContainer(_ fileManager: FileManager) -> URL? {
         guard let appGroupID else { return nil }
         return fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
