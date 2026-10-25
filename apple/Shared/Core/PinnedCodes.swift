@@ -4,7 +4,7 @@ import Security
 
 /// One-time codes the user chose to see without opening the vault: in the
 /// iPhone's widgets (home screen, lock screen, StandBy), in Shortcuts and
-/// Siri ("Show the code of…"), and later on the Apple Watch.
+/// Siri ("Show the code of…"), and on the Apple Watch.
 ///
 /// Opt-in, item by item ("Show in widgets and on Apple Watch" on an item's
 /// page, iPhone): only a login with a TOTP code, never a protected item
@@ -43,6 +43,10 @@ import Security
 ///   `removeAll()`: writes (the iPhone app; the Watch app stores what the
 ///   iPhone sends it the same way, in its own keychain).
 /// - `PinnedCode.code(at:)`: the code valid at an instant, and its window.
+/// - `PinnedCodes.transferContext(_:)` and `codes(fromTransferContext:)`: the
+///   payload the iPhone hands the Apple Watch (WatchConnectivity), which
+///   keeps it with `replace(with:)` in its own keychain (group
+///   `app.verrou.watch`, shared by the Watch app and its complications).
 struct PinnedCode: Codable, Equatable, Identifiable, Sendable {
     enum Algorithm: String, Codable, Sendable {
         case sha1, sha256, sha512
@@ -289,5 +293,32 @@ enum PinnedCodes {
 
     static func removeAll() {
         SecItemDelete(base as CFDictionary)
+    }
+
+    // MARK: Transfer to the Apple Watch
+
+    /// Version of the payload sent to the Watch. A Watch that doesn't know
+    /// it ignores the message rather than misreading a seed.
+    static let transferVersion = 1
+
+    /// The application context the iPhone sends the Watch
+    /// (`updateApplicationContext`: latest state wins, delivered when the
+    /// Watch wakes): the whole list of pinned codes, nothing else, and an
+    /// empty list after a sign-out. Property-list types only, as
+    /// WatchConnectivity requires.
+    static func transferContext(_ codes: [PinnedCode]) -> [String: Any]? {
+        guard let data = try? JSONEncoder().encode(codes) else { return nil }
+        return ["version": transferVersion, "codes": data]
+    }
+
+    /// The codes of a context received from the iPhone, or `nil` if it
+    /// isn't one this version understands or holds a parameter the
+    /// computation refuses (nothing is stored then).
+    static func codes(fromTransferContext context: [String: Any]) -> [PinnedCode]? {
+        guard context["version"] as? Int == transferVersion, let data = context["codes"] as? Data,
+              let codes = try? JSONDecoder().decode([PinnedCode].self, from: data) else { return nil }
+        // The same bounds as the TOTP field's (`PinnedCode.init(totp:)`).
+        guard codes.allSatisfy({ !$0.id.isEmpty && (6...10).contains($0.digits) && $0.period > 0 }) else { return nil }
+        return codes
     }
 }

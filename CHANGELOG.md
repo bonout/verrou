@@ -30,6 +30,10 @@ tagging (docs/RELEASING.md).
   opens Verrou, unlocks with Face ID and copies; Shortcuts never receives a
   password from your vault.
 - Control Center (iOS 18): a *Search in Verrou* control.
+- Apple Watch: pinned codes and complications. The one-time codes you
+  pinned show on the wrist with their countdown, and a *One-time code*
+  complication puts one on the watch face. Only the pinned codes go to the
+  Watch, never the vault; the codes stay hidden when the wrist is down.
 - A request from your Mac shows in the Dynamic Island and on the Lock
   Screen with the time left. *Approve* and *Deny* bring you back to it:
   Face ID still shows what is asked before you answer.

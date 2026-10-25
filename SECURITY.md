@@ -1185,9 +1185,25 @@ Watch" on an item's page (`Shared/Core/PinnedCodes.swift`,
   two hours at most (one timeline entry per period, then a neutral entry, so
   that a late reload never shows an expired code); WidgetKit renders and
   keeps those entries on the device.
-- **Apple Watch** (to come): the same store and API; the iPhone will hand
-  the pinned codes over (WatchConnectivity) and the Watch keep them in its
-  own keychain with the same protection.
+- **Apple Watch** (`VerrouiOS/App/WatchSync.swift`, `apple/VerrouWatch`,
+  `apple/VerrouWatchWidgets`): the iPhone hands the same list (and only it:
+  never the vault, a password or a key) to the Watch app over
+  WatchConnectivity, as the session's application context, whenever the
+  list changes and when the session activates; a sign-out sends an empty
+  list, and a keychain that can't be read yet (before the first unlock)
+  sends nothing. The system encrypts the transfer between the paired
+  devices. The Watch app compiles `PinnedCodes.swift` only (no Rust core, no
+  network, no vault) and stores the list in the Watch's own keychain, with
+  the same protection as on the iPhone: `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`,
+  not synchronizable, in the `app.verrou.watch` group shared by the Watch
+  app and its complications. A payload of another version, or with a
+  parameter the computation refuses, is ignored. The codes leave the Watch
+  when they are unpinned or the account is signed out on the iPhone (the
+  next message replaces the list). There is no Face ID on the Watch: the
+  Watch's passcode and wrist detection protect the codes, which are
+  `privacySensitive` (hidden when the wrist is down or the screen is in
+  Always On), and the complications follow the iPhone widget's timeline
+  rules (at most an hour of codes in advance, then a neutral entry).
 
 ### Shortcuts and Siri
 

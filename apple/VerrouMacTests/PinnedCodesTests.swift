@@ -69,6 +69,36 @@ final class PinnedCodesTests: XCTestCase {
             XCTAssertNil(PinnedCode(id: "x", title: "x", host: nil, totp: totp), totp)
         }
     }
+
+    func testTransferContextRoundTrips() throws {
+        let codes = [rfc(.sha1), rfc(.sha512), PinnedCode(id: "b", title: "Bank", host: "bank.example", secret: Data([1, 2, 3, 255]),
+                                                           algorithm: .sha256, digits: 7, period: 60, revision: 42)]
+        let context = try XCTUnwrap(PinnedCodes.transferContext(codes))
+        // WatchConnectivity accepts property-list values only.
+        XCTAssertTrue(PropertyListSerialization.propertyList(context, isValidFor: .binary))
+        XCTAssertEqual(Set(context.keys), ["version", "codes"])
+        XCTAssertEqual(PinnedCodes.codes(fromTransferContext: context), codes)
+        // A sign-out sends an empty list, not nothing.
+        let empty = try XCTUnwrap(PinnedCodes.transferContext([]))
+        XCTAssertEqual(PinnedCodes.codes(fromTransferContext: empty), [])
+    }
+
+    func testTransferContextRefusesWhatItDoesNotUnderstand() throws {
+        let good = try XCTUnwrap(PinnedCodes.transferContext([rfc(.sha1)]))
+        var future = good
+        future["version"] = PinnedCodes.transferVersion + 1
+        XCTAssertNil(PinnedCodes.codes(fromTransferContext: future))
+        XCTAssertNil(PinnedCodes.codes(fromTransferContext: [:]))
+        XCTAssertNil(PinnedCodes.codes(fromTransferContext: ["version": 1, "codes": "nope"]))
+        XCTAssertNil(PinnedCodes.codes(fromTransferContext: ["version": 1, "codes": Data("[{}]".utf8)]))
+        // A parameter the computation refuses is never stored.
+        let badDigits = PinnedCode(id: "x", title: "x", host: nil, secret: Data([1]), algorithm: .sha1, digits: 3, period: 30)
+        let badPeriod = PinnedCode(id: "x", title: "x", host: nil, secret: Data([1]), algorithm: .sha1, digits: 6, period: 0)
+        for code in [badDigits, badPeriod] {
+            let context = try XCTUnwrap(PinnedCodes.transferContext([code]))
+            XCTAssertNil(PinnedCodes.codes(fromTransferContext: context))
+        }
+    }
 }
 
 private extension PinnedCode {

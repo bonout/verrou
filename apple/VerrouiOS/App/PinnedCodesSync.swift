@@ -95,9 +95,11 @@ extension PhoneModel {
         return code
     }
 
-    /// The widgets redraw, Siri learns the new names.
+    /// The widgets redraw, the Apple Watch gets the new list, Siri learns
+    /// the new names.
     private func pinnedCodesChanged() {
         WidgetCenter.shared.reloadAllTimelines()
+        watchSync.send()
         VerrouShortcuts.updateAppShortcutParameters()
     }
 }

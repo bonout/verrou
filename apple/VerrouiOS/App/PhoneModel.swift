@@ -233,6 +233,8 @@ final class PhoneModel {
     /// Items whose code is pinned for the widgets (`PinnedCodes`), as read
     /// at the last unlock or sync (`PinnedCodesSync.swift`).
     var pinnedCodeIDs: Set<String> = []
+    /// Hands the pinned codes to the Apple Watch (`WatchSync.swift`).
+    @ObservationIgnored let watchSync = WatchSync()
     /// The next sync is the first after the unlock: we measure the longest
     /// main thread stall while it runs.
     @ObservationIgnored private var watchFirstSync = false
@@ -295,6 +297,7 @@ final class PhoneModel {
         Biometrics.refresh()
         // Shortcuts and Siri look up the vault's items here, while it is open.
         IntentVault.model = self
+        watchSync.activate(sendsCodes: mode == .vaultwarden)
         Perf.mark("model ready at +\(Perf.msSinceLaunch) ms from launch")
     }
 

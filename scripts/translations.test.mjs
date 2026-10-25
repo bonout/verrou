@@ -20,6 +20,8 @@ const CATALOGS = [
   "apple/VerrouiOS/InfoPlist.xcstrings",
   "apple/VerrouiOS/AppShortcuts.xcstrings",
   "apple/VerrouWidgets/Localizable.xcstrings",
+  "apple/VerrouWatch/Localizable.xcstrings",
+  "apple/VerrouWatchWidgets/Localizable.xcstrings",
 ];
 // Short words frequent in each language and rare in the others.
 const STOPWORDS = {

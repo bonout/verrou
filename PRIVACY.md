@@ -45,7 +45,10 @@ QR code, and no image is saved.
 On iPhone, the one-time codes you choose to show in widgets ("Show in
 widgets and on Apple Watch" on an item's page) are kept in this iPhone's
 keychain, outside the vault, until you turn this off or sign out: their
-title, site and seed, never synced and never sent anywhere. When you pick a
+title, site and seed, never synced and never sent anywhere. If you have an
+Apple Watch with Verrou, the iPhone hands the same list to it directly
+(Apple's WatchConnectivity, between your paired devices), and the Watch
+keeps it in its own keychain: nothing leaves your Apple devices. When you pick a
 vault item in a shortcut, the Shortcuts app keeps its title and identifier;
 Verrou adds nothing of your vault to Spotlight.
 

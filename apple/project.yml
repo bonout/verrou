@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     macOS: "15.0"
     iOS: "17.0"
+    watchOS: "10.0"
   createIntermediateGroups: true
   developmentLanguage: en
 packages:
@@ -231,6 +232,8 @@ targets:
       - target: VerrouAutoFill
       - target: VerrouSafari
       - target: VerrouWidgets
+      # Apple Watch app (pinned codes on the wrist), embedded in the app.
+      - target: VerrouWatch
     # Keys outside INFOPLIST_KEY_*, merged into the generated Info.plist.
     info:
       path: VerrouiOS/Info.plist
@@ -411,6 +414,73 @@ targets:
         ENABLE_HARDENED_RUNTIME: NO
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         CODE_SIGN_ENTITLEMENTS: VerrouWidgets/VerrouWidgets.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  # Apple Watch app, embedded in the iPhone app: the pinned one-time codes
+  # the iPhone sends (WatchConnectivity), kept in the Watch's own keychain.
+  # No vault, no Rust core, no network: only Shared/Core/PinnedCodes.swift is
+  # compiled in. See SECURITY.md, "Pinned one-time codes".
+  VerrouWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: VerrouWatch
+      - path: Shared/Core/PinnedCodes.swift
+    dependencies:
+      - target: VerrouWatchWidgets
+    info:
+      path: VerrouWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: app.verrou.ios
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.watchkitapp
+        PRODUCT_NAME: Verrou
+        SUPPORTED_PLATFORMS: "watchos watchsimulator"
+        TARGETED_DEVICE_FAMILY: "4"
+        ENABLE_HARDENED_RUNTIME: NO
+        "CODE_SIGN_IDENTITY[sdk=watchsimulator*]": "-"
+        # Keychain shared with the complications (the Watch's own group).
+        CODE_SIGN_ENTITLEMENTS: VerrouWatch/VerrouWatch.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  # Complications of the Apple Watch app: a pinned one-time code on the
+  # watch face (circular, rectangular, inline). Reads only the codes the
+  # Watch app stored (Shared/Core/PinnedCodes.swift).
+  VerrouWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: VerrouWatchWidgets
+      - path: Shared/Core/PinnedCodes.swift
+      - path: VerrouWatch/Resources/Assets.xcassets
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: AppIntents.framework
+    info:
+      path: VerrouWatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.watchkitapp.widgets
+        PRODUCT_NAME: VerrouWatchWidgets
+        SUPPORTED_PLATFORMS: "watchos watchsimulator"
+        TARGETED_DEVICE_FAMILY: "4"
+        ENABLE_HARDENED_RUNTIME: NO
+        "CODE_SIGN_IDENTITY[sdk=watchsimulator*]": "-"
+        CODE_SIGN_ENTITLEMENTS: VerrouWatchWidgets/VerrouWatchWidgets.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 

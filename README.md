@@ -356,6 +356,13 @@ signature. Stills:
 [saving a passkey](docs/media/ios/03-passkey-enregistrer.png),
 [passkey sign-in](docs/media/ios/04-passkey-connexion.png).
 
+**Widgets and Apple Watch**: turn on *Show in widgets and on Apple Watch* on a
+login's page, and its one-time code shows with its countdown on the Home
+Screen, the Lock Screen and in StandBy, in Shortcuts and Siri, and on your
+Apple Watch (an app and a watch face complication). Only the codes you pin
+are shared, never the vault, never a protected item
+([details](SECURITY.md#pinned-one-time-codes)).
+
 To install it on your own iPhone (USB or Wi-Fi), you need a paid Apple
 Developer account, signed in to Xcode, and an App Group registered once on
 developer.apple.com; the steps are at the top of the script:
