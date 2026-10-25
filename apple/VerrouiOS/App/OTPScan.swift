@@ -30,6 +30,12 @@ final class OTPScanFlow: Identifiable {
         /// `otpauth://` link opened by iOS: Verrou chosen in Settings ›
         /// General › AutoFill & Passwords › Set Up Codes In, or a link tapped on a page.
         case link
+        /// "Scan a QR code" from a widget or a Shortcut: like a link, the
+        /// user picks a login or a new one, with the camera first.
+        case scan
+
+        /// The user picks where each code goes (link, scan).
+        var picksLogin: Bool { self == .link || self == .scan }
 
         var isEditor: Bool {
             if case .editor = self { return true }
@@ -199,7 +205,7 @@ final class OTPScanFlow: Identifiable {
                 chosen[index] = index == 0 ? .attach(id) : .skip
             case .editor where result.accounts.count == 1:
                 chosen[index] = .form
-            case .editor, .link:
+            case .editor, .link, .scan:
                 chosen[index] = account.matches.first.map { .attach($0.id) } ?? .newLogin
             }
         }
@@ -397,7 +403,7 @@ extension PhoneModel {
         }
         let opened = attachedTo.first ?? created.first
         // From an item page, it is already shown.
-        if written == 1, purpose.isEditor || purpose == .link, let opened, editor == nil {
+        if written == 1, purpose.isEditor || purpose.picksLogin, let opened, editor == nil {
             open(session.resolveItemId(id: opened))
         }
         let message = written == 1

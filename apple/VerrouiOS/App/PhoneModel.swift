@@ -226,6 +226,13 @@ final class PhoneModel {
     /// `otpauth://` link opened with the vault locked: read after the unlock,
     /// if it is still recent (`OTPScanFlow.openLink`).
     @ObservationIgnored var pendingOTPLink: (text: String, at: Date)?
+    /// Widget, control or Shortcut destination given with the vault
+    /// locked: taken after the unlock, if it is still recent
+    /// (`AppLinks.swift`).
+    @ObservationIgnored var pendingLink: (link: VerrouLink, at: Date)?
+    /// Items whose code is pinned for the widgets (`PinnedCodes`), as read
+    /// at the last unlock or sync (`PinnedCodesSync.swift`).
+    var pinnedCodeIDs: Set<String> = []
     /// The next sync is the first after the unlock: we measure the longest
     /// main thread stall while it runs.
     @ObservationIgnored private var watchFirstSync = false
@@ -286,6 +293,8 @@ final class PhoneModel {
         }
         Attachments.purge()
         Biometrics.refresh()
+        // Shortcuts and Siri look up the vault's items here, while it is open.
+        IntentVault.model = self
         Perf.mark("model ready at +\(Perf.msSinceLaunch) ms from launch")
     }
 
@@ -443,6 +452,8 @@ final class PhoneModel {
         lock()
         identitiesTask?.cancel()
         Task { await CredentialIdentities.clear() }
+        // The codes pinned for the widgets leave with the account.
+        unpinAllCodes()
         try? session.logout()
         vault.removeBiometrics()
         biometricEnrolled = false
@@ -587,6 +598,10 @@ final class PhoneModel {
         if let link = pendingOTPLink {
             pendingOTPLink = nil
             if Date().timeIntervalSince(link.at) < OTPScanFlow.linkLifetime { openOTPLink(link.text) }
+        }
+        if let pending = pendingLink {
+            pendingLink = nil
+            if Date().timeIntervalSince(pending.at) < Self.pendingLinkLifetime { open(pending.link) }
         }
     }
 
@@ -892,6 +907,7 @@ final class PhoneModel {
         searchPath = resolved(searchPath)
         revision += 1
         publishAutofillIdentities()
+        refreshPinnedCodes()
         Perf.mark("list reload (\(self.summaries.count) items): \(Perf.ms(since: start)) ms")
     }
 

@@ -1,0 +1,197 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Copy a password with ${applicationName}": {
+      "localizations": {
+        "de": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Ein Passwort mit ${applicationName} kopieren"
+            ]
+          }
+        },
+        "en": {
+          "stringSet": {
+            "state": "new",
+            "values": [
+              "Copy a password with ${applicationName}"
+            ]
+          }
+        },
+        "es": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Copiar una contraseña con ${applicationName}"
+            ]
+          }
+        },
+        "fr": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Copier un mot de passe avec ${applicationName}"
+            ]
+          }
+        },
+        "it": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Copia una password con ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Generate a password with ${applicationName}": {
+      "localizations": {
+        "de": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Ein Passwort mit ${applicationName} erzeugen",
+              "Neues ${applicationName}-Passwort"
+            ]
+          }
+        },
+        "en": {
+          "stringSet": {
+            "state": "new",
+            "values": [
+              "Generate a password with ${applicationName}",
+              "New ${applicationName} password"
+            ]
+          }
+        },
+        "es": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Generar una contraseña con ${applicationName}",
+              "Nueva contraseña de ${applicationName}"
+            ]
+          }
+        },
+        "fr": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Générer un mot de passe avec ${applicationName}",
+              "Nouveau mot de passe ${applicationName}"
+            ]
+          }
+        },
+        "it": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Genera una password con ${applicationName}",
+              "Nuova password ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Search in ${applicationName}": {
+      "localizations": {
+        "de": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "In ${applicationName} suchen",
+              "Meinen ${applicationName}-Tresor durchsuchen"
+            ]
+          }
+        },
+        "en": {
+          "stringSet": {
+            "state": "new",
+            "values": [
+              "Search in ${applicationName}",
+              "Search my ${applicationName} vault"
+            ]
+          }
+        },
+        "es": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Buscar en ${applicationName}",
+              "Buscar en mi bóveda de ${applicationName}"
+            ]
+          }
+        },
+        "fr": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Rechercher dans ${applicationName}",
+              "Chercher dans mon coffre ${applicationName}"
+            ]
+          }
+        },
+        "it": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Cerca in ${applicationName}",
+              "Cerca nella mia cassaforte ${applicationName}"
+            ]
+          }
+        }
+      }
+    },
+    "Show the code of ${code} in ${applicationName}": {
+      "localizations": {
+        "de": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Den Code von ${code} in ${applicationName} zeigen",
+              "Einen Einmalcode in ${applicationName} zeigen"
+            ]
+          }
+        },
+        "en": {
+          "stringSet": {
+            "state": "new",
+            "values": [
+              "Show the code of ${code} in ${applicationName}",
+              "Show a one-time code in ${applicationName}"
+            ]
+          }
+        },
+        "es": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Mostrar el código de ${code} en ${applicationName}",
+              "Mostrar un código de un solo uso en ${applicationName}"
+            ]
+          }
+        },
+        "fr": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Afficher le code de ${code} dans ${applicationName}",
+              "Afficher un code à usage unique dans ${applicationName}"
+            ]
+          }
+        },
+        "it": {
+          "stringSet": {
+            "state": "translated",
+            "values": [
+              "Mostra il codice di ${code} in ${applicationName}",
+              "Mostra un codice monouso in ${applicationName}"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

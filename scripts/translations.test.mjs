@@ -18,6 +18,8 @@ const CATALOGS = [
   "apple/VerrouAutoFillMac/Localizable.xcstrings",
   "apple/VerrouAutoFill/InfoPlist.xcstrings",
   "apple/VerrouiOS/InfoPlist.xcstrings",
+  "apple/VerrouiOS/AppShortcuts.xcstrings",
+  "apple/VerrouWidgets/Localizable.xcstrings",
 ];
 // Short words frequent in each language and rare in the others.
 const STOPWORDS = {
@@ -35,9 +37,13 @@ function texts() {
     for (const [key, value] of Object.entries(strings)) {
       if (value.shouldTranslate === false || !/[A-Za-z]{2}/.test(key)) continue;
       for (const language of LANGUAGES) {
-        const unit = value.localizations?.[language]?.stringUnit;
-        assert.ok(unit?.value?.trim(), `${catalog}: ${JSON.stringify(key)} not translated into ${language}`);
-        all[language].push(unit.value);
+        // A Siri phrase (AppShortcuts.xcstrings) has a set of values.
+        const localization = value.localizations?.[language];
+        const texts = localization?.stringSet?.values ?? [localization?.stringUnit?.value];
+        for (const text of texts) {
+          assert.ok(text?.trim(), `${catalog}: ${JSON.stringify(key)} not translated into ${language}`);
+          all[language].push(text);
+        }
       }
     }
   }

@@ -68,6 +68,18 @@ struct ItemDetailView: View {
                 }
             }
 
+            if model.canPinCode(summary) {
+                Section {
+                    Toggle(isOn: Binding(get: { model.pinnedCodeIDs.contains(itemID) },
+                                         set: { model.setCodePinned($0, itemID: itemID) })) {
+                        Label("Show in widgets and on Apple Watch", systemImage: "pin")
+                    }
+                    .accessibilityIdentifier("pin-code")
+                } footer: {
+                    Text("The code then shows without Face ID, on this iPhone only: its seed stays in this iPhone's keychain until you turn this off.")
+                }
+            }
+
             if summary.template == .wifi {
                 Section {
                     Button("Show QR code", systemImage: "qrcode") { model.showWifiQRCode(of: itemID) }

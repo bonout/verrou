@@ -187,7 +187,8 @@ targets:
 
   # Mac unit tests without a host app (nothing is shown): account migration
   # to the app group, PRF input selection, the iPhone approval protocol, the
-  # folder tree, AutoFill's "Continue as…" site check.
+  # folder tree, AutoFill's "Continue as…" site check, the pinned codes'
+  # TOTP (RFC 6238).
   #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
   VerrouMacTests:
     type: bundle.unit-test
@@ -199,6 +200,7 @@ targets:
       - path: Shared/Remote/RemoteApproval.swift
       - path: Shared/Core/FolderNode.swift
       - path: VerrouAutoFill/RecentFill.swift
+      - path: Shared/Core/PinnedCodes.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests
@@ -220,11 +222,15 @@ targets:
     sources:
       - path: VerrouiOS
       - path: Shared
+      # Links, the pinned code entity and the Live Activity's attributes and
+      # buttons: the widgets draw them, the app runs them.
+      - path: VerrouWidgets/Common
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
         embed: false
       - target: VerrouAutoFill
       - target: VerrouSafari
+      - target: VerrouWidgets
     # Keys outside INFOPLIST_KEY_*, merged into the generated Info.plist.
     info:
       path: VerrouiOS/Info.plist
@@ -239,10 +245,18 @@ targets:
         BGTaskSchedulerPermittedIdentifiers: [app.verrou.activite]
         # Two-factor links: Verrou appears in Settings › General › AutoFill
         # & Passwords › Set Up Codes In (OTPScanFlow.Purpose.link).
+        # verrou://: the widgets, the control and the Live Activity open the
+        # app at a place (VerrouLink); a link only navigates.
         CFBundleURLTypes:
           - CFBundleURLName: app.verrou.ios.otpauth
             CFBundleTypeRole: Editor
             CFBundleURLSchemes: [otpauth, otpauth-migration]
+          - CFBundleURLName: app.verrou.ios.links
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes: [verrou]
+        # The Mac's requests in the Dynamic Island and on the lock screen
+        # (ApprovalActivities), started locally: no push server.
+        NSSupportsLiveActivities: true
     scheme:
       testTargets:
         - VerrouAutoFillUITests
@@ -361,6 +375,44 @@ targets:
         SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
         ENABLE_HARDENED_RUNTIME: NO
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+
+  # Widgets, inside the iPhone app: pinned one-time codes (home screen, lock
+  # screen, StandBy), quick actions, the Control Center control and the
+  # Live Activity of the Mac's requests. No vault, no Rust core: it reads
+  # only the codes the user pinned (Shared/Core/PinnedCodes.swift, this
+  # device's keychain, the group shared with the app) and opens the app with
+  # verrou:// links. See SECURITY.md, "Widgets, Shortcuts and Live Activity".
+  VerrouWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: VerrouWidgets
+      - path: Shared/Core/PinnedCodes.swift
+      - path: VerrouiOS/Resources/Assets.xcassets
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: ActivityKit.framework
+      - sdk: AppIntents.framework
+    info:
+      path: VerrouWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Verrou
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.verrou.ios.widgets
+        PRODUCT_NAME: VerrouWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        ENABLE_HARDENED_RUNTIME: NO
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        CODE_SIGN_ENTITLEMENTS: VerrouWidgets/VerrouWidgets.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   # End-to-end AutoFill test (XCUITest): the simulator's Safari, test page
   # served by the Mac. Run by scripts/ios-autofill-e2e.sh.

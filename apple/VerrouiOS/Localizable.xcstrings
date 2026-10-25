@@ -4257,6 +4257,34 @@
         }
       }
     },
+    "Add the One-time code widget to your Home Screen or Lock Screen.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutez le widget Code à usage unique à votre écran d'accueil ou de verrouillage."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Füge das Widget „Einmalcode“ zu deinem Home- oder Sperrbildschirm hinzu."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade el widget Código de un solo uso a tu pantalla de inicio o de bloqueo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi il widget Codice monouso alla schermata Home o di blocco."
+          }
+        }
+      }
+    },
     "Add to a login": {
       "localizations": {
         "fr": {
@@ -6581,6 +6609,34 @@
         }
       }
     },
+    "Close the edit screen first.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fermez d'abord l'écran de modification."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schließe zuerst den Bearbeitungsbildschirm."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cierra primero la pantalla de edición."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiudi prima la schermata di modifica."
+          }
+        }
+      }
+    },
     "Close the edit screen, then open the link again.": {
       "localizations": {
         "fr": {
@@ -6637,6 +6693,34 @@
         }
       }
     },
+    "Code %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice %@"
+          }
+        }
+      }
+    },
     "Code added to “%@”": {
       "localizations": {
         "fr": {
@@ -6665,6 +6749,34 @@
         }
       }
     },
+    "Code for %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code de %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code für %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código de %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice di %@"
+          }
+        }
+      }
+    },
     "Code from your YubiKey (OTP)": {
       "localizations": {
         "fr": {
@@ -6689,6 +6801,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Codice dalla tua YubiKey (OTP)"
+          }
+        }
+      }
+    },
+    "Code pinned": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code épinglé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code angeheftet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Código fijado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Codice fissato"
           }
         }
       }
@@ -7449,6 +7589,34 @@
         }
       }
     },
+    "Copy a password": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier un mot de passe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Passwort kopieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar una contraseña"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copia una password"
+          }
+        }
+      }
+    },
     "Copy address": {
       "localizations": {
         "fr": {
@@ -7781,6 +7949,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Impossibile lasciare %@"
+          }
+        }
+      }
+    },
+    "Could not pin the code": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossible d'épingler le code"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code konnte nicht angeheftet werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo fijar el código"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile fissare il codice"
           }
         }
       }
@@ -11201,6 +11397,34 @@
         }
       }
     },
+    "Generates a random password, without opening your vault.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Génère un mot de passe aléatoire, sans ouvrir votre coffre."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erzeugt ein zufälliges Passwort, ohne deinen Tresor zu öffnen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genera una contraseña aleatoria, sin abrir tu bóveda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genera una password casuale, senza aprire la cassaforte."
+          }
+        }
+      }
+    },
     "Generator": {
       "localizations": {
         "fr": {
@@ -12709,6 +12933,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Potrebbe essere stato eliminato altrove."
+          }
+        }
+      }
+    },
+    "Item": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élément"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eintrag"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento"
           }
         }
       }
@@ -15457,6 +15709,34 @@
         }
       }
     },
+    "New password": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau mot de passe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva contraseña"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova password"
+          }
+        }
+      }
+    },
     "New shared item": {
       "localizations": {
         "fr": {
@@ -16857,6 +17137,34 @@
         }
       }
     },
+    "Open Verrou and unlock your vault first.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez d'abord Verrou et déverrouillez votre coffre."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffne zuerst Verrou und entsperre deinen Tresor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre primero Verrou y desbloquea tu bóveda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri prima Verrou e sblocca la tua cassaforte."
+          }
+        }
+      }
+    },
     "Open in Safari": {
       "localizations": {
         "fr": {
@@ -16909,6 +17217,118 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apri l'app Verrou e accedi al tuo server Vaultwarden: i tuoi login verranno poi proposti qui."
+          }
+        }
+      }
+    },
+    "Opens Verrou on the search, with the text if you give one.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre Verrou sur la recherche, avec le texte si vous en donnez un."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet Verrou bei der Suche, mit dem Text, falls du einen angibst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Verrou en la búsqueda, con el texto si das uno."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre Verrou sulla ricerca, con il testo se ne indichi uno."
+          }
+        }
+      }
+    },
+    "Opens Verrou, which unlocks with Face ID, then copies the password of the item. Shortcuts never receives it.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre Verrou, qui se déverrouille avec Face ID, puis copie le mot de passe de l'élément. Raccourcis ne le reçoit jamais."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet Verrou, das sich mit Face ID entsperrt, und kopiert dann das Passwort des Eintrags. Kurzbefehle erhält es nie."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre Verrou, que se desbloquea con Face ID, y copia la contraseña del elemento. Atajos nunca la recibe."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre Verrou, che si sblocca con Face ID, poi copia la password dell'elemento. Comandi Rapidi non la riceve mai."
+          }
+        }
+      }
+    },
+    "Opens the request from your Mac in Verrou, to approve it with Face ID.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre la demande de votre Mac dans Verrou, pour l'approuver avec Face ID."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet die Anfrage deines Mac in Verrou, um sie mit Face ID zu genehmigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la solicitud de tu Mac en Verrou, para aprobarla con Face ID."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre la richiesta del tuo Mac in Verrou, per approvarla con Face ID."
+          }
+        }
+      }
+    },
+    "Opens the request from your Mac in Verrou, to deny it with Face ID.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvre la demande de votre Mac dans Verrou, pour la refuser avec Face ID."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnet die Anfrage deines Mac in Verrou, um sie mit Face ID abzulehnen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la solicitud de tu Mac en Verrou, para denegarla con Face ID."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apre la richiesta del tuo Mac in Verrou, per rifiutarla con Face ID."
           }
         }
       }
@@ -19209,6 +19629,34 @@
         }
       }
     },
+    "Request": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anfrage"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solicitud"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiesta"
+          }
+        }
+      }
+    },
     "Request from “%@”": {
       "localizations": {
         "fr": {
@@ -20185,6 +20633,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cerca"
+          }
+        }
+      }
+    },
+    "Search in Verrou": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher dans Verrou"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Verrou suchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar en Verrou"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca in Verrou"
           }
         }
       }
@@ -21449,6 +21925,62 @@
         }
       }
     },
+    "Show a one-time code": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher un code à usage unique"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einmalcode anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar un código de un solo uso"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra un codice monouso"
+          }
+        }
+      }
+    },
+    "Show in widgets and on Apple Watch": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher dans les widgets et sur l'Apple Watch"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Widgets und auf der Apple Watch zeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar en widgets y en el Apple Watch"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra nei widget e su Apple Watch"
+          }
+        }
+      }
+    },
     "Show note": {
       "localizations": {
         "fr": {
@@ -21501,6 +22033,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostra con Face ID"
+          }
+        }
+      }
+    },
+    "Shows the current code of an item pinned in Verrou, without opening the vault.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche le code actuel d'un élément épinglé dans Verrou, sans ouvrir le coffre."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt den aktuellen Code eines in Verrou angehefteten Eintrags, ohne den Tresor zu öffnen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra el código actual de un elemento fijado en Verrou, sin abrir la bóveda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra il codice attuale di un elemento fissato in Verrou, senza aprire la cassaforte."
           }
         }
       }
@@ -22905,6 +23465,34 @@
         }
       }
     },
+    "Text to search for": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texte à rechercher"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suchbegriff"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Texto que buscar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testo da cercare"
+          }
+        }
+      }
+    },
     "The Bitwarden SDK could not decrypt them": {
       "localizations": {
         "fr": {
@@ -22985,6 +23573,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gli appunti non contengono né un link otpauth:// né un'immagine di codice QR."
+          }
+        }
+      }
+    },
+    "The code then shows without Face ID, on this iPhone only: its seed stays in this iPhone's keychain until you turn this off.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le code s'affiche alors sans Face ID, sur cet iPhone seulement : sa graine reste dans le trousseau de cet iPhone jusqu'à ce que vous désactiviez ceci."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Code erscheint dann ohne Face ID, nur auf diesem iPhone: Sein Seed bleibt im Schlüsselbund dieses iPhone, bis du das ausschaltest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El código se muestra entonces sin Face ID, solo en este iPhone: su semilla se queda en el llavero de este iPhone hasta que lo desactives."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il codice si mostra allora senza Face ID, solo su questo iPhone: il suo seed resta nel portachiavi di questo iPhone finché non lo disattivi."
           }
         }
       }
@@ -23941,6 +24557,62 @@
         }
       }
     },
+    "This code can't be shown in widgets": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code ne peut pas s'afficher dans les widgets"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Code kann nicht in Widgets erscheinen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este código no se puede mostrar en widgets"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo codice non può essere mostrato nei widget"
+          }
+        }
+      }
+    },
+    "This code is no longer pinned in Verrou.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce code n'est plus épinglé dans Verrou."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Code ist in Verrou nicht mehr angeheftet."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este código ya no está fijado en Verrou."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo codice non è più fissato in Verrou."
+          }
+        }
+      }
+    },
     "This form": {
       "localizations": {
         "fr": {
@@ -23965,6 +24637,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Questo modulo"
+          }
+        }
+      }
+    },
+    "This iPhone's keychain refused it.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le trousseau de cet iPhone l'a refusé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Schlüsselbund dieses iPhone hat ihn abgelehnt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El llavero de este iPhone lo ha rechazado."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il portachiavi di questo iPhone l'ha rifiutato."
           }
         }
       }
@@ -24781,6 +25481,34 @@
         }
       }
     },
+    "Unlock your iPhone first.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déverrouillez d'abord votre iPhone."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Entsperre zuerst dein iPhone."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desbloquea primero tu iPhone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sblocca prima il tuo iPhone."
+          }
+        }
+      }
+    },
     "Unreadable file": {
       "localizations": {
         "fr": {
@@ -25397,6 +26125,34 @@
         }
       }
     },
+    "Vault item": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élément du coffre"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tresoreintrag"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento de la bóveda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento della cassaforte"
+          }
+        }
+      }
+    },
     "Verification": {
       "localizations": {
         "fr": {
@@ -25505,6 +26261,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verrou"
+          }
+        }
+      }
+    },
+    "Verrou can't compute it outside the vault (Steam or unusual settings).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou ne peut pas le calculer hors du coffre (Steam ou réglages inhabituels)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou kann ihn außerhalb des Tresors nicht berechnen (Steam oder ungewöhnliche Einstellungen)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou no puede calcularlo fuera de la bóveda (Steam o ajustes poco habituales)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou non può calcolarlo fuori dalla cassaforte (Steam o impostazioni insolite)."
           }
         }
       }
@@ -26009,6 +26793,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quando Verrou si arresta in modo anomalo o si blocca, il sistema scrive un rapporto: i suoi stack di chiamate e le versioni, nulla della tua cassaforte. I rapporti restano su questo dispositivo; Verrou non li invia mai. Condividili con gli sviluppatori se qualcosa è andato storto."
+          }
+        }
+      }
+    },
+    "Which code?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quel code ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcher Code?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué código?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quale codice?"
           }
         }
       }

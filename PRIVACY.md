@@ -42,6 +42,13 @@ iCloud and computer backups. Face ID and Touch ID are handled by the system: Ver
 sees your biometric data. The camera is used only to scan a one-time code's
 QR code, and no image is saved.
 
+On iPhone, the one-time codes you choose to show in widgets ("Show in
+widgets and on Apple Watch" on an item's page) are kept in this iPhone's
+keychain, outside the vault, until you turn this off or sign out: their
+title, site and seed, never synced and never sent anywhere. When you pick a
+vault item in a shortcut, the Shortcuts app keeps its title and identifier;
+Verrou adds nothing of your vault to Spotlight.
+
 When Verrou crashes or hangs, macOS and iOS hand it a report (MetricKit)
 about once a day: call stacks and versions, nothing from your vault. Verrou
 keeps the 20 most recent on the device and never sends them; Settings →

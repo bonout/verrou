@@ -447,7 +447,7 @@ private struct OTPPreviewView: View {
                 primary(String(localized: "Add to “\(title)”"), symbol: "plus.circle.fill") {
                     apply([(account, .attach(id))])
                 }
-            case .link:
+            case .link, .scan:
                 ForEach(account.matches.prefix(3), id: \.id) { target in
                     primary(String(localized: "Add to “\(target.title)”"), symbol: "plus.circle.fill",
                             subtitle: target.subtitle.isEmpty ? nil : target.subtitle) {
@@ -475,7 +475,7 @@ private struct OTPPreviewView: View {
                 }
             }
         } header: {
-            if flow.purpose == .editor(isNew: true) || flow.purpose == .link, !account.matches.isEmpty {
+            if flow.purpose == .editor(isNew: true) || flow.purpose.picksLogin, !account.matches.isEmpty {
                 SectionHeader("Login already in the vault")
             }
         }

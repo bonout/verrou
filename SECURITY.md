@@ -976,6 +976,9 @@ default: nothing happens until an iPhone is paired. Code:
   the other request is withdrawn. A protected item approved on the iPhone
   counts as confirmed for 5 minutes, as with Touch ID. Approvals last 5
   minutes per client and item, as before.
+- **Dynamic Island**: the request shown has a Live Activity with only the
+  Mac's name and the time left; its buttons bring the app back to the
+  request, they never answer (see "Widgets, Shortcuts and Live Activity").
 - **Unlock**: the Mac never sends the vault key. At each unlock **on the
   Mac** (password, Touch ID, security key), it draws a key K, seals the
   vault key with K (AES-GCM) and K for each iPhone (ECDH with an ephemeral
@@ -1075,7 +1078,10 @@ above; what changes:
   group and the AutoFill provider entitlement work there. A
   `CODE_SIGNING_ALLOWED=NO` build has no entitlement: the app falls back to
   its private folder, and the extension doesn't see the vault. The
-  `app.verrou.shared` keychain group is not used.
+  `app.verrou.shared` keychain group (the default group of the app and its
+  extensions) only holds the AutoFill session (5 minutes), the last filled
+  login (90 s) and the pinned one-time codes (see "Widgets, Shortcuts and
+  Live Activity").
 
 ### Scanning a QR code (one-time codes)
 
@@ -1112,6 +1118,104 @@ since Bitwarden only stores TOTP.
   for the same service (title, or registrable domain of a site); a
   protected item first asks for Face ID or the master password, and a
   read-only item is never offered.
+
+## Widgets, Shortcuts and Live Activity
+
+The `VerrouWidgets` extension (`apple/VerrouWidgets`: widgets, the Control
+Center control, the Live Activity) never opens the vault and doesn't link
+the Rust core. The App Intents (Shortcuts, Siri, Spotlight) run in the app
+(`VerrouiOS/App/AppIntents.swift`). Everything that needs the vault opens
+the app, which unlocks with Face ID or the master password as usual.
+
+### Pinned one-time codes
+
+The only exception to "the vault is decrypted only after Face ID or the
+master password", and opt-in item by item: "Show in widgets and on Apple
+Watch" on an item's page (`Shared/Core/PinnedCodes.swift`,
+`VerrouiOS/App/PinnedCodesSync.swift`).
+
+- **What can be pinned**: a login's TOTP code, active (neither archived nor
+  in the trash), **never a protected item** ("re-ask for the master
+  password"), nor an item whose organization hides passwords; the account's
+  vault only (not the demo vault).
+- **What is kept**: per pinned item, its identifier, title, first site and
+  the code's parameters (decoded seed, algorithm, digits, period), with the
+  item's revision. Never a password, never a key of the vault.
+- **Where**: one item of this device's keychain (`app.verrou.shared`
+  group), `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not
+  synchronizable: never in iCloud Keychain, never restored on another
+  device. "After first unlock" and not "when unlocked", unlike the AutoFill
+  session: WidgetKit builds the timelines while the iPhone is locked (lock
+  screen, StandBy, a reload at night), and a "when unlocked" item couldn't
+  be read then. The trade-off is accepted because the user chose each code,
+  a code is a second factor (useless without the password), and the code
+  shown on a locked lock screen stays hidden (`privacySensitive`: it shows
+  once Face ID has recognized the user). Before the first unlock after a
+  restart, the widget says so and shows nothing.
+- **Kept in line with the vault**: written by the app only, vault open. At
+  pinning, the app reads the TOTP field (`reveal`, like showing it) and
+  checks that the Swift computation gives the Rust core's code for the same
+  instant; a code read differently (Steam, a parameter the core refuses) is
+  not pinned. At each list reload (unlock, sync, write), titles and sites
+  follow, a changed item (new revision) has its seed read again, and an item
+  deleted, archived, trashed, made protected, hidden by its organization or
+  without a code any more leaves the store. Turning the switch off removes
+  the item; signing out removes everything. An unreadable item list (an
+  error rather than an empty vault) changes nothing.
+- **Computing the codes**: RFC 6238 in Swift (CryptoKit HMAC-SHA1/256/512,
+  dynamic truncation), tested against the RFC's vectors
+  (`VerrouMacTests/PinnedCodesTests.swift`): the widget extension and the
+  Apple Watch have no Rust core. The widget computes the codes of the next
+  two hours at most (one timeline entry per period, then a neutral entry, so
+  that a late reload never shows an expired code); WidgetKit renders and
+  keeps those entries on the device.
+- **Apple Watch** (to come): the same store and API; the iPhone will hand
+  the pinned codes over (WatchConnectivity) and the Watch keep them in its
+  own keychain with the same protection.
+
+### Shortcuts and Siri
+
+- **Search in Verrou**: opens the app on the Search tab, with the text if
+  one is given.
+- **Generate a password**: the Rust core's generator, without the vault;
+  the password is returned to the shortcut (it belongs to no item yet).
+- **Show a one-time code**: a pinned code only (the opt-in above), iPhone
+  unlocked (`authenticationPolicy`); returned to the shortcut.
+- **Copy a password**: opens the app (`openAppWhenRun`), which unlocks with
+  Face ID, asks the usual confirmation of a protected item, then copies
+  with the app's clipboard expiry. **No intent returns a password, a note
+  or any field of the vault to Shortcuts.** The item is picked among the
+  logins only while the vault is open in the app; the shortcut then keeps
+  its identifier and the title shown when it was picked (the Shortcuts
+  app's own storage). Run with the vault locked, the item is known by its
+  identifier only, and the copy waits for the unlock (2 minutes at most).
+- **Spotlight**: the App Shortcuts only; no vault item is indexed
+  (`IndexedEntity` isn't used).
+
+### `verrou://` links
+
+The widgets, the control and the Live Activity open the app with
+`verrou://search`, `generator`, `scan`, `item?id=` and `approval`
+(`VerrouWidgets/Common/VerrouLink.swift`). Any app or web page can open
+them, so a link only navigates: no copy, no reveal, no answer to a request.
+A destination given with the vault locked waits in memory for the unlock,
+2 minutes at most; an item that doesn't exist is reported as not found.
+
+### Live Activity (requests from the Mac)
+
+While a request from the Mac is shown (see "Approving from the iPhone"), a
+Live Activity (Dynamic Island, lock screen) shows **the Mac's name** (from
+the pairing) and **the time left** (the request's expiry, signed by the
+Mac): not what is asked, which stays sealed until Face ID in the app, as
+for the notification. Its Approve and Deny buttons (`LiveActivityIntent`)
+only bring the app back to the request: Face ID opens it and the answer is
+given there, sealed by the Secure Enclave key. The activity is started
+locally when the app finds the request (in the foreground: the request's
+notification doesn't wake the app); starting it by push would need an APNs
+server holding the activity's token, which Verrou doesn't have. It ends
+when the request is answered (the outcome stays 4 s), put aside, withdrawn
+or expired; past the expiry while the app is suspended, it shows "Expired"
+until the app ends it.
 
 ## AutoFill on iPhone
 

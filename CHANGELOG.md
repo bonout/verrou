@@ -12,6 +12,20 @@ tagging (docs/RELEASING.md).
 - AutoFill list: right after a login was filled with Face ID, the list
   opened on the same site's next page offers "Continue as…" first, without
   Face ID (90 seconds, never for a protected item).
+- Widgets. *One-time code* shows a code with its countdown on the Home
+  Screen, the Lock Screen and in StandBy, without opening the vault: turn on
+  *Show in widgets and on Apple Watch* on the item's page first. Only the
+  codes you pick, never a protected item; on a locked Lock Screen the code
+  stays hidden until Face ID recognizes you. *Quick actions* opens Verrou on
+  the search, the generator or the QR code scanner.
+- Shortcuts and Siri: *Search in Verrou*, *Generate a password with
+  Verrou*, *Show the code of…* (pinned codes) and *Copy a password*, which
+  opens Verrou, unlocks with Face ID and copies; Shortcuts never receives a
+  password from your vault.
+- Control Center (iOS 18): a *Search in Verrou* control.
+- A request from your Mac shows in the Dynamic Island and on the Lock
+  Screen with the time left. *Approve* and *Deny* bring you back to it:
+  Face ID still shows what is asked before you answer.
 
 **Mac and iPhone**
 - Increase Contrast (system accessibility setting) draws stronger borders,
