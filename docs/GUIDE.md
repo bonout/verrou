@@ -1037,6 +1037,124 @@ Inside the braces, the reference ends at `}}`: a title may keep its
 spaces; only a `/` needs percent-encoding (`%2F`). The written file holds
 the secrets: keep it out of git.
 
+### Mounted `.env` (`verrou env`)
+
+`verrou run --env-file .env` is the safe way to start one command with its
+secrets. Some tools read `.env` themselves, though (a dev server, a test
+runner, `docker compose`), and for them `verrou env mount` replaces the file by a **FIFO**,
+a named pipe: nothing is stored in it, and each program that reads it gets
+the current values from Verrou, after your approval, as the file's content.
+
+```sh
+# .env.verrou: the map. References and plain values, no secret: commit it.
+DATABASE_URL=verrou://Production%20database/url
+API_KEY=verrou://Stripe/secret%20key
+PORT=8080
+```
+
+```sh
+echo .env >> .gitignore
+verrou env mount             # serves ./.env from ./.env.verrou, until Ctrl-C
+verrou env mount --background  # keeps serving after the terminal is closed
+verrou env status            # what is mounted, and whether it is running
+verrou env unmount           # stops it and removes the FIFO (--all for every mount)
+```
+
+`--file` and `--map` name another file and another map (the map is the file's
+name followed by `.verrou` by default). Each read shows the approval *read
+/path/to/.env by node[4242] ← zsh ← login ← Terminal* and every variable served
+(`DATABASE_URL=verrou://…`, or `PORT=(plain)` for one served as written): the
+program that opens the file is looked up in the system's list of open files,
+by the pipe it holds, not taken from what it says. This is information for
+you: **every read asks, every time, by default**, and a read never uses the
+approval you gave to `verrou get` or `verrou run` for the same item, nor the
+other way round. If you would rather not be asked again at each run,
+`verrou env mount --remember-reads` remembers a read for five minutes, for
+that file, that program, that terminal and that login shell (its process and
+when it started), but only when the reader is one program, started from
+Terminal, iTerm2, Ghostty, WezTerm, Alacritty, kitty or `ssh`, with a terminal
+of its own. That is a trade-off: during those five minutes the same program
+in the same terminal gets the values without a question, and anything that
+can start a program in that shell (a script that types into your terminal,
+AppleScript, `open -a Terminal`) can be that program. A code editor's
+terminal (VS Code, Cursor and others) is never such a terminal: an agent that
+runs inside the editor as an extension cannot be told from you typing there.
+Every other read is asked every time, on
+its own, with or without `--remember-reads`: a coding agent among the programs that started the reader (Claude
+Code, Codex, Gemini CLI, OpenCode, aider and goose are recognised, also when
+they run under Node; the approval then starts with *agent ancestor: …*),
+several programs at once (*N readers: …*), one Verrou cannot place
+(*unidentified reader*), one that does not come from a terminal application
+(*no terminal; …*: a daemon, a program started by `tmux`, an editor's
+terminal), or any read of a mount that an agent started. The file is served whole or not at all: if any reference cannot be
+resolved, or you refuse, the reader gets one comment line, `# verrou: not
+served (reason)`, and the next reads of that kind get the same line for 30
+seconds without asking again (a refused agent does not silence your own
+reads). If the programs that have the file open change while you are asked,
+nothing is served.
+
+Verrou tells you what is asked and by which program, as far as that can be
+known; it does not know who is asking. The key that links your terminal to
+Verrou is in `~/.config/verrou/cli.json`, readable by any program you run,
+and a program that has it can ask for anything as the CLI does, and can
+present any remembered-read scope too: the scope separates approvals (a read
+of the mount from `verrou get`'s, one terminal from another), not clients.
+Once the values are written the mount looks again at who has the pipe open: a
+program that was not named in the approval ends the mount, with a warning
+(*values may have been read by …*) in its output or log, and you mount again
+after checking. Two limits remain, as with any file a program of yours can
+open: on Linux a process of your user can reopen a pipe through
+`/proc/<pid>/fd`, and a process of yours that is quicker than the mount can
+race it; Verrou narrows both and cannot close them. `verrou env mount` also
+needs the app to be up to date: an older one that does not announce the
+approval scope gets every read asked, whatever `--remember-reads` says.
+
+A value is written the way dotenv files expect, in the one form that Node,
+Ruby, godotenv and Compose read back the same: bare when it is plain
+(letters, digits and `_-./:@%+,=`), in single quotes when it holds spaces,
+`#`, `$`, a double quote, a backtick or a backslash inside, and in double
+quotes with `\n` and `\r` only when it holds a single quote or a line break
+(a PEM key). A value that has no safe form (a line break and a `$`, a single
+and a double quote, a trailing backslash, a NUL) is not written at all: the
+read is refused with the variable's name, and `verrou run` is the way to give
+that value. `docker run --env-file` keeps quotes as they are, so with it use
+values that are plain. Next.js and Vite expand `$` even inside single quotes
+(they cannot read a FIFO in every version, but a value with `$` would not be
+safe with them anyway). In the map, an inline ` # comment` is not part of a
+plain value.
+
+What it will not do: replace a file, a link or a folder (put what is in an
+existing `.env` into the vault, delete it, then mount); mount a file that git
+tracks or does not ignore (it tells you the line to add to `.gitignore`);
+mount in a folder git does not know without saying so. A map that was edited
+after the mount is not served until you mount again: what you approved is
+the map you mounted. At most ten variables per map (plain ones count), so that
+the approval can show them all. The mount checks that each item and field exists when it
+starts (and only warns if the vault is locked). `kill -9` leaves a stale
+FIFO: `verrou env status` says so, `unmount` (or a new `mount`) cleans it
+up. Windows has no such files: use `verrou run --env-file`.
+
+**Which loaders work.** Tested against a mount on macOS, with these versions,
+not assumed:
+
+| Loader | Reads the FIFO |
+| --- | --- |
+| Node `--env-file` (Node 26.8), `dotenv` 18.0.9 | yes |
+| Next.js (`@next/env` 16.4.3: its code accepts a FIFO), Vite 8.3.5 (`loadEnv`) | yes (loaded once at start). Verrou replaces the FIFO after each read, which a dev server that reloads when `.env` changes could take for a change and read again, asking again each time, in a loop: checked for Vite only, with no reload: **verify** with your tool |
+| python-dotenv 1.2.4 (`load_dotenv`, `dotenv_values`, `find_dotenv`), pydantic-settings 2.16.1 | yes |
+| godotenv 1.5.1 (`godotenv.Read`) | yes |
+| Docker CLI 28.5.1 (`--env-file`) | opens and reads it; the run itself was not checked (daemon): verify; `docker run` does not strip quotes, so use values without spaces or `#` |
+| `docker compose`, Ruby `dotenv` (system Ruby 2.6 is too old for the gem) | verify |
+| Bun 1.3.10, Deno 2.4.5 | **no**: they skip a file that is not a regular one, the variables stay unset (Bun may still open it once, which asks you); use `verrou run --env-file` |
+
+Anything that opens the file reads it, so a program that walks the folder
+(an editor's indexer, `grep -r`, a backup, a file watcher that reads what
+changes) raises an approval. Refuse it. Verrou's hooks refuse an agent's `cat
+.env`, and now also reading any FIFO, whatever its name; `verrou env mount`
+and `unmount` are refused to agents (they are yours to run; `status` is allowed,
+and so are `stat` and `file` on a FIFO), as is `docker run --env-file .env`,
+and `.env.verrou`, which holds references only, can be read.
+
 ### Writing items (`verrou item`)
 
 The terminal also writes the vault, the 1Password CLI way. Each write asks
@@ -1156,10 +1274,10 @@ approximate match, and a custom field called like a built-in one
 **Hooks.** An agent can still read a `.env` file or print a token on its own,
 without going through Verrou. `verrou hook` is a guard rail for that: before
 the agent reads a file or runs a command, it refuses `.env` files (not
-`.env.example`), private keys (`*.pem`, `id_*`, `~/.ssh/*`),
+`.env.example`, nor `.env.verrou`, the map of a mounted one), private keys (`*.pem`, `id_*`, `~/.ssh/*`),
 `.envrc`, `*.key`, `*.p8`, `~/.aws/credentials`, `~/.kube/config`,
 `~/.docker/config.json`, `~/.config/gh/hosts.yml`, `.pgpass`, `.netrc`,
-`.npmrc` and `.pypirc` that hold a token, and commands that print them
+`.npmrc` and `.pypirc` that hold a token, any FIFO (a mounted `.env`, whatever it is called), and commands that print them
 (`cat`, `grep`, `git show :.env`, `dd if=`, `printenv`, `env`,
 `echo $GITHUB_TOKEN`, also through `sudo`, `nice`, `timeout`, `sh -c '…'`
 or `python -c '…'`), and, for Claude Code, editing them (an edit's result

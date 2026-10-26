@@ -25,6 +25,15 @@ serde_json.workspace = true
 sha2.workspace = true
 zeroize.workspace = true
 
+# Mounted `.env` files (`verrou env`): the FIFO, signals and processes, all
+# through safe wrappers (the workspace forbids unsafe code). libproc finds
+# who has the FIFO open on macOS; Linux reads /proc.
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.31", default-features = false, features = ["fs", "signal", "process", "user"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+libproc = "0.14"
+
 [dev-dependencies]
 uuid.workspace = true
 # Test SSH keys, checking the agent's signatures.

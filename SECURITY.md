@@ -1112,6 +1112,194 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   command asks for it; a program running under the user's account can read
   what the CLI displays.
 
+### Mounted `.env` files (`verrou env`)
+
+`verrou env mount` replaces a `.env` file by a FIFO that Verrou serves: no
+secret is written to disk. What it guarantees and what it does not:
+
+- **Nothing stored**: the FIFO holds no data; each open for reading is a
+  request to Verrou, answered with the values and then forgotten. The
+  values go from the vault, through the bridge, to zeroized buffers of the
+  mount, then into the pipe, and nowhere else: not to a file, a log (the
+  mount's log lines name the file, the reader and the outcome, never a value
+  or an item's content), or the process's arguments. A refused or failed read
+  gets one comment line (`# verrou: not served (reason)`), never a partial
+  file: the payload is built whole, or not at all.
+- **What is approved**: an approval per item, like `verrou run`'s, with the
+  command line shown as `read <file> by <program>[pid] ← parent ← …` and every
+  variable served (`NAME=verrou://item/field`, or `NAME=(plain)` for one
+  served as written in the map). The readers are the processes that have the
+  writer's own pipe open, found by its device and inode in the kernel's list
+  of open files (`libproc`'s per-descriptor information on macOS, `/proc/*/fd`
+  on Linux); no name of the pipe is looked up, so a name that was swapped,
+  linked or retired means nothing. Their ancestors are followed to the end
+  (64 levels, a loop cut), the names being those of the programs' paths
+  reduced to `[A-Za-z0-9._+-]` (anything else is `?`) and at most 40
+  characters. The detail must fit the approval whole (200 characters, ten
+  variables, plain ones included): the file's path is shortened first, then
+  the ancestry; what must not be missed is never cut and comes first (`agent
+  ancestor: <name>; …`, `no terminal; …` when no terminal application is
+  above the reader, `N readers: a, b`, `unidentified reader`). A map with more
+  than ten variables is refused at the mount.
+- **Identification is advice, never a way to skip a question.** A read never
+  uses, and never creates, the five-minute approval that `verrou get` and
+  `verrou run` share for an item: the request carries an `approval_scope`
+  that the bridge adds to the key of its approval, so each is the other's
+  stranger (tested at the bridge). **By default every read is
+  ephemeral**: asked on its own, every time. `--remember-reads` is the
+  opt-in trade-off: a read that is a person's (one process, no coding agent
+  among its ancestors, a terminal application among them: Terminal, iTerm2,
+  Ghostty, WezTerm, Alacritty, kitty, `sshd`, or the Linux terminals; a
+  controlling terminal; a mount that no agent started) may have five minutes
+  of its own, for this file, this program, this terminal and this login shell
+  (`env:<file>:<program path>:<terminal>:<shell pid>:<shell start>`, the shell
+  being the ancestor just below the terminal application). A code editor
+  (VS Code, Cursor, …) is **not** an anchor: an agent running inside one (an
+  extension, a task) cannot be told from a person typing in its terminal, so
+  its reads are asked every time. Every other read is
+  **ephemeral** (`ephemeral_approval`: asked on its own, nothing reused,
+  nothing remembered, one prompt per reference): an agent among the
+  ancestors, several readers, none found, a chain that ends at `launchd`
+  without a terminal application (a daemon, a `tmux` server: a shell started
+  by an agent through `tmux` would otherwise look like a person's), no
+  controlling terminal, and every read of a mount an agent started
+  (`remote::driven_by_agent`). The bridge announces `capabilities:
+  ["approval_scope"]` in its status; the mount sends a remembered read only
+  to a bridge that says so and asks every read of an older one (which would
+  ignore the scope and share the item's approval with `verrou get`).
+  **What the scope is**: it separates approvals, not clients. Any process of
+  the same user that holds the link key in `~/.config/verrou/cli.json` can
+  present the same key, scope included. What `--remember-reads` leaves open: a
+  script that types into the person's terminal (AppleScript, `open -a
+  Terminal`, a terminal's own scripting) can produce a reader that has a
+  terminal application above it and a tty, and so is remembered like a
+  person's.
+- **Which agents are seen**: the program, or a folder of its path, being
+  `claude`, `codex`, `cursor-agent`, `gemini`, `opencode`, `aider` or
+  `goose`, or the path containing `Cursor` (Cursor's terminal and its agent
+  are the same application, so a read under Cursor is always asked); and, for
+  a `node`, `bun`, `deno` or `python` in the chain, its command line (from
+  `ps`; `KERN_PROCARGS2` is out of reach without unsafe code) naming the
+  package of Claude Code, Gemini CLI, Codex, OpenCode, Copilot, Amp or Qwen
+  Code. A renamed binary, another runtime or a script that hides its arguments
+  is not seen: it is a person's read if a terminal application is above it.
+- **Whoever is approved gets the values**: the approval is for the program
+  named, and that program can read them and do anything with them; two
+  programs that open the FIFO together share one pipe, so both are named in
+  the approval and one of them gets the data (the set of readers is looked up
+  again just before the write, and any difference means nothing is written;
+  once written, the set is asked a last time, and a program that was not
+  shown and has the pipe open is reported on the mount's output ("values may
+  have been read by …") and ends the mount: nothing more is served until the
+  user mounts again). A
+  program that walks a folder and opens every file (an indexer, a backup,
+  `grep -r`) raises an approval for nothing it needs: refuse it. The hooks
+  refuse an agent's reading of any FIFO whatever its name
+  (`is_secret_path`, paths relative to the event's own folder), its `docker
+  run --env-file`, and its `verrou env mount` and `unmount` (`status` is
+  allowed; `stat` and `file` on a FIFO are too, since they do not open it),
+  but a mount does not make it safe to run an agent that has a shell next to
+  it: the agent can ask, and the approval names it only if it is recognised.
+- **What identification cannot do**: the CLI's link key sits in
+  `~/.config/verrou/cli.json`, readable by any process of the same user,
+  which can then act as the CLI: ask for any item and, with the approval's
+  text of its choosing, have it approved. An approval says what is asked and
+  by which program, as far as it can be told; it cannot say who is asking.
+  This limit is that of the CLI as a whole (`verrou get`, `run`, `item`), not
+  of the mount. Residuals that are inherent to a file served to the same user:
+  on Linux any process of the user can reopen a pipe through
+  `/proc/<pid>/fd/<n>` of a holder, and a process of the user that is quicker
+  than the swap can open the pipe in the same instant as the reader, or
+  find the sealed folder of the round and change its mode (the
+  checks before and after the write narrow it and report it, never close
+  it).
+- **The map is what was approved**: it is read once at the mount, and its
+  hash is checked at each read; an edited map is refused (the file served is
+  never built from a file edited later). It is opened without following a link
+  and without waiting, and must be a regular file (a FIFO put in its place
+  cannot hang the mount). A refused read pauses the answers of its own kind
+  for 30 seconds (each gets the comment line without a prompt): the
+  ephemeral reads, and a person's identified reads, are paused separately, so
+  that a refused agent does not silence the user's own reads; the bridge has
+  its own 30 seconds for agent requests. If Verrou does not answer the mount
+  opens the application at most once a minute.
+- **The value written**: the payload is built in one buffer of its final
+  size (no reallocation leaves a copy that nothing zeroizes) and zeroized
+  after the write. Each value is written in the one form every documented
+  loader reads back the same, or the read is refused whole, without
+  saying the value: bare for `[A-Za-z0-9_-./:@%+,=]`, single quotes for the
+  rest when there is no single quote or line break and no trailing
+  backslash, double quotes with `\n` and `\r` for a single quote or a line
+  break when there is no double quote, backslash, `$` or backtick (loaders
+  disagree on those inside double quotes). Docker's `--env-file` does not
+  strip quotes at all; Next.js and Vite expand `$` even inside single quotes
+  (which a FIFO does not get them to read, but a copy would).
+- **What it does to the file system**: `mkfifo` where nothing exists, never
+  replacing a file, a link, a folder or a FIFO it did not make. The swap that
+  gives each read a fresh pipe happens in a folder of the mount's own inside
+  the project folder (mode 700, a random name; the pipes in it have random
+  names too), and replaces the FIFO only after checking that the path still
+  holds the one it made, by device and inode: that check and the rename are
+  two calls, so a process of the same user that swaps the `.env` in between
+  gets its file replaced by the next FIFO (it is the same user; no other
+  user can). The writer's descriptor is checked after it is opened, and a
+  file put there meanwhile is never written to. The old pipe keeps a second
+  name until the round is over, in a folder of the round inside the mount's
+  folder (random names), **closed to everyone (mode 000) from the swap on**,
+  during the approval and the write, and opened (mode 700) only for a
+  moment, once a reader is still there after the write, to open a writer on
+  the pipe and close it again (the kernel can lose the end-of-file wake-up of
+  a reader when two programs opened the pipe together, and the reader then
+  waits for ever): each such writer is checked to be the round's pipe, and
+  nothing is ever written through it. Dropping the name altogether was tried
+  and abandoned: without it a reader hung in 14 of 15 runs of the
+  two-readers test. The folder's mode keeps off a program that opens paths
+  it does not know, not the user's own programs, which can change the mode of
+  the user's folder: the same-user race is an inherent residual.
+  The mount removes only what it made, on interrupt, terminate or hang-up,
+  which a thread waits for (blocked everywhere: no signal handler, no unsafe
+  code).
+- **Records**: `~/.verrou/env` is made with mode 700 (a link, or a folder of
+  another user, is refused; one of the user's with looser rights is
+  tightened). Records are written to a new, random-named temporary file
+  opened with `O_EXCL` and without following links (mode 600), then renamed;
+  the background mount's log is opened without following links (mode 600). A
+  record holds the process identifier and its start time, and the
+  identities of the FIFO in place and of the one about to replace it (saved
+  before each swap). A mount killed without cleanup leaves a stale FIFO, which
+  `status` calls stale; `unmount`, or a new `mount`, removes it only if it is
+  the FIFO the record says it made (otherwise it says so and leaves it), with
+  the leftovers (`.<name>.verrou-<pid>-…`, FIFOs only) of that identifier. A
+  signal is sent only to a process that is the `verrou` of the record (its
+  program, and its start time, not just an identifier that was reused).
+- **The background start**: `--background` starts the same command again,
+  detached, which then checks git again. `--detached` is accepted only with a
+  token that the parent put in the child's environment and also wrote to a
+  file (mode 600) in the records folder, which the child reads and removes;
+  a program that runs `verrou env mount --detached` by hand is refused. A
+  process of the same user can read both, as it can read everything of the
+  user's: the token keeps the option from being picked by mistake or from a
+  command line, not from that process.
+- **Git**: the mount refuses a file git tracks, or does not ignore, which are
+  the ways a `.env` ends up in a repository; outside a repository it warns.
+  Whether the file is ignored is the exit code of `git check-ignore -q`
+  alone (`-v` also reports a `!.env` line that un-ignores it with the same
+  exit code); git runs without `GIT_DIR`, `GIT_WORK_TREE`,
+  `GIT_INDEX_FILE`, `GIT_CONFIG_PARAMETERS` or `GIT_CONFIG_COUNT`, and with
+  literal pathspecs for `ls-files` (`check-ignore` refuses pathspec magic
+  and so refuses such a name); the user's global configuration is kept. The
+  map, which holds references only, may be committed.
+- **Limits**: a swap renames the `.env` entry after each read, which a tool
+  that reloads when `.env` changes could see as a change and read again, and
+  so ask again (a reload loop): verify with the tool before relying on it
+  (checked for Vite 8, not for others); the inode of the FIFO cannot be kept
+  across reads, since the swap is what keeps a second reader from sharing the
+  first one's pipe during the approval. Two readers that open the FIFO within
+  the same few microseconds share a pipe, and one gets the data. Bun and Deno
+  skip a file that is not regular and never get the values. A program the
+  user runs can read what the mount serves, and what it wrote to its own
+  memory or files afterwards is out of Verrou's hands, as with `verrou run`.
+
 ## Approving from the iPhone
 
 Away from the Mac, the terminal's requests (a secret, an SSH or git

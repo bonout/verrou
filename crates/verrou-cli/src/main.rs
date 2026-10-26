@@ -21,6 +21,8 @@ use verrou_bridge::protocol::{
 };
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
+#[cfg(unix)]
+use verrou_cli::env as mounted;
 use verrou_cli::git_signing;
 use verrou_cli::hooks;
 use verrou_cli::inject::{self, Piece};
@@ -153,6 +155,12 @@ enum Command {
         )]
         command: Vec<String>,
     },
+    /// A `.env` file whose secrets are never written to disk: a FIFO that
+    /// Verrou fills, after your approval, each time a program reads it.
+    Env {
+        #[command(subcommand)]
+        action: EnvAction,
+    },
     /// MCP server for AI coding agents, over stdio: search the vault (names
     /// and references, never values), run commands with secrets masked in
     /// their output, create secrets. Each use is approved in Verrou. Add it
@@ -229,6 +237,46 @@ enum Command {
         #[arg(long, default_value_t = 10_000)]
         items: usize,
     },
+}
+
+#[derive(Subcommand)]
+enum EnvAction {
+    /// Replace `.env` (which must not exist) by a FIFO: each program that
+    /// opens it gets the variables of the map, their `verrou://` references
+    /// replaced by the values, after your approval in Verrou, who opens the
+    /// file shown. Runs until Ctrl-C (or `--background`).
+    Mount {
+        /// The file to serve (default: `.env`).
+        #[arg(long, default_value = ".env")]
+        file: PathBuf,
+        /// The map: a dotenv file of `NAME=verrou://<item>/<field>` (default:
+        /// the file's name followed by `.verrou`, `.env.verrou`).
+        #[arg(long)]
+        map: Option<PathBuf>,
+        /// Keep serving in the background, after the terminal is closed.
+        #[arg(long)]
+        background: bool,
+        /// Remember your approval of a read for five minutes (for this file,
+        /// this program, this terminal and this shell), instead of asking on
+        /// every read. Only a single program started from your own terminal
+        /// application is remembered; anything else is always asked.
+        #[arg(long)]
+        remember_reads: bool,
+        /// What `--background` runs: not for you to give.
+        #[arg(long, hide = true)]
+        detached: bool,
+    },
+    /// Stop the mount of a file (default `.env`) and remove its FIFO.
+    Unmount {
+        /// The file (default: `.env`).
+        #[arg(long, conflicts_with = "all")]
+        file: Option<PathBuf>,
+        /// Every mount.
+        #[arg(long)]
+        all: bool,
+    },
+    /// The mounts, and whether each is running.
+    Status,
 }
 
 #[derive(Subcommand)]
@@ -451,22 +499,46 @@ enum Source {
 
 impl Source {
     fn open(cli: &Cli) -> Result<Self, String> {
-        if cli.mock {
-            eprintln!("\x1b[2m(mock vault, --mock)\x1b[0m");
+        let mut source =
+            Self::connect(cli.mock, cli.mock_size, cli.reason.as_deref(), false, true)?;
+        if let Self::App(remote) = &mut source {
+            // Driven by a coding agent: each approval for this request alone,
+            // never one given earlier to this terminal and never remembered.
+            remote.ephemeral = remote::driven_by_agent();
+        }
+        Ok(source)
+    }
+
+    /// The vault to ask, without deciding yet whether an agent drives it.
+    /// `quiet`: no word about the mock vault (a mount opens one per read).
+    fn connect(
+        mock: bool,
+        mock_size: usize,
+        reason: Option<&str>,
+        quiet: bool,
+        launch: bool,
+    ) -> Result<Self, String> {
+        if mock {
+            if !quiet {
+                eprintln!("\x1b[2m(mock vault, --mock)\x1b[0m");
+            }
             return Ok(Self::Mock(Vault::new(mock::vault_items(
-                cli.mock_size,
+                mock_size,
                 42,
                 mock::MockLanguage::En,
             ))));
         }
         let path = Config::default_path()?;
         let config = Config::load(&path)?.ok_or_else(|| Error::NotLinked.to_string())?;
-        let mut remote =
-            Remote::connect(&config, Endpoint::from_env()).map_err(|e| e.to_string())?;
-        remote.reason.clone_from(&cli.reason);
-        // Driven by a coding agent: each approval for this request alone,
-        // never one given earlier to this terminal and never remembered.
-        remote.ephemeral = remote::driven_by_agent();
+        let mut remote = Remote::connect(
+            &config,
+            Endpoint {
+                launch,
+                ..Endpoint::from_env()
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        remote.reason = reason.map(str::to_owned);
         Ok(Self::App(remote))
     }
 
@@ -703,6 +775,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             *file_mode,
             *force,
         )?,
+        Command::Env { action } => env_command(cli, action, &mut out)?,
         Command::Mcp => mcp_server()?,
         Command::Generate { .. } => generate(cli, &mut out),
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
@@ -710,6 +783,203 @@ fn run(cli: &Cli) -> Result<(), String> {
         Command::Bench { items } => bench(&mut out, *items),
     }
     Ok(())
+}
+
+/// Where a mounted `.env`'s values come from: Verrou, with a connection of
+/// its own for each read.
+#[cfg(unix)]
+struct AppValues {
+    mock: bool,
+    mock_size: usize,
+    reason: Option<String>,
+    /// When Verrou was last opened because it did not answer: a program that
+    /// reads the file in a loop must not open the application each time.
+    launches: mounted::Throttle,
+}
+
+#[cfg(unix)]
+impl AppValues {
+    /// The least time between two launches of the application.
+    const LAUNCH_EVERY: std::time::Duration = std::time::Duration::from_secs(60);
+
+    fn new(mock: bool, mock_size: usize, reason: Option<String>) -> Self {
+        Self {
+            mock,
+            mock_size,
+            reason,
+            launches: mounted::Throttle::new(Self::LAUNCH_EVERY),
+        }
+    }
+
+    fn source(&self) -> Result<Source, String> {
+        let connect = |launch| {
+            Source::connect(
+                self.mock,
+                self.mock_size,
+                self.reason.as_deref(),
+                true,
+                launch,
+            )
+        };
+        match connect(false) {
+            // Not answering: open it, once a minute at most.
+            Err(e) if e == Error::AppUnavailable.to_string() && self.launches.allow() => {
+                connect(true)
+            }
+            other => other,
+        }
+    }
+}
+
+#[cfg(unix)]
+impl mounted::Values for AppValues {
+    fn fetch(
+        &self,
+        request: &mounted::ReadRequest,
+    ) -> Result<Vec<Zeroizing<String>>, mounted::Failure> {
+        let failure = |message: String| {
+            // Verrou not answering is not a refusal: asked again next time.
+            let unreachable = [
+                Error::AppUnavailable,
+                Error::NotLinked,
+                Error::UnknownClient,
+            ]
+            .iter()
+            .any(|e| e.to_string() == message);
+            mounted::Failure {
+                refusal: !unreachable,
+                message,
+            }
+        };
+        let mut source = self.source().map_err(failure)?;
+        if let Source::App(remote) = &mut source {
+            // A remembered read is only sent to a bridge that keeps it apart
+            // from `verrou get`'s approval (it says so); an older one gets
+            // every read asked on its own.
+            let (ephemeral, scope) = if request.ephemeral {
+                (true, None)
+            } else {
+                let capabilities = remote.capabilities().map_err(|e| failure(e.to_string()))?;
+                mounted::for_bridge(false, request.approval_scope.clone(), &capabilities)
+            };
+            // Who reads decides, not who started the mount.
+            remote.ephemeral = ephemeral;
+            remote.detail = Some(request.detail.clone());
+            remote.approval_scope = scope;
+        }
+        let mut resolver = Resolver::new(source);
+        request
+            .references
+            .iter()
+            .map(|reference| resolver.resolve(reference))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(failure)
+    }
+
+    fn check(&self, references: &[Reference]) -> Result<mounted::Checked, String> {
+        let mut source = self.source()?;
+        let mut problems: Vec<String> = Vec::new();
+        let mut seen: Vec<&str> = Vec::new();
+        for reference in references {
+            if seen.contains(&reference.item.as_str()) && !problems.is_empty() {
+                continue;
+            }
+            seen.push(&reference.item);
+            let item = match &mut source {
+                Source::Mock(vault) => access::find(vault, &reference.item).map(access::item_view),
+                Source::App(remote) => {
+                    match remote
+                        .call(&Ask::VaultItem {
+                            query: reference.item.clone(),
+                        })
+                        .map_err(|e| e.to_string())?
+                    {
+                        ReplyResult::Item { item } => Ok(item),
+                        ReplyResult::Locked => return Ok(mounted::Checked::VaultLocked),
+                        ReplyResult::Denied { reason } => Err(reason),
+                        other => return Err(unexpected(&other)),
+                    }
+                }
+            };
+            match item {
+                Err(reason) => problems.push(format!("{}: {reason}", reference.to_uri())),
+                Ok(item) => {
+                    let found = match reference.field.as_str() {
+                        "totp" => item.summary.has_totp,
+                        "notes" => item.has_notes,
+                        name => run::find_field(&item.fields, name).is_some(),
+                    };
+                    if !found {
+                        problems.push(format!(
+                            "{}: \"{}\" has no field \"{}\"",
+                            reference.to_uri(),
+                            item.summary.title,
+                            reference.field
+                        ));
+                    }
+                }
+            }
+        }
+        if problems.is_empty() {
+            Ok(mounted::Checked::Verified)
+        } else {
+            Err(problems.join("\n"))
+        }
+    }
+}
+
+/// `verrou env …`: mounts a `.env` file served through a FIFO, stops a
+/// mount, or lists them.
+#[cfg(unix)]
+fn env_command(cli: &Cli, action: &EnvAction, out: &mut impl std::io::Write) -> Result<(), String> {
+    match action {
+        EnvAction::Mount {
+            file,
+            map,
+            background,
+            remember_reads,
+            detached,
+        } => {
+            let mut global_args = Vec::new();
+            if cli.mock {
+                global_args.extend([
+                    "--mock".to_owned(),
+                    "--mock-size".to_owned(),
+                    cli.mock_size.to_string(),
+                ]);
+            }
+            if let Some(reason) = &cli.reason {
+                global_args.extend(["--reason".to_owned(), reason.clone()]);
+            }
+            if cli.mock && !detached {
+                eprintln!("\x1b[2m(mock vault, --mock)\x1b[0m");
+            }
+            let values = AppValues::new(cli.mock, cli.mock_size, cli.reason.clone());
+            mounted::command::mount(
+                &mounted::command::MountOptions {
+                    file: file.clone(),
+                    map: map.clone(),
+                    background: *background,
+                    remember_reads: *remember_reads,
+                    detached: *detached,
+                    global_args,
+                },
+                Box::new(values),
+            )
+        }
+        EnvAction::Unmount { file, all } => {
+            mounted::command::unmount_command(file.as_deref(), *all, out)
+        }
+        EnvAction::Status => mounted::command::status(cli.json, out),
+    }
+}
+
+#[cfg(not(unix))]
+fn env_command(_: &Cli, _: &EnvAction, _: &mut impl std::io::Write) -> Result<(), String> {
+    Err(
+        "mounted .env files need a FIFO: not supported on Windows (use `verrou run --env-file`)"
+            .to_owned(),
+    )
 }
 
 /// `verrou mcp`: the MCP server, on stdin and stdout, until the client

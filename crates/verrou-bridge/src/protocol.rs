@@ -75,6 +75,9 @@ pub enum ErrorCode {
     Busy,
 }
 
+/// The bridge applies [`Request::approval_scope`] (advertised in the status).
+pub const CAPABILITY_APPROVAL_SCOPE: &str = "approval_scope";
+
 /// Decrypted request.
 #[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Request {
@@ -98,6 +101,13 @@ pub struct Request {
     /// what actually decides what happens to the values ([`RunDetail`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<RunDetail>,
+    /// Added to the key of the five-minute approval: a request that carries
+    /// one is approved, and remembered, apart from the ordinary approval of
+    /// the same item (`verrou get`, `verrou run`), and never covered by it.
+    /// It is only ever a key, never shown. Additive: absent means the
+    /// item's ordinary approval.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_scope: Option<String>,
     #[serde(flatten)]
     pub command: Command,
 }
@@ -501,6 +511,13 @@ pub enum ReplyResult {
         /// own. Missing: unknown (tests, another client).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         extension_version: Option<String>,
+        /// What this bridge does beyond the base protocol, by name: a client
+        /// that needs one checks for it before relying on it (an older
+        /// bridge ignores what it does not know and says nothing).
+        /// [`CAPABILITY_APPROVAL_SCOPE`]: it keeps an approval apart by
+        /// [`Request::approval_scope`]. Additive: absent means none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        capabilities: Vec<String>,
     },
     Suggestions {
         items: Vec<Suggestion>,
@@ -970,6 +987,52 @@ mod reason_tests {
         assert!(!plain.ephemeral_approval && plain.detail.is_none());
         let json = serde_json::to_string(&plain).unwrap();
         assert!(!json.contains("ephemeral") && !json.contains("detail"));
+        assert!(plain.approval_scope.is_none() && !json.contains("approval_scope"));
+        let scoped: Request = serde_json::from_str(
+            r#"{"id":1,"ts":0,"cmd":"status","approval_scope":"env:/a/.env:/bin/cat:none"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            scoped.approval_scope.as_deref(),
+            Some("env:/a/.env:/bin/cat:none")
+        );
+    }
+
+    #[test]
+    fn the_status_says_what_the_bridge_can_do_and_an_older_one_says_nothing() {
+        let status = ReplyResult::Status {
+            unlocked: true,
+            extension_version: None,
+            capabilities: vec![CAPABILITY_APPROVAL_SCOPE.to_owned()],
+        };
+        let json = serde_json::to_string(&status).unwrap();
+        assert!(
+            json.contains(r#""capabilities":["approval_scope"]"#),
+            "{json}"
+        );
+        assert_eq!(serde_json::from_str::<ReplyResult>(&json).unwrap(), status);
+        // A bridge that has none writes nothing; one that predates the field
+        // is read as having none.
+        let none = ReplyResult::Status {
+            unlocked: true,
+            extension_version: None,
+            capabilities: Vec::new(),
+        };
+        assert!(
+            !serde_json::to_string(&none)
+                .unwrap()
+                .contains("capabilities")
+        );
+        let old: ReplyResult =
+            serde_json::from_str(r#"{"result":"status","unlocked":false}"#).unwrap();
+        assert_eq!(
+            old,
+            ReplyResult::Status {
+                unlocked: false,
+                extension_version: None,
+                capabilities: Vec::new()
+            }
+        );
     }
 
     #[test]

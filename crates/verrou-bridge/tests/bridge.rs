@@ -557,6 +557,18 @@ fn refused_or_forged_clients_get_nothing() {
     let _ = std::fs::remove_file(file);
 }
 
+/// The status names the approval scope among what the bridge does: a
+/// terminal sends a remembered read only to a bridge that says so.
+#[test]
+fn status_advertises_that_the_approval_scope_is_applied() {
+    let (bridge, _backend, pairings, file) = start();
+    let mut client = paired(&bridge, &pairings, "browser");
+    let status = client.request(&json!({ "cmd": "status" }));
+    assert_eq!(status["result"], "status");
+    assert_eq!(status["capabilities"], json!(["approval_scope"]));
+    let _ = std::fs::remove_file(file);
+}
+
 #[test]
 fn status_announces_the_bundled_extension_version() {
     let (bridge, _backend, pairings, file) = start();
@@ -1019,6 +1031,60 @@ fn an_agents_approval_is_asked_every_time_and_not_remembered() {
     backend.approve.store(false, Ordering::SeqCst);
     assert_eq!(cli.request(&agent)["result"], "denied");
     backend.approve.store(true, Ordering::SeqCst);
+    let _ = std::fs::remove_file(file);
+}
+
+/// A request with an `approval_scope` (a mounted `.env` read) has approvals
+/// of its own: it neither uses nor creates the item's ordinary five-minute
+/// approval, and a different scope is a different approval.
+#[test]
+fn an_approval_scope_keeps_its_approval_apart() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    backend.approve.store(true, Ordering::SeqCst);
+    let asked = |backend: &FakeBackend| backend.confirmations.lock().unwrap().len();
+    let plain = json!({ "cmd": "reveal", "item": "github", "field": "password" });
+    let scoped = |scope: &str| {
+        json!({ "cmd": "reveal", "item": "github", "field": "password",
+            "approval_scope": scope })
+    };
+
+    // A `verrou get` approval does not cover a FIFO read ...
+    assert_eq!(cli.request(&plain)["result"], "secret");
+    assert_eq!(cli.request(&plain)["result"], "secret");
+    assert_eq!(asked(&backend), 1);
+    assert_eq!(
+        cli.request(&scoped("env:/a/.env:/bin/cat:tty"))["result"],
+        "secret"
+    );
+    assert_eq!(asked(&backend), 2, "the scoped read asked on its own");
+    // ... the scoped approval is remembered for the same scope only ...
+    assert_eq!(
+        cli.request(&scoped("env:/a/.env:/bin/cat:tty"))["result"],
+        "secret"
+    );
+    assert_eq!(asked(&backend), 2);
+    assert_eq!(
+        cli.request(&scoped("env:/a/.env:/bin/node:tty"))["result"],
+        "secret"
+    );
+    assert_eq!(asked(&backend), 3, "another reader is another approval");
+
+    // ... and covers nothing else: forget the ordinary one, the scoped
+    // approvals still hold and `verrou get` asks again.
+    bridge.forget_approvals();
+    assert_eq!(
+        cli.request(&scoped("env:/a/.env:/bin/cat:tty"))["result"],
+        "secret"
+    );
+    assert_eq!(cli.request(&plain)["result"], "secret");
+    assert_eq!(asked(&backend), 5);
+    assert_eq!(cli.request(&plain)["result"], "secret");
+    assert_eq!(
+        cli.request(&scoped("env:/a/.env:/bin/cat:tty"))["result"],
+        "secret"
+    );
+    assert_eq!(asked(&backend), 5, "each one holds on its own");
     let _ = std::fs::remove_file(file);
 }
 

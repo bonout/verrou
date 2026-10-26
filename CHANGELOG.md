@@ -30,6 +30,35 @@ tagging (docs/RELEASING.md).
   approval shows control characters instead of spaces, and the iPhone
   "unlock and read" approval no longer covers an agent's request or another
   terminal.
+- `verrou env mount`: a `.env` file whose secrets are never written to disk.
+  The file is a named pipe (FIFO) that Verrou fills, after your approval, each
+  time a program reads it, from a map of `verrou://` references
+  (`.env.verrou`, which you can commit). The approval shows which program
+  opens the file (found by the pipe it holds), the chain of processes that
+  started it, and every variable served. A read never uses or creates the
+  five-minute approval of `verrou get` and `verrou run`. **Every read is
+  asked, every time, by default.** `--remember-reads` lets a read by one
+  program started from a terminal application (Terminal, iTerm2, Ghostty,
+  WezTerm, Alacritty, kitty, `sshd`; not a code editor's terminal) with a
+  terminal of its own get five minutes for that file, program, terminal and
+  login shell; a coding agent among the ancestors (also under Node), several
+  readers, or one that cannot be placed is always asked. The approval says
+  *no terminal* when none is above the reader. Once the values are written,
+  the mount looks again at who has the pipe open: a program that was not shown
+  to you ends the mount, loudly. The second name of a replaced pipe sits in a folder closed to everyone until the values are written. Works with Node, Next.js, Vite, python-dotenv and
+  godotenv; Bun and Deno skip a file that is not regular (use `verrou run
+  --env-file`). `verrou env status` and `unmount` list and stop mounts;
+  `--background` keeps one running. A file, a link or a folder is never
+  replaced, and a `.env` that git tracks or does not ignore is refused.
+- The bridge protocol gains an optional `approval_scope` in requests, added to
+  the key of the five-minute approval, and an optional `capabilities` list in
+  the status (`approval_scope`): a terminal sends a remembered read only to a
+  bridge that says so, and asks every read of an older one; older terminals and
+  bridges are otherwise unaffected.
+- The agent hook now refuses reading any FIFO and `docker run --env-file` of a
+  secret file, resolves relative paths against the event's folder, refuses an
+  agent's `verrou env mount` and `unmount`, and lets `.env.verrou`, `verrou
+  env status` and `stat` on a FIFO through.
 - References to a custom field now work by the field's name as shown in the
   app (`verrou://Stripe/secret%20key`), as the guide always said.
 

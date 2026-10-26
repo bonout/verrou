@@ -219,9 +219,12 @@ pub struct Confirmation {
     pub ephemeral: bool,
 }
 
-/// Approvals still valid: (client, purpose, item) → time of the approval
-/// and the scope it was given with.
-type Approvals = HashMap<(String, Purpose, String), (Instant, ApprovalScope)>;
+/// Approvals still valid: (client, purpose, item, key) → time of the
+/// approval and the scope it was given with. The key is empty for the
+/// ordinary approval of an item; a request that carries an
+/// [`Request::approval_scope`] has its own entries, which an ordinary request
+/// never finds and never creates, and the other way round.
+type Approvals = HashMap<(String, Purpose, String, String), (Instant, ApprovalScope)>;
 
 struct Shared {
     backend: Arc<dyn Backend>,
@@ -322,7 +325,7 @@ impl Bridge {
 
     pub fn revoke(&self, id: &str) {
         lock(&self.shared.clients).remove(id);
-        lock(&self.shared.approvals).retain(|(client, _, _), _| client != id);
+        lock(&self.shared.approvals).retain(|(client, _, _, _), _| client != id);
     }
 
     /// The `manifest.json` of the extension shipped with the app (see
@@ -342,7 +345,7 @@ impl Bridge {
     /// Forgets the approvals given for one item, so a change of its scope
     /// (from "until locked" to "every time") applies at once.
     pub fn forget_approvals_of_item(&self, item: &str) {
-        lock(&self.shared.approvals).retain(|(_, _, id), _| id != item);
+        lock(&self.shared.approvals).retain(|(_, _, id, _), _| id != item);
     }
 }
 
@@ -532,6 +535,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
             extension_version: lock(&shared.extension_manifest)
                 .as_deref()
                 .and_then(crate::extension_version_at),
+            capabilities: vec![crate::protocol::CAPABILITY_APPROVAL_SCOPE.to_owned()],
         },
         Command::Suggest { url } => match backend.suggestions(&url) {
             None => ReplyResult::Locked,
@@ -659,6 +663,7 @@ async fn approved_for_site(
         shared,
         ask.confirmation(client, purpose, item, title, site),
         false,
+        "",
     )
     .await
 }
@@ -671,6 +676,9 @@ struct Terminal<'a> {
     /// ([`Request::ephemeral_approval`]).
     ephemeral: bool,
     detail: RunDetail,
+    /// [`Request::approval_scope`]: what separates this request's
+    /// remembered approval from the item's ordinary one.
+    scope: String,
 }
 
 impl<'a> Terminal<'a> {
@@ -680,6 +688,7 @@ impl<'a> Terminal<'a> {
         Self {
             reason,
             ephemeral: request.ephemeral_approval,
+            scope: request.approval_scope.clone().unwrap_or_default(),
             detail: request
                 .detail
                 .as_ref()
@@ -717,9 +726,14 @@ impl<'a> Terminal<'a> {
 /// Asks the user for `request`, unless an approval for the same client,
 /// purpose and item still holds. `ephemeral`: an agent's request, asked on
 /// its own and never remembered.
-async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> bool {
+async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool, key: &str) -> bool {
     let (purpose, item) = (request.purpose, request.item.clone());
-    let entry = (request.client.clone(), purpose, item.clone());
+    let entry = (
+        request.client.clone(),
+        purpose,
+        item.clone(),
+        key.to_owned(),
+    );
     if ephemeral {
         // A prompt the user just declined for this client does not come back.
         let mut refusals = lock(&shared.refusals);
@@ -867,6 +881,7 @@ async fn terminal(
                         shared,
                         ask.confirmation(client, Purpose::Reveal, &item, &title, ""),
                         ask.ephemeral,
+                        &ask.scope,
                     )
                     .await
                     {
@@ -897,6 +912,7 @@ async fn terminal(
                 shared,
                 ask.confirmation(client, Purpose::Reveal, &item, &title, ""),
                 ask.ephemeral,
+                &ask.scope,
             )
             .await
             {
@@ -918,7 +934,7 @@ async fn terminal(
         | Command::ItemMove { .. }) => item_write(shared, client, command, ask).await,
         Command::Unlink => {
             lock(&shared.clients).remove(&client.id);
-            lock(&shared.approvals).retain(|(id, _, _), _| *id != client.id);
+            lock(&shared.approvals).retain(|(id, _, _, _), _| *id != client.id);
             ReplyResult::Done
         }
         Command::SshKeys => match read(backend, ssh::identities) {
@@ -1063,7 +1079,7 @@ async fn item_write(
         changes: clean_text(&changes, MAX_CHANGES),
         ..ask.confirmation(client, purpose, &item, &title, &folder)
     };
-    if !approve(shared, request, ask.ephemeral).await {
+    if !approve(shared, request, ask.ephemeral, &ask.scope).await {
         return refused_or_locked(backend);
     }
     match plan(command) {

@@ -128,15 +128,44 @@ fn deny_file(path: &str) -> Decision {
 
 // MARK: Paths
 
-/// Suffixes of `.env.*` files that are templates, not secrets.
-const ENV_TEMPLATES: [&str; 6] = ["example", "sample", "template", "dist", "tpl", "defaults"];
+/// Suffixes of `.env.*` files that are templates, not secrets. `verrou` is
+/// the map of a mounted `.env` (`verrou env mount`): references, no values;
+/// `.env.local.verrou` is one too (see [`is_env_map`]).
+const ENV_TEMPLATES: [&str; 7] = [
+    "example", "sample", "template", "dist", "tpl", "defaults", "verrou",
+];
 /// Extensions of private keys and key stores.
 const KEY_EXTENSIONS: [&str; 7] = ["pem", "p12", "pfx", "key", "p8", "jks", "keystore"];
 /// How much of a `.npmrc` is read to look for a token.
 const MAX_READ: u64 = 64 * 1024;
 
+thread_local! {
+    /// The folder the agent's command or file is relative to (the `cwd` of
+    /// the hook's event), for the length of one decision.
+    static CWD: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Runs `f` with `cwd` as the folder relative paths are resolved against.
+fn within<T>(cwd: Option<PathBuf>, f: impl FnOnce() -> T) -> T {
+    let before = CWD.with(|c| c.replace(cwd));
+    let out = f();
+    CWD.with(|c| *c.borrow_mut() = before);
+    out
+}
+
+/// A path as the program that is run would find it: relative to the event's
+/// `cwd` if it has one, otherwise to this process's own.
+fn resolved(path: PathBuf) -> PathBuf {
+    if path.is_relative()
+        && let Some(cwd) = CWD.with(|c| c.borrow().clone())
+    {
+        return cwd.join(path);
+    }
+    path
+}
+
 /// Is this a file that holds secrets? `~` and `$HOME` are expanded, as the
-/// shell would.
+/// shell would; a relative path is the event's `cwd`'s.
 pub fn is_secret_path(path: &str) -> bool {
     let path = path.trim().trim_matches(['"', '\'']);
     let expanded = expand_home(path);
@@ -150,13 +179,19 @@ pub fn is_secret_path(path: &str) -> bool {
     };
     let dirs = &components[..components.len() - 1];
 
+    // A mounted `.env` (`verrou env mount`) is a FIFO that Verrou fills when
+    // it is read, with the values: whatever it is called.
+    if is_fifo(&expanded) {
+        return true;
+    }
+
     // `.env`, `.env.production`, `production.env`, `.envrc`, but not
     // `.env.example`.
     if name == ".env" || name == ".envrc" || has_extension(name, "env") {
         return true;
     }
     if let Some(suffix) = name.strip_prefix(".env.") {
-        return !ENV_TEMPLATES.contains(&suffix);
+        return !ENV_TEMPLATES.contains(&suffix) && !is_env_map(suffix);
     }
     // A glob that can match them (`.env*`, `{.env,.env.local}`, `**/*.env`).
     if name.contains(['*', '?', '[', '{']) && name.contains(".env") {
@@ -201,6 +236,26 @@ pub fn is_secret_path(path: &str) -> bool {
     false
 }
 
+/// `local.verrou` after `.env.`: the map of `.env.local`.
+fn is_env_map(suffix: &str) -> bool {
+    suffix.ends_with(".verrou")
+}
+
+/// Is this path a FIFO (a named pipe)? Reading one that Verrou serves
+/// is a read of the secrets, and one that is not served would hang the agent.
+fn is_fifo(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileTypeExt as _;
+        std::fs::metadata(path).is_ok_and(|m| m.file_type().is_fifo())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
 fn has_extension(name: &str, extension: &str) -> bool {
     Path::new(name)
         .extension()
@@ -213,10 +268,10 @@ fn expand_home(path: &str) -> PathBuf {
         .strip_prefix("~/")
         .or_else(|| path.strip_prefix("$HOME/"))
         .or_else(|| path.strip_prefix("${HOME}/"));
-    match (rest, std::env::var_os("HOME")) {
+    resolved(match (rest, std::env::var_os("HOME")) {
         (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
         _ => PathBuf::from(path),
-    }
+    })
 }
 
 /// Does this `.npmrc` / `.pypirc` hold a token or a password? A file that
@@ -286,6 +341,13 @@ fn path_candidates(argument: &str) -> Vec<&str> {
 
 fn names_secret_path(argument: &str) -> bool {
     path_candidates(argument).into_iter().any(is_secret_path)
+}
+
+/// Does this argument name a FIFO (a mounted `.env`)?
+fn names_fifo(argument: &str) -> bool {
+    path_candidates(argument)
+        .into_iter()
+        .any(|p| is_fifo(&expand_home(p.trim().trim_matches(['"', '\'']))))
 }
 
 // MARK: Shell commands
@@ -647,13 +709,40 @@ fn check_simple(words: &[Word], depth: usize) -> Option<Decision> {
             }
         }
         reader if READERS.contains(&reader) => {
+            // `stat` and `file` look at a FIFO without opening it (`file -s`
+            // does open it): naming a mounted `.env` is not reading it.
+            let looks_only = match reader {
+                "stat" => true,
+                "file" => !rest.iter().any(|w| {
+                    w.text == "--special-files"
+                        || (w.text.starts_with('-')
+                            && !w.text.starts_with("--")
+                            && w.text.contains('s'))
+                }),
+                _ => false,
+            };
             // A key handed to a program that uses it (`ssh -i`, `curl
             // --cert`, `openssl x509 -in`) is not a key being read.
             if let Some(word) = without_key_flags(reader, rest)
                 .iter()
-                .find(|w| names_secret_path(&w.text))
+                .find(|w| names_secret_path(&w.text) && !(looks_only && names_fifo(&w.text)))
             {
                 return Some(deny_file(&word.text));
+            }
+        }
+        // `docker run --env-file .env` hands the file's variables to a
+        // container the agent chose, and shows what it prints.
+        "docker" | "podman" | "nerdctl" | "docker-compose" | "podman-compose" => {
+            let mut it = rest.iter().map(|w| w.text.as_str());
+            while let Some(word) = it.next() {
+                let file = word
+                    .strip_prefix("--env-file=")
+                    .or_else(|| (word == "--env-file").then(|| it.next()).flatten());
+                if let Some(file) = file
+                    && is_secret_path(file)
+                {
+                    return Some(deny_file(file));
+                }
             }
         }
         _ => {}
@@ -731,7 +820,12 @@ fn without_key_flags<'a>(program: &str, args: &[&'a Word]) -> Vec<&'a Word> {
 /// - `run` hands secrets to a command the agent chose and shows the agent
 ///   its output; the `verrou_run` MCP tool does that with the command shown
 ///   to the user (the CLI says so too, for an agent, but the hook is what
-///   stops it before it starts).
+///   stops it before it starts);
+/// - `env mount` and `env unmount` are the user's: a mount makes a file the
+///   agent's own programs would then open, and an unmount ends one the user
+///   made. `env status` only lists, and is fine. The mounted file is a FIFO
+///   that only gives its values to a reader the user approves, and the hook
+///   refuses to read it like any other secret file ([`is_secret_path`]).
 fn check_verrou(rest: &[&Word]) -> Option<Decision> {
     let mut it = rest.iter().map(|w| w.text.as_str());
     let mut sub = None;
@@ -752,6 +846,25 @@ fn check_verrou(rest: &[&Word]) -> Option<Decision> {
         Some(which @ ("read" | "inject")) if !writes_to_file(&args) => Some(deny(&format!(
             "`verrou {which}` prints the secret into your context unless it writes to a file: add `-o <file>`"
         ))),
+        Some("env") => {
+            let mut words = args.iter().copied();
+            let mut action = None;
+            while let Some(word) = words.next() {
+                if matches!(word, "--reason" | "--mock-size") {
+                    words.next();
+                } else if !word.starts_with('-') {
+                    action = Some(word);
+                    break;
+                }
+            }
+            match action {
+                Some("mount" | "unmount") => Some(Decision::Deny(
+                    "Blocked by Verrou: `verrou env mount` and `verrou env unmount` are for the user to run in their own terminal: a mounted .env is a file your programs would then open, and each read raises an approval for the user. `verrou env status` is fine."
+                        .to_owned(),
+                )),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -830,10 +943,19 @@ fn decide(agent: Agent, input: &str) -> Decision {
     let Ok(event) = serde_json::from_str::<Value>(input) else {
         return Decision::Allow;
     };
+    let cwd = event
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute());
+    within(cwd, || decide_event(agent, &event))
+}
+
+fn decide_event(agent: Agent, event: &Value) -> Decision {
     let text = |value: &Value, key: &str| value.get(key).and_then(Value::as_str).map(str::to_owned);
     match agent {
         Agent::Claude | Agent::Codex => {
-            let tool = text(&event, "tool_name").unwrap_or_default();
+            let tool = text(event, "tool_name").unwrap_or_default();
             let Some(input) = event.get("tool_input") else {
                 return Decision::Allow;
             };
@@ -854,9 +976,9 @@ fn decide(agent: Agent, input: &str) -> Decision {
             }
         }
         Agent::Cursor => {
-            if let Some(command) = text(&event, "command") {
+            if let Some(command) = text(event, "command") {
                 check_shell(&command)
-            } else if let Some(path) = text(&event, "file_path") {
+            } else if let Some(path) = text(event, "file_path") {
                 if is_secret_path(&path) {
                     deny_file(&path)
                 } else {
@@ -1381,6 +1503,9 @@ mod tests {
         }
         for path in [
             ".env.example",
+            ".env.verrou",
+            ".env.local.verrou",
+            "app/.env.verrou",
             ".env.sample",
             ".env.template",
             "README.md",
@@ -1620,6 +1745,185 @@ mod tests {
             "verrou inject -itemplate.tpl -oconfig.yml",
             "verrou inject --in-file t --out-file config.yml --file-mode 0600",
             "verrou inject -o config.yml < template.tpl",
+        ] {
+            assert!(!blocked(command), "{command} should pass");
+        }
+    }
+
+    #[test]
+    fn mounting_a_env_file_is_allowed_and_reading_it_is_not() {
+        for command in [
+            "verrou env status",
+            "verrou env status --json",
+            "verrou --reason deploy env status",
+            // The map holds references only.
+            "cat .env.verrou",
+            "cat config/.env.local.verrou",
+        ] {
+            assert!(!blocked(command), "{command} should pass");
+        }
+        for command in ["cat .env", "cat .env.local", "source .env"] {
+            assert!(blocked(command), "{command} should be blocked");
+        }
+    }
+
+    #[test]
+    fn an_agent_neither_mounts_nor_unmounts() {
+        for command in [
+            "verrou env mount",
+            "verrou env mount --file .env --map .env.verrou",
+            "verrou env mount --file=.env --background --remember-reads",
+            "verrou env mount --detached",
+            "verrou env unmount",
+            "verrou env unmount --file .env",
+            "verrou env unmount --all",
+            "verrou --reason deploy env mount",
+            "verrou env --reason deploy mount",
+            "sh -c 'verrou env mount --file .env'",
+            "/usr/local/bin/verrou env mount",
+            "sudo verrou env unmount --all",
+        ] {
+            let Decision::Deny(reason) = check_shell(command) else {
+                panic!("{command} should be blocked");
+            };
+            assert!(
+                reason.contains("for the user to run"),
+                "{command}: {reason}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_is_a_secret_whatever_its_name() {
+        let dir = std::env::temp_dir().join(format!("vf-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fifo = dir.join("settings.txt");
+        let link = dir.join("link.txt");
+        let regular = dir.join("plain.txt");
+        nix::unistd::mkfifo(
+            &fifo,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        std::os::unix::fs::symlink(&fifo, &link).unwrap();
+        std::fs::write(&regular, "hello").unwrap();
+        let path = |p: &Path| p.display().to_string();
+        assert!(is_secret_path(&path(&fifo)));
+        assert!(
+            is_secret_path(&path(&link)),
+            "a link to it is the same read"
+        );
+        assert!(!is_secret_path(&path(&regular)));
+        assert!(blocked(&format!("cat {}", path(&fifo))));
+        assert!(blocked(&format!("cat {}", path(&link))));
+        assert!(!blocked(&format!("cat {}", path(&regular))));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_relative_path_is_the_events_folders() {
+        let dir = std::env::temp_dir().join(format!("vc-{}", std::process::id()));
+        let other = dir.join("elsewhere");
+        std::fs::create_dir_all(&other).unwrap();
+        nix::unistd::mkfifo(
+            &dir.join("settings.txt"),
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        std::fs::write(other.join("settings.txt"), "hello").unwrap();
+        let event = |cwd: &Path, tool: &str, input: &str| {
+            format!(
+                r#"{{"hook_event_name":"PreToolUse","tool_name":"{tool}","tool_input":{input},"cwd":"{}"}}"#,
+                cwd.display()
+            )
+        };
+        for (tool, input) in [
+            ("Bash", r#"{"command":"cat settings.txt"}"#),
+            ("Bash", r#"{"command":"cat ./settings.txt"}"#),
+            ("Read", r#"{"file_path":"settings.txt"}"#),
+        ] {
+            // In the folder that holds the FIFO: refused, whatever this
+            // process's own folder is.
+            assert!(
+                decide(Agent::Claude, &event(&dir, tool, input)).is_deny(),
+                "{tool} {input}"
+            );
+            // In another folder the same name is an ordinary file.
+            assert!(
+                !decide(Agent::Claude, &event(&other, tool, input)).is_deny(),
+                "{tool} {input}"
+            );
+        }
+        // Cursor's events carry their folder too.
+        let cursor = format!(
+            r#"{{"command":"cat settings.txt","cwd":"{}"}}"#,
+            dir.display()
+        );
+        assert!(decide(Agent::Cursor, &cursor).is_deny());
+        // The folder is only in force for the decision.
+        assert!(!is_secret_path("settings.txt"));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn looking_at_a_fifo_is_not_reading_it() {
+        let dir = std::env::temp_dir().join(format!("vl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fifo = dir.join(".env");
+        nix::unistd::mkfifo(
+            &fifo,
+            nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
+        )
+        .unwrap();
+        let regular = dir.join("plain.env");
+        std::fs::write(&regular, "A=1").unwrap();
+        let path = |p: &Path| p.display().to_string();
+        for command in [
+            format!("stat {}", path(&fifo)),
+            format!("stat -f %z {}", path(&fifo)),
+            format!("file {}", path(&fifo)),
+            format!("file -b {}", path(&fifo)),
+            format!("ls -l {}", path(&fifo)),
+        ] {
+            assert!(!blocked(&command), "{command} should pass");
+        }
+        // Whatever opens it, or looks at a file that holds values, does not.
+        for command in [
+            format!("cat {}", path(&fifo)),
+            format!("file -s {}", path(&fifo)),
+            format!("file --special-files {}", path(&fifo)),
+            format!("file -bs {}", path(&fifo)),
+            format!("head -1 {}", path(&fifo)),
+            format!("stat {}", path(&regular)),
+            format!("file {}", path(&regular)),
+        ] {
+            assert!(blocked(&command), "{command} should be blocked");
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_container_is_not_given_a_secret_file() {
+        for command in [
+            "docker run --env-file .env alpine env",
+            "docker run --rm --env-file=.env alpine env",
+            "docker compose --env-file .env.production up",
+            "podman run --env-file ~/app/.env img",
+            "docker-compose --env-file=prod.env up",
+            "sudo docker run --env-file .env img",
+            "sh -c 'docker run --env-file .env img'",
+        ] {
+            assert!(blocked(command), "{command} should be blocked");
+        }
+        for command in [
+            "docker run --env-file .env.example alpine env",
+            "docker run -e A=1 alpine env",
+            "docker compose up",
+            "docker build -t x .",
+            "docker run --env-file ./config/app.conf img",
         ] {
             assert!(!blocked(command), "{command} should pass");
         }

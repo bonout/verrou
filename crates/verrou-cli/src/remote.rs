@@ -222,6 +222,9 @@ pub struct Remote {
     /// What the next commands are for, shown in the approval: the command
     /// line and the fields ([`RunDetail`]).
     pub detail: Option<RunDetail>,
+    /// Sent as [`Request::approval_scope`]: the approval of these requests
+    /// is remembered apart from the item's ordinary one.
+    pub approval_scope: Option<String>,
 }
 
 impl Remote {
@@ -236,6 +239,7 @@ impl Remote {
             intent: None,
             ephemeral: false,
             detail: None,
+            approval_scope: None,
         })
     }
 
@@ -249,6 +253,7 @@ impl Remote {
             reason: self.reason.clone(),
             ephemeral_approval: self.ephemeral,
             detail: self.detail.clone(),
+            approval_scope: self.approval_scope.clone(),
             command: command.clone(),
         })
         .map_err(|e| Error::Protocol(e.to_string()))?;
@@ -306,6 +311,18 @@ impl Remote {
     pub fn unlocked(&mut self) -> Result<bool, Error> {
         match self.call(&Command::Status)? {
             ReplyResult::Status { unlocked, .. } => Ok(unlocked),
+            other => Err(Error::Protocol(format!(
+                "unexpected reply: {}",
+                other.kind()
+            ))),
+        }
+    }
+
+    /// What the bridge says it can do beyond the base protocol (the
+    /// `capabilities` of its status; none for an older one).
+    pub fn capabilities(&mut self) -> Result<Vec<String>, Error> {
+        match self.call(&Command::Status)? {
+            ReplyResult::Status { capabilities, .. } => Ok(capabilities),
             other => Err(Error::Protocol(format!(
                 "unexpected reply: {}",
                 other.kind()
