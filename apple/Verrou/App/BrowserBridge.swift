@@ -53,7 +53,9 @@ final class BrowserBridge {
     }
 
     func apply() {
-        guard model.mode == .vaultwarden else { return }
+        // Never on an inert session: with the accounts unavailable the bridge
+        // would answer from nowhere (`AppModel.retryStorage` applies again).
+        guard model.mode == .vaultwarden, model.storageFailure == nil else { return }
         guard enabled else {
             model.session.stopBridge()
             running = false

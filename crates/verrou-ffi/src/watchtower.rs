@@ -289,10 +289,10 @@ impl VaultSession {
 impl VaultSession {
     /// Sites of logins that offer two-factor authentication while the item
     /// has no one-time code. Downloads the full 2fa.directory list (nothing
-    /// from the vault is sent), kept 7 days in the account folder; offline,
+    /// from the vault is sent), kept 7 days in the root `cache/` folder; offline,
     /// the last copy.
     pub async fn two_factor_audit(&self) -> Result<TwoFactorReport, VerrouError> {
-        let dir = self.store()?.dir().to_path_buf();
+        let dir = self.store()?.cache_dir();
         let loaded = verrou_vaultwarden::two_factor_directory::load(&dir).await?;
         self.with_vault(|v| {
             Ok(TwoFactorReport {
@@ -335,7 +335,7 @@ impl VaultSession {
                 })
             });
         };
-        let dir = store.dir().to_path_buf();
+        let dir = store.cache_dir();
         let loaded = verrou_vaultwarden::passkey_directory::load(&dir).await?;
         self.with_vault(|v| {
             Ok(PasskeyReport {
@@ -360,7 +360,7 @@ impl VaultSession {
             })?;
         // Site address according to the cached directory (never downloaded here).
         let site_url = match self.store() {
-            Ok(store) => verrou_vaultwarden::passkey_directory::cached(store.dir())
+            Ok(store) => verrou_vaultwarden::passkey_directory::cached(&store.cache_dir())
                 .and_then(|d| d.lookup(&host).and_then(|s| s.url.clone())),
             Err(_) => None,
         };

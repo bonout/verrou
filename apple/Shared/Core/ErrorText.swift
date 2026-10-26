@@ -35,6 +35,7 @@ enum ErrorText {
             return message.prefix(1).uppercased() + message.dropFirst() + "."
         case .Conflict: return String(localized: "The item changed on the server: sync, then try again.")
         case .RepromptRequired: return String(localized: "This item is protected: confirm your identity first.")
+        case .NewerFormat: return String(localized: "Your accounts were saved by a newer Verrou: update the app.")
         }
     }
 

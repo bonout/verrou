@@ -12,6 +12,8 @@ struct AutoFillRootView: View {
                 switch model.phase {
                 case .noAccount:
                     NoAccountView()
+                case .storageError(let message):
+                    StorageErrorView(message: message)
                 case .locked, .unlocking:
                     AutoFillLockView()
                 case .ready, .working:

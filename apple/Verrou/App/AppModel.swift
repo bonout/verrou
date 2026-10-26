@@ -43,9 +43,13 @@ final class AppModel {
     }
 
     let mode: Mode
-    /// Account folder, in the app's container.
-    let dataDirectory: URL
-    let session: VaultSession
+    /// The account's folder (`accounts/<tag>` under the root): where its
+    /// Touch ID seal lives.
+    private(set) var dataDirectory: URL
+    /// The folder of the files shared by every account (paired iPhones,
+    /// remote escrow) and of the registry of accounts.
+    let rootDirectory: URL
+    private(set) var session: VaultSession
 
     private(set) var lockState: LockState = .locked
     private(set) var account: AccountInfo?
@@ -87,6 +91,13 @@ final class AppModel {
     /// Waiting for a touch on the security key (USB).
     private(set) var securityKeyWaiting = false
     var loginError: String?
+    /// Why the accounts could not be opened (see `VaultAccess.storageError`):
+    /// the window shows it with a Retry button instead of the sign-in or lock
+    /// screen.
+    private(set) var storageFailure: String?
+    /// Unsent changes of an older Verrou left at the root: told once, after
+    /// the first unlock.
+    @ObservationIgnored private var unsentLegacyChanges: UInt32 = 0
     /// Address and email entered, kept for the second factor and to prefill
     /// a new login.
     var loginServer = "https://"
@@ -284,36 +295,34 @@ final class AppModel {
         #if DEBUG
         e2e = environment["VERROU_E2E_SERVER"] != nil
         #endif
-        var directory: URL
+        let root: URL
         if e2e {
             // End-to-end run: a throwaway account, never the real one.
-            directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-data")
-            try? FileManager.default.removeItem(at: directory)
+            root = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-data")
+            try? FileManager.default.removeItem(at: root)
         } else if demo {
-            directory = VerrouStorage.privateDirectory()
+            root = VerrouStorage.privateDirectory()
         } else {
             // Build signed by the team: the app group shared with the
             // autofill extension (and the migration, once); ad hoc build:
             // the private folder, as before.
-            directory = VerrouStorage.accountLocation().directory
+            root = VerrouStorage.rootLocation().root
         }
-        dataDirectory = directory
+        rootDirectory = root
         if demo {
             mode = .demo
+            dataDirectory = root
             session = VaultSession()
         } else {
             mode = .vaultwarden
-            try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
-            session = VaultSession.withStorage(dataDir: dataDirectory.path)
-            account = session.account()
-            biometricEnrolled = BiometricVault.isEnrolled(in: dataDirectory)
-            remote = RemoteApprovals(directory: dataDirectory)
-            unlockKeys = session.securityKeys()
-            pendingChanges = Int(session.pendingChanges())
-            if let account {
-                loginServer = account.server
-                loginEmail = account.email
-            }
+            // The registry (which moves an account saved by an older version
+            // into its own folder, once) and the account the app shows.
+            let access = VaultAccess(location: VerrouStorage.Location(root: root, shared: false))
+            dataDirectory = access.directory
+            session = access.session
+            // Paired iPhones and the escrow are the Mac's, not an account's.
+            remote = RemoteApprovals(directory: root)
+            adopt(access)
         }
         // Decrypted attachments left over from an interrupted session (not
         // during the review: the temporary folder is the real Verrou's).
@@ -322,6 +331,40 @@ final class AppModel {
         Biometrics.refresh()
         remote?.escrowNeeded = { [weak self] in Task { await self?.prepareRemoteEscrow(local: true) } }
         Perf.log.notice("model ready at +\(Perf.msSinceLaunch) ms after launch")
+    }
+
+    /// What the accounts folder says, at launch and after a Retry. When the
+    /// accounts can't be opened nothing is read or started: the window shows
+    /// `storageFailure` and a Retry button, never a sign-in form.
+    private func adopt(_ access: VaultAccess) {
+        dataDirectory = access.directory
+        session = access.session
+        if let error = access.storageError {
+            storageFailure = Self.describe(error)
+            account = nil
+            biometricEnrolled = false
+            unlockKeys = []
+            pendingChanges = 0
+            return
+        }
+        storageFailure = nil
+        unsentLegacyChanges = access.unsentLegacyChanges
+        account = session.account()
+        biometricEnrolled = BiometricVault.isEnrolled(in: dataDirectory)
+        unlockKeys = session.securityKeys()
+        pendingChanges = Int(session.pendingChanges())
+        if let account {
+            loginServer = account.server
+            loginEmail = account.email
+        }
+    }
+
+    /// Opens the accounts again after a failure (the Retry button, and each
+    /// time the app comes to the front), then starts what needed them.
+    func retryStorage() {
+        guard storageFailure != nil, mode == .vaultwarden else { return }
+        adopt(VaultAccess(location: VerrouStorage.Location(root: rootDirectory, shared: false)))
+        if storageFailure == nil { browserBridge?.apply() }
     }
 
     /// Start of the last unlock, and last app activation: to measure what
@@ -358,7 +401,7 @@ final class AppModel {
 
     /// No account on this Mac, or session expired: login screen.
     var needsLogin: Bool {
-        (mode == .vaultwarden && (account == nil || reloginRequired)) || reviewNeedsLogin
+        (mode == .vaultwarden && storageFailure == nil && (account == nil || reloginRequired)) || reviewNeedsLogin
     }
 
     var canUseTouchID: Bool {
@@ -597,6 +640,8 @@ final class AppModel {
             toast = Toast(message: count > 1 ? String(localized: "\(count) unreadable items")
                                              : String(localized: "\(count) unreadable item"),
                           detail: String(localized: "The Bitwarden SDK could not decrypt them"))
+        } else if mode == .vaultwarden, let notice = LegacyNotice.toast(unsent: unsentLegacyChanges) {
+            toast = notice
         }
         if let route = pendingActivityRoute {
             pendingActivityRoute = nil

@@ -231,7 +231,9 @@ struct RootView: View {
             }
             if !unlocked {
                 Group {
-                    if model.needsLogin {
+                    if let failure = model.storageFailure {
+                        StorageErrorView(message: failure) { model.retryStorage() }
+                    } else if model.needsLogin {
                         LoginView()
                     } else {
                         LockView()
@@ -247,6 +249,11 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.15), value: model.lockState)
         .animation(.easeOut(duration: 0.15), value: model.needsLogin)
         .onContinuousHover { _ in model.noteActivity() }
+        // Back to the front: the accounts are tried again if they could not
+        // be opened.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.retryStorage()
+        }
     }
 }
 

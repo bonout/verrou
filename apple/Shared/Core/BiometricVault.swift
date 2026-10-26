@@ -96,7 +96,8 @@ enum BiometricVault {
             ephemeralPublicKey: ephemeral.publicKey.rawRepresentation,
             box: box.combined!)
         let data = try JSONEncoder().encode(sealed)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         try data.write(to: file(in: directory, name: name), options: .atomic)
         #endif
     }
@@ -170,7 +171,8 @@ enum BiometricVault {
             ephemeralPublicKey: ephemeral.publicKey.rawRepresentation,
             box: box.combined!, simulated: true)
         let data = try JSONEncoder().encode(sealed)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
         try data.write(to: url, options: .atomic)
     }
 

@@ -548,14 +548,34 @@ Simulator and the container. `SKIP_BUILD=1`, `KEEP_SIMULATOR=1` and
 
 ### Where the data lives
 
-`VerrouStorage` (in `apple/Shared/Core`) decides where the account folder
+`VerrouStorage` (in `apple/Shared/Core`) decides where Verrou's root folder
 lives: on iPhone, in the `group.app.verrou` app group container, shared with
 the AutoFill extension; without the group (a build with no entitlements), in
-the app's own Application Support folder, and an account found there is
-moved into the group as soon as it exists. On the Mac nothing changes. The
-folder is excluded from backups.
+the app's own Application Support folder, and what is found there is moved
+into the group as soon as it exists (never over a group folder that already
+has something in it). On the Mac, the ad hoc build keeps it in the app's
+container; a team-signed build copies it into the `<team>.app.verrou` group
+once. The root is excluded from backups.
 
-`VaultAccess` (same folder) is the UI-free layer used by both the app and
+Under the root, the Rust core (`verrou_vaultwarden::accounts`, exposed to
+Swift as `Accounts`) keeps a registry, `accounts.json`, and one folder per
+account, `accounts/<tag>/`, with everything that belongs to that account
+(`account.json`, the offline queue, Touch ID / Face ID seals, usage and match
+rules, activity, security keys). What belongs to the device stays at the
+root: `bridge-clients.json`, the Mac's `remote-approval.json` and
+`remote-escrow.json`, and `cache/` (the downloaded 2fa.directory and
+passkeys lists). The apps still show one account, the registry's default.
+
+`Accounts.open(root)` also migrates the account of a version before this
+layout into its folder: the first process to open the root does it, once,
+under a lock the app and its extensions share, by renaming files (nothing is
+copied or deleted, unknown files stay, an interrupted run resumes). No new
+sign-in. Going back to an older version, though, does need one. Code that
+needs the account's folder (the Touch ID seals) takes it from
+`VaultAccess.directory`; code that needs a device-level file takes the root.
+The details and the safety rules are in SECURITY.md, "Where the files live".
+
+`VaultAccess` (the primary account's folder) is the UI-free layer used by both the app and
 the extension: open the vault from that folder with Face ID or the master
 password, list the logins for a site, read a one-time code, sign with a
 passkey, lock. All the work stays in the Rust core.

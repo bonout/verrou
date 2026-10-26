@@ -186,11 +186,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         }
     }
 
-    /// The account folder, without opening the vault (background requests).
+    /// The account's session, without opening the vault (background
+    /// requests): the account folder comes from the registry.
     private static func backgroundSession() -> VaultSession? {
-        let location = VerrouStorage.accountLocation()
-        guard location.shared else { return nil }
-        return VaultSession.forAutofill(dataDir: location.directory.path)
+        let location = VerrouStorage.rootLocation()
+        guard location.shared, let accounts = try? Accounts.forAutofill(root: location.root.path),
+              let tag = try? accounts.primaryTag() else { return nil }
+        return try? accounts.session(tag: tag)
     }
 
     private static let log = Logger(subsystem: "app.verrou.autofill", category: "extension")

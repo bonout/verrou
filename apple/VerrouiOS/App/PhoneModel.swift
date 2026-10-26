@@ -128,6 +128,8 @@ final class PhoneModel {
     private(set) var twoFactorOptions: [TwoFactorOption]?
     private(set) var loginBusy = false
     var loginError: String?
+    /// Why the accounts could not be opened (`VaultAccess.storageError`).
+    private(set) var storageFailure: String?
     var loginServer = "https://"
     var loginEmail = ""
     /// The session has expired: signing in again is needed.
@@ -268,14 +270,14 @@ final class PhoneModel {
         showcase = false
         #endif
         autoFaceID = environment["VERROU_E2E_SERVER"] == nil && environment["VERROU_MOCK"] == nil
-        var location = VerrouStorage.accountLocation()
+        var location = VerrouStorage.rootLocation()
         #if DEBUG
         // End-to-end run: a throwaway account, never the real one.
         if environment["VERROU_E2E_SERVER"] != nil {
             let directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-data")
             try? FileManager.default.removeItem(at: directory)
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            location = VerrouStorage.Location(directory: directory, shared: false)
+            location = VerrouStorage.Location(root: directory, shared: false)
         }
         #endif
         if environment["VERROU_MOCK"] == "1" {
@@ -284,14 +286,10 @@ final class PhoneModel {
         } else {
             mode = .vaultwarden
             vault = VaultAccess(location: location)
-            account = vault.account
-            biometricEnrolled = vault.biometricEnrolled
-            pendingChanges = Int(session.pendingChanges())
-            if let account {
-                loginServer = account.server
-                loginEmail = account.email
-                NetworkWake.nudge(server: account.server)
-            }
+            #if DEBUG
+            fixedLocation = environment["VERROU_E2E_SERVER"] != nil ? location : nil
+            #endif
+            adoptVault()
         }
         Attachments.purge()
         Biometrics.refresh()
@@ -301,9 +299,46 @@ final class PhoneModel {
         Perf.mark("model ready at +\(Perf.msSinceLaunch) ms from launch")
     }
 
+    /// What the accounts folder says, at launch and after a Retry. When the
+    /// accounts can't be opened (protected data not available yet, disk
+    /// full, a registry written by a newer Verrou) nothing was touched and
+    /// nothing is read or started: the app shows `storageFailure` with a
+    /// Retry button, never a sign-in form.
+    private func adoptVault() {
+        if let error = vault.storageError {
+            storageFailure = ErrorText.describe(error)
+            account = nil
+            biometricEnrolled = false
+            pendingChanges = 0
+            return
+        }
+        storageFailure = nil
+        account = vault.account
+        biometricEnrolled = vault.biometricEnrolled
+        pendingChanges = Int(session.pendingChanges())
+        if let account {
+            loginServer = account.server
+            loginEmail = account.email
+            NetworkWake.nudge(server: account.server)
+        }
+    }
+
+    /// Opens the accounts again after a failure: the Retry button, the scene
+    /// becoming active, and the protected data becoming available (the app
+    /// may have been launched in the background, before the first unlock of
+    /// the device).
+    func retryStorage() {
+        guard storageFailure != nil, mode == .vaultwarden else { return }
+        vault = VaultAccess(location: fixedLocation ?? VerrouStorage.rootLocation())
+        adoptVault()
+    }
+
+    /// The location of an end-to-end run (a throwaway folder).
+    @ObservationIgnored private var fixedLocation: VerrouStorage.Location?
+
     /// No account on this iPhone, or session expired: sign-in screen.
     var needsLogin: Bool {
-        mode == .vaultwarden && (account == nil || reloginRequired)
+        mode == .vaultwarden && storageFailure == nil && (account == nil || reloginRequired)
     }
 
     var canUseBiometrics: Bool {
@@ -591,6 +626,8 @@ final class PhoneModel {
         if failures > 0 {
             toast = Toast(message: failures > 1 ? String(localized: "\(failures) unreadable items") : String(localized: "\(failures) unreadable item"),
                           detail: String(localized: "The Bitwarden SDK could not decrypt them"), failure: true)
+        } else if mode == .vaultwarden, let notice = LegacyNotice.toast(unsent: vault.unsentLegacyChanges) {
+            toast = notice
         }
         watchFirstSync = true
         startSyncLoop()
@@ -671,6 +708,7 @@ final class PhoneModel {
             if lockState == .unlocked, autoLockSeconds == 0 { lock() }
             scheduleBackgroundCheck()
         case .active:
+            retryStorage()
             // Back from the background (not from a mere inactive state): the
             // network is woken up during Face ID or before the sync.
             if backgroundedAt != nil, mode == .vaultwarden, let server = account?.server {

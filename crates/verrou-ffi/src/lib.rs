@@ -43,6 +43,7 @@ use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
 
+pub use accounts::{AccountEntry, Accounts};
 pub use preferences::{FolderMatchRule, MatchSettingsView, UriMatchRule};
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
@@ -53,6 +54,7 @@ use verrou_vaultwarden::{
 
 uniffi::setup_scaffolding!();
 
+mod accounts;
 mod activity;
 mod attachments;
 mod autofill;
@@ -153,6 +155,9 @@ pub enum VerrouError {
     /// before handing over its secrets: `authorize_item` afterwards.
     #[error("confirmation required for this item")]
     RepromptRequired,
+    /// The accounts list was written by a newer Verrou: update the app.
+    #[error("made by a newer Verrou: update the app")]
+    NewerFormat,
 }
 
 impl From<verrou_vaultwarden::Error> for VerrouError {
@@ -173,6 +178,10 @@ impl From<verrou_vaultwarden::Error> for VerrouError {
             E::ReadOnly => Self::ReadOnly,
             E::Invalid(message) => Self::Invalid { message },
             E::Conflict => Self::Conflict,
+            E::NewerFormat => Self::NewerFormat,
+            E::AlreadySignedIn(label) => Self::Invalid {
+                message: format!("already signed in as {label}"),
+            },
         }
     }
 }
@@ -2760,12 +2769,13 @@ impl Backend for SessionBackend {
 #[uniffi::export]
 impl VaultSession {
     /// Starts the bridge (port `VERROU_BRIDGE_PORT`, else Verrou's port).
-    /// Paired clients are kept in the account folder.
+    /// Paired clients are kept at the root (pairing is per device, not per
+    /// account).
     pub fn start_bridge(
         self: Arc<Self>,
         delegate: Box<dyn BridgeDelegate>,
     ) -> Result<u16, VerrouError> {
-        let file = self.store()?.dir().join("bridge-clients.json");
+        let file = self.store()?.device_dir().join("bridge-clients.json");
         let mut slot = self.bridge.lock().unwrap_or_else(PoisonError::into_inner);
         if let Some(bridge) = slot.as_ref() {
             return Ok(bridge.port());

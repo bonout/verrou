@@ -6,6 +6,33 @@ tagging (docs/RELEASING.md).
 
 ## Unreleased
 
+**Under the hood**
+- Verrou's files are now laid out for several accounts: a registry
+  (`accounts.json`) and one folder per account (`accounts/<tag>/`). Nothing
+  changes on screen, and you don't sign in again: the first launch after the
+  update moves your account's files into its folder (a rename of each file,
+  never a copy or a deletion, safe to interrupt, shared by the app and the
+  AutoFill extension), whichever of them runs first.
+- **Going back to an older version** (0.5.1 or before) will ask you to sign
+  in again: it doesn't know the new folders. The account in the newer layout
+  stays untouched. **Downgrading leaves unsent offline changes behind**:
+  changes made offline and not sent yet are in the account's own folder,
+  which the older version doesn't read, and the changes the older version
+  queues afterwards stay in its folder. If the older version ran after the
+  update, a leftover `account.json` of the same account that is newer than
+  the one in the new layout replaces it (the previous files are kept in a
+  `superseded-…` folder next to it, never deleted); otherwise it is kept as
+  is, and Verrou tells you once how many changes from the older version were
+  not sent.
+- If Verrou can't open your accounts (disk full, the device not unlocked
+  since it started, a list of accounts written by a newer Verrou), it says
+  so with a Retry button instead of showing the sign-in form, and tries
+  again by itself when you come back to it. The AutoFill extension no longer
+  creates files in an empty folder, so it can't hide your account from the
+  app's first launch after an update.
+- iPhone and Mac: moving an account into the app group can no longer remove
+  a folder that already holds accounts.
+
 **Mac**
 - ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`

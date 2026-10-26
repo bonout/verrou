@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Vault access without UI: where it lives, how to open it (master
 /// password, Face ID / Touch ID), close it again, and look up a site's
@@ -11,34 +12,109 @@ import Foundation
 /// and a secret only when asked for (`reveal`, `totp`).
 ///
 /// Queue writes (sync, offline changes) stay with the app. The extension
-/// opens the shared folder's vault as a guest (`init(autofillAt:)`): it
+/// opens the shared folder's vault as a guest (`autofill(at:)`): it
 /// reads the app's cache and queue, never sends nor writes the queue, and
 /// only writes to the server what can't wait (created passkey, a passkey's
 /// counter), before saving the resynced cache (see SECURITY.md).
+///
+/// The account lives in `accounts/<tag>` under the root (`Accounts`, which
+/// migrates an older single account into it, once, the first time any
+/// process opens the root). The apps still show one account: the registry's
+/// default one, or the folder a first sign-in will fill.
 final class VaultAccess: @unchecked Sendable {
     let location: VerrouStorage.Location
     let session: VaultSession
+    /// The registry of the root; `nil` for the demo vault.
+    let accounts: Accounts?
+    /// The account's tag in the registry; `nil` for the demo vault.
+    let tag: String?
+    /// The account's folder: where the Touch ID and Face ID seals live.
+    let directory: URL
+    /// Why the accounts could not be opened (disk full, protected data not
+    /// available yet, a registry written by a newer Verrou). Then nothing is
+    /// touched and nothing is written anywhere: the session is an inert one
+    /// (no storage, no network), the apps show this error with a Retry
+    /// button instead of the sign-in or lock screen, and start nothing (no
+    /// sync, no bridge).
+    let storageError: Error?
+    /// Unsent offline changes an older Verrou left in the root's
+    /// `outbox.json`, next to an account that was kept: the apps tell the
+    /// user once.
+    let unsentLegacyChanges: UInt32
+    private static let log = Logger(subsystem: "app.verrou", category: "storage")
 
-    /// Vault of this device's account.
-    init(location: VerrouStorage.Location = VerrouStorage.accountLocation()) {
-        self.location = location
-        session = VaultSession.withStorage(dataDir: location.directory.path)
+    private struct Opened {
+        let accounts: Accounts
+        let tag: String
+        let session: VaultSession
+        let directory: URL
     }
 
-    /// AutoFill extension: the same folder, opened as a guest (never sends
-    /// nor writes the app's queue).
-    init(autofillAt location: VerrouStorage.Location) {
+    /// The registry of the root (migrating an older account if this is the
+    /// first process to open it) and the session of its primary account.
+    /// `nil` for the extension when there is no account.
+    private static func open(_ location: VerrouStorage.Location, guest: Bool) throws -> Opened? {
+        let accounts = guest ? try Accounts.forAutofill(root: location.root.path)
+                             : try Accounts.open(root: location.root.path)
+        for notice in accounts.notices() { log.notice("\(notice, privacy: .public)") }
+        guard let tag = try accounts.primaryTag() else { return nil }
+        return Opened(accounts: accounts, tag: tag, session: try accounts.session(tag: tag),
+                      directory: URL(fileURLWithPath: try accounts.directory(tag: tag), isDirectory: true))
+    }
+
+    private init(location: VerrouStorage.Location, opened: Opened) {
         self.location = location
-        session = VaultSession.forAutofill(dataDir: location.directory.path)
+        accounts = opened.accounts
+        tag = opened.tag
+        session = opened.session
+        directory = opened.directory
+        unsentLegacyChanges = opened.accounts.unsentLegacyChanges()
+        storageError = nil
+    }
+
+    /// Vault of this device's account. When the accounts can't be opened,
+    /// `storageError` says why and the session is inert.
+    convenience init(location: VerrouStorage.Location = VerrouStorage.rootLocation()) {
+        do {
+            guard let opened = try Self.open(location, guest: false) else { throw VerrouError.NoAccount }
+            self.init(location: location, opened: opened)
+        } catch {
+            Self.log.error("accounts not opened: \(String(describing: error), privacy: .public)")
+            self.init(location: location, failure: error)
+        }
+    }
+
+    private init(location: VerrouStorage.Location, failure: Error) {
+        self.location = location
+        accounts = nil
+        tag = nil
+        // Never written to: nothing is enrolled or saved while this is set.
+        directory = location.root
+        session = VaultSession()
+        unsentLegacyChanges = 0
+        storageError = failure
+    }
+
+    /// AutoFill extension: the same accounts, opened as a guest (never sends
+    /// nor writes the app's queue). `nil` when no account is signed in;
+    /// throws when the accounts can't be opened (the extension says so,
+    /// rather than "no account").
+    static func autofill(at location: VerrouStorage.Location) throws -> VaultAccess? {
+        guard let opened = try open(location, guest: true) else { return nil }
+        return VaultAccess(location: location, opened: opened)
     }
 
     /// Demo vault (demonstration, screenshots).
     init(mockAt location: VerrouStorage.Location) {
         self.location = location
+        accounts = nil
+        tag = nil
+        directory = location.root
+        storageError = nil
+        unsentLegacyChanges = 0
         session = VaultSession()
     }
 
-    var directory: URL { location.directory }
 
     /// The saved account, if there is one.
     var account: AccountInfo? { session.account() }

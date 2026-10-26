@@ -28,6 +28,7 @@
 //! Security key unlock (`unlock_keys`): the user key sealed by a `YubiKey`'s
 //! `hmac-secret` secret.
 
+pub mod accounts;
 pub mod activity;
 mod api;
 mod attachments;

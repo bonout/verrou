@@ -1,9 +1,15 @@
 import CryptoKit
 import Foundation
 
-/// Where the account's files live: `account.json`, the vault's encrypted
-/// cache, the queue of offline changes, the Touch ID / Face ID seal
-/// (`touchid.json`) and the enrolled security keys.
+/// Where Verrou's files live. The folder (the *root*) holds the registry of
+/// accounts (`accounts.json`), the files shared by every account (paired
+/// clients, remote approvals, `cache/`) and one folder per account in
+/// `accounts/<tag>/`: `account.json`, the vault's encrypted cache, the queue
+/// of offline changes, the Touch ID / Face ID seal (`touchid.json`) and the
+/// enrolled security keys. The Rust core (`Accounts.open`) owns that layout
+/// and moves the single account of an older version into its folder, once,
+/// under a lock the app and its extensions share; `VaultAccess` hands the
+/// account's folder to everything here that needs it (`BiometricVault`).
 ///
 /// - iPhone: the app group container (`appGroupID`), which the AutoFill
 ///   extension shares with the app.
@@ -40,18 +46,18 @@ enum VerrouStorage {
     static let keychainAccessGroup = "app.verrou.shared"
 
     struct Location: Equatable {
-        /// The account folder.
-        let directory: URL
+        /// The root folder (`accounts.json`, `accounts/<tag>/`).
+        let root: URL
         /// In the app group container: visible to the extensions.
         let shared: Bool
     }
 
-    /// This device's account folder, created if needed.
-    static func accountLocation(fileManager: FileManager = .default) -> Location {
+    /// This device's root folder, created if needed.
+    static func rootLocation(fileManager: FileManager = .default) -> Location {
         let location = resolve(groupContainer: groupContainer(fileManager), fileManager: fileManager)
-        try? fileManager.createDirectory(at: location.directory, withIntermediateDirectories: true)
+        try? fileManager.createDirectory(at: location.root, withIntermediateDirectories: true)
         #if os(iOS)
-        excludeFromBackup(location.directory)
+        excludeFromBackup(location.root)
         #endif
         return location
     }
@@ -62,17 +68,17 @@ enum VerrouStorage {
         return support.appending(path: "Verrou", directoryHint: .isDirectory)
     }
 
-    /// The account folder in a group container.
+    /// The root folder in a group container.
     static func sharedDirectory(in groupContainer: URL) -> URL {
         groupContainer.appending(path: "Library/Application Support/Verrou", directoryHint: .isDirectory)
     }
 
     /// Picks the location: the group if it exists (after moving or copying
-    /// there an account left in the private folder), otherwise the private
+    /// there the accounts left in the private folder), otherwise the private
     /// folder. Separate for tests.
     static func resolve(groupContainer: URL?, fileManager: FileManager = .default) -> Location {
         let fallback = privateDirectory(fileManager: fileManager)
-        guard let groupContainer else { return Location(directory: fallback, shared: false) }
+        guard let groupContainer else { return Location(root: fallback, shared: false) }
         let shared = sharedDirectory(in: groupContainer)
         #if os(macOS)
         switch migrateMac(from: fallback, to: shared, fileManager: fileManager) {
@@ -80,13 +86,13 @@ enum VerrouStorage {
             // The group contains something other than an account: we touch
             // nothing, the app keeps its private folder (the extension won't
             // have a vault).
-            return Location(directory: fallback, shared: false)
+            return Location(root: fallback, shared: false)
         case .nothingToDo, .migrated, .finished:
-            return Location(directory: shared, shared: true)
+            return Location(root: shared, shared: true)
         }
         #else
         migrate(from: fallback, to: shared, fileManager: fileManager)
-        return Location(directory: shared, shared: true)
+        return Location(root: shared, shared: true)
         #endif
     }
 
@@ -104,18 +110,70 @@ enum VerrouStorage {
         return fileManager.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
     }
 
-    #if os(iOS)
+    /// Is there an account in this folder? A root `account.json` (an older
+    /// version's), an `accounts.json` that lists at least one account, or an
+    /// `accounts/<tag>/account.json`. An empty registry, an empty `accounts/`
+    /// and the lock file are scaffolding the Rust core or the AutoFill
+    /// extension makes on a device with no account: they are not one.
+    static func hasAccount(in folder: URL, fileManager: FileManager = .default) -> Bool {
+        if fileManager.fileExists(atPath: folder.appending(path: "account.json").path) { return true }
+        if registryListsAnAccount(in: folder, fileManager: fileManager) { return true }
+        return hasAccountFolder(in: folder, fileManager: fileManager)
+    }
+
+    /// `accounts.json` lists one account or more. A file that can't be read
+    /// as a registry counts as one (it may be a newer version's, or damaged:
+    /// never overwritten, never ignored).
+    private static func registryListsAnAccount(in folder: URL, fileManager: FileManager) -> Bool {
+        let url = folder.appending(path: "accounts.json")
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        guard let data = try? Data(contentsOf: url) else { return true }
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let accounts = object["accounts"] as? [Any] else { return true }
+        return !accounts.isEmpty
+    }
+
+    private static func hasAccountFolder(in folder: URL, fileManager: FileManager) -> Bool {
+        let accounts = folder.appending(path: "accounts", directoryHint: .isDirectory)
+        let names = (try? fileManager.contentsOfDirectory(atPath: accounts.path)) ?? []
+        return names.contains { fileManager.fileExists(atPath: accounts.appending(path: $0).appending(path: "account.json").path) }
+    }
+
+    /// Only what Verrou makes on a device with no account sits in this
+    /// folder (`.DS_Store`, `.verrou.lock`, an empty `accounts.json`,
+    /// `accounts/` with no account in it, `cache/`): it makes way for a
+    /// migration. Call it for a folder that has no account.
+    static func isScaffolding(_ folder: URL, fileManager: FileManager = .default) -> Bool {
+        guard let names = try? fileManager.contentsOfDirectory(atPath: folder.path) else { return false }
+        return names.allSatisfy { name in
+            switch name {
+            case ".DS_Store", ".verrou.lock", "cache": true
+            case "accounts.json": !registryListsAnAccount(in: folder, fileManager: fileManager)
+            case "accounts": !hasAccountFolder(in: folder, fileManager: fileManager)
+            default: false
+            }
+        }
+    }
+
     /// An account saved before the group existed (unsigned then signed
-    /// build): we move it rather than asking to sign in again.
-    private static func migrate(from old: URL, to new: URL, fileManager: FileManager) {
-        let oldAccount = old.appending(path: "account.json")
-        guard fileManager.fileExists(atPath: oldAccount.path),
-              !fileManager.fileExists(atPath: new.appending(path: "account.json").path) else { return }
+    /// build): we move it rather than asking to sign in again. Nothing that
+    /// exists is ever erased: a group folder that already has an account (or
+    /// a registry listing one), or that holds anything but Verrou's own
+    /// scaffolding, is left alone, and the old folder stays where it is.
+    static func migrate(from old: URL, to new: URL, fileManager: FileManager = .default) {
+        guard hasAccount(in: old, fileManager: fileManager),
+              !hasAccount(in: new, fileManager: fileManager) else { return }
         try? fileManager.createDirectory(at: new.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? fileManager.removeItem(at: new)
+        if fileManager.fileExists(atPath: new.path) {
+            // The extension may have created its scaffolding first; only
+            // that makes way.
+            guard isScaffolding(new, fileManager: fileManager) else { return }
+            guard (try? fileManager.removeItem(at: new)) != nil else { return }
+        }
         try? fileManager.moveItem(at: old, to: new)
     }
 
+    #if os(iOS)
     /// The encrypted vault doesn't go into iCloud or Finder backups: the
     /// server stays the reference, and the Face ID seal is only valid on
     /// this device.
@@ -148,7 +206,10 @@ enum VerrouStorage {
     /// Copies the account from the Mac app's private folder (`old`) into the
     /// group (`new`), only once, without ever erasing anything:
     ///
-    /// 1. nothing to do if there is no `account.json` in `old`, or if there
+    /// 1. nothing to do if there is no account in `old` (no `account.json`,
+    ///    no registry listing one, no `accounts/<tag>/account.json`: a
+    ///    private folder already moved to the new layout counts, and is
+    ///    copied whole), or if there
     ///    already is one in `new` (in that case, a `migration.json` note
     ///    from `old` signals an interrupted migration: step 4 is
     ///    resumed);
@@ -161,9 +222,8 @@ enum VerrouStorage {
     ///    stays there to go back by hand.
     static func migrateMac(from old: URL, to new: URL, fileManager: FileManager = .default,
                            now: Date = Date()) -> MacMigration {
-        let oldAccount = old.appending(path: "account.json")
-        let hasOld = fileManager.fileExists(atPath: oldAccount.path)
-        if fileManager.fileExists(atPath: new.appending(path: "account.json").path) {
+        let hasOld = hasAccount(in: old, fileManager: fileManager)
+        if hasAccount(in: new, fileManager: fileManager) {
             // Copy done, old folder not renamed yet (hard stop between
             // steps 3 and 4): we finish it.
             guard hasOld, let note = try? Data(contentsOf: new.appending(path: migrationNote)),
@@ -174,11 +234,13 @@ enum VerrouStorage {
         }
         guard hasOld else { return .nothingToDo }
         if fileManager.fileExists(atPath: new.path) {
-            let contents = (try? fileManager.contentsOfDirectory(atPath: new.path)) ?? []
-            guard contents.allSatisfy({ $0 == ".DS_Store" }) else {
+            guard isScaffolding(new, fileManager: fileManager) else {
+                let contents = (try? fileManager.contentsOfDirectory(atPath: new.path)) ?? []
                 return .refused("the group folder already exists, without an account: \(contents.sorted())")
             }
-            try? fileManager.removeItem(at: new)
+            do { try fileManager.removeItem(at: new) } catch {
+                return .refused("the group folder could not be cleared: \(error.localizedDescription)")
+            }
         }
         let parent = new.deletingLastPathComponent()
         let staging = parent.appending(path: ".Verrou-migration-\(UUID().uuidString)", directoryHint: .isDirectory)

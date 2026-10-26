@@ -133,7 +133,7 @@ final class EndToEndDriver {
         check(model.counts?.all == 9 && model.counts?.trashed == 1,
               "9 items decrypted, 1 in the trash (\(model.counts?.all ?? 0), \(model.counts?.trashed ?? 0))")
         check(model.counts?.folders.map(\.name).sorted() == ["Personnel", "Travail"], "folders decrypted")
-        check(model.vault.location.directory.path.contains("verrou-e2e-data"), "account in the throwaway folder")
+        check(model.vault.location.root.path.contains("verrou-e2e-data"), "account in the throwaway folder")
         check(model.biometricEnrolled == Biometrics.isAvailable,
               "Face ID enrolled if available (\(Biometrics.isAvailable ? "yes" : "no"))")
         // The unlock sync first, then one on demand.

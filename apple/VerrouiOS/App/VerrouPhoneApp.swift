@@ -127,7 +127,7 @@ struct RootView: View {
     }
 
     private var showsLock: Bool {
-        !model.needsLogin && (model.lockState != .unlocked || lockOnScreen)
+        !model.needsLogin && model.storageFailure == nil && (model.lockState != .unlocked || lockOnScreen)
     }
 
     var body: some View {
@@ -147,6 +147,10 @@ struct RootView: View {
                         // the sections: only the lock screen fades out.
                         .animation(nil, value: model.lockState)
                         .transition(.asymmetric(insertion: .identity, removal: .opacity))
+                        .zIndex(0)
+                } else if let failure = model.storageFailure {
+                    StorageErrorView(message: failure) { model.retryStorage() }
+                        .transition(.opacity)
                         .zIndex(0)
                 } else if model.needsLogin {
                     LoginView()
@@ -176,6 +180,11 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.needsLogin)
+        // The app may have started before the first unlock of the device,
+        // when the shared folder isn't readable yet.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.protectedDataDidBecomeAvailableNotification)) { _ in
+            model.retryStorage()
+        }
         // Progressive blur toward the app switcher; never when going
         // straight to the background, where the preview is taken at once.
         .animation(scenePhase == .background ? nil : .easeOut(duration: 0.18), value: shielded)

@@ -36,7 +36,8 @@ touches one of these points says so in its description.
   only does the HTTP transport and the conversion to its model.
 - **What is sent**: the authentication hash derived by the SDK, never the
   password. HTTPS required (HTTP only for `localhost`, the tests).
-- **What is on disk** (`account.json`, in the app container, mode 600): the
+- **What is on disk** (`account.json`, in the account's folder under the
+  app container, mode 600; see "Where the files live" below): the
   user key encrypted by the master key, the encrypted private key, the sync
   response as the server sends it (encrypted), and the refresh token
   **encrypted by Verrou with the user key**: without the master password (or
@@ -315,8 +316,9 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   carries only the frame's address, given by the browser, and opens Verrou
   in the background if it is not running (like a passkey request). Cards
   and addresses: only on first entering one of their fields.
-- **What is on disk**: on Verrou's side, `bridge-clients.json` (app
-  container, mode 600) keeps the key of each paired extension; on Brave's
+- **What is on disk**: on Verrou's side, `bridge-clients.json` (root
+  folder of the app container, mode 600, shared by every account: pairing is
+  per device) keeps the key of each paired extension; on Brave's
   or Firefox's side,
   the non-extractable AES key in IndexedDB. These keys give only what the
   extension gives. Settings → *Unlink* revokes a client.
@@ -742,14 +744,14 @@ page ──postMessage──▶ passkeys.js ──▶ background ──encrypted
 - **Two-factor authentication available**: the full list of
   [2fa.directory](https://2fa.directory) (`api.2fa.directory/v3/tfa.json`,
   about 400 KB) is downloaded when the audit opens, at most once a week, and
-  kept in the account folder (`2fa-directory.json`); no request depends on
+  kept in the `cache/` folder (`2fa-directory.json`); no request depends on
   the vault, the comparison with the logins' sites is done on the Mac.
   Offline, the last copy is used. Only HTTPS help links are offered.
 - **Passkey possible**: the full directory of sites that accept passkeys,
   [passkeys.2fa.directory](https://passkeys.2fa.directory)
   (`passkeys-api.2fa.directory/v1/supported.json`, about 75 KB, from the
   same project as 2fa.directory), is downloaded when the audit opens, at
-  most once a week, and kept in the account folder
+  most once a week, and kept in the `cache/` folder
   (`passkeys-directory.json`); no request depends on the vault, the
   comparison with the logins' sites (host, then registrable domain) is done
   on the device. Offline, the last copy is used. Only HTTPS links are
@@ -1002,7 +1004,7 @@ default: nothing happens until an iPhone is paired. Code:
   Face ID** (`.biometryCurrentSet`) — authenticated by an HMAC-SHA256 of the
   secret. A key slipped in by someone who didn't see the QR code is
   refused. The Mac keeps the paired iPhones' public keys in
-  `remote-approval.json` (account folder); Settings › Security removes them.
+  `remote-approval.json` (root folder, not an account's); Settings › Security removes them.
 - **Request**: for each request and each iPhone, the Mac draws an
   ephemeral key; ECDH with the iPhone's key, HKDF-SHA256 (the request's
   identifier as salt) gives one AES-256-GCM key per direction. The content
@@ -1023,7 +1025,7 @@ default: nothing happens until an iPhone is paired. Code:
   Mac** (password, Touch ID, security key), it draws a key K, seals the
   vault key with K (AES-GCM) and K for each iPhone (ECDH with an ephemeral
   key), then forgets K: both boxes are kept for 12 hours, in memory and in
-  `remote-escrow.json` (account folder), sealed again with AES-GCM under a
+  `remote-escrow.json` (root folder), sealed again with AES-GCM under a
   key from an ECDH with a Secure Enclave key of this Mac (no biometrics,
   usable after the first login): an update or a restart of Verrou doesn't
   end it, and the file opens on no other Mac. When the terminal finds the
@@ -1069,19 +1071,113 @@ The Bitwarden SDK accepts any well-formed key (the vault then decrypts to
 zero items): Verrou checks the returned key by decrypting the refresh
 token with it, and refuses it otherwise.
 
+## Where the files live
+
+The apps still show one account, but the files are laid out for several. The
+**root** is the folder the apps always used (the app group container on the
+iPhone and on the team-signed Mac, `Application Support/Verrou` in the
+private container of the ad hoc Mac):
+
+```
+<root>
+  accounts.json         registry (mode 600): tag, server, email, user id,
+                        label, color, order; the default account
+  bridge-clients.json   paired extensions and terminals (per device)
+  remote-approval.json  paired iPhones (Mac, per device)
+  remote-escrow.json    remote approval escrow (Mac, per device)
+  migration.json        note left by the Mac group migration
+  cache/                2fa-directory.json, passkeys-directory.json
+  .verrou.lock          root lock: registry and migration only
+  accounts/<tag>/       one folder per account (mode 700)
+    account.json outbox.json device-id security-keys.json activity.json
+    usage.json match-rules.json ssh-approvals.json passkey-upgrade.json
+    passkeys-pending.json credential-signals.json touchid.json
+    touchid-autofill.json .verrou.lock
+```
+
+- **Tag**: six random characters (`a-z`, `2-7`), local to the device and
+  derived from nothing of the account. It names the folder and is the only
+  identifier that may reach a log (never an email or a label). The registry
+  copies server, email and user id from `account.json`, which already keeps
+  them in clear, so a lock screen doesn't parse the large file; the label
+  and the color are device-only and never sent to a server.
+- **Same account twice**: signing in to a server and user already in the
+  registry is refused before anything is written.
+- **Isolation**: a session is rooted at its own `accounts/<tag>` folder,
+  opens no file outside it, and takes only its own lock; the root lock is
+  taken for the registry and the migration, always before an account's lock,
+  never the other way, and neither is held during a network call (the iOS
+  `0xdead10cc` rule). A test checks that a store writes nothing in another
+  account's folder or at the root.
+- **Migration of the existing account** (no new sign-in): `Registry::open` in
+  the Rust core, under the root lock, so the app, the iPhone extension and
+  the Mac extension all share it, and whichever runs first after an update
+  does it, once. Fresh install: no registry (only the first account saved
+  creates one). The extension opens as a guest: on a folder with neither a
+  registry nor a legacy `account.json` it creates nothing at all (no folder,
+  no lock file), never cleans up, and never reconciles leftovers; the Swift
+  side counts as "an account" only an `account.json`, a registry listing one,
+  or an `accounts/<tag>/account.json`, and Verrou's own scaffolding
+  (`.verrou.lock`, an empty `accounts.json`, `cache/`, `.DS_Store`) never
+  stops the private folder's account from being moved or copied into the app
+  group. Otherwise it creates
+  `accounts/<tag>/` with a `.migrating` marker, **renames** each known file
+  from the root into it (same volume, each rename atomic; `touchid*.json`
+  included: the Secure Enclave seal isn't bound to a path), writes
+  `accounts.json` (temporary file, then rename: the commit point), and
+  removes the marker. Nothing is copied or deleted; a file the layout
+  doesn't know stays where it is; a file already present at the destination
+  is never overwritten. Interrupted at any step (a test stops it before each
+  one), the next opener resumes from the marker. Two threads or two
+  processes opening together migrate once. The public lists move to
+  `cache/`. A signed-out device keeps its `device-id`, so signing in again
+  doesn't register a new device.
+- **Downgrade, then upgrade**: an older version finds no `account.json` at
+  the root and asks to sign in; its new root `account.json` then sits next
+  to `accounts.json`. Never merged. If it is the same account (server and
+  user id) as a registered one and newer than the folder's, the folder's
+  conflicting files are moved into `accounts/<tag>/superseded-<time>/` (never
+  deleted) and the root's renamed in, under the root lock then the account's.
+  Otherwise it stays where it is, and the apps tell the user once how many
+  unsent changes a root `outbox.json` holds. A resumed migration whose
+  registry already exists moves nothing. Going back to an older version
+  needs a new sign-in and leaves unsent offline changes behind.
+- **Damaged registry**: an unreadable `accounts.json` is set aside
+  (`accounts.json.corrupt-<time>`, never deleted) and rebuilt from the
+  account folders, only by `open` under the root lock (a reload or a write
+  that finds it unreadable fails instead); a registry of a newer format stops
+  the open without touching anything, and the apps say "made by a newer
+  Verrou: update the app". When the accounts can't be opened at all, the
+  apps show the error with a Retry button (also on activation, and when the
+  protected data becomes available on the iPhone), create no session on a
+  throwaway folder, offer no sign-in form and start no bridge; the AutoFill
+  extension shows the error rather than "no account".
+- **Sign-ins that never finished**: an `accounts/<tag>` folder with no entry
+  and no `account.json`, untouched for 24 hours, is removed (known files
+  only, never a recursive delete), except the newest one holding a
+  `device-id`; never by the extension. Account folders are created with mode
+  700 by the core, and by `BiometricVault` for the seal.
+
 ## iPhone
 
 The iPhone app (`apple/VerrouiOS`) reuses the Rust core and the rules
 above; what changes:
 
-- **Account folder** (`VerrouStorage`): the container of the
-  `group.app.verrou` app group, shared by the AutoFill extension (see
-  below). Without this group (unsigned simulator build), the app's private
-  folder; an account found there is moved into the group as soon as it
-  exists. The folder is excluded from iCloud and Finder backups. Its
-  content is the Mac's: cache encrypted by the server, encrypted offline
-  queue, `touchid.json`. No security key (`hmac-secret`) on the iPhone: no
-  NFC in this version.
+- **Account folder** (`VerrouStorage`, `VaultAccess`): the root folder is in
+  the container of the `group.app.verrou` app group, shared by the AutoFill
+  extension (see below), and the account lives in `accounts/<tag>/` under
+  it (see "Where the files live"). Without this group (unsigned simulator
+  build), the app's private folder; the accounts found there are moved into
+  the group as soon as it exists: a folder is only ever moved to a group
+  folder that doesn't exist or is empty, and the move **never erases**
+  anything. (An earlier rule, "no `account.json` in the group, so replace
+  it", would have deleted every account once `account.json` moved into
+  `accounts/<tag>/`; "has an account" is now `account.json` or
+  `accounts.json`, and a non-empty folder is never removed. Tested.) The
+  root is excluded from iCloud and Finder backups. The account's content is
+  the Mac's: cache encrypted by the server, encrypted offline queue,
+  `touchid.json`. No security key (`hmac-secret`) on the iPhone: no NFC in
+  this version.
 - **Face ID**: the same sealing as Touch ID (P-256 key agreement key in the
   Secure Enclave, `.biometryCurrentSet`, ECDH + HKDF-SHA256 + AES-GCM).
   Adding or removing a face requires entering the password again.
@@ -1424,8 +1520,8 @@ applies here, with Touch ID instead of Face ID.
   (`VERROU_MAC_TEAM`); the ad hoc build, the default, removes it from the
   bundle before signing and keeps the vault in the app's container, as
   before.
-- **Shared vault**: in a signed build, the account folder is in the app
-  group's container (`~/Library/Group Containers/<team>.app.verrou`),
+- **Shared vault**: in a signed build, the root folder (registry and
+  account folders, "Where the files live") is in the app group's container (`~/Library/Group Containers/<team>.app.verrou`),
   protected by the sandbox: only the app and its extension, signed by the
   team, access it. Nothing there is in plaintext (cache encrypted by the
   server, queue encrypted with the user key, Touch ID sealing bound to this
@@ -1435,7 +1531,11 @@ applies here, with Touch ID instead of Face ID.
   file-by-file check, size and SHA-256, then atomic rename), writes a
   `migration.json` note, and renames the old folder to
   `Verrou-before-group-<date>` without erasing it: the app no longer reads
-  it (a stale offline queue wouldn't go out to the server again). A group
+  it (a stale offline queue wouldn't go out to the server again). An
+  "account" is an `account.json` (older layout) or an `accounts.json` (the
+  layout below): a private folder already moved to the new layout is copied
+  to the group like any other, and a group that already has the registry is
+  never overwritten. A group
   folder that contains something other than an account stops the migration:
   the app then keeps its private folder. Tested on throwaway copies
   (`apple/VerrouMacTests`), never on the real container.

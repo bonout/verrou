@@ -16,6 +16,8 @@ struct AutoFillRootView: View {
                 switch model.phase {
                 case .noAccount:
                     MacNoAccountView()
+                case .storageError(let message):
+                    StorageErrorView(message: message)
                 case .locked, .unlocking:
                     MacLockView()
                 case .ready, .working:

@@ -17,6 +17,10 @@ final class AutoFillModel {
         /// No account in the shared folder (app never opened, or build
         /// without an app group).
         case noAccount
+        /// The accounts could not be opened (disk full, protected data not
+        /// available, a registry written by a newer Verrou): the reason is
+        /// shown, not "no account".
+        case storageError(String)
         case locked
         case unlocking
         case ready
@@ -100,14 +104,25 @@ final class AutoFillModel {
 
     init(complete: @escaping (Completion) -> Void) {
         self.complete = complete
-        let location = VerrouStorage.accountLocation()
+        let location = VerrouStorage.rootLocation()
+        // The shared folder's registry (migrating an older account if the
+        // extension runs before the app after an update); no account, no vault.
+        var opened: VaultAccess?
+        var failure: String?
         if location.shared {
-            let vault = VaultAccess(autofillAt: location)
-            self.vault = vault
-            phase = vault.account == nil ? .noAccount : .locked
+            do {
+                opened = try VaultAccess.autofill(at: location)
+            } catch {
+                Logger(subsystem: "app.verrou.autofill", category: "extension")
+                    .error("accounts not opened: \(String(describing: error), privacy: .public)")
+                failure = ErrorText.describe(error)
+            }
+        }
+        vault = opened
+        if let failure {
+            phase = .storageError(failure)
         } else {
-            vault = nil
-            phase = .noAccount
+            phase = opened?.account == nil ? .noAccount : .locked
         }
         Memory.log("open")
     }

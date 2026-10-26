@@ -729,6 +729,34 @@
         }
       }
     },
+    "%lld changes from an older Verrou were not sent": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld modifications d’une ancienne version de Verrou n’ont pas été envoyées"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Änderungen einer älteren Verrou-Version wurden nicht gesendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cambios de una versión anterior de Verrou no se enviaron"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld modifiche di una versione precedente di Verrou non sono state inviate"
+          }
+        }
+      }
+    },
     "%lld changes refused by the server, cancelled": {
       "localizations": {
         "fr": {
@@ -15933,6 +15961,34 @@
         }
       }
     },
+    "One change from an older Verrou was not sent": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une modification d’une ancienne version de Verrou n’a pas été envoyée"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Änderung einer älteren Verrou-Version wurde nicht gesendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un cambio de una versión anterior de Verrou no se envió"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una modifica di una versione precedente di Verrou non è stata inviata"
+          }
+        }
+      }
+    },
     "One person is waiting for your confirmation in %@.": {
       "localizations": {
         "fr": {
@@ -16237,6 +16293,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Apri l'app Verrou e accedi al tuo server Vaultwarden: i tuoi login verranno poi proposti qui."
+          }
+        }
+      }
+    },
+    "Open the older version of Verrou to send them.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ouvrez l’ancienne version de Verrou pour les envoyer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öffnen Sie die ältere Verrou-Version, um sie zu senden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la versión anterior de Verrou para enviarlos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apri la versione precedente di Verrou per inviarle."
           }
         }
       }
@@ -18589,6 +18673,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Risultati"
+          }
+        }
+      }
+    },
+    "Retry": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reintentar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riprova"
           }
         }
       }
@@ -24333,6 +24445,34 @@
         }
       }
     },
+    "Verrou can't open your accounts": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou n’arrive pas à ouvrir vos comptes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou kann Ihre Konten nicht öffnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou no puede abrir tus cuentas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou non riesce ad aprire i tuoi account"
+          }
+        }
+      }
+    },
     "Verrou fills your logins, codes and passkeys in Safari and the Mac's apps.": {
       "localizations": {
         "fr": {
@@ -25253,6 +25393,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "La tua cassaforte Vaultwarden, sul tuo iPhone."
+          }
+        }
+      }
+    },
+    "Your accounts have not been touched.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos comptes n’ont pas été modifiés."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Konten wurden nicht verändert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus cuentas no se han modificado."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I tuoi account non sono stati modificati."
+          }
+        }
+      }
+    },
+    "Your accounts were saved by a newer Verrou: update the app.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos comptes ont été enregistrés par une version plus récente de Verrou : mettez l’app à jour."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Konten wurden von einer neueren Verrou-Version gespeichert: Aktualisieren Sie die App."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus cuentas las guardó una versión más reciente de Verrou: actualiza la app."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I tuoi account sono stati salvati da una versione più recente di Verrou: aggiorna l’app."
           }
         }
       }

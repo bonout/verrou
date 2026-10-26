@@ -34,6 +34,13 @@ pub enum Error {
     Crypto(String),
     #[error("local storage: {0}")]
     Storage(String),
+    /// Signing in to an account that is already signed in on this device
+    /// (same server and user): the label of the existing one.
+    #[error("already signed in as {0}")]
+    AlreadySignedIn(String),
+    /// `accounts.json` was written by a newer Verrou: this one leaves it alone.
+    #[error("made by a newer Verrou: update the app")]
+    NewerFormat,
 }
 
 impl Error {

@@ -95,10 +95,21 @@ impl Account {
 /// its autofill extension share the account folder.
 const LOCK_FILE: &str = ".verrou.lock";
 
-/// Verrou's folder (in the sandboxed app's container).
+/// The account registry a store reports to (see `accounts`): the root, and
+/// the tag of the account whose folder this store is.
+#[derive(Clone, Debug)]
+struct Binding {
+    root: PathBuf,
+    tag: String,
+}
+
+/// An account's folder (in the sandboxed app's container).
 #[derive(Clone, Debug)]
 pub struct Store {
     dir: PathBuf,
+    /// Set for a store made by `Store::for_account`: saving the account
+    /// records it in the registry, signing out takes it out.
+    binding: Option<Binding>,
     /// Opened by a process other than the app (iOS autofill extension): the
     /// edit queue belongs to the app, it never touches it (neither sending
     /// nor writing). See `Store::guest`.
@@ -109,8 +120,49 @@ impl Store {
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         Self {
             dir: dir.into(),
+            binding: None,
             guest: false,
         }
+    }
+
+    /// The folder of account `tag` under `root` (`accounts/<tag>`), tied to
+    /// the registry: the account enters it when its `account.json` is first
+    /// saved (the duplicate check happens then), and leaves it on sign-out.
+    /// The device-level files (`device_dir`, `cache_dir`) are the root's.
+    pub fn for_account(root: impl Into<PathBuf>, tag: &str) -> Result<Self, Error> {
+        let root = root.into();
+        let dir = root.join(crate::accounts::ACCOUNTS_DIR);
+        if !crate::accounts::valid_tag(tag) {
+            return Err(Error::NotFound);
+        }
+        Ok(Self {
+            dir: dir.join(tag),
+            binding: Some(Binding {
+                root,
+                tag: tag.to_owned(),
+            }),
+            guest: false,
+        })
+    }
+
+    /// Where the files shared by every account live: the root, or this
+    /// folder for a store that isn't tied to a registry (tests, the CLI).
+    pub fn device_dir(&self) -> &Path {
+        self.binding.as_ref().map_or(&self.dir, |b| &b.root)
+    }
+
+    /// Where the public lists downloaded are kept (`cache/` under the root,
+    /// or the folder itself without a registry).
+    pub fn cache_dir(&self) -> PathBuf {
+        self.binding.as_ref().map_or_else(
+            || self.dir.clone(),
+            |b| b.root.join(crate::accounts::CACHE_DIR),
+        )
+    }
+
+    /// The account's tag in the registry, if tied to one.
+    pub fn tag(&self) -> Option<&str> {
+        self.binding.as_ref().map(|b| b.tag.as_str())
     }
 
     /// The same folder, opened as a guest: by the autofill extension, while
@@ -165,15 +217,25 @@ impl Store {
 
     pub fn save_account(&self, account: &Account) -> Result<(), Error> {
         let data = serde_json::to_vec(account).map_err(Error::storage)?;
+        // Registry first (root lock, released before the account's own):
+        // a second sign-in to the same account is refused before anything is
+        // written. A guest only refreshes the cache of a registered account.
+        if let (Some(binding), false) = (&self.binding, self.guest) {
+            crate::accounts::commit_at(&binding.root, &binding.tag, account)?;
+        }
         self.write_private(ACCOUNT_FILE, &data)
     }
 
     pub fn delete_account(&self) -> Result<(), Error> {
         match fs::remove_file(self.dir.join(ACCOUNT_FILE)) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(Error::storage(e)),
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::storage(e)),
         }
+        if let (Some(binding), false) = (&self.binding, self.guest) {
+            crate::accounts::unregister_at(&binding.root, &binding.tag)?;
+        }
+        Ok(())
     }
 
     /// The offline edit queue, as written (encrypted). A file in another
@@ -284,7 +346,7 @@ impl Store {
         name: &str,
         change: impl FnOnce(Option<Vec<u8>>) -> (Option<Vec<u8>>, T),
     ) -> Result<T, Error> {
-        fs::create_dir_all(&self.dir).map_err(Error::storage)?;
+        crate::accounts::create_private_dir_all(&self.dir)?;
         let _lock = self.lock()?;
         let target = self.dir.join(name);
         let (data, result) = change(fs::read(&target).ok());
@@ -325,7 +387,7 @@ impl Store {
     pub(crate) fn write_private(&self, name: &str, data: &[u8]) -> Result<(), Error> {
         use std::sync::atomic::{AtomicU64, Ordering};
         static WRITES: AtomicU64 = AtomicU64::new(0);
-        fs::create_dir_all(&self.dir).map_err(Error::storage)?;
+        crate::accounts::create_private_dir_all(&self.dir)?;
         let target = self.dir.join(name);
         let temp = self.dir.join(format!(
             ".{name}.{}.{}.tmp",
@@ -357,26 +419,33 @@ impl Store {
     /// Exclusive inter-process lock of the folder, released at the end of
     /// the scope (closing the descriptor).
     fn lock(&self) -> Result<DirLock, Error> {
-        let file = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(self.dir.join(LOCK_FILE))
-            .map_err(Error::storage)?;
-        #[cfg(unix)]
-        loop {
-            match rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive) {
-                Ok(()) => break,
-                Err(rustix::io::Errno::INTR) => {}
-                Err(error) => return Err(Error::storage(std::io::Error::from(error))),
-            }
-        }
-        Ok(DirLock(file))
+        lock_dir(&self.dir)
     }
 }
 
-/// Held lock (`Store::lock`): closing the file releases it.
-struct DirLock(#[allow(dead_code)] fs::File);
+/// Exclusive inter-process lock (`flock`) of a folder: its `.verrou.lock`.
+/// The root's lock guards the registry and the migration; an account's
+/// guards its files. Always root first, then account.
+pub(crate) fn lock_dir(dir: &Path) -> Result<DirLock, Error> {
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(LOCK_FILE))
+        .map_err(Error::storage)?;
+    #[cfg(unix)]
+    loop {
+        match rustix::fs::flock(&file, rustix::fs::FlockOperation::LockExclusive) {
+            Ok(()) => break,
+            Err(rustix::io::Errno::INTR) => {}
+            Err(error) => return Err(Error::storage(std::io::Error::from(error))),
+        }
+    }
+    Ok(DirLock(file))
+}
+
+/// Held lock (`lock_dir`): closing the file releases it.
+pub(crate) struct DirLock(#[allow(dead_code)] fs::File);
 
 #[cfg(test)]
 mod tests {
