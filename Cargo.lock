@@ -5046,6 +5046,7 @@ dependencies = [
  "data-encoding",
  "getrandom 0.4.3",
  "hkdf 0.12.4",
+ "icu_properties",
  "p256 0.13.2",
  "rand 0.8.8",
  "serde",

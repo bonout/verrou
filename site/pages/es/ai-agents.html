@@ -42,7 +42,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <ul>
     <li><strong>Nombres, nunca valores.</strong> El agente ve los títulos, los nombres de los campos y las referencias <code>verrou://</code>. Ejecuta comandos con los secretos inyectados y recibe su salida enmascarada.</li>
     <li><strong>Cada llamada aprobada por separado.</strong> Verrou muestra la línea de comandos y los campos que recibe, y aparte lo que el agente dice querer hacer. Apruebe solo comandos que entienda: la máscara solo oculta valores exactos, así que un comando elegido por el agente aún puede entregarle un valor.</li>
-    <li><strong>Una barrera de protección.</strong> <code>verrou hook install</code> impide que el agente lea por su cuenta los archivos <code>.env</code> y las claves privadas, y lo dirige a <code>verrou run</code>.</li>
+    <li><strong>Una barrera de protección.</strong> <code>verrou hook install</code> impide que el agente lea por su cuenta los archivos <code>.env</code> y las claves privadas, y lo dirige a la herramienta <code>verrou_run</code>. Un agente que puede ejecutar comandos aún puede pedir un secreto a Verrou: lee cada aprobación.</li>
   </ul>
 
   <h2>Agente SSH y firma de git</h2>

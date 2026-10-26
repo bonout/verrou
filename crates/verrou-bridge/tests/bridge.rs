@@ -25,6 +25,8 @@ struct FakeBackend {
     vault: Mutex<Vault>,
     unlocked: AtomicBool,
     unlock_requested: AtomicBool,
+    /// Who asked for the last unlock (the client's identifier).
+    unlock_client: Mutex<String>,
     /// The user confirmed the protected items (Touch ID).
     confirmed: AtomicBool,
     pairings: Mutex<mpsc::Sender<PairingRequest>>,
@@ -95,9 +97,11 @@ impl Backend for FakeBackend {
     fn request_unlock(
         &self,
         _kind: ClientKind,
+        client: &str,
         _reason: &str,
         _then: Option<&verrou_bridge::protocol::UnlockIntent>,
     ) {
+        client.clone_into(&mut self.unlock_client.lock().unwrap());
         self.unlock_requested.store(true, Ordering::SeqCst);
     }
 
@@ -284,6 +288,7 @@ fn start_with(
         vault: Mutex::new(Vault::new(items)),
         unlocked: AtomicBool::new(true),
         unlock_requested: AtomicBool::new(false),
+        unlock_client: Mutex::new(String::new()),
         confirmed: AtomicBool::new(false),
         pairings: Mutex::new(sender),
         approve: AtomicBool::new(false),
@@ -490,6 +495,9 @@ fn pairing_then_fill_for_the_matching_site_only() {
         "done"
     );
     assert!(backend.unlock_requested.load(Ordering::SeqCst));
+    // The app is told who asked: what an approval given with the unlock
+    // covers is for that client alone.
+    assert_eq!(*backend.unlock_client.lock().unwrap(), client.id);
     let save_locked = client.request(&json!({ "cmd": "save", "url": "https://github.com/",
         "username": "camille", "password": "x" }));
     assert_eq!(save_locked["result"], "locked");
@@ -993,7 +1001,9 @@ fn an_agents_approval_is_asked_every_time_and_not_remembered() {
     assert_eq!(asked(&backend), 3, "asked for each of the agent's requests");
     {
         let all = backend.confirmations.lock().unwrap();
-        assert_eq!(all[1].command, "curl -d @-  x".replace("  ", " "));
+        // What could pass unseen is spelled out, not dropped.
+        assert_eq!(all[1].command, "curl \\u{202e}-d @- x");
+        assert!(all[1].ephemeral && !all[0].ephemeral);
         assert_eq!(all[1].fields, "GitHub › Password");
         assert_eq!(all[1].reason, "Claude Code: deploy");
         assert_eq!(all[0].command, "", "an ordinary request has no command");
@@ -1009,7 +1019,82 @@ fn an_agents_approval_is_asked_every_time_and_not_remembered() {
     backend.approve.store(false, Ordering::SeqCst);
     assert_eq!(cli.request(&agent)["result"], "denied");
     backend.approve.store(true, Ordering::SeqCst);
-    assert_eq!(cli.request(&agent)["result"], "secret");
+    let _ = std::fs::remove_file(file);
+}
+
+/// After the user refuses an agent's request, that client's next agent
+/// requests are refused unasked for a while: the prompt does not come back.
+/// Ordinary requests (the user's own terminal) are not affected, nor another
+/// client's.
+#[test]
+fn a_refused_agent_request_pauses_that_clients_agent_prompts() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    // Pairings are spaced by a few seconds.
+    std::thread::sleep(Duration::from_millis(3200));
+    let mut other = paired(&bridge, &pairings, "cli");
+    let asked = |backend: &FakeBackend| backend.confirmations.lock().unwrap().len();
+    let reveal = json!({ "cmd": "reveal", "item": "github", "field": "password" });
+    let agent = json!({ "cmd": "reveal", "item": "github", "field": "password",
+        "reason": "Claude Code: deploy", "ephemeral_approval": true });
+
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "denied");
+    assert_eq!(asked(&backend), 1);
+    // The user would now say yes: the agent is not even asked again.
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "denied");
+    assert_eq!(asked(&backend), 1, "no new prompt");
+    // The user's own terminal, and another client, are not paused.
+    assert_eq!(cli.request(&reveal)["result"], "secret");
+    assert_eq!(other.request(&agent)["result"], "secret");
+    assert_eq!(asked(&backend), 3);
+    let _ = std::fs::remove_file(file);
+}
+
+/// An item whose title holds an override or a zero-width character is not
+/// shown as another: the approval gets it cleaned, on one line.
+#[test]
+fn item_titles_are_cleaned_in_the_approval() {
+    let (bridge, backend, pairings, file) = start();
+    {
+        let mut vault = backend.vault.lock().unwrap();
+        let mut item = github();
+        "Git\u{202E}Hub\u{200B}\n— admin".clone_into(&mut item.title);
+        *vault = Vault::new(vec![item]);
+    }
+    let mut cli = paired(&bridge, &pairings, "cli");
+    backend.approve.store(true, Ordering::SeqCst);
+    let reveal = cli.request(&json!({ "cmd": "reveal", "item": "github", "field": "password" }));
+    assert_eq!(reveal["result"], "secret", "{reveal}");
+    assert_eq!(
+        backend.confirmations.lock().unwrap()[0].title,
+        "GitHub — admin"
+    );
+    let _ = std::fs::remove_file(file);
+}
+
+/// A command line or a list of fields that the approval could not show whole
+/// is refused by the bridge, whatever the client checked.
+#[test]
+fn an_agent_command_that_does_not_fit_is_refused() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    backend.approve.store(true, Ordering::SeqCst);
+    let with = |command: &str, fields: Vec<String>| {
+        json!({ "cmd": "reveal", "item": "github", "field": "password",
+            "ephemeral_approval": true,
+            "detail": { "command": command, "fields": fields } })
+    };
+    let long = cli.request(&with(&"x".repeat(201), vec![]));
+    assert_eq!(long["result"], "denied", "{long}");
+    assert!(long["reason"].as_str().unwrap().contains("script file"));
+    let many = cli.request(&with("ls", (0..11).map(|i| format!("F{i}")).collect()));
+    assert_eq!(many["result"], "denied", "{many}");
+    // Nothing was asked, and a command that fits is.
+    assert_eq!(backend.confirmations.lock().unwrap().len(), 0);
+    let fits = cli.request(&with(&"x".repeat(200), vec!["A=Item › Field".to_owned()]));
+    assert_eq!(fits["result"], "secret", "{fits}");
     let _ = std::fs::remove_file(file);
 }
 

@@ -65,6 +65,7 @@ impl Backend for Fake {
         &self,
         _: verrou_bridge::protocol::ClientKind,
         _: &str,
+        _: &str,
         _: Option<&verrou_bridge::protocol::UnlockIntent>,
     ) {
     }
@@ -369,7 +370,7 @@ fn mcp_never_prints_a_secret_value() {
             asked[0].command
         );
         assert!(asked[0].command.contains("echo \"login with $TOKEN\""));
-        assert_eq!(asked[0].fields, "GitHub › Password");
+        assert_eq!(asked[0].fields, "TOKEN=GitHub › Password");
     }
 
     // A custom hidden field is named by its label, or by its identifier.
@@ -439,7 +440,7 @@ fn every_run_is_approved_on_its_own() {
     {
         let asked = world.backend.asked.lock().unwrap();
         assert!(asked[1].command.contains("true"));
-        assert_eq!(asked[1].fields, "GitHub › Password");
+        assert_eq!(asked[1].fields, "T=GitHub › Password");
         assert!(
             asked[3].fields.contains("GitHub › Notes"),
             "{}",
@@ -484,6 +485,36 @@ fn a_plain_reference_alone_runs_nothing() {
     );
     assert!(!error, "{text}");
     assert_eq!(ran["stdout"], "camille\n");
+    assert_eq!(world.asked(), 1);
+    world.finish();
+}
+
+/// A title is resolved by a search that returns its first results only: when
+/// more items match than came back, a second one titled the same may be among
+/// the others, so the title is not enough.
+#[test]
+fn a_title_is_refused_when_the_search_was_cut() {
+    let mut world = World::new();
+    {
+        let mut vault = world.backend.vault.lock().unwrap();
+        let mut items = vault.items().to_vec();
+        items.push(login("mega", "Mega", GITHUB_PASSWORD));
+        items
+            .extend((0..210).map(|i| login(&format!("m{i}"), &format!("Mega {i}"), TWIN_PASSWORD)));
+        *vault = Vault::new(items);
+    }
+    let (error, ran, text) = world
+        .mcp
+        .run("true", &json!({"T": "verrou://Mega/password"}));
+    assert!(error, "{ran} {text}");
+    assert!(text.contains("too many items"), "{text}");
+    assert!(text.contains("identifier"), "{text}");
+    assert_eq!(world.asked(), 0, "nothing was asked");
+    // The identifier still works.
+    let (error, _, text) = world
+        .mcp
+        .run("true", &json!({"T": "verrou://mega/password"}));
+    assert!(!error, "{text}");
     assert_eq!(world.asked(), 1);
     world.finish();
 }

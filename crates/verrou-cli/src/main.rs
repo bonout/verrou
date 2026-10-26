@@ -17,7 +17,7 @@ use serde::Serialize;
 use verrou_bridge::access;
 use verrou_bridge::protocol::{
     Command as Ask, FieldChange, ItemChanges, ItemMove, ItemSummary, ItemView, ReplyResult,
-    UnlockIntent,
+    RunDetail, UnlockIntent,
 };
 use verrou_cli::agent::{self, BridgeKeys, Keys};
 use verrou_cli::config::Config;
@@ -464,7 +464,20 @@ impl Source {
         let mut remote =
             Remote::connect(&config, Endpoint::from_env()).map_err(|e| e.to_string())?;
         remote.reason.clone_from(&cli.reason);
+        // Driven by a coding agent: each approval for this request alone,
+        // never one given earlier to this terminal and never remembered.
+        remote.ephemeral = remote::driven_by_agent();
         Ok(Self::App(remote))
+    }
+
+    /// What the next approvals show: the command line and the references,
+    /// when an agent drives this process ([`remote::driven_by_agent`]).
+    fn describe(&mut self, detail: Option<RunDetail>) {
+        if let Self::App(remote) = self
+            && remote.ephemeral
+        {
+            remote.detail = detail;
+        }
     }
 
     /// What is about to be read: an unlock asked meanwhile carries it, so
@@ -572,7 +585,7 @@ impl Source {
                     Ask::ItemMove { item, to } => {
                         verrou_bridge::items::plan_move(vault, &item, to)?.0
                     }
-                    other => return Err(format!("not a write: {other:?}")),
+                    _ => return Err("not a write".to_owned()),
                 };
                 let (written, id) = access::apply_in_memory(vault, write, "mock-new-item");
                 *vault = written;
@@ -602,7 +615,7 @@ impl Source {
 }
 
 fn unexpected(reply: &ReplyResult) -> String {
-    format!("unexpected reply from Verrou: {reply:?}")
+    format!("unexpected reply from Verrou: {}", reply.kind())
 }
 
 fn run(cli: &Cli) -> Result<(), String> {
@@ -1113,7 +1126,21 @@ fn read_reference(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), String
             run::SCHEME
         ))
     })?;
-    let mut value = Resolver::new(Source::open(cli)?).resolve(&reference)?;
+    let mut source = Source::open(cli)?;
+    if remote::driven_by_agent() {
+        // What the user is asked to approve: the reference and where the
+        // value goes (the terminal the agent reads, or a file).
+        let mut argv = vec!["verrou".to_owned(), "read".to_owned(), reference.to_uri()];
+        if let Some(path) = out_file {
+            argv.extend(["-o".to_owned(), path.display().to_string()]);
+        }
+        source.describe(Some(run::agent_detail(
+            &argv,
+            None,
+            vec![reference.to_uri()],
+        )?));
+    }
+    let mut value = Resolver::new(source).resolve(&reference)?;
     if !no_newline {
         value.push('\n');
     }
@@ -1141,7 +1168,26 @@ fn inject_template(
     let pieces = inject::parse(&template)?;
     let mut filled = Zeroizing::new(String::with_capacity(template.len()));
     if pieces.iter().any(|p| matches!(p, Piece::Secret(_))) {
-        let mut resolver = Resolver::new(Source::open(cli)?);
+        let mut source = Source::open(cli)?;
+        if remote::driven_by_agent() {
+            let mut argv = vec!["verrou".to_owned(), "inject".to_owned()];
+            if let Some(path) = in_file {
+                argv.extend(["-i".to_owned(), path.display().to_string()]);
+            }
+            if let Some(path) = out_file {
+                argv.extend(["-o".to_owned(), path.display().to_string()]);
+            }
+            let mut fields: Vec<String> = Vec::new();
+            for piece in &pieces {
+                if let Piece::Secret(reference) = piece
+                    && !fields.contains(&reference.to_uri())
+                {
+                    fields.push(reference.to_uri());
+                }
+            }
+            source.describe(Some(run::agent_detail(&argv, None, fields)?));
+        }
+        let mut resolver = Resolver::new(source);
         for piece in &pieces {
             match piece {
                 Piece::Text(text) => filled.push_str(text),
@@ -1178,7 +1224,26 @@ fn run_command(cli: &Cli) -> Result<ExitCode, String> {
     let references = run::references(std::env::vars(), &file)?;
     let mut secrets: Vec<(String, Zeroizing<String>)> = Vec::new();
     if !references.is_empty() {
-        let mut resolver = Resolver::new(Source::open(cli)?);
+        let mut source = Source::open(cli)?;
+        if remote::driven_by_agent() {
+            // The command line, as the user will read it, and the variables
+            // that get a secret.
+            let mut argv = vec!["verrou".to_owned(), "run".to_owned()];
+            if let Some(path) = env_file {
+                argv.extend(["--env-file".to_owned(), path.display().to_string()]);
+            }
+            if *no_masking {
+                argv.push("--no-masking".to_owned());
+            }
+            argv.push("--".to_owned());
+            argv.extend(command.iter().cloned());
+            let fields = references
+                .iter()
+                .map(|(name, reference)| format!("{name}={}", reference.to_uri()))
+                .collect();
+            source.describe(Some(run::agent_detail(&argv, None, fields)?));
+        }
+        let mut resolver = Resolver::new(source);
         for (name, reference) in &references {
             let value = resolver
                 .resolve(reference)

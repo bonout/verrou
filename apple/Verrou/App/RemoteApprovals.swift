@@ -403,19 +403,23 @@ final class RemoteApprovals {
     /// `changes`: the fields a terminal write changes. `command`, `fields`: an
     /// AI agent's command line and the secret fields it gets, shown apart from
     /// the reason (empty for anything else).
-    func decide(client: String, purpose: String, title: String, site: String, reason: String, changes: String = "",
-                command: String = "", fields: String = "", scope: String? = nil,
-                local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
+    func decide(client: String, purpose: String, item: String = "", title: String, site: String, reason: String,
+                changes: String = "", command: String = "", fields: String = "", ephemeral: Bool = false,
+                scope: String? = nil, local: @escaping @MainActor (LAContext) async -> Bool) async -> Outcome {
         // The bridge may ask the same thing twice in a row: one request, one
-        // answer for both.
-        let key = [client, purpose, title, site, reason, changes, command, fields, scope ?? ""].joined(separator: "\u{1F}")
-        if let running = deciding[key] { return await running.value }
+        // answer for both. Never for an agent's request (`ephemeral`): each
+        // one is its own question, whatever it looks like, and an answer given
+        // to one is not given to another.
+        let key = ApprovalKey.make(client: client, purpose: purpose, item: item, title: title, site: site,
+                                   reason: reason, changes: changes, command: command, fields: fields,
+                                   ephemeral: ephemeral, scope: scope)
+        if let key, let running = deciding[key] { return await running.value }
         let task = Task {
             await decideOnce(client: client, purpose: purpose, title: title, site: site, reason: reason,
                              changes: changes, command: command, fields: fields, scope: scope, local: local)
         }
-        deciding[key] = task
-        defer { deciding[key] = nil }
+        if let key { deciding[key] = task }
+        defer { if let key { deciding[key] = nil } }
         return await task.value
     }
 

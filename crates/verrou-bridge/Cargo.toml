@@ -18,6 +18,9 @@ rand.workspace = true
 url.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
+# Unicode general categories and default-ignorable code points, to show what
+# an approval says without invisible characters (already in the tree, via `url`).
+icu_properties = "2.1"
 tokio = { workspace = true, features = ["net", "io-util", "time"] }
 # Key agreement and channel encryption: the same primitives as WebCrypto
 # on the extension side (ECDH P-256, HKDF-SHA256, AES-256-GCM).

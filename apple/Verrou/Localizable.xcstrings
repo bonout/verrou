@@ -16689,6 +16689,34 @@
         }
       }
     },
+    "Enter your master password to approve.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez votre mot de passe principal pour approuver."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib dein Master-Passwort ein, um zu genehmigen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduce tu contraseña maestra para aprobar."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci la password principale per approvare."
+          }
+        }
+      }
+    },
     "Enter your master password to show its secrets.": {
       "localizations": {
         "fr": {

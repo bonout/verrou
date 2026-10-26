@@ -1115,17 +1115,24 @@ The terminal must be linked first (`verrou link`). The tools:
   own**, in Verrou on the Mac or on the iPhone, and an approval you gave
   earlier to `verrou get` or `verrou run` does not cover it. The approval
   shows, on separate lines, what will actually happen and what the agent
-  says: *Command: …* (the command line, shortened), *Fields: …* (the
-  secret fields it receives), and *The agent says: “…”* (its reason, which
-  is only its claim, after the name its client gave). At least one
+  says: *Command: …* (the command line, with `cd <dir> &&` in front when it
+  runs elsewhere), *Fields: …* (each variable with the field it receives,
+  `TOKEN=GitHub › Password`), and *The agent says: “…”* (its reason, which
+  is only its claim, after the name its client gave). The command is shown
+  whole, character for character (a line break reads `⏎`, anything invisible
+  is spelled `\u{…}`): a command line over 200 characters, or more than ten
+  secrets, is refused, and the agent is told to put its commands in a script
+  file you can read. At least one
   reference must name a secret field (password, hidden field, notes,
   one-time code, card number…): a call with only plain values would ask
   nobody, so it is refused. The agent gets the exit code and the output
   with the values masked, the last 32 KB of each stream. The command is
   stopped, with what it started, after `timeout_seconds` (300 by default,
   600 at most) or when the client closes the connection; at most 10
-  references per call; after you refuse, the tool waits a minute before
-  asking again.
+  references per call; after you refuse (or don't answer, or an unlock
+  doesn't come), the tool waits a minute before asking again, and Verrou
+  itself ignores that agent's requests for 30 seconds. A client that
+  disconnects while you are being asked gets nothing run.
 - `verrou_generate_password`: a new random password or passphrase. It is not
   from your vault, so it is returned.
 
@@ -1155,9 +1162,30 @@ the agent reads a file or runs a command, it refuses `.env` files (not
 `.npmrc` and `.pypirc` that hold a token, and commands that print them
 (`cat`, `grep`, `git show :.env`, `dd if=`, `printenv`, `env`,
 `echo $GITHUB_TOKEN`, also through `sudo`, `nice`, `timeout`, `sh -c '…'`
-or `python -c '…'`). It also refuses `verrou get`, `verrou totp` and
-`verrou run --no-masking`, which print a secret into the terminal the agent
-reads. It tells the agent to use `verrou_run` or `verrou run` instead.
+or `python -c '…'`), and, for Claude Code, editing them (an edit's result
+shows the lines around it). A key handed to a program that uses it (`ssh -i
+key`, `curl --cert`, `openssl x509 -in`) is fine. It also refuses `verrou get`
+and `verrou totp`, which print a secret into the terminal the agent reads;
+`verrou read` and `verrou inject`, unless they write to a file (`-o`); and
+`verrou run`, which only the `verrou_run` tool replaces (in a shell the agent
+chooses the command and reads what it prints). It tells the agent to use
+`verrou_run` instead.
+
+**The agent's own shell.** `verrou read`, `verrou inject` and `verrou run`
+also work in a shell the agent runs, and there the hook is the only guard.
+When a `verrou` process looks driven by an agent, it asks for each approval on
+its own (never reusing the five minutes you gave your own terminal, never
+leaving one behind) and shows you the command line, the file written and the
+references, like `verrou_run` does; it refuses a command line too long to be
+shown whole. "Looks driven by an agent": `CLAUDECODE`, `CLAUDE_CODE_ENTRYPOINT`
+or `AI_AGENT` (set by Claude Code), `CURSOR_AGENT` or `CURSOR_TRACE_ID`
+(Cursor; the second is set in all its terminals, yours too, which only costs an
+extra question), `CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`, `CODEX_CI`
+or `CODEX_THREAD_ID` (Codex), `GEMINI_CLI`, `OPENCODE`, or `VERROU_AGENT=1`
+(set it for any other agent), or no terminal on its standard input. That is
+a guess an agent can defeat (by unsetting the variables, with a terminal on its
+input). With the hook installed, read this as: an agent with a shell can still
+*ask*; read the approval before you say yes.
 
 ```sh
 verrou hook install claude            # ~/.claude/settings.json (--project: .claude/settings.json)
@@ -1170,8 +1198,10 @@ Installing merges one entry into the agent's configuration (it runs this
 other hooks and the order of the file's keys, does nothing if it is already
 there, replaces the file in one step keeping its permissions, and says what
 it changed. In a project, a settings file or folder that is a symbolic link
-is refused. Claude
-Code gets a `PreToolUse` hook on `Bash`, `Read` and `Grep`; Cursor, the
+is refused; so is the settings file of your own configuration when it is a
+link (a dotfiles repository): add the hook to the file it points to by hand.
+Claude Code gets a `PreToolUse` hook on `Bash`, `Read`, `Grep`, `Edit` and
+`MultiEdit` (running the installer again updates an older entry); Cursor, the
 `beforeShellExecution` and `beforeReadFile` hooks; Codex, a `PreToolUse` hook
 on `Bash` (it does not offer file reads to hooks; it asks you to review a new
 hook with `/hooks`). A hook is a guard rail, not a sandbox: it reads a

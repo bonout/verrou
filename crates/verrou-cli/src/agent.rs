@@ -265,7 +265,7 @@ impl Keys for BridgeKeys {
                     })
                 })
                 .collect()),
-            other => Err(format!("unexpected reply: {other:?}")),
+            other => Err(format!("unexpected reply: {}", other.kind())),
         }
     }
 
@@ -279,7 +279,7 @@ impl Keys for BridgeKeys {
             ReplyResult::Signature { signature } => BASE64
                 .decode(signature.as_bytes())
                 .map_err(|e| e.to_string()),
-            other => Err(format!("unexpected reply: {other:?}")),
+            other => Err(format!("unexpected reply: {}", other.kind())),
         }
     }
 }

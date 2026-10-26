@@ -38,7 +38,7 @@ use crate::passkeys;
 use crate::protocol::{
     CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
     MAX_FRAME, Outgoing, Reply, ReplyResult, Request, RunDetail, SaveAction, SecretValue,
-    Suggestion, UnlockIntent,
+    Suggestion, UnlockIntent, clean_text,
 };
 use crate::ssh;
 
@@ -75,6 +75,14 @@ pub enum ApprovalScope {
 
 /// The time given to the user to answer an approval request.
 const CONFIRMATION_TIMEOUT: Duration = Duration::from_secs(90);
+/// The longest title, folder or client name shown in an approval, and the
+/// longest list of changed fields, in characters.
+const MAX_SHOWN: usize = 120;
+const MAX_CHANGES: usize = 300;
+/// After an agent's request is refused (or left unanswered), this client's
+/// next agent requests are refused unasked for this long: a prompt the user
+/// just declined must not come back, and back again.
+const REFUSAL_PAUSE: Duration = Duration::from_secs(30);
 /// Extension: beyond `BULK_ITEMS` different items released to a
 /// client within `BULK_WINDOW`, each further item requires the user's
 /// approval ([`Purpose::Bulk`]). The client itself asserts the page's
@@ -106,7 +114,15 @@ pub trait Backend: Send + Sync + 'static {
     /// browser), or ask the paired iPhone if the user is away from the Mac
     /// (the terminal). `reason`: the terminal's, cleaned (empty if none);
     /// `then`: what it will read once unlocked, cleaned.
-    fn request_unlock(&self, kind: ClientKind, reason: &str, then: Option<&UnlockIntent>);
+    /// `client`: the identifier of the client that asks, for what the
+    /// approval may then cover ([`Confirmation::client`]).
+    fn request_unlock(
+        &self,
+        kind: ClientKind,
+        client: &str,
+        reason: &str,
+        then: Option<&UnlockIntent>,
+    );
     /// Pairing request: show `code` and ask for approval, then
     /// answer with [`Bridge::answer_pairing`].
     fn pairing_requested(&self, request: PairingRequest);
@@ -197,6 +213,10 @@ pub struct Confirmation {
     /// without. Unlike the reason, this is what will actually run.
     pub command: String,
     pub fields: String,
+    /// An agent's request ([`crate::protocol::Request::ephemeral_approval`]):
+    /// it is approved on its own, and nothing the user said earlier (the
+    /// iPhone's unlock, a recent approval) covers it.
+    pub ephemeral: bool,
 }
 
 /// Approvals still valid: (client, purpose, item) → time of the approval
@@ -209,6 +229,8 @@ struct Shared {
     pending: Mutex<Option<(String, oneshot::Sender<bool>)>>,
     last_pairing: Mutex<Option<Instant>>,
     approvals: Mutex<Approvals>,
+    /// When each client's last agent request was refused ([`REFUSAL_PAUSE`]).
+    refusals: Mutex<HashMap<String, Instant>>,
     /// Extension: items released recently, per client ([`within_limits`]).
     releases: Mutex<HashMap<String, Vec<(String, Instant)>>>,
     /// `manifest.json` of the extension shipped with the app: read again on every
@@ -236,6 +258,7 @@ impl Bridge {
             pending: Mutex::new(None),
             last_pairing: Mutex::new(None),
             approvals: Mutex::new(HashMap::new()),
+            refusals: Mutex::new(HashMap::new()),
             releases: Mutex::new(HashMap::new()),
             extension_manifest: Mutex::new(None),
         });
@@ -464,6 +487,7 @@ async fn pair(
     }
 }
 
+#[allow(clippy::too_many_lines)] // one arm per command, readable in one go
 async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
     let bad = Outgoing::Error {
         code: ErrorCode::BadRequest,
@@ -492,6 +516,17 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
             reason: "command not allowed for this client".to_owned(),
         },
+        // An agent's command that does not fit in the approval is not
+        // approved half shown (the client refuses it first; this is for one
+        // that does not).
+        _ if request.detail.as_ref().is_some_and(|d| !d.fits()) => ReplyResult::Denied {
+            reason: request
+                .detail
+                .as_ref()
+                .and_then(|d| d.check().err())
+                .unwrap_or(crate::protocol::COMMAND_TOO_LONG)
+                .to_owned(),
+        },
         Command::Status => ReplyResult::Status {
             unlocked: backend.is_unlocked(),
             extension_version: lock(&shared.extension_manifest)
@@ -513,7 +548,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
         | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
         Command::Unlock { then } => {
             let then = then.map(|intent| intent.cleaned());
-            backend.request_unlock(info.kind, &reason, then.as_ref());
+            backend.request_unlock(info.kind, &info.id, &reason, then.as_ref());
             ReplyResult::Done
         }
         Command::Check {
@@ -665,15 +700,16 @@ impl<'a> Terminal<'a> {
     ) -> Confirmation {
         Confirmation {
             client: client.id.clone(),
-            client_name: client.name.clone(),
+            client_name: clean_text(&client.name, MAX_SHOWN),
             purpose,
             item: item.to_owned(),
-            title: title.to_owned(),
-            site: site.to_owned(),
+            title: clean_text(title, MAX_SHOWN),
+            site: clean_text(site, MAX_SHOWN),
             reason: self.reason.to_owned(),
             changes: String::new(),
             command: self.detail.command.clone(),
             fields: self.detail.fields_line(),
+            ephemeral: self.ephemeral,
         }
     }
 }
@@ -684,7 +720,14 @@ impl<'a> Terminal<'a> {
 async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> bool {
     let (purpose, item) = (request.purpose, request.item.clone());
     let entry = (request.client.clone(), purpose, item.clone());
-    if !ephemeral {
+    if ephemeral {
+        // A prompt the user just declined for this client does not come back.
+        let mut refusals = lock(&shared.refusals);
+        refusals.retain(|_, at| at.elapsed() < REFUSAL_PAUSE);
+        if refusals.contains_key(&request.client) {
+            return false;
+        }
+    } else {
         let mut approvals = lock(&shared.approvals);
         approvals.retain(|_, (at, scope)| approval_holds(*at, *scope, Instant::now()));
         if approvals.contains_key(&entry) {
@@ -694,6 +737,11 @@ async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> boo
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
         .unwrap_or(false);
+    if !granted && ephemeral && shared.backend.is_unlocked() {
+        // Declined or left unanswered (a vault that locked meanwhile is
+        // neither).
+        lock(&shared.refusals).insert(entry.0.clone(), Instant::now());
+    }
     if granted && !ephemeral {
         let scope = effective_scope(shared, purpose, &item);
         if scope != ApprovalScope::EveryTime {
@@ -867,7 +915,7 @@ async fn terminal(
         }
         command @ (Command::ItemCreate { .. }
         | Command::ItemEdit { .. }
-        | Command::ItemMove { .. }) => item_write(shared, client, command, reason).await,
+        | Command::ItemMove { .. }) => item_write(shared, client, command, ask).await,
         Command::Unlink => {
             lock(&shared.clients).remove(&client.id);
             lock(&shared.approvals).retain(|(id, _, _), _| *id != client.id);
@@ -928,7 +976,7 @@ async fn item_write(
     shared: &Shared,
     client: &ClientInfo,
     command: Command,
-    reason: &str,
+    ask: &Terminal<'_>,
 ) -> ReplyResult {
     let backend = &*shared.backend;
     // Built twice: to ask for the approval, then for the app to carry out.
@@ -1012,14 +1060,10 @@ async fn item_write(
     };
     // Never remembered (`effective_scope`): each write asks.
     let request = Confirmation {
-        changes,
-        ..Terminal {
-            reason,
-            ..Terminal::default()
-        }
-        .confirmation(client, purpose, &item, &title, &folder)
+        changes: clean_text(&changes, MAX_CHANGES),
+        ..ask.confirmation(client, purpose, &item, &title, &folder)
     };
-    if !approve(shared, request, false).await {
+    if !approve(shared, request, ask.ephemeral).await {
         return refused_or_locked(backend);
     }
     match plan(command) {

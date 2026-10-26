@@ -947,23 +947,51 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
     agent's approval covers nothing after it; one prompt per secret
     reference;
   - the approval shows what will run, not only what the agent says: the
-    command line (quoted, at most 200 characters) and the secret fields
-    ("GitHub › Password") travel in the request, are cleaned by the bridge
-    (control and invisible formatting characters, including bidirectional
-    overrides, are dropped, in the reason too), and are displayed on the Mac
-    and on the iPhone on lines of their own, apart from the agent's reason,
-    which is labelled as the agent's claim. The name in front of the reason
-    is `clientInfo.name` from the MCP handshake: self-declared, so it proves
-    nothing about which program asks;
+    command line (quoted as a shell would need it, with `cd <dir> &&` in
+    front when `cwd` is set) and each variable with the field it gets
+    (`TOKEN=GitHub › Password`) travel in the request and are displayed on
+    the Mac and on the iPhone on lines of their own, apart from the agent's
+    reason, which is labelled as the agent's claim. What is shown is whole
+    or not at all: a command line over 200 characters (as rendered), or
+    more than ten fields or one over 100 characters, is **refused** (by the
+    MCP server, by the CLI for an agent, and again by the bridge), with a
+    message telling the agent to put the commands in a script file the user
+    can read. The bridge renders the command character for character: a
+    line break reads `⏎`, a tab `⇥`, any other control character, unusual
+    white space or invisible character `\u{…}`; nothing is flattened into a
+    space or dropped, so `echo hi⏎rm x` does not read as one command. Other
+    texts shown (the reason, item titles, folders, client names, the names
+    of the fields a write changes) are cleaned: one line, and every
+    character of the Unicode general category `Cf` (bidirectional overrides
+    and isolates, zero-width characters, the byte order mark…) or with the
+    Default_Ignorable_Code_Point property (variation selectors, Hangul
+    fillers…) removed, taken from the Unicode data (`icu_properties`), not a
+    hand-kept table. The name in front of the reason is `clientInfo.name`
+    from the MCP handshake: self-declared, so it proves nothing about which
+    program asks;
   - no approval is skipped: `verrou_run` needs at least one reference to a
     secret field (password, hidden field, notes, one-time code, card number
     or code, SSH private key), because a plain field (username, site) is
     given without any approval, and refuses `env` values that are not
     references; references resolve exactly (identifier, or a title only one
-    item has; no approximate search), and an unlock requested meanwhile
-    never carries an approval for the item;
-  - a refusal pauses the tool for 60 seconds, a call names at most 10
-    references, and commands run in their own process group, killed whole at
+    item has; no approximate search, and no title at all when the search
+    returned fewer results than it matched: a second item with the title
+    could be among the rest). Titles only reach active items; an archived or
+    trashed item is reachable by its identifier alone. An unlock requested
+    meanwhile never carries an approval for the item, and the iPhone's
+    "unlock and read this item" approval is applied by the Mac to that item
+    only by identifier (a title shared by two items gives no grant), for the
+    terminal that asked (bound to its client identifier), once, within a
+    minute, and never to an agent's request (`ephemeral_approval`, or one
+    carrying a command);
+  - a refusal pauses the tool for 60 seconds (a declined or unanswered
+    approval, an unlock that was declined or never came: the vault stayed
+    locked, all count), and the bridge itself stops asking for 30 seconds
+    after it: a client's agent requests are refused unasked, with nothing
+    shown to the user, for that long (the user's own terminal requests are
+    not affected). A call names at most 10 references, a command is not
+    started if the client closed its connection while the approval was
+    pending, and commands run in their own process group, killed whole at
     the time limit (600 seconds at most) or when the client closes its
     input;
   - the server cannot write to the vault: it has no tool that creates or
@@ -978,13 +1006,61 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
   - the hooks are a guard rail, not a sandbox: they refuse the obvious ways
     an agent could read `.env` files, private keys, cloud credentials or
     token variables into its context (through the usual wrappers, `sh -c`,
-    a few interpreters' one-liners and `git show`), refuse `verrou get`,
-    `verrou totp` and `verrou run --no-masking`, and point it to `verrou
-    run`; a determined agent can get around them, and a hook that cannot
-    read its input allows the call. They add no network connection and read
-    no vault. The installer runs this `verrou` by its absolute path, writes
-    the agent's settings through a temporary file and a rename keeping the
-    permissions, and refuses a symbolic link in a project.
+    a few interpreters' one-liners and `git show`; an edit tool's `file_path`
+    too, since an edit's result shows the lines around it), and point it to
+    the `verrou_run` MCP tool; a determined agent can get around them, and a
+    hook that cannot read its input allows the call. A key handed to a
+    program that uses it (`ssh -i`, `curl --cert`, `openssl x509 -in`) is not
+    treated as a key being read; `wc` and the like are not readers. They add
+    no network connection and read no vault. The installer runs this
+    `verrou` by its absolute path and writes the agent's settings through a
+    temporary file created new (`O_EXCL`, random name, so a link planted at
+    its name is never followed; its mode is set on the open file, never on
+    a path) and a rename that keeps the permissions. A symbolic link as the
+    settings file is refused, in a project and in the user's own
+    configuration alike (it would write somewhere else, or replace the
+    link), as is a project folder that is a link.
+  - **the agent's own shell is not the MCP server.** An agent that can run
+    shell commands can run `verrou read`, `verrou inject` or `verrou run`
+    in them, where it picks the command *and* reads what it prints, and
+    where a plain terminal approval (cached five minutes per client,
+    purpose and item, shared by every process of this terminal's link)
+    would apply. Two layers, neither a guarantee: (1) the hook refuses
+    `verrou get` and `verrou totp`, `verrou read` and `verrou inject`
+    unless they write to a file (`-o`/`--out-file`, not `-`, a descriptor or
+    `/dev/tty`), and `verrou run` altogether, pointing to `verrou_run`;
+    (2) the CLI itself, when the process looks driven by an agent, sends
+    the request as an agent's (`ephemeral_approval`: asked every time, never
+    reusing or leaving an approval) with the command line, the output file
+    and the references, and refuses a command line that does not fit in the
+    approval. "Looks driven by an agent" means one of these environment
+    variables is set (and not `0`/`false`): `AI_AGENT`, `CLAUDECODE`,
+    `CLAUDE_CODE_ENTRYPOINT` (both seen in Claude Code's own shell),
+    `CURSOR_AGENT`, `CURSOR_TRACE_ID` (set in every terminal of the editor,
+    the user's too: one extra question, no danger), `CODEX_SANDBOX`,
+    `CODEX_SANDBOX_NETWORK_DISABLED`, `CODEX_CI`, `CODEX_THREAD_ID`,
+    `GEMINI_CLI`, `OPENCODE`, `VERROU_AGENT` (for any other agent, set by
+    whoever starts it), or standard input is not a terminal. `CODEX_HOME`
+    is not on the list (it is the user's own setting). Only the Claude Code
+    names were checked on a running agent; the others come from the agents'
+    documentation and the `AI_AGENT` convention. This can only ever add a
+    question for the user, never remove one, and an agent that unsets the
+    variables and runs with a terminal on its input escapes the second
+    layer; with the hook uninstalled or bypassed, a `verrou read` by an
+    agent whose approval the user gives prints the value into its context.
+    **The limit, plainly: an agent with a shell can still ask for a secret;
+    what stops it from getting one is the user reading the approval.**
+  - a protected item ("master password re-prompt") confirmed for a
+    terminal request is confirmed under the same text as the approval (what
+    is written or run, the fields, the agent's reason), on the Touch ID
+    sheet and in the master password dialog, not under "show": a write on a
+    protected item says "modify" or "move to the trash";
+  - values stay out of logs: `SecretValue`, `Credentials` and `FormData`
+    have `Debug` implementations that print no value (like a write's
+    `FieldChange`), and messages about an unexpected reply name its kind
+    only. The iPhone approval requests of an agent are never merged with
+    another one, and two requests are only one if they name the same item by
+    identifier, not only the same title.
 - **SSH keys**: the private key (OpenSSH, as Vaultwarden keeps it) never
   leaves the app. Verrou signs (RustCrypto's `ssh-key` crate) and only
   returns the signature; the agent only sees the public keys. Keys

@@ -42,7 +42,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <ul>
     <li><strong>Des noms, jamais des valeurs.</strong> L'agent voit les titres, les noms de champs et les références <code>verrou://</code>. Il lance des commandes avec les secrets injectés et reçoit leur sortie masquée.</li>
     <li><strong>Chaque appel validé à part.</strong> Verrou montre la ligne de commande et les champs qu’elle reçoit, et séparément ce que l’agent dit vouloir faire. N’approuvez que des commandes que vous comprenez : le masque ne cache que les valeurs exactes, donc une commande choisie par l’agent peut tout de même lui donner une valeur.</li>
-    <li><strong>Un garde-fou.</strong> <code>verrou hook install</code> empêche l'agent de lire de lui-même les fichiers <code>.env</code> et les clés privées, et le renvoie vers <code>verrou run</code>.</li>
+    <li><strong>Un garde-fou.</strong> <code>verrou hook install</code> empêche l'agent de lire de lui-même les fichiers <code>.env</code> et les clés privées, et le renvoie vers l'outil <code>verrou_run</code>. Un agent qui peut lancer des commandes peut quand même demander un secret à Verrou : lisez chaque approbation.</li>
   </ul>
 
   <h2>Agent SSH et signature git</h2>

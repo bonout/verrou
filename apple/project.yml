@@ -206,6 +206,9 @@ targets:
       - path: Shared/Core/FolderNode.swift
       - path: VerrouAutoFill/RecentFill.swift
       - path: Shared/Core/PinnedCodes.swift
+      - path: Verrou/App/UnlockGrant.swift
+      - path: Verrou/App/ApprovalKey.swift
+      - path: Verrou/App/ApprovalPrompt.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests

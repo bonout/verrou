@@ -17,11 +17,33 @@
 use std::fmt::Write as _;
 use std::io::{self, Read, Write};
 
-use verrou_bridge::protocol::FieldView;
+use std::path::Path;
+
+use verrou_bridge::protocol::{FieldView, RunDetail, command_line};
 use zeroize::Zeroizing;
 
 pub const SCHEME: &str = "verrou://";
 pub const CONCEALED: &str = "<concealed by Verrou>";
+
+/// What the approval shows of a command an agent drives: the command line
+/// as a shell would need it (with `cd <dir> &&` in front when it runs
+/// elsewhere), and the fields it gets, `NAME=Item › Field`. `Err`: it does
+/// not fit in the approval, and the agent must be told to use a script file
+/// instead ([`RunDetail::check`]).
+pub fn agent_detail(
+    argv: &[String],
+    cwd: Option<&Path>,
+    fields: Vec<String>,
+) -> Result<RunDetail, String> {
+    let mut command = command_line(argv);
+    if let Some(cwd) = cwd {
+        let cd = command_line(&["cd".to_owned(), cwd.display().to_string()]);
+        command = format!("{cd} && {command}");
+    }
+    let detail = RunDetail { command, fields };
+    detail.check().map_err(str::to_owned)?;
+    Ok(detail)
+}
 
 /// A field of an item, to resolve.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -425,5 +447,23 @@ mod tests {
         let mut out = Vec::new();
         pump(&b"hello\nworld\n"[..], &mut out, Masker::new(["unrelated"])).unwrap();
         assert_eq!(out, b"hello\nworld\n");
+    }
+
+    #[test]
+    fn an_agents_command_is_shown_whole_or_refused() {
+        let argv = |args: &[&str]| args.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>();
+        let detail = agent_detail(
+            &argv(&["sh", "-c", "echo $T"]),
+            Some(Path::new("/work/my app")),
+            vec!["T=verrou://A/password".to_owned()],
+        )
+        .unwrap();
+        assert_eq!(detail.command, "cd '/work/my app' && sh -c 'echo $T'");
+        assert_eq!(detail.fields, ["T=verrou://A/password"]);
+        let long = "x".repeat(300);
+        let error = agent_detail(&argv(&["echo", &long]), None, vec![]).unwrap_err();
+        assert!(error.contains("script file"), "{error}");
+        let many: Vec<String> = (0..11).map(|i| format!("V{i}=verrou://A/f{i}")).collect();
+        assert!(agent_detail(&argv(&["true"]), None, many).is_err());
     }
 }

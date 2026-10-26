@@ -24,6 +24,56 @@ const READ_TIMEOUT: Duration = Duration::from_secs(150);
 /// The time given to the user to unlock the vault.
 const UNLOCK_WAIT: Duration = Duration::from_secs(60);
 
+/// Environment variables that say a coding agent runs this process. Set by
+/// the agent itself, for what it launches: Claude Code (`CLAUDECODE`,
+/// `CLAUDE_CODE_ENTRYPOINT`, and the generic `AI_AGENT`, all seen in its
+/// own shell), Cursor's agent (`CURSOR_AGENT`; `CURSOR_TRACE_ID` is set in
+/// every terminal of the editor, the user's included: an extra question, not
+/// a danger), Codex (`CODEX_SANDBOX`, `CODEX_SANDBOX_NETWORK_DISABLED`,
+/// `CODEX_CI`, `CODEX_THREAD_ID`), Gemini CLI (`GEMINI_CLI`), `OpenCode`
+/// (`OPENCODE`), and `VERROU_AGENT` for any other (set it in the agent's
+/// environment). `CODEX_HOME` is not on the list: it is the user's own
+/// setting, often exported everywhere. Only the Claude Code names were
+/// checked on a running agent; the others come from the agents' documentation
+/// and the `AI_AGENT` convention. A guess at best: an agent can unset these,
+/// and a pipe in place of a terminal ([`driven_by_agent`]) is the other sign.
+pub const AGENT_VARIABLES: &[&str] = &[
+    "AI_AGENT",
+    "CLAUDECODE",
+    "CLAUDE_CODE_ENTRYPOINT",
+    "CURSOR_AGENT",
+    "CURSOR_TRACE_ID",
+    "CODEX_SANDBOX",
+    "CODEX_SANDBOX_NETWORK_DISABLED",
+    "CODEX_CI",
+    "CODEX_THREAD_ID",
+    "GEMINI_CLI",
+    "OPENCODE",
+    "VERROU_AGENT",
+];
+
+/// Does this process look driven by a coding agent: one of
+/// [`AGENT_VARIABLES`] set (and not `0` or `false`), or no terminal on its
+/// standard input (an agent's shell gives its commands a pipe or nothing; a
+/// person types in a terminal)? Then its requests are approved one by one
+/// and show the command ([`Remote::ephemeral`]): this only ever adds a
+/// question for the user, never removes one. `env` reads a variable.
+pub fn driven_by_agent_with(env: impl Fn(&str) -> Option<String>, stdin_is_terminal: bool) -> bool {
+    !stdin_is_terminal
+        || AGENT_VARIABLES.iter().any(|name| {
+            env(name).is_some_and(|value| {
+                let value = value.trim();
+                !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+            })
+        })
+}
+
+/// [`driven_by_agent_with`], for this process.
+pub fn driven_by_agent() -> bool {
+    use std::io::IsTerminal as _;
+    driven_by_agent_with(|name| std::env::var(name).ok(), io::stdin().is_terminal())
+}
+
 /// Where to reach Verrou.
 #[derive(Clone, Copy, Debug)]
 pub struct Endpoint {
@@ -165,8 +215,9 @@ pub struct Remote {
     /// What the next commands read: sent with an unlock request, so that
     /// one approval on the iPhone unlocks and lets this item out.
     pub intent: Option<UnlockIntent>,
-    /// An AI agent's requests (`verrou mcp`): each approval is asked on its
-    /// own and never remembered ([`Request::ephemeral_approval`]).
+    /// An AI agent's requests (`verrou mcp`, or a command line that looks
+    /// driven by one, [`driven_by_agent`]): each approval is asked on its own
+    /// and never remembered ([`Request::ephemeral_approval`]).
     pub ephemeral: bool,
     /// What the next commands are for, shown in the approval: the command
     /// line and the fields ([`RunDetail`]).
@@ -255,7 +306,10 @@ impl Remote {
     pub fn unlocked(&mut self) -> Result<bool, Error> {
         match self.call(&Command::Status)? {
             ReplyResult::Status { unlocked, .. } => Ok(unlocked),
-            other => Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
+            other => Err(Error::Protocol(format!(
+                "unexpected reply: {}",
+                other.kind()
+            ))),
         }
     }
 
@@ -272,5 +326,55 @@ impl Remote {
             std::thread::sleep(Duration::from_millis(500));
         }
         Err(Error::Locked)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn env<'a>(set: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |name| {
+            set.iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    }
+
+    #[test]
+    fn a_person_at_a_terminal_is_not_an_agent() {
+        assert!(!driven_by_agent_with(env(&[]), true));
+        // Other variables, and the user's own Codex setting, say nothing.
+        assert!(!driven_by_agent_with(
+            env(&[("CODEX_HOME", "/home/me/.codex"), ("TERM", "xterm")]),
+            true
+        ));
+        // Set to nothing, or off.
+        for off in ["", "0", "false", "FALSE", " "] {
+            assert!(
+                !driven_by_agent_with(env(&[("CLAUDECODE", off)]), true),
+                "{off:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_agents_variables_or_a_missing_terminal_say_it_is_one() {
+        for name in AGENT_VARIABLES {
+            assert!(driven_by_agent_with(env(&[(name, "1")]), true), "{name}");
+        }
+        for (name, value) in [
+            ("CLAUDECODE", "1"),
+            ("CLAUDE_CODE_ENTRYPOINT", "cli"),
+            ("AI_AGENT", "claude-code"),
+            ("CURSOR_AGENT", "1"),
+            ("CURSOR_TRACE_ID", "abc"),
+            ("CODEX_SANDBOX", "seatbelt"),
+            ("VERROU_AGENT", "yes"),
+        ] {
+            assert!(driven_by_agent_with(env(&[(name, value)]), true), "{name}");
+        }
+        // A pipe in place of a terminal, whatever the environment says.
+        assert!(driven_by_agent_with(env(&[]), false));
     }
 }

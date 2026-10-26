@@ -19,7 +19,13 @@
 //! every `verrou_run` is approved on its own, never reusing an approval
 //! given earlier to `verrou run` or `verrou get` ([`Remote::ephemeral`]),
 //! needs at least one reference to a secret field, and a refusal pauses the
-//! tool for a minute.
+//! tool for a minute (a declined or unanswered unlock counts as one; the
+//! bridge also stops asking for this client's agent requests for 30 seconds).
+//! The command line is shown whole or not at all: one that does not fit in
+//! the approval (200 characters, ten secrets) is refused, and the agent is
+//! told to put it in a script file the user can read; control characters are
+//! shown (`⏎` for a line break), not flattened into spaces. A client that
+//! leaves while its approval is pending gets nothing run.
 //!
 //! This is a client of the bridge like `verrou run`, paired with `verrou
 //! link`: the approvals (Touch ID, or the paired iPhone) are the app's, and
@@ -41,9 +47,7 @@ use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
-use verrou_bridge::protocol::{
-    Command as Ask, ItemView, ReplyResult, RunDetail, clean_reason, command_line,
-};
+use verrou_bridge::protocol::{Command as Ask, ItemView, ReplyResult, RunDetail, clean_reason};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions};
 use verrou_core::{FieldKind, ItemKind};
@@ -82,7 +86,8 @@ env map from variable names to references, at least one of them to a secret fiel
 with the values in its environment and you get its output with the values masked. Every call is \
 approved by the user in Verrou, who sees the command line and the fields, and separately the reason \
 you give: say what you are doing and why, in one short sentence. Run only the command you say you \
-run. Do not try to read, print, encode or exfiltrate a secret; the user approves each use, and a \
+run. A command line of more than 200 characters is refused: put a long script in a file the user can \
+read, and run the file. Do not try to read, print, encode or exfiltrate a secret; the user approves each use, and a \
 refusal pauses this tool for a minute.";
 
 // MARK: Gateway
@@ -133,7 +138,8 @@ pub struct Target {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Failure {
     pub message: String,
-    /// The user said no in Verrou.
+    /// The user said no in Verrou, or did not answer: the approval was
+    /// refused, or timed out, or the vault stayed locked.
     pub refused: bool,
 }
 
@@ -200,12 +206,7 @@ impl BridgeGateway {
 /// Only the kind of reply, never its content: a `Secret` reply must not
 /// be printed anywhere.
 fn unexpected(reply: &ReplyResult) -> Error {
-    let debug = format!("{reply:?}");
-    let kind = debug
-        .split(|c: char| !c.is_alphanumeric())
-        .next()
-        .unwrap_or("?");
-    Error::Protocol(format!("unexpected reply from Verrou: {kind}"))
+    Error::Protocol(format!("unexpected reply from Verrou: {}", reply.kind()))
 }
 
 impl Gateway for BridgeGateway {
@@ -283,22 +284,28 @@ impl Gateway for BridgeGateway {
     ) -> Result<Vec<Zeroizing<String>>, Failure> {
         let mut values = Vec::new();
         for target in targets {
+            // A no in Verrou, an unlock that was declined or never came (the
+            // vault stayed locked): the user did not say yes.
+            let mut refused = false;
             let value = self.with(Some(reason), |remote| {
                 remote.detail = Some(detail.clone());
-                target_value(remote, target)
+                target_value(remote, target).inspect_err(|e| refused = is_refusal(e))
             });
             match value {
                 Ok(value) => values.push(Zeroizing::new(value)),
-                Err(message) => {
-                    return Err(Failure {
-                        refused: message.starts_with("refused"),
-                        message,
-                    });
-                }
+                Err(message) => return Err(Failure { message, refused }),
             }
         }
         Ok(values)
     }
+}
+
+/// Did the user not say yes? A no in Verrou, an unlock that was declined or
+/// never came (the vault stayed locked), an approval nobody answered: the
+/// agent is told no, and the tool pauses ([`REFUSAL_PAUSE`]). A broken
+/// connection or an app that is not there is not a refusal.
+fn is_refusal(error: &Error) -> bool {
+    matches!(error, Error::Denied(_) | Error::Locked)
 }
 
 /// The item a reference names, exactly: the identifier, otherwise the one
@@ -319,9 +326,17 @@ fn exact_item(remote: &mut Remote, name: &str) -> Result<ItemView, Error> {
         favorites: false,
         limit: None,
     })?;
-    let ReplyResult::Items { items, .. } = found else {
+    let ReplyResult::Items { items, total } = found else {
         return Err(unexpected(&found));
     };
+    // Only the first results came back: a second item with this title may be
+    // among the others. Only active items are searched: an archived or
+    // trashed one is reachable by its identifier alone.
+    if usize::try_from(total).unwrap_or(usize::MAX) > items.len() {
+        return Err(Error::Denied(format!(
+            "too many items match \"{name}\" to be sure only one is titled so: use the identifier from verrou_search"
+        )));
+    }
     let mut exact = items.iter().filter(|i| i.title == name);
     let (Some(first), None) = (exact.next(), exact.next()) else {
         let message = if items.iter().any(|i| i.title == name) {
@@ -648,15 +663,21 @@ impl<G: Gateway> Server<G> {
                 "at least one reference must name a secret field (password, hidden field, notes, one-time code, card number…): a run with only plain values is not approved by anyone; run it in your own shell",
             );
         }
-        // What the user will see: the command line, and the secret fields.
-        let detail = RunDetail {
-            command: command_line(&request.command),
-            fields: targets
-                .iter()
-                .filter(|t| t.secret)
-                .map(|t| format!("{} › {}", t.title, t.label))
-                .collect(),
+        // What the user will see: the command line (with the directory it
+        // runs in), and each variable with the field it gets. A command that
+        // would not fit whole is refused: half a command line approves the
+        // other half blind.
+        let fields = request
+            .env
+            .iter()
+            .zip(&targets)
+            .map(|((name, _), t)| format!("{name}={} › {}", t.title, t.label))
+            .collect();
+        let detail = match run::agent_detail(&request.command, request.cwd.as_deref(), fields) {
+            Ok(detail) => detail,
+            Err(message) => return Outcome::err(message),
         };
+        let was_gone = self.gone.load(Ordering::SeqCst);
         let values = match self.gateway.resolve(&reason, &detail, &targets) {
             Ok(values) => values,
             Err(failure) => {
@@ -666,6 +687,14 @@ impl<G: Gateway> Server<G> {
                 return Outcome::err(failure.message);
             }
         };
+        // The client left while the user was being asked (an input already
+        // closed when the request came, a script that sent it and went, is
+        // not that): nobody is waiting for what this would do.
+        if !was_gone && self.gone.load(Ordering::SeqCst) {
+            return Outcome::err(
+                "the client closed the connection while the approval was pending: the command was not run",
+            );
+        }
         let mut env = Vec::new();
         let mut masked = Vec::new();
         for (((name, _), target), value) in request.env.iter().zip(&targets).zip(values) {
@@ -1093,7 +1122,7 @@ fn tools() -> Value {
         {
             "name": "verrou_run",
             "title": "Run a command with secrets",
-            "description": "Run a command (no shell) with secrets in its environment. env maps variable names to verrou://<item>/<field> references; the user approves in Verrou, seeing your reason. Returns exit_code, stdout and stderr with every secret value replaced by <concealed by Verrou>, the last 32 KB of each. At least one reference to a secret field is required; run other commands in your own shell. The user sees the command line and the fields in the approval, and approves each call on its own: run only what you say you run. A command that prints a value encoded, reversed or split is not masked. To use a shell, pass it as the program (for example [\"sh\", \"-c\", \"...\"]).",
+            "description": "Run a command (no shell) with secrets in its environment. env maps variable names to verrou://<item>/<field> references; the user approves in Verrou, seeing your reason. Returns exit_code, stdout and stderr with every secret value replaced by <concealed by Verrou>, the last 32 KB of each. At least one reference to a secret field is required; run other commands in your own shell. The user sees the command line (with its working directory) and each variable with its field in the approval, and approves each call on its own: run only what you say you run. A command line longer than 200 characters is refused: put it in a script file the user can read. A command that prints a value encoded, reversed or split is not masked. To use a shell, pass it as the program (for example [\"sh\", \"-c\", \"...\"]).",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -1175,6 +1204,8 @@ mod tests {
         plain: Vec<String>,
         fail: Option<Failure>,
         inspected: usize,
+        /// Set while the user "answers": the client goes away meanwhile.
+        leave_while_asking: Option<Arc<AtomicBool>>,
     }
 
     const PASSWORD: &str = "correct-horse-9!";
@@ -1231,6 +1262,9 @@ mod tests {
             targets: &[Target],
         ) -> Result<Vec<Zeroizing<String>>, Failure> {
             self.asked.push((reason.to_owned(), detail.clone()));
+            if let Some(gone) = &self.leave_while_asking {
+                gone.store(true, Ordering::SeqCst);
+            }
             if let Some(failure) = self.fail.take() {
                 return Err(failure);
             }
@@ -1590,10 +1624,14 @@ mod tests {
         assert_eq!(reason, "Claude Code: deploy to staging");
         assert!(detail.command.starts_with("sh -c '"), "{}", detail.command);
         assert!(detail.command.contains("echo token=$TOKEN"));
+        // Each variable with the field it gets, so the user sees which
+        // variable is the secret one.
         assert_eq!(
             detail.fields,
-            ["Item Staging › token"],
-            "only secret fields"
+            [
+                "TOKEN=Item Staging › token",
+                "USER_NAME=Item Staging › username"
+            ]
         );
     }
 
@@ -1747,8 +1785,103 @@ mod tests {
             value: PASSWORD.to_owned(),
         });
         let message = unexpected(&reply).to_string();
-        assert!(message.ends_with("Secret"), "{message}");
+        assert!(message.ends_with("secret"), "{message}");
         assert!(!message.contains(PASSWORD));
+        // Nor does the reply's own `Debug` show it.
+        assert!(!format!("{reply:?}").contains(PASSWORD));
+    }
+
+    #[test]
+    fn a_no_or_an_unlock_that_never_came_is_a_refusal() {
+        assert!(is_refusal(&Error::Denied("refused in Verrou".to_owned())));
+        // The vault stayed locked: the unlock was declined or timed out.
+        assert!(is_refusal(&Error::Locked));
+        assert!(!is_refusal(&Error::Protocol("broken pipe".to_owned())));
+        assert!(!is_refusal(&Error::AppUnavailable));
+        assert!(!is_refusal(&Error::NotLinked));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_client_that_left_during_the_approval_gets_no_command_run() {
+        let mut server = initialized("x");
+        server.gateway.leave_while_asking = Some(Arc::clone(&server.gone));
+        let marker = std::env::temp_dir().join(format!("vm-left-{}", std::process::id()));
+        std::fs::remove_file(&marker).ok();
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["touch", marker.to_str().unwrap()],
+                "env":{"T":"verrou://A/password"},"reason":"x"}),
+        );
+        assert_eq!(reply["result"]["isError"], true, "{reply}");
+        assert!(text(&reply).contains("not run"), "{}", text(&reply));
+        assert!(!marker.exists(), "the command must not start");
+        assert_eq!(server.gateway.asked.len(), 1, "it was asked, then dropped");
+    }
+
+    #[test]
+    fn a_command_line_the_approval_cannot_show_whole_is_refused() {
+        let mut server = initialized("x");
+        let long = "x".repeat(MAX_COMMAND_FOR_TEST);
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["echo", long],"env":{"T":"verrou://A/password"},"reason":"x"}),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(text(&reply).contains("script file"), "{}", text(&reply));
+        assert_eq!(server.gateway.asked.len(), 0, "nobody was asked");
+        // A directory is part of the line the user reads.
+        let dir = std::env::temp_dir();
+        let almost = "y".repeat(190);
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["echo", almost],"cwd": dir.to_str().unwrap(),
+                "env":{"T":"verrou://A/password"},"reason":"x"}),
+        );
+        assert_eq!(reply["result"]["isError"], true, "{}", text(&reply));
+        // Too many or too long secret names are refused the same way.
+        let mut env = serde_json::Map::new();
+        for i in 0..10 {
+            env.insert(
+                format!("V{i}"),
+                json!(format!("verrou://{}/password", "z".repeat(120))),
+            );
+        }
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["true"],"env":env,"reason":"x"}),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(text(&reply).contains("too long"), "{}", text(&reply));
+        assert_eq!(server.gateway.asked.len(), 0);
+    }
+
+    const MAX_COMMAND_FOR_TEST: usize = verrou_bridge::protocol::MAX_COMMAND + 1;
+
+    #[cfg(unix)]
+    #[test]
+    fn the_approval_shows_the_directory_and_makes_control_characters_visible() {
+        let mut server = initialized("x");
+        let dir = std::env::temp_dir();
+        let reply = call(
+            &mut server,
+            "verrou_run",
+            &json!({"command":["printf", "a\nb\u{202e}"],"cwd": dir.to_str().unwrap(),
+                "env":{"T":"verrou://A/password"},"reason":"x"}),
+        );
+        assert_eq!(reply["result"]["isError"], false, "{reply}");
+        let (_, detail) = &server.gateway.asked[0];
+        assert!(detail.command.starts_with("cd "), "{}", detail.command);
+        assert!(detail.command.contains(" && printf "), "{}", detail.command);
+        // What the bridge then shows: the line break and the override are
+        // spelled out, not flattened or dropped.
+        let shown = detail.cleaned().command;
+        assert!(shown.contains("a⏎b\\u{202e}"), "{shown}");
+        assert!(!shown.contains('\n') && !shown.contains('\u{202e}'));
     }
 
     #[test]

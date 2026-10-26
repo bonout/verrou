@@ -1285,9 +1285,15 @@ final class AppModel {
 
     /// Touch ID, otherwise the master password; the confirmation lasts
     /// 5 minutes for this item (on the Rust side, cleared on lock).
-    func confirmAccess(itemID: String, title: String, context: LAContext = LAContext()) async -> Bool {
+    /// `prompt`: what is being approved, when it is not to show the item (a
+    /// terminal's write, an agent's command): it is the Touch ID reason and
+    /// the text of the master password dialog, so that a protected item is
+    /// never confirmed under a "show" that says nothing of what follows.
+    func confirmAccess(itemID: String, title: String, context: LAContext = LAContext(),
+                       prompt: String? = nil) async -> Bool {
         if mode == .vaultwarden, canUseTouchID {
-            switch await Biometrics.authenticate(reason: String(localized: "show “\(title)”"), context: context) {
+            let reason = prompt ?? String(localized: "show “\(title)”")
+            switch await Biometrics.authenticate(reason: reason, context: context) {
             case .success:
                 session.authorizeItem(id: itemID)
                 return true
@@ -1305,7 +1311,11 @@ final class AppModel {
         NSApp.activate()
         let alert = NSAlert()
         alert.messageText = String(localized: "“\(title)” is protected")
-        alert.informativeText = String(localized: "Enter your master password to show its secrets.")
+        alert.informativeText = if let prompt {
+            prompt + "\n\n" + String(localized: "Enter your master password to approve.")
+        } else {
+            String(localized: "Enter your master password to show its secrets.")
+        }
         let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
         alert.accessoryView = field
         alert.addButton(withTitle: String(localized: "Confirm"))

@@ -42,7 +42,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <ul>
     <li><strong>Names, never values.</strong> The agent sees titles, field names and <code>verrou://</code> references. It runs commands with the secrets injected and gets their output masked.</li>
     <li><strong>Every call approved on its own.</strong> Verrou shows the command line and the fields it receives, and separately what the agent says it is for. Approve only commands you understand: the mask hides exact values only, so a command the agent chose can still hand it a value.</li>
-    <li><strong>A guard rail.</strong> <code>verrou hook install</code> stops the agent from reading <code>.env</code> files and private keys on its own, and points it to <code>verrou run</code>.</li>
+    <li><strong>A guard rail.</strong> <code>verrou hook install</code> stops the agent from reading <code>.env</code> files and private keys on its own, and points it to the <code>verrou_run</code> tool. An agent that can run a shell can still ask Verrou: read each approval.</li>
   </ul>
 
   <h2>SSH agent and git signing</h2>

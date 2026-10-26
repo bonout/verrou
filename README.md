@@ -121,7 +121,9 @@ German, Spanish and Italian.
   it runs commands with the secrets injected and masked in their output.
   You approve each use.
   `verrou hook install` adds a guard rail that stops an agent from reading
-  `.env` files and keys ([guide](docs/GUIDE.md#ai-agents-mcp-and-hooks)).
+  `.env` files and keys, though an agent that can run a shell can still ask
+  Verrou, so read each approval
+  ([guide](docs/GUIDE.md#ai-agents-mcp-and-hooks)).
 - **Approve from your iPhone**: away from the Mac (screen locked or idle),
   the terminal's requests go to Verrou on the paired iPhone, where Face ID
   approves them; it can also unlock the vault for the terminal, without the

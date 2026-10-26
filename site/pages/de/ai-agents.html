@@ -42,7 +42,7 @@ Deploying with token <span class="g">&lt;concealed by Verrou&gt;</span></pre>
   <ul>
     <li><strong>Namen, nie Werte.</strong> Der Agent sieht Titel, Feldnamen und <code>verrou://</code>-Referenzen. Er startet Befehle mit eingesetzten Geheimnissen und erhält deren Ausgabe maskiert.</li>
     <li><strong>Jeder Aufruf einzeln bestätigt.</strong> Verrou zeigt die Befehlszeile und die Felder, die sie erhält, und getrennt davon, wofür der Agent sie angeblich braucht. Genehmigen Sie nur Befehle, die Sie verstehen: Die Maskierung verbirgt nur exakte Werte, ein vom Agenten gewählter Befehl kann ihm also trotzdem einen Wert liefern.</li>
-    <li><strong>Eine Leitplanke.</strong> <code>verrou hook install</code> hindert den Agenten daran, von sich aus <code>.env</code>-Dateien und private Schlüssel zu lesen, und verweist ihn auf <code>verrou run</code>.</li>
+    <li><strong>Eine Leitplanke.</strong> <code>verrou hook install</code> hindert den Agenten daran, von sich aus <code>.env</code>-Dateien und private Schlüssel zu lesen, und verweist ihn auf das Werkzeug <code>verrou_run</code>. Ein Agent mit Shell kann Verrou weiterhin um ein Geheimnis bitten: Lies jede Genehmigung.</li>
   </ul>
 
   <h2>SSH-Agent und Git-Signaturen</h2>

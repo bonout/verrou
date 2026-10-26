@@ -2491,11 +2491,14 @@ pub trait BridgeDelegate: Send + Sync {
     /// never a value; empty otherwise. `command`, `fields`: for an AI agent's
     /// request, the command line it wants to run and the secret fields it
     /// gets (empty otherwise): unlike the reason, this is what will happen,
-    /// so it is shown apart from it.
+    /// so it is shown apart from it. `client_id`: the client's identifier
+    /// (`client_name` is only what it announced). `ephemeral`: an agent's
+    /// request, asked on its own: nothing the user said earlier covers it.
     #[allow(clippy::too_many_arguments)]
     fn confirm_requested(
         &self,
         id: String,
+        client_id: String,
         client_name: String,
         purpose: AccessPurpose,
         item: String,
@@ -2505,16 +2508,18 @@ pub trait BridgeDelegate: Send + Sync {
         changes: String,
         command: String,
         fields: String,
+        ephemeral: bool,
     );
     /// A client found the vault locked. `kind`: the terminal may be
     /// unlocked from the iPhone, the browser brings Verrou forward.
     /// `reason`: the terminal's, as for `confirm_requested`. `then_item`,
     /// `then_field`: what the terminal will read once unlocked (empty if it
     /// didn't say): shown in the iPhone's request, whose approval then
-    /// covers that item.
+    /// covers that item, for this client (`client_id`) alone.
     fn unlock_requested(
         &self,
         kind: BridgeClientKind,
+        client_id: String,
         reason: String,
         then_item: String,
         then_field: String,
@@ -2672,11 +2677,22 @@ impl Backend for SessionBackend {
         })
     }
 
-    fn request_unlock(&self, kind: ClientKind, reason: &str, then: Option<&UnlockIntent>) {
+    fn request_unlock(
+        &self,
+        kind: ClientKind,
+        client: &str,
+        reason: &str,
+        then: Option<&UnlockIntent>,
+    ) {
         let (item, field) =
             then.map_or_else(Default::default, |t| (t.item.clone(), t.field.clone()));
-        self.delegate
-            .unlock_requested(kind.into(), reason.to_owned(), item, field);
+        self.delegate.unlock_requested(
+            kind.into(),
+            client.to_owned(),
+            reason.to_owned(),
+            item,
+            field,
+        );
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
@@ -2735,6 +2751,7 @@ impl Backend for SessionBackend {
         let item = request.item.clone();
         self.delegate.confirm_requested(
             id.clone(),
+            request.client,
             request.client_name,
             request.purpose.into(),
             request.item,
@@ -2744,6 +2761,7 @@ impl Backend for SessionBackend {
             request.changes,
             request.command,
             request.fields,
+            request.ephemeral,
         );
         let pending = PendingConfirmation {
             confirmations: &self.confirmations,
@@ -3042,6 +3060,7 @@ mod tests {
             &self,
             id: String,
             _: String,
+            _: String,
             _: AccessPurpose,
             _: String,
             _: String,
@@ -3050,10 +3069,18 @@ mod tests {
             _: String,
             _: String,
             _: String,
+            _: bool,
         ) {
             self.0.answer(&id, true);
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String, _: String, _: String) {
+        fn unlock_requested(
+            &self,
+            _kind: BridgeClientKind,
+            _: String,
+            _reason: String,
+            _: String,
+            _: String,
+        ) {
         }
         fn vault_changed(&self, _: String, _: String) {}
         fn reprompt_requested(&self, _: String, _: String) {}
@@ -3085,6 +3112,7 @@ mod tests {
                 changes: String::new(),
                 command: String::new(),
                 fields: String::new(),
+                ephemeral: false,
             }))
         };
         assert!(confirm(&plain));
@@ -3261,6 +3289,7 @@ mod optimistic_tests {
             &self,
             _: String,
             _: String,
+            _: String,
             _: AccessPurpose,
             _: String,
             _: String,
@@ -3269,9 +3298,17 @@ mod optimistic_tests {
             _: String,
             _: String,
             _: String,
+            _: bool,
         ) {
         }
-        fn unlock_requested(&self, _kind: BridgeClientKind, _reason: String, _: String, _: String) {
+        fn unlock_requested(
+            &self,
+            _kind: BridgeClientKind,
+            _: String,
+            _reason: String,
+            _: String,
+            _: String,
+        ) {
         }
         fn vault_changed(&self, item: String, _: String) {
             self.0.lock().unwrap().push(item);

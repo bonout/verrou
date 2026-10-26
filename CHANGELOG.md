@@ -21,7 +21,15 @@ tagging (docs/RELEASING.md).
   you understand: the mask hides exact values only.
 - `verrou hook install claude|cursor|codex`: a guard rail that stops an
   agent from reading `.env` files, private keys and cloud credentials, or
-  printing a token, and points it to `verrou run`.
+  printing a token, and points it to `verrou_run`. It also refuses
+  `verrou read` and `verrou inject` that print a secret instead of writing a
+  file, and `verrou run`, in an agent's shell.
+- When a `verrou` command looks driven by an agent, its approvals are asked
+  one by one (never reusing your own terminal's five minutes) and show the
+  command line; a command too long to be shown whole is refused. The
+  approval shows control characters instead of spaces, and the iPhone
+  "unlock and read" approval no longer covers an agent's request or another
+  terminal.
 - References to a custom field now work by the field's name as shown in the
   app (`verrou://Stripe/secret%20key`), as the guide always said.
 

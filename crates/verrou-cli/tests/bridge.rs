@@ -37,6 +37,8 @@ struct Fake {
     writes: Mutex<Vec<String>>,
     /// What each approval said a write changes.
     changes: Mutex<Vec<String>>,
+    /// Each approval asked, whole.
+    asked: Mutex<Vec<Confirmation>>,
 }
 
 impl Backend for Fake {
@@ -79,6 +81,7 @@ impl Backend for Fake {
     fn request_unlock(
         &self,
         _kind: verrou_bridge::protocol::ClientKind,
+        _client: &str,
         _reason: &str,
         then: Option<&verrou_bridge::protocol::UnlockIntent>,
     ) {
@@ -103,9 +106,10 @@ impl Backend for Fake {
         self.confirmations
             .lock()
             .unwrap()
-            .push((request.purpose, request.title));
-        self.reasons.lock().unwrap().push(request.reason);
-        self.changes.lock().unwrap().push(request.changes);
+            .push((request.purpose, request.title.clone()));
+        self.reasons.lock().unwrap().push(request.reason.clone());
+        self.changes.lock().unwrap().push(request.changes.clone());
+        self.asked.lock().unwrap().push(request);
         Box::pin(async { true })
     }
 }
@@ -215,6 +219,7 @@ fn link_then_ssh_agent_signs_through_verrou() {
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
         changes: Mutex::new(Vec::new()),
+        asked: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -475,6 +480,7 @@ fn git_signs_through_the_agent() {
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
         changes: Mutex::new(Vec::new()),
+        asked: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -641,6 +647,7 @@ fn run_hands_a_secret_to_a_command_masked() {
         intents: Mutex::new(Vec::new()),
         writes: Mutex::new(Vec::new()),
         changes: Mutex::new(Vec::new()),
+        asked: Mutex::new(Vec::new()),
     });
     let dir = temp_dir();
     let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -694,5 +701,140 @@ fn run_hands_a_secret_to_a_command_masked() {
         backend.reasons.lock().unwrap().as_slice(),
         ["deploy to production".to_owned()]
     );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A command line driven by a coding agent (`CLAUDECODE`, or no terminal on
+/// its input): `read`, `inject` and `run` ask for each approval on its own,
+/// never remembered, and show the user what they will do: the command line,
+/// and the references. One that would not fit in the approval is refused
+/// before anything is asked.
+#[test]
+#[allow(clippy::too_many_lines)] // one walk through the three commands
+fn an_agent_driven_terminal_asks_each_time_and_shows_the_command() {
+    let (sender, pairings) = mpsc::channel();
+    let backend = Arc::new(Fake {
+        vault: Vault::new(vec![login()]),
+        unlocked: AtomicBool::new(true),
+        pairings: Mutex::new(sender),
+        confirmations: Mutex::new(Vec::new()),
+        reasons: Mutex::new(Vec::new()),
+        intents: Mutex::new(Vec::new()),
+        writes: Mutex::new(Vec::new()),
+        changes: Mutex::new(Vec::new()),
+        asked: Mutex::new(Vec::new()),
+    });
+    let dir = temp_dir();
+    let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
+    let endpoint = Endpoint {
+        port: bridge.port(),
+        launch: false,
+    };
+    let approver = {
+        let bridge = Arc::clone(&bridge);
+        std::thread::spawn(move || {
+            let request: PairingRequest = pairings.recv_timeout(Duration::from_secs(5)).unwrap();
+            bridge.answer_pairing(&request.id, true);
+        })
+    };
+    let config = remote::link(endpoint, "terminal (verrou)", |_| {}).unwrap();
+    approver.join().unwrap();
+    let path = dir.join("cli.json");
+    config.save(&path).unwrap();
+    let verrou = |args: &[&str]| {
+        let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_verrou"));
+        command
+            .args(args)
+            .env("VERROU_CLI_CONFIG", &path)
+            .env("VERROU_BRIDGE_PORT", bridge.port().to_string())
+            .env("CLAUDECODE", "1");
+        command
+    };
+    let asked = || backend.asked.lock().unwrap().clone();
+
+    // `read` to a file, twice: asked twice, the approval of the first one
+    // does not cover the second (nor is it remembered).
+    let secret = dir.join("secret.txt");
+    for round in 1..=2 {
+        let output = verrou(&[
+            "read",
+            "verrou://GitHub/password",
+            "-o",
+            secret.to_str().unwrap(),
+            "--force",
+        ])
+        .output()
+        .unwrap();
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(asked().len(), round);
+    }
+    assert_eq!(std::fs::read_to_string(&secret).unwrap(), "hunter2\n");
+    let first = &asked()[0];
+    assert!(first.ephemeral);
+    assert!(
+        first
+            .command
+            .starts_with("verrou read verrou://GitHub/password -o "),
+        "{}",
+        first.command
+    );
+    assert!(first.command.contains("secret.txt"), "{}", first.command);
+    assert_eq!(first.fields, "verrou://GitHub/password");
+
+    // `inject`: the references of the template, the files.
+    let template = dir.join("t.tpl");
+    std::fs::write(
+        &template,
+        "pw={{ verrou://GitHub/password }} again={{ verrou://GitHub/password }}\n",
+    )
+    .unwrap();
+    let output = verrou(&[
+        "inject",
+        "-i",
+        template.to_str().unwrap(),
+        "-o",
+        dir.join("out.txt").to_str().unwrap(),
+    ])
+    .output()
+    .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let inject = asked().pop().unwrap();
+    assert!(inject.ephemeral);
+    assert!(
+        inject.command.starts_with("verrou inject -i "),
+        "{}",
+        inject.command
+    );
+    assert!(inject.command.contains(" -o "), "{}", inject.command);
+    assert_eq!(inject.fields, "verrou://GitHub/password", "listed once");
+
+    // `run`: the command line and each variable with its reference.
+    let before = asked().len();
+    let output = verrou(&["run", "--", "sh", "-c", "test \"$TOKEN\" = hunter2"])
+        .env("TOKEN", "verrou://GitHub/password")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let run = asked().pop().unwrap();
+    assert_eq!(asked().len(), before + 1);
+    assert!(run.ephemeral);
+    assert_eq!(
+        run.command,
+        "verrou run -- sh -c 'test \"$TOKEN\" = hunter2'"
+    );
+    assert_eq!(run.fields, "TOKEN=verrou://GitHub/password");
+
+    // A command line the approval could not show whole: refused, and
+    // nobody is asked.
+    let before = asked().len();
+    let long = "x".repeat(300);
+    let output = verrou(&["run", "--", "echo", &long])
+        .env("TOKEN", "verrou://GitHub/password")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("script file"), "{stderr}");
+    assert_eq!(asked().len(), before);
     std::fs::remove_dir_all(&dir).ok();
 }

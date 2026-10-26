@@ -89,6 +89,7 @@ impl Backend for Fake {
     fn request_unlock(
         &self,
         _kind: verrou_bridge::protocol::ClientKind,
+        _client: &str,
         _reason: &str,
         _then: Option<&verrou_bridge::protocol::UnlockIntent>,
     ) {

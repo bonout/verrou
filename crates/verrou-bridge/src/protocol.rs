@@ -116,15 +116,16 @@ pub struct RunDetail {
     pub fields: Vec<String>,
 }
 
-/// Longest command line shown, in characters.
+/// Longest command line shown, in characters (as rendered, [`visible`]).
 pub const MAX_COMMAND: usize = 200;
 /// Most fields listed, and the longest one.
 const MAX_FIELDS: usize = 10;
-const MAX_FIELD: usize = 60;
+const MAX_FIELD: usize = 100;
 
 impl RunDetail {
-    /// As shown: one line each, no control or format characters, the command
-    /// at most [`MAX_COMMAND`] characters.
+    /// As shown: the command with its control and invisible characters made
+    /// visible ([`visible`]), at most [`MAX_COMMAND`] characters; the fields
+    /// on one line each, without control or format characters.
     #[must_use]
     pub fn cleaned(&self) -> Self {
         let mut fields: Vec<String> = self
@@ -137,9 +138,32 @@ impl RunDetail {
             fields.push("…".to_owned());
         }
         Self {
-            command: truncate(&flatten(&self.command), MAX_COMMAND),
+            command: truncate(&visible(&self.command), MAX_COMMAND),
             fields,
         }
+    }
+
+    /// Can the approval show all of it? One that shows half a command line,
+    /// or the first ten of twelve fields, approves the rest blind.
+    pub fn check(&self) -> Result<(), &'static str> {
+        if visible(&self.command).chars().count() > MAX_COMMAND {
+            return Err(COMMAND_TOO_LONG);
+        }
+        if self.fields.len() > MAX_FIELDS
+            || self
+                .fields
+                .iter()
+                .any(|f| flatten(f).chars().count() > MAX_FIELD)
+        {
+            return Err(FIELDS_TOO_LONG);
+        }
+        Ok(())
+    }
+
+    /// [`Self::check`] as a yes or no.
+    #[must_use]
+    pub fn fits(&self) -> bool {
+        self.check().is_ok()
     }
 
     /// The fields as one line.
@@ -148,6 +172,13 @@ impl RunDetail {
         self.fields.join(", ")
     }
 }
+
+/// Why an agent's command line is refused: it does not fit in the
+/// approval. The agent is told what to do about it.
+pub const COMMAND_TOO_LONG: &str = "the command line is too long to be shown whole in the approval (at most 200 characters): write it to a script file the user can read, and run that file";
+
+/// Likewise for the list of secrets the command gets.
+pub const FIELDS_TOO_LONG: &str = "too many secrets, or names too long, to be shown whole in the approval (at most 10, of at most 100 characters each): ask for fewer, or use shorter item and field names";
 
 /// The program and arguments as one line a person can read: an argument
 /// with a space or a quote is single-quoted, as a shell would need it.
@@ -169,19 +200,21 @@ pub fn command_line(argv: &[String]) -> String {
         .join(" ")
 }
 
-/// Control and invisible formatting characters (Unicode `Cf`: bidirectional
-/// overrides and isolates, zero-width characters, the byte order mark…) are
-/// dropped: they can reorder or hide what an approval says.
+/// Characters that can reorder, hide or imitate what an approval says:
+/// control characters (`Cc`), invisible formatting (`Cf`: bidirectional
+/// overrides and isolates, zero-width characters, the byte order mark…) and
+/// the default-ignorable code points (variation selectors, the Hangul
+/// fillers…), straight from the Unicode data.
 fn is_invisible(c: char) -> bool {
-    matches!(c,
-        '\u{AD}' | '\u{600}'..='\u{605}' | '\u{61C}' | '\u{6DD}' | '\u{70F}' | '\u{180E}'
-        | '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}'
-        | '\u{2066}'..='\u{206F}' | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{E0001}'
-        | '\u{E0020}'..='\u{E007F}')
+    use icu_properties::props::{DefaultIgnorableCodePoint, GeneralCategory};
+    use icu_properties::{CodePointMapData, CodePointSetData};
+    CodePointMapData::<GeneralCategory>::new().get(c) == GeneralCategory::Format
+        || CodePointSetData::new::<DefaultIgnorableCodePoint>().contains(c)
 }
 
 /// One line: control characters become spaces, invisible ones vanish,
-/// runs of white space shrink to one space.
+/// runs of white space shrink to one space. For text that is read, not run:
+/// titles, reasons, field names.
 fn flatten(text: &str) -> String {
     let spaced: String = text
         .chars()
@@ -189,6 +222,29 @@ fn flatten(text: &str) -> String {
         .map(|c| if c.is_control() { ' ' } else { c })
         .collect();
     spaced.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// A command line as it is shown, character for character: nothing is
+/// dropped or merged, and what could pass unseen is spelled out. A line
+/// break reads `⏎`, a tab `⇥`, any other control, invisible or unusual
+/// white space character `\u{…}`.
+#[must_use]
+pub fn visible(text: &str) -> String {
+    use std::fmt::Write as _;
+    let mut shown = String::with_capacity(text.len());
+    for c in text.chars() {
+        match c {
+            '\n' => shown.push('⏎'),
+            '\r' => shown.push('␍'),
+            '\t' => shown.push('⇥'),
+            ' ' => shown.push(' '),
+            c if c.is_control() || c.is_whitespace() || is_invisible(c) => {
+                let _ = write!(shown, "\\u{{{:x}}}", u32::from(c));
+            }
+            c => shown.push(c),
+        }
+    }
+    shown
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -226,6 +282,16 @@ pub const MAX_REASON: usize = 120;
 /// characters, at most [`MAX_REASON`] characters.
 pub fn clean_reason(reason: Option<&str>) -> String {
     truncate(&flatten(reason.unwrap_or_default()), MAX_REASON)
+}
+
+/// An item title, folder, client name or list of changed fields as an
+/// approval shows it: one line, without control or invisible formatting
+/// characters ([`clean_reason`]'s rules), at most `max` characters. These
+/// come from the vault, or from what a client declared: a title made of a
+/// bidirectional override is a title that reads as another.
+#[must_use]
+pub fn clean_text(text: &str, max: usize) -> String {
+    truncate(&flatten(text), max)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -497,6 +563,37 @@ pub enum ReplyResult {
     Registration(PasskeyRegistration),
 }
 
+impl ReplyResult {
+    /// The kind of reply, for a message: never its content (a secret, a
+    /// one-time code, a card), which has no business in an error.
+    #[must_use]
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::Status { .. } => "status",
+            Self::Suggestions { .. } => "suggestions",
+            Self::Credentials(_) => "credentials",
+            Self::Locked => "locked",
+            Self::Denied { .. } => "denied",
+            Self::Done => "done",
+            Self::Check { .. } => "check",
+            Self::Saved { .. } => "saved",
+            Self::Confirm => "confirm",
+            Self::Items { .. } => "items",
+            Self::Item { .. } => "item",
+            Self::Secret(_) => "secret",
+            Self::Code { .. } => "code",
+            Self::SshKeys { .. } => "ssh_keys",
+            Self::Forms { .. } => "forms",
+            Self::Form(_) => "form",
+            Self::Signature { .. } => "signature",
+            Self::Passkeys { .. } => "passkeys",
+            Self::PasskeyTargets { .. } => "passkey_targets",
+            Self::Assertion(_) => "assertion",
+            Self::Registration(_) => "registration",
+        }
+    }
+}
+
 /// An item in a terminal list. No secrets.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ItemSummary {
@@ -535,9 +632,18 @@ pub struct FieldView {
     pub value: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct SecretValue {
     pub value: String,
+}
+
+/// The value stays out of logs, panics and error messages.
+impl std::fmt::Debug for SecretValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretValue")
+            .field("value", &"••••")
+            .finish()
+    }
 }
 
 /// An SSH key of the vault, as the agent sees it: its public key only.
@@ -582,7 +688,7 @@ pub struct FormSuggestion {
 
 /// The fields of a card (`kind` = `card`) or an identity (`identity`),
 /// at fill time. Missing: empty in the vault.
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct FormData {
     pub kind: String,
     // Card
@@ -610,12 +716,32 @@ pub struct FormData {
     pub country: Option<String>,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Default, Deserialize, Serialize, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct Credentials {
     pub username: Option<String>,
     pub password: Option<String>,
     /// Current one-time code, if there is a seed.
     pub totp: Option<String>,
+}
+
+/// Nothing of the values: they stay out of logs, panics and error messages.
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials")
+            .field("username", &self.username.as_ref().map(|_| "••••"))
+            .field("password", &self.password.as_ref().map(|_| "••••"))
+            .field("totp", &self.totp.as_ref().map(|_| "••••"))
+            .finish()
+    }
+}
+
+/// Nothing of the values (names, numbers, addresses).
+impl std::fmt::Debug for FormData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FormData")
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
 }
 
 // MARK: Passkeys
@@ -797,7 +923,8 @@ mod reason_tests {
             fields: vec!["A\u{200D} › B".to_owned()],
         }
         .cleaned();
-        assert_eq!(detail.command, "cat x y");
+        // A command shows what it holds: nothing dropped, nothing merged.
+        assert_eq!(detail.command, "cat \\u{202e}\\u{2069}x⏎⇥y");
         assert_eq!(detail.fields, ["A › B"]);
     }
 
@@ -851,5 +978,139 @@ mod reason_tests {
         assert_eq!(request.reason, None);
         let json = serde_json::to_string(&request).unwrap();
         assert!(!json.contains("reason"));
+    }
+
+    #[test]
+    fn invisible_characters_come_from_the_unicode_data() {
+        // Cf and default-ignorable code points the old table did not name:
+        // the Arabic number sign U+0890, the interlinear annotation anchors,
+        // variation selectors, the Hangul fillers, Mongolian free variation
+        // selectors, the tag block, the shorthand format controls.
+        for c in [
+            '\u{200B}',
+            '\u{202E}',
+            '\u{2066}',
+            '\u{FEFF}',
+            '\u{00AD}',
+            '\u{0890}',
+            '\u{FFF9}',
+            '\u{FE0F}',
+            '\u{E0100}',
+            '\u{3164}',
+            '\u{115F}',
+            '\u{FFA0}',
+            '\u{180B}',
+            '\u{E0041}',
+            '\u{1BCA0}',
+            '\u{1D173}',
+            '\u{034F}',
+            '\u{2062}',
+        ] {
+            assert!(
+                is_invisible(c),
+                "U+{:04X} should be invisible",
+                u32::from(c)
+            );
+            assert_eq!(clean_reason(Some(&format!("a{c}b"))), "ab");
+        }
+        for c in [
+            'a', ' ', 'é', '漢', '🔒', '-', '›', '…', '\u{00A0}', '\u{0301}',
+        ] {
+            assert!(!is_invisible(c), "U+{:04X} is visible", u32::from(c));
+        }
+        // Titles are cleaned the same way.
+        let tricky = "Git\u{202E}Hub\u{200B}\n";
+        assert_eq!(clean_reason(Some(tricky)), "GitHub");
+    }
+
+    #[test]
+    fn a_command_shows_everything_it_holds() {
+        assert_eq!(visible("ls -la"), "ls -la");
+        assert_eq!(visible("a\nb\r\nc\td"), "a⏎b␍⏎c⇥d");
+        assert_eq!(visible("x\u{7}y\u{0}"), "x\\u{7}y\\u{0}");
+        // Unusual white space does not pass for a space.
+        assert_eq!(
+            visible("a\u{00A0}b\u{3000}c\u{2028}d"),
+            "a\\u{a0}b\\u{3000}c\\u{2028}d"
+        );
+        // Nothing merged: two spaces stay two.
+        assert_eq!(visible("a  b"), "a  b");
+        assert_eq!(visible("évite 漢"), "évite 漢");
+        // Lines of a script are not one: `echo hi⏎rm -rf x`.
+        let detail = RunDetail {
+            command: "sh -c 'echo hi\nrm x'".to_owned(),
+            fields: vec![],
+        };
+        assert_eq!(detail.cleaned().command, "sh -c 'echo hi⏎rm x'");
+    }
+
+    #[test]
+    fn what_the_approval_cannot_show_whole_is_refused() {
+        let detail = |command: String, fields: Vec<String>| RunDetail { command, fields };
+        assert!(detail("x".repeat(MAX_COMMAND), vec![]).fits());
+        assert_eq!(
+            detail("x".repeat(MAX_COMMAND + 1), vec![]).check(),
+            Err(COMMAND_TOO_LONG)
+        );
+        // Measured as shown: each line break is one character, but an
+        // invisible one spells out as six.
+        assert!(detail("\n".repeat(MAX_COMMAND), vec![]).fits());
+        assert!(!detail("\u{200B}".repeat(MAX_COMMAND / 2), vec![]).fits());
+        let ten: Vec<String> = (0..MAX_FIELDS).map(|i| format!("F{i}")).collect();
+        assert!(detail("ls".to_owned(), ten.clone()).fits());
+        let mut eleven = ten;
+        eleven.push("F10".to_owned());
+        assert_eq!(
+            detail("ls".to_owned(), eleven).check(),
+            Err(FIELDS_TOO_LONG)
+        );
+        let long = vec!["y".repeat(MAX_FIELD + 1)];
+        assert_eq!(detail("ls".to_owned(), long).check(), Err(FIELDS_TOO_LONG));
+        assert!(COMMAND_TOO_LONG.contains("script file"));
+    }
+
+    #[test]
+    fn secrets_stay_out_of_debug_output() {
+        let secret = SecretValue {
+            value: "hunter2-very-secret".to_owned(),
+        };
+        let reply = Reply {
+            id: 1,
+            result: ReplyResult::Secret(secret.clone()),
+        };
+        for shown in [
+            format!("{secret:?}"),
+            format!("{reply:?}"),
+            format!("{secret:#?}"),
+        ] {
+            assert!(!shown.contains("hunter2"), "{shown}");
+            assert!(shown.contains("••••"), "{shown}");
+        }
+        let credentials = Credentials {
+            username: Some("camille-user".to_owned()),
+            password: Some("pw-in-clear".to_owned()),
+            totp: Some("123456".to_owned()),
+        };
+        let shown = format!("{:?}", ReplyResult::Credentials(credentials));
+        assert!(
+            !shown.contains("pw-in-clear") && !shown.contains("123456"),
+            "{shown}"
+        );
+        assert!(!shown.contains("camille-user"), "{shown}");
+        let mut form = FormData::default();
+        "card".clone_into(&mut form.kind);
+        form.number = Some("4242424242424242".to_owned());
+        assert!(!format!("{form:?}").contains("4242"));
+        // The kind of a reply, for messages, never its content.
+        assert_eq!(reply.result.kind(), "secret");
+        assert_eq!(
+            ReplyResult::Code {
+                code: "654321".to_owned(),
+                period: 30,
+                remaining: 3
+            }
+            .kind(),
+            "code"
+        );
     }
 }

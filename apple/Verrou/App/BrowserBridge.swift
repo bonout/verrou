@@ -27,9 +27,9 @@ final class BrowserBridge {
     /// Confirmations in progress: the extension retries every second.
     @ObservationIgnored private var confirming: Set<String> = []
     /// The iPhone approved "unlock and read <item>": that item's next
-    /// reading by the terminal needs no second approval (once, for 60 s,
-    /// exact identifier or title).
-    @ObservationIgnored private var unlockGrant: (item: String, until: Date)?
+    /// reading by the terminal that asked needs no second approval (once, for
+    /// 60 s, by identifier, never for an agent's request: `UnlockGrant`).
+    @ObservationIgnored private var unlockGrant: UnlockGrant?
 
     var enabled: Bool = UserDefaults.standard.bool(forKey: "braveBridge") {
         didSet {
@@ -126,7 +126,8 @@ final class BrowserBridge {
         }
     }
 
-    fileprivate func unlockRequested(kind: BridgeClientKind, reason: String, thenItem: String, thenField: String) {
+    fileprivate func unlockRequested(kind: BridgeClientKind, client: String, reason: String, thenItem: String,
+                                     thenField: String) {
         guard model.lockState == .locked else { return }
         // Away from the Mac, the terminal waits for the iPhone (the window
         // stays locked).
@@ -139,7 +140,12 @@ final class BrowserBridge {
             Task {
                 let unlocked = await model.unlockFromPhone(client: String(localized: "the terminal"), reason: reason,
                                                            then: then)
-                if unlocked, let then { unlockGrant = (then.item, Date().addingTimeInterval(60)) }
+                // The vault is open now: the reference becomes an identifier.
+                let items = ((try? model.session.summaries()) ?? []).map { (id: $0.id, title: $0.title) }
+                if unlocked, let then, let id = UnlockGrant.resolve(reference: then.item, among: items) {
+                    unlockGrant = UnlockGrant(itemID: id, client: client,
+                                              until: Date().addingTimeInterval(UnlockGrant.lifetime))
+                }
             }
             return
         }
@@ -172,9 +178,9 @@ final class BrowserBridge {
     /// minutes by the bridge, for this terminal and this item.
     /// Protected item ("master password re-prompt"): the same confirmation
     /// as in the app (Touch ID or master password).
-    fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String,
-                                      site: String, reason motive: String, changes: String, command: String,
-                                      fields: String) {
+    fileprivate func confirmRequested(id: String, clientID: String, clientName: String, purpose: AccessPurpose,
+                                      item: String, title: String, site: String, reason motive: String,
+                                      changes: String, command: String, fields: String, ephemeral: Bool) {
         // The name announced at pairing ("Brave", "Firefox").
         let browser = clientName.isEmpty ? String(localized: "the browser") : clientName
         let reason = switch purpose {
@@ -198,27 +204,18 @@ final class BrowserBridge {
         }
         // Already approved on the iPhone with the unlock: "unlock and read
         // this item".
-        if purpose == .reveal, let grant = unlockGrant, grant.until > Date(),
-           grant.item == item || grant.item.localizedCaseInsensitiveCompare(title) == .orderedSame {
+        if purpose == .reveal, let grant = unlockGrant,
+           grant.covers(item: item, client: clientID, ephemeral: ephemeral, command: command) {
             unlockGrant = nil
             if model.session.needsConfirmation(id: item) { model.session.authorizeItem(id: item) }
             model.extendRemoteSession()
             model.session.answerBridgeConfirmation(id: id, approved: true)
             return
         }
-        // A write names the fields it changes (`password, url, −Old token`),
-        // never their values; then the terminal's reason, as it declares it.
-        let asked = changes.isEmpty ? reason : "\(reason): \(changes)"
-        // The terminal's reason, as it declares it, after what is asked. An
-        // AI agent's request also says what will run, on lines of its own:
-        // the reason is the agent's claim, the command is what happens.
-        var prompt = motive.isEmpty ? asked : "\(asked) (\(motive))"
-        if !command.isEmpty {
-            prompt = asked
-            prompt += "\n" + String(localized: "Command: \(command)")
-            if !fields.isEmpty { prompt += "\n" + String(localized: "Fields: \(fields)") }
-            if !motive.isEmpty { prompt += "\n" + String(localized: "The agent says: “\(motive)”") }
-        }
+        // The one text for everything that asks: the Touch ID reason, the
+        // master password dialog of a protected item, the iPhone's request.
+        var prompt = ApprovalPrompt.compose(action: reason, changes: changes, motive: motive, command: command,
+                                            fields: fields)
         Task {
             let protected = model.session.needsConfirmation(id: item)
             // The user chose "until Verrou locks" for this key: say what this
@@ -226,15 +223,18 @@ final class BrowserBridge {
             let untilLocked = (purpose == .ssh || purpose == .gitSign) && !protected
                 && model.session.sshApprovalScope(id: item) == .untilLocked
             if untilLocked { prompt = String(localized: "\(prompt) (until Verrou locks)") }
-            let local: @MainActor (LAContext) async -> Bool = { [model] context in
-                protected ? await model.confirmAccess(itemID: item, title: title, context: context)
+            // A protected item's confirmation says what is being approved: the
+            // same text as the prompt (a write says "modify" or "move to the
+            // trash", an agent's request its command), not "show".
+            let local: @MainActor (LAContext) async -> Bool = { [model, prompt] context in
+                protected ? await model.confirmAccess(itemID: item, title: title, context: context, prompt: prompt)
                           : await Biometrics.confirm(reason: prompt, context: context)
             }
             // At the Mac: Touch ID; away: the paired iPhone (`RemoteApprovals`).
             let outcome = if let remote = model.remote {
                 await remote.decide(client: clientName.isEmpty ? String(localized: "the terminal") : clientName,
-                                    purpose: purpose.wire, title: title, site: site, reason: motive,
-                                    changes: changes, command: command, fields: fields,
+                                    purpose: purpose.wire, item: item, title: title, site: site, reason: motive,
+                                    changes: changes, command: command, fields: fields, ephemeral: ephemeral,
                                     scope: untilLocked ? "untilLocked" : nil, local: local)
             } else {
                 RemoteApprovals.Outcome.local(await local(LAContext()))
@@ -337,21 +337,25 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
         }
     }
 
-    func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String, site: String,
-                          reason: String, changes: String, command: String, fields: String) {
+    func confirmRequested(id: String, clientId: String, clientName: String, purpose: AccessPurpose, item: String,
+                          title: String, site: String, reason: String, changes: String, command: String,
+                          fields: String, ephemeral: Bool) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
                 // Bridge stopped in the meantime: the request expires by itself.
-                bridge?.confirmRequested(id: id, clientName: clientName, purpose: purpose, item: item, title: title,
-                                         site: site, reason: reason, changes: changes, command: command, fields: fields)
+                bridge?.confirmRequested(id: id, clientID: clientId, clientName: clientName, purpose: purpose,
+                                         item: item, title: title, site: site, reason: reason, changes: changes,
+                                         command: command, fields: fields, ephemeral: ephemeral)
             }
         }
     }
 
-    func unlockRequested(kind: BridgeClientKind, reason: String, thenItem: String, thenField: String) {
+    func unlockRequested(kind: BridgeClientKind, clientId: String, reason: String, thenItem: String,
+                         thenField: String) {
         DispatchQueue.main.async { [weak bridge] in
             MainActor.assumeIsolated {
-                bridge?.unlockRequested(kind: kind, reason: reason, thenItem: thenItem, thenField: thenField)
+                bridge?.unlockRequested(kind: kind, client: clientId, reason: reason, thenItem: thenItem,
+                                        thenField: thenField)
             }
         }
     }
