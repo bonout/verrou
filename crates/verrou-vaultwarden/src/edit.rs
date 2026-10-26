@@ -28,7 +28,7 @@ use crate::outbox::{Action, request_of};
 use crate::{Connection, Decrypted, Error};
 
 /// Old passwords kept per item, like the Bitwarden apps.
-pub(crate) const MAX_PASSWORD_HISTORY: usize = 5;
+pub const MAX_PASSWORD_HISTORY: usize = 5;
 
 /// What the edit screen modifies. A draft with `login` creates a
 /// login, with `card` a card, with `identity` an identity; with

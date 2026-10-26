@@ -489,6 +489,15 @@ impl Relation {
     /// The reason, in plain words: "same site (maif.fr), same username, same
     /// password".
     pub(crate) fn reason(&self) -> String {
+        self.reason_with(true)
+    }
+
+    /// The reason without what it says about passwords and one-time codes.
+    pub(crate) fn reason_without_secrets(&self) -> String {
+        self.reason_with(false)
+    }
+
+    fn reason_with(&self, secrets: bool) -> String {
         let site = match &self.site {
             SiteLink::App(app) => format!(
                 "same app ({})",
@@ -510,8 +519,11 @@ impl Relation {
             PasswordLink::Different => "different password",
             PasswordLink::OneMissing => "one password missing",
         };
-        let mut parts = vec![site, user.to_owned(), password.to_owned()];
-        if self.same_totp {
+        let mut parts = vec![site, user.to_owned()];
+        if secrets {
+            parts.push(password.to_owned());
+        }
+        if secrets && self.same_totp {
             parts.push("same one-time code".to_owned());
         }
         parts.join(", ")
@@ -615,6 +627,12 @@ fn titles_agree(a: &Signals, b: &Signals, domain: &str) -> bool {
 
 /// Compares two logins. `None`: nothing that looks like a duplicate.
 pub(crate) fn relate(a: &Signals, b: &Signals) -> Option<Relation> {
+    relate_with(a, b, false)
+}
+
+/// Like [`relate`]; `blind`: the passwords and the one-time code seeds are
+/// not compared (the passwords count as one missing, the seeds as different).
+pub(crate) fn relate_with(a: &Signals, b: &Signals, blind: bool) -> Option<Relation> {
     use Confidence::{Certain, Probable, Review};
     use PasswordLink as P;
     use UserLink as U;
@@ -623,9 +641,13 @@ pub(crate) fn relate(a: &Signals, b: &Signals) -> Option<Relation> {
     }
     let site = site_link(a, b)?;
     let user = user_link(&a.user, &b.user);
-    let password = password_link(a.password, b.password);
+    let password = if blind {
+        P::OneMissing
+    } else {
+        password_link(a.password, b.password)
+    };
     let same_totp = match (&a.totp, &b.totp) {
-        (Some(x), Some(y)) => same_secret(x, y),
+        (Some(x), Some(y)) if !blind => same_secret(x, y),
         _ => false,
     };
     let missing = matches!(user, U::OneMissing | U::BothMissing);

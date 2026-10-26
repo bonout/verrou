@@ -54,6 +54,14 @@ pub enum Skipped {
     PasswordsHidden,
 }
 
+/// An item refused before anything is sent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BulkFailure {
+    pub id: String,
+    pub title: String,
+    pub reason: String,
+}
+
 /// Outcome of a bulk action.
 pub struct BulkOutcome {
     /// Items handled: queued, or already in the wanted state.
@@ -62,9 +70,9 @@ pub struct BulkOutcome {
     pub queued: usize,
     /// Items set aside before anything is sent: (id, reason).
     pub skipped: Vec<(String, Skipped)>,
-    /// Refused before anything is sent: (title, reason). The server's
-    /// refusals come later, in the upload report (`take_report`).
-    pub failed: Vec<(String, String)>,
+    /// Refused before anything is sent, by item. The server's refusals come
+    /// later, in the upload report (`take_report`).
+    pub failed: Vec<BulkFailure>,
     pub vault: Decrypted,
 }
 
@@ -114,7 +122,11 @@ impl Connection {
                     view.favorite = *favorite;
                     match self.encrypt_context(view).await {
                         Ok(encrypted) => self.outbox.push_save(id, title, false, encrypted),
-                        Err(error) => failed.push((title, error.to_string())),
+                        Err(error) => failed.push(BulkFailure {
+                            id,
+                            title,
+                            reason: error.to_string(),
+                        }),
                     }
                 }
             }
@@ -122,6 +134,80 @@ impl Connection {
         }
         self.persist_outbox()?;
         let queued = total - failed.len();
+        Ok(BulkOutcome {
+            done: already + queued,
+            queued,
+            skipped,
+            failed,
+            vault: self.decrypt_cache().await?,
+        })
+    }
+
+    /// Gives these items their new titles (`(id, title)`, in this order,
+    /// without duplicates): one encrypted edit per item, as a favorite is
+    /// (no route renames in bulk), in the queue and then sent by
+    /// `sync_shared`. Set aside and counted like the other bulk actions:
+    /// read-only, in the trash, gone; an item that already has the title
+    /// counts as done; an empty title is refused for that item alone.
+    pub async fn bulk_rename(
+        &mut self,
+        renames: &[(String, String)],
+        progress: Progress<'_>,
+    ) -> Result<BulkOutcome, Error> {
+        let mut ciphers: HashMap<String, _> = self
+            .cached_ciphers()?
+            .into_iter()
+            .filter_map(|c| Some((c.id?.to_string(), c)))
+            .collect();
+        let mut seen = HashSet::new();
+        let (mut writes, mut already, mut skipped, mut failed) =
+            (Vec::new(), 0, Vec::new(), Vec::new());
+        for (id, title) in renames {
+            let id = self.resolve(id);
+            if !seen.insert(id.clone()) {
+                continue;
+            }
+            let Some(cipher) = ciphers.remove(&id) else {
+                skipped.push((id, Skipped::NotFound));
+                continue;
+            };
+            let mut view = self.decrypt_view(cipher).await?;
+            let title = title.trim();
+            if !view.edit || view.partial {
+                skipped.push((id, Skipped::ReadOnly));
+            } else if view.deleted_date.is_some() {
+                skipped.push((id, Skipped::InTrash));
+            } else if title.is_empty() {
+                failed.push(BulkFailure {
+                    id,
+                    title: view.name.clone(),
+                    reason: "the title is required".to_owned(),
+                });
+            } else if view.name == title {
+                already += 1;
+            } else {
+                title.clone_into(&mut view.name);
+                writes.push((id, view));
+            }
+        }
+        let total = writes.len();
+        let mut queued = 0;
+        for (index, (id, view)) in writes.into_iter().enumerate() {
+            let title = view.name.clone();
+            match self.encrypt_context(view).await {
+                Ok(encrypted) => {
+                    self.outbox.push_save(id, title, false, encrypted);
+                    queued += 1;
+                }
+                Err(error) => failed.push(BulkFailure {
+                    id,
+                    title,
+                    reason: error.to_string(),
+                }),
+            }
+            progress(index + 1, total);
+        }
+        self.persist_outbox()?;
         Ok(BulkOutcome {
             done: already + queued,
             queued,

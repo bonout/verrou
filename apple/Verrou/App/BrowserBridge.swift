@@ -157,6 +157,15 @@ final class BrowserBridge {
         }
     }
 
+    /// An agent's plan, checked by Verrou, awaits the user's review.
+    fileprivate func planProposed(_ plan: OrganizeReview) {
+        model.organizePlanProposed(plan)
+    }
+
+    fileprivate func planWithdrawn(id: String, message: String) {
+        model.organizePlanWithdrawn(id: id, message: message)
+    }
+
     fileprivate func vaultChanged(item: String, title: String) {
         model.didSaveFromBrowser(title: title)
     }
@@ -201,6 +210,10 @@ final class BrowserBridge {
         case .edit where !site.isEmpty: String(localized: "allow the terminal to modify “\(title)” and file it in the folder “\(site)”")
         case .edit: String(localized: "allow the terminal to modify “\(title)”")
         case .delete: String(localized: "allow the terminal to move “\(title)” to the trash")
+        // An agent session reads the catalog (titles, usernames, sites,
+        // folders: no secret): one approval covers the pages it reads, for
+        // half an hour, and no other session of the same terminal.
+        case .catalog: String(localized: "allow this agent session to read the list of your items for 30 minutes (titles, usernames, sites and folders, no password)")
         }
         // Already approved on the iPhone with the unlock: "unlock and read
         // this item".
@@ -371,6 +384,18 @@ private final class Callbacks: BridgeDelegate, @unchecked Sendable {
             MainActor.assumeIsolated { bridge?.repromptRequested(item: item, title: title) }
         }
     }
+
+    func planProposed(plan: OrganizeReview) {
+        DispatchQueue.main.async { [weak bridge] in
+            MainActor.assumeIsolated { bridge?.planProposed(plan) }
+        }
+    }
+
+    func planWithdrawn(id: String, message: String) {
+        DispatchQueue.main.async { [weak bridge] in
+            MainActor.assumeIsolated { bridge?.planWithdrawn(id: id, message: message) }
+        }
+    }
 }
 
 extension AccessPurpose {
@@ -387,6 +412,7 @@ extension AccessPurpose {
         case .create: "create"
         case .edit: "edit"
         case .delete: "delete"
+        case .catalog: "catalog"
         }
     }
 }

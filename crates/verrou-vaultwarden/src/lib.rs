@@ -77,11 +77,14 @@ use verrou_core::{Item, SecretString};
 
 pub use api::{TwoFactorAnswer, TwoFactorMethod};
 pub use attachments::AttachmentInfo;
-pub use bulk::{BulkAction, BulkOutcome, Progress, Skipped};
-pub use edit::{CardDraft, CustomFieldDraft, CustomFieldKind, Draft, IdentityDraft, LoginDraft};
+pub use bulk::{BulkAction, BulkFailure, BulkOutcome, Progress, Skipped};
+pub use edit::{
+    CardDraft, CustomFieldDraft, CustomFieldKind, Draft, IdentityDraft, LoginDraft,
+    MAX_PASSWORD_HISTORY,
+};
 pub use error::Error;
 pub use import::{Destination, ImportPlan, ImportReport};
-pub use merge::{MergeOutcome, MergeSummary};
+pub use merge::{MergeOutcome, MergeSnapshot, MergeSummary};
 pub use organizations::{Collection, Organization, PendingMembership, ShareOutcome};
 pub use outbox::{CONFLICT_SUFFIX, Closer, SyncReport, Synced, sync_shared};
 pub use store::{Account, KdfSettings, Store};

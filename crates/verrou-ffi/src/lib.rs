@@ -43,6 +43,7 @@ use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
 
+pub use organize::OrganizeReview;
 pub use preferences::{FolderMatchRule, MatchSettingsView, UriMatchRule};
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
@@ -61,6 +62,7 @@ mod conditional;
 mod emergency;
 mod import;
 mod members;
+mod organize;
 mod otp_scan;
 mod passphrase;
 mod preferences;
@@ -981,6 +983,10 @@ pub struct VaultSession {
     match_settings: RwLock<verrou_core::matching::DeviceMatchSettings>,
     /// Account's equivalent domains, from the last sync.
     equivalent_domains: RwLock<Vec<Vec<String>>>,
+    /// The kept items of merges an agent's plan made, as they were before,
+    /// by plan: to undo a merge. They hold secrets: in memory only, never
+    /// sent to Swift nor to the agent, and dropped on lock.
+    merge_undos: Mutex<HashMap<String, Vec<verrou_vaultwarden::MergeSnapshot>>>,
 }
 
 /// Pending approval requests: the app answers with
@@ -1048,6 +1054,7 @@ impl VaultSession {
             usage: Mutex::new(verrou_core::usage::UsageLog::default()),
             match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
             equivalent_domains: RwLock::new(Vec::new()),
+            merge_undos: Mutex::new(HashMap::new()),
         })
     }
 
@@ -1863,6 +1870,7 @@ impl VaultSession {
             usage: Mutex::new(verrou_core::usage::UsageLog::default()),
             match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
             equivalent_domains: RwLock::new(Vec::new()),
+            merge_undos: Mutex::new(HashMap::new()),
         })
     }
 
@@ -1917,7 +1925,14 @@ impl VaultSession {
             .as_ref()
         {
             bridge.forget_approvals();
+            // A plan awaiting review does not outlive the unlocked vault.
+            bridge.drop_plans();
         }
+        // Nor does what undoes a merge.
+        self.merge_undos
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
         self.vault
             .write()
             .unwrap_or_else(PoisonError::into_inner)
@@ -2452,6 +2467,10 @@ pub enum AccessPurpose {
     Edit,
     /// The terminal moves an item to the trash.
     Delete,
+    /// An agent reads the vault's catalog: titles, usernames, sites,
+    /// folders and counts of every item, no secret. One approval covers it
+    /// for half an hour.
+    Catalog,
 }
 
 impl From<Purpose> for AccessPurpose {
@@ -2467,6 +2486,7 @@ impl From<Purpose> for AccessPurpose {
             Purpose::Create => Self::Create,
             Purpose::Edit => Self::Edit,
             Purpose::Delete => Self::Delete,
+            Purpose::Catalog => Self::Catalog,
         }
     }
 }
@@ -2530,6 +2550,13 @@ pub trait BridgeDelegate: Send + Sync {
     /// The extension wants to fill a protected item: ask for confirmation
     /// (Touch ID or master password), then `authorize_item`.
     fn reprompt_requested(&self, item: String, title: String);
+    /// An agent proposed a reorganization plan, already checked: show it
+    /// for review. The user applies the operations they check with Touch ID
+    /// (`apply_organize_plan`) or declines (`decline_organize_plan`).
+    fn plan_proposed(&self, plan: OrganizeReview);
+    /// The plan can no longer be reviewed (it expired, the agent withdrew
+    /// it): close its review. `message`: why, to show.
+    fn plan_withdrawn(&self, id: String, message: String);
 }
 
 /// Report of the push of changes made offline.
@@ -2727,6 +2754,65 @@ impl Backend for SessionBackend {
         self.delegate
             .reprompt_requested(item.id.clone(), item.title.clone());
         false
+    }
+
+    fn folders(&self) -> Vec<String> {
+        self.session.upgrade().map_or_else(Vec::new, |session| {
+            session
+                .folders
+                .read()
+                .unwrap_or_else(PoisonError::into_inner)
+                .iter()
+                .map(|f| f.name.clone())
+                .collect()
+        })
+    }
+
+    fn attachment_counts(&self) -> BoxFuture<'_, HashMap<String, usize>> {
+        Box::pin(async move {
+            let Some(connection) = self
+                .session
+                .upgrade()
+                .and_then(|session| session.current_connection())
+            else {
+                return HashMap::new();
+            };
+            connection
+                .lock()
+                .await
+                .attachment_counts()
+                .unwrap_or_default()
+        })
+    }
+
+    fn password_dates(&self) -> BoxFuture<'_, HashMap<String, i64>> {
+        Box::pin(async move {
+            let Some(connection) = self
+                .session
+                .upgrade()
+                .and_then(|session| session.current_connection())
+            else {
+                return HashMap::new();
+            };
+            connection.lock().await.password_dates().unwrap_or_default()
+        })
+    }
+
+    fn plan_proposed(&self, review: verrou_bridge::PlanReview) -> bool {
+        // A demo vault cannot be written: nothing to review.
+        let writable = self
+            .session
+            .upgrade()
+            .is_some_and(|session| session.current_connection().is_some());
+        if writable {
+            self.delegate.plan_proposed(review.into());
+        }
+        writable
+    }
+
+    fn plan_withdrawn(&self, plan: &str, message: &str) {
+        self.delegate
+            .plan_withdrawn(plan.to_owned(), message.to_owned());
     }
 
     fn approval_scope(&self, purpose: Purpose, item: &str) -> verrou_bridge::ApprovalScope {
@@ -3084,6 +3170,8 @@ mod tests {
         }
         fn vault_changed(&self, _: String, _: String) {}
         fn reprompt_requested(&self, _: String, _: String) {}
+        fn plan_proposed(&self, _: OrganizeReview) {}
+        fn plan_withdrawn(&self, _: String, _: String) {}
     }
 
     #[test]
@@ -3314,6 +3402,8 @@ mod optimistic_tests {
             self.0.lock().unwrap().push(item);
         }
         fn reprompt_requested(&self, _: String, _: String) {}
+        fn plan_proposed(&self, _: OrganizeReview) {}
+        fn plan_withdrawn(&self, _: String, _: String) {}
     }
 
     /// A login saved from Brave or Firefox: the reply goes out as soon as

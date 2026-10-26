@@ -12,6 +12,10 @@
 //! approval ([`Backend::confirm`]), kept [`APPROVAL_TTL`] for this
 //! client and this item, or until the vault locks for an SSH key whose
 //! owner chose [`ApprovalScope::UntilLocked`].
+//!
+//! An agent can also read the vault's catalog (one approval per agent session,
+//! half an hour, [`Purpose::Catalog`]) and propose a reorganization plan, which the user
+//! reviews and applies in Verrou ([`crate::plans`], [`crate::organize`]).
 
 use std::collections::HashMap;
 use std::future::Future;
@@ -28,17 +32,20 @@ use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
 use url::Url;
+use verrou_core::duplicates::DuplicateGroup;
 use verrou_core::{ItemKind, Vault};
 use zeroize::Zeroize as _;
 
 use crate::access::{self, Write};
 use crate::clients::{ClientInfo, ClientStore};
 use crate::crypto::{Direction, KeyPair};
+use crate::organize::{self, Context, PlanReview};
 use crate::passkeys;
+use crate::plans::{self, ApprovedPlan, Plans};
 use crate::protocol::{
     CONFIRM_IN_APP, ClientKind, Command, Credentials, ErrorCode, Incoming, MAX_CLOCK_SKEW_MS,
-    MAX_FRAME, Outgoing, Reply, ReplyResult, Request, RunDetail, SaveAction, SecretValue,
-    Suggestion, UnlockIntent, clean_text,
+    MAX_FRAME, Outgoing, Plan, PlanReport, Reply, ReplyResult, Request, RunDetail, SaveAction,
+    SecretValue, Suggestion, UnlockIntent, clean_reason, clean_session, clean_text,
 };
 use crate::ssh;
 
@@ -56,6 +63,9 @@ const PAIRING_INTERVAL: Duration = Duration::from_secs(3);
 /// an item: `verrou get` then `verrou totp`, or several SSH connections
 /// in a row, without asking for Touch ID again.
 pub const APPROVAL_TTL: Duration = Duration::from_secs(5 * 60);
+/// How long the approval to read the vault's catalog holds for a client: an
+/// agent that plans a reorganization reads it in several pages.
+pub const CATALOG_TTL: Duration = Duration::from_secs(30 * 60);
 /// How long an approval holds, chosen by the user per SSH key.
 ///
 /// Only [`Purpose::Ssh`] and [`Purpose::GitSign`] honour anything but the
@@ -71,6 +81,8 @@ pub enum ApprovalScope {
     /// Ask once: the approval holds until the vault locks
     /// ([`Bridge::forget_approvals`]), which is the only thing that ends it.
     UntilLocked,
+    /// Ask again after [`CATALOG_TTL`]: only [`Purpose::Catalog`].
+    HalfHour,
 }
 
 /// The time given to the user to answer an approval request.
@@ -144,6 +156,42 @@ pub trait Backend: Send + Sync + 'static {
     fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
         ApprovalScope::FiveMinutes
     }
+    /// The account's folders, the empty ones too (the vault's items only
+    /// tell the folders that hold one).
+    fn folders(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// How many attachments each item has, by identifier (counted in the
+    /// cache, nothing is decrypted); the items without any are missing.
+    fn attachment_counts(&self) -> BoxFuture<'_, HashMap<String, usize>> {
+        Box::pin(async { HashMap::new() })
+    }
+    /// When each login's password last changed (Unix seconds), by item,
+    /// from the cache (nothing is decrypted): for the review of a merge.
+    /// Items missing are dated by their creation.
+    fn password_dates(&self) -> BoxFuture<'_, HashMap<String, i64>> {
+        Box::pin(async { HashMap::new() })
+    }
+    /// The vault's duplicate groups, as an agent may read them
+    /// ([`organize::scan_duplicates`]). `None`: vault locked.
+    fn duplicates(&self) -> BoxFuture<'_, Option<Vec<DuplicateGroup>>> {
+        Box::pin(async move {
+            let attachments = self.attachment_counts().await;
+            let mut groups = None;
+            self.read(&mut |vault| groups = Some(organize::scan_duplicates(vault, &attachments)));
+            groups
+        })
+    }
+    /// An agent's plan awaits the user's review: show it, then answer with
+    /// [`Bridge::take_plan`] and [`Bridge::finish_plan`] (apply) or
+    /// [`Bridge::decline_plan`]. `false`: it cannot be shown, and the plan
+    /// is refused.
+    fn plan_proposed(&self, _review: PlanReview) -> bool {
+        false
+    }
+    /// The plan can no longer be reviewed (it expired, or the agent
+    /// withdrew it): close its review. `message`: why, for the user.
+    fn plan_withdrawn(&self, _plan: &str, _message: &str) {}
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -187,6 +235,11 @@ pub enum Purpose {
     Edit,
     /// Terminal: move an item to the trash.
     Delete,
+    /// An agent reads the catalog of the vault: titles, usernames, sites,
+    /// folders and counts of every item, never a secret. One approval per
+    /// agent session covers it for [`CATALOG_TTL`] (`item` is
+    /// `catalog:<session>`; a request without a session is asked on its own).
+    Catalog,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -236,6 +289,8 @@ struct Shared {
     /// `manifest.json` of the extension shipped with the app: read again on every
     /// `status`, to announce its version to the extension.
     extension_manifest: Mutex<Option<PathBuf>>,
+    /// Plans an agent proposed, awaiting the user or recently answered.
+    plans: Mutex<Plans>,
 }
 
 /// The running bridge. Dropping it stops it.
@@ -261,6 +316,7 @@ impl Bridge {
             refusals: Mutex::new(HashMap::new()),
             releases: Mutex::new(HashMap::new()),
             extension_manifest: Mutex::new(None),
+            plans: Mutex::new(Plans::default()),
         });
         let (shutdown, mut stop) = oneshot::channel::<()>();
         let state = Arc::clone(&shared);
@@ -343,6 +399,48 @@ impl Bridge {
     /// (from "until locked" to "every time") applies at once.
     pub fn forget_approvals_of_item(&self, item: &str) {
         lock(&self.shared.approvals).retain(|(_, _, id), _| id != item);
+    }
+
+    /// The user applies a plan ([`Backend::plan_proposed`]): the operations
+    /// at `accepted` (their positions in the plan) are to be carried out, by
+    /// the app, which checks them once more
+    /// ([`organize::check_ops`]) and answers with [`Self::finish_plan`].
+    /// `Err`: the plan expired, was withdrawn or answered already.
+    pub fn take_plan(&self, id: &str, accepted: &[usize]) -> Result<ApprovedPlan, String> {
+        lock(&self.shared.plans).take(id, accepted, tokio::time::Instant::now())
+    }
+
+    /// The plan was applied: what came of it, for the agent.
+    pub fn finish_plan(&self, id: &str, report: PlanReport) {
+        lock(&self.shared.plans).finish(id, report, tokio::time::Instant::now());
+    }
+
+    /// The user declined the plan (`message`: what the agent is told). The
+    /// client's next proposal waits a minute.
+    pub fn decline_plan(&self, id: &str, message: &str) {
+        lock(&self.shared.plans).decline(id, message, tokio::time::Instant::now());
+    }
+
+    /// The user undid an applied plan.
+    pub fn mark_undone(&self, id: &str) {
+        lock(&self.shared.plans).undone(id, tokio::time::Instant::now());
+    }
+
+    /// Applying stopped halfway (`message`: why, for the agent): what was
+    /// done before is in `report`. There is nothing to undo.
+    pub fn interrupt_plan(&self, id: &str, report: PlanReport, message: &str) {
+        lock(&self.shared.plans).interrupt(id, report, message, tokio::time::Instant::now());
+    }
+
+    /// The user closed the sheet of this plan (applied, declined, undone…):
+    /// the agent may propose another.
+    pub fn plan_closed(&self, id: &str) {
+        lock(&self.shared.plans).closed(id);
+    }
+
+    /// The vault locked: plans awaiting review are dropped.
+    pub fn drop_plans(&self) {
+        lock(&self.shared.plans).drop_all(tokio::time::Instant::now());
     }
 }
 
@@ -488,7 +586,7 @@ async fn pair(
 }
 
 #[allow(clippy::too_many_lines)] // one arm per command, readable in one go
-async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing {
+async fn answer(shared: &Arc<Shared>, client: &str, iv: &str, data: &str) -> Outgoing {
     let bad = Outgoing::Error {
         code: ErrorCode::BadRequest,
     };
@@ -622,6 +720,7 @@ fn approval_holds(at: Instant, scope: ApprovalScope, now: Instant) -> bool {
     match scope {
         ApprovalScope::UntilLocked => true,
         ApprovalScope::FiveMinutes => now.saturating_duration_since(at) < APPROVAL_TTL,
+        ApprovalScope::HalfHour => now.saturating_duration_since(at) < CATALOG_TTL,
         // Never inserted; dropped if one ever got there.
         ApprovalScope::EveryTime => false,
     }
@@ -636,6 +735,7 @@ fn effective_scope(shared: &Shared, purpose: Purpose, item: &str) -> ApprovalSco
     match purpose {
         Purpose::Ssh | Purpose::GitSign => shared.backend.approval_scope(purpose, item),
         Purpose::Create | Purpose::Edit | Purpose::Delete => ApprovalScope::EveryTime,
+        Purpose::Catalog => ApprovalScope::HalfHour,
         _ => ApprovalScope::FiveMinutes,
     }
 }
@@ -671,6 +771,8 @@ struct Terminal<'a> {
     /// ([`Request::ephemeral_approval`]).
     ephemeral: bool,
     detail: RunDetail,
+    /// The agent session ([`clean_session`]), if it said which.
+    session: Option<String>,
 }
 
 impl<'a> Terminal<'a> {
@@ -685,6 +787,7 @@ impl<'a> Terminal<'a> {
                 .as_ref()
                 .map(RunDetail::cleaned)
                 .unwrap_or_default(),
+            session: clean_session(request.session.as_deref()),
         }
     }
 
@@ -718,16 +821,26 @@ impl<'a> Terminal<'a> {
 /// purpose and item still holds. `ephemeral`: an agent's request, asked on
 /// its own and never remembered.
 async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> bool {
+    approve_with(shared, request, !ephemeral, ephemeral).await
+}
+
+/// [`approve`], with its two halves apart. `remember`: an approval given
+/// earlier covers this request, and this one is kept. `agent`: an agent
+/// asks, so a refusal pauses its next prompts ([`REFUSAL_PAUSE`]). The
+/// catalog is both an agent's and remembered (half an hour): one approval
+/// for the pages an agent reads.
+async fn approve_with(shared: &Shared, request: Confirmation, remember: bool, agent: bool) -> bool {
     let (purpose, item) = (request.purpose, request.item.clone());
     let entry = (request.client.clone(), purpose, item.clone());
-    if ephemeral {
+    if agent {
         // A prompt the user just declined for this client does not come back.
         let mut refusals = lock(&shared.refusals);
         refusals.retain(|_, at| at.elapsed() < REFUSAL_PAUSE);
         if refusals.contains_key(&request.client) {
             return false;
         }
-    } else {
+    }
+    if remember {
         let mut approvals = lock(&shared.approvals);
         approvals.retain(|_, (at, scope)| approval_holds(*at, *scope, Instant::now()));
         if approvals.contains_key(&entry) {
@@ -737,12 +850,12 @@ async fn approve(shared: &Shared, request: Confirmation, ephemeral: bool) -> boo
     let granted = tokio::time::timeout(CONFIRMATION_TIMEOUT, shared.backend.confirm(request))
         .await
         .unwrap_or(false);
-    if !granted && ephemeral && shared.backend.is_unlocked() {
+    if !granted && agent && shared.backend.is_unlocked() {
         // Declined or left unanswered (a vault that locked meanwhile is
         // neither).
         lock(&shared.refusals).insert(entry.0.clone(), Instant::now());
     }
-    if granted && !ephemeral {
+    if granted && remember {
         let scope = effective_scope(shared, purpose, &item);
         if scope != ApprovalScope::EveryTime {
             lock(&shared.approvals).insert(entry, (Instant::now(), scope));
@@ -824,7 +937,7 @@ fn refused() -> ReplyResult {
 /// Terminal commands (already filtered by [`access::allowed`]).
 #[allow(clippy::too_many_lines)] // one branch per command, readable in one go
 async fn terminal(
-    shared: &Shared,
+    shared: &Arc<Shared>,
     client: &ClientInfo,
     command: Command,
     ask: &Terminal<'_>,
@@ -916,6 +1029,12 @@ async fn terminal(
         command @ (Command::ItemCreate { .. }
         | Command::ItemEdit { .. }
         | Command::ItemMove { .. }) => item_write(shared, client, command, ask).await,
+        command @ (Command::VaultOverview
+        | Command::VaultList { .. }
+        | Command::VaultDuplicates) => catalog(shared, client, command, ask).await,
+        command @ (Command::PlanPropose { .. }
+        | Command::PlanStatus { .. }
+        | Command::PlanCancel { .. }) => plan_command(shared, client, command, ask).await,
         Command::Unlink => {
             lock(&shared.clients).remove(&client.id);
             lock(&shared.approvals).retain(|(id, _, _), _| *id != client.id);
@@ -1069,6 +1188,257 @@ async fn item_write(
     match plan(command) {
         Some(write) => written(backend.write(write).await),
         None => refused(),
+    }
+}
+
+// MARK: Organizing
+
+/// What the user approves to let an agent session read the catalog.
+const CATALOG_TITLE: &str =
+    "the vault's catalog: titles, usernames, sites, folders and counts, no secret";
+
+/// The item an approval to read the catalog is kept under: one per agent
+/// session, so that an approval given to one agent run is not another run's
+/// (every `verrou mcp` of a terminal is the same paired client).
+fn catalog_item(session: &str) -> String {
+    format!("catalog:{session}")
+}
+
+/// Does this agent session hold an approval to read the catalog? Looked up,
+/// never asked: a plan is proposed by an agent that has read the vault.
+fn catalog_held(shared: &Shared, client: &ClientInfo, session: Option<&str>) -> bool {
+    let Some(session) = session else {
+        return false;
+    };
+    let entry = (client.id.clone(), Purpose::Catalog, catalog_item(session));
+    lock(&shared.approvals)
+        .get(&entry)
+        .is_some_and(|(at, scope)| approval_holds(*at, *scope, Instant::now()))
+}
+
+/// An agent reads the vault's catalog ([`crate::organize`]): the user
+/// approves it once for [`CATALOG_TTL`] for this agent session, then every
+/// page is free. A request without a session is asked on its own and not
+/// remembered. A refusal still pauses that agent's prompts.
+async fn catalog(
+    shared: &Shared,
+    client: &ClientInfo,
+    command: Command,
+    ask: &Terminal<'_>,
+) -> ReplyResult {
+    let backend = &*shared.backend;
+    if !backend.is_unlocked() {
+        return ReplyResult::Locked;
+    }
+    let remembered = ask.session.is_some();
+    let item = catalog_item(ask.session.as_deref().unwrap_or("once"));
+    let request = Confirmation {
+        ephemeral: !remembered,
+        ..ask.confirmation(client, Purpose::Catalog, &item, CATALOG_TITLE, "")
+    };
+    if !approve_with(shared, request, remembered, ask.ephemeral).await {
+        return refused_or_locked(backend);
+    }
+    match command {
+        Command::VaultOverview => {
+            let folders = backend.folders();
+            read(backend, |v| organize::overview(v, &folders))
+                .map_or(ReplyResult::Locked, ReplyResult::Overview)
+        }
+        Command::VaultList {
+            offset,
+            limit,
+            archived,
+        } => {
+            let attachments = backend.attachment_counts().await;
+            read(backend, |v| {
+                organize::catalog(v, &attachments, offset, limit, archived)
+            })
+            .map_or(ReplyResult::Locked, |(items, total)| ReplyResult::Catalog {
+                items,
+                total: u32::try_from(total).unwrap_or(u32::MAX),
+            })
+        }
+        Command::VaultDuplicates => {
+            let Some(groups) = backend.duplicates().await else {
+                return ReplyResult::Locked;
+            };
+            read(backend, |v| organize::duplicate_infos(&groups, v)).map_or(
+                ReplyResult::Locked,
+                |(groups, total)| ReplyResult::Duplicates {
+                    groups,
+                    total: u32::try_from(total).unwrap_or(u32::MAX),
+                },
+            )
+        }
+        _ => ReplyResult::Denied {
+            reason: "unexpected command".to_owned(),
+        },
+    }
+}
+
+/// The longest an agent's `plan_status` may wait, in seconds.
+const MAX_WAIT: u32 = 60;
+
+/// An agent's plan: proposed, followed, withdrawn.
+async fn plan_command(
+    shared: &Arc<Shared>,
+    client: &ClientInfo,
+    command: Command,
+    ask: &Terminal<'_>,
+) -> ReplyResult {
+    let denied = |reason: &str| ReplyResult::Denied {
+        reason: reason.to_owned(),
+    };
+    let session = ask.session.clone().unwrap_or_default();
+    match command {
+        Command::PlanPropose { plan } => plan_propose(shared, client, &session, plan).await,
+        Command::PlanStatus { plan, wait } => {
+            let Some(mut changes) = lock(&shared.plans).subscribe(&client.id, &session, &plan)
+            else {
+                return denied("no such plan (a finished plan is kept ten minutes)");
+            };
+            // Wait for the plan to leave review and application, or for the
+            // time asked: the user reviews at their pace.
+            let wait = Duration::from_secs(u64::from(wait.min(MAX_WAIT)));
+            let _ = tokio::time::timeout(wait, async {
+                while changes.borrow_and_update().state.is_open() {
+                    if changes.changed().await.is_err() {
+                        break;
+                    }
+                }
+            })
+            .await;
+            match lock(&shared.plans).state(
+                &client.id,
+                &session,
+                &plan,
+                tokio::time::Instant::now(),
+            ) {
+                Some(state) => ReplyResult::Plan(state),
+                None => denied("no such plan (a finished plan is kept ten minutes)"),
+            }
+        }
+        Command::PlanCancel { plan } => {
+            let now = tokio::time::Instant::now();
+            let cancelled = lock(&shared.plans).cancel(&client.id, &session, &plan, now);
+            match cancelled {
+                Err(reason) => ReplyResult::Denied { reason },
+                Ok(was_waiting) => {
+                    if was_waiting {
+                        shared
+                            .backend
+                            .plan_withdrawn(&plan, "the agent withdrew the plan");
+                    }
+                    match lock(&shared.plans).state(&client.id, &session, &plan, now) {
+                        Some(state) => ReplyResult::Plan(state),
+                        None => denied("no such plan"),
+                    }
+                }
+            }
+        }
+        _ => denied("unexpected command"),
+    }
+}
+
+/// Checks the plan against the unlocked vault, then hands it to the app for
+/// the user to review. It answers at once: the user answers later, and the
+/// agent follows with `plan_status`.
+async fn plan_propose(
+    shared: &Arc<Shared>,
+    client: &ClientInfo,
+    session: &str,
+    plan: Plan,
+) -> ReplyResult {
+    let backend = &*shared.backend;
+    let denied = |reason: String| ReplyResult::Denied { reason };
+    if !backend.is_unlocked() {
+        return ReplyResult::Locked;
+    }
+    // Every proposal counts, whatever becomes of it.
+    if let Err(reason) = lock(&shared.plans).attempt(&client.id, tokio::time::Instant::now()) {
+        return denied(reason);
+    }
+    // A plan comes from an agent that has read the vault, with the user's
+    // approval for this session: looked up, never asked.
+    if !catalog_held(shared, client, (!session.is_empty()).then_some(session)) {
+        return denied(
+            "the user has not let this session read the vault: read it with verrou_list_items first, then propose the plan"
+                .to_owned(),
+        );
+    }
+    if let Err(reason) = lock(&shared.plans).admit(&client.id, tokio::time::Instant::now()) {
+        return denied(reason);
+    }
+    let folders = backend.folders();
+    let attachments = backend.attachment_counts().await;
+    let password_dates = backend.password_dates().await;
+    let Some(groups) = backend.duplicates().await else {
+        return ReplyResult::Locked;
+    };
+    let checked = read(backend, |v| {
+        organize::validate(
+            &plan,
+            v,
+            &Context {
+                groups: &groups,
+                attachments: &attachments,
+                folders: &folders,
+                password_dates: &password_dates,
+            },
+        )
+    });
+    let checked = match checked {
+        None => return ReplyResult::Locked,
+        Some(Err(reason)) => return denied(reason),
+        Some(Ok(checked)) => checked,
+    };
+    let reason = clean_reason(Some(&plan.reason));
+    // Admitted again, under the lock that registers the plan: a proposal
+    // that was admitted while this one was being checked may have got there
+    // first.
+    let registered = lock(&shared.plans).register(
+        &client.id,
+        session,
+        &reason,
+        (
+            checked.ops.clone(),
+            checked.refused.clone(),
+            checked.unchanged,
+        ),
+        tokio::time::Instant::now(),
+    );
+    let (id, state) = match registered {
+        Ok(registered) => registered,
+        Err(reason) => return denied(reason),
+    };
+    let review = PlanReview {
+        id: id.clone(),
+        client: client.id.clone(),
+        client_name: clean_text(&client.name, MAX_SHOWN),
+        reason,
+        ops: checked.ops,
+        refused: checked.refused,
+        expires_in: plans::REVIEW_TTL.as_secs(),
+    };
+    if !backend.plan_proposed(review) {
+        lock(&shared.plans).discard(&id, &client.id);
+        return denied(
+            "Verrou cannot show the plan for review right now: try again later".to_owned(),
+        );
+    }
+    tokio::spawn(expire_later(Arc::clone(shared), id));
+    ReplyResult::Plan(state)
+}
+
+/// Nobody reviewed the plan in time: it expires, and the app closes it.
+async fn expire_later(shared: Arc<Shared>, id: String) {
+    tokio::time::sleep(plans::REVIEW_TTL).await;
+    let waiting = lock(&shared.plans).expire(&id, tokio::time::Instant::now());
+    if waiting {
+        shared
+            .backend
+            .plan_withdrawn(&id, "nobody reviewed the plan in time: nothing was applied");
     }
 }
 
@@ -1288,5 +1658,389 @@ mod tests {
         assert!(approval_holds(at, ApprovalScope::UntilLocked, later));
         // Every time: never.
         assert!(!approval_holds(at, ApprovalScope::EveryTime, at));
+        // The catalog: half an hour, and no longer.
+        assert!(approval_holds(
+            at,
+            ApprovalScope::HalfHour,
+            at + CATALOG_TTL.checked_sub(Duration::from_secs(1)).unwrap()
+        ));
+        assert!(!approval_holds(
+            at,
+            ApprovalScope::HalfHour,
+            at + CATALOG_TTL
+        ));
+        // Only the catalog gets it, whatever the backend says.
+        assert_eq!(CATALOG_TTL, Duration::from_secs(30 * 60));
+    }
+
+    fn item(id: &str, title: &str) -> verrou_core::Item {
+        verrou_core::Item {
+            id: id.to_owned(),
+            kind: ItemKind::Login,
+            title: title.to_owned(),
+            subtitle: String::new(),
+            urls: Vec::new(),
+            url_matches: Vec::new(),
+            folder: None,
+            tags: Vec::new(),
+            favorite: false,
+            created: 0,
+            modified: 0,
+            fields: Vec::new(),
+            notes: None,
+            reprompt: false,
+            state: verrou_core::ItemState::Active,
+            shared: None,
+        }
+    }
+
+    /// A backend that records the plans it is told were withdrawn, and how
+    /// many approvals it was asked for.
+    #[derive(Default)]
+    struct Recorder {
+        withdrawn: Mutex<Vec<(String, String)>>,
+        confirmed: std::sync::atomic::AtomicUsize,
+        proposed: Mutex<Vec<String>>,
+        /// Held by the checks of a proposal: two proposals meet here.
+        meeting: Option<Arc<tokio::sync::Barrier>>,
+    }
+
+    impl Backend for Recorder {
+        fn is_unlocked(&self) -> bool {
+            true
+        }
+        fn suggestions(&self, _: &str) -> Option<Vec<Suggestion>> {
+            None
+        }
+        fn credentials(&self, _: &str, _: &str) -> Option<Result<Credentials, String>> {
+            None
+        }
+        fn check_save(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Option<Result<(SaveAction, Option<Suggestion>), String>> {
+            None
+        }
+        fn write(&self, _: WritePlan) -> BoxFuture<'_, Option<Result<String, String>>> {
+            Box::pin(async { None })
+        }
+        fn request_unlock(&self, _: ClientKind, _: &str, _: &str, _: Option<&UnlockIntent>) {}
+        fn pairing_requested(&self, _: PairingRequest) {}
+        fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool {
+            reader(&Vault::new(vec![item("a", "Alpha"), item("b", "Beta")]));
+            true
+        }
+        fn confirm(&self, _: Confirmation) -> BoxFuture<'_, bool> {
+            self.confirmed
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Box::pin(async { true })
+        }
+        fn attachment_counts(&self) -> BoxFuture<'_, HashMap<String, usize>> {
+            Box::pin(async move {
+                if let Some(meeting) = &self.meeting {
+                    meeting.wait().await;
+                }
+                HashMap::new()
+            })
+        }
+        fn plan_proposed(&self, review: PlanReview) -> bool {
+            lock(&self.proposed).push(review.id);
+            true
+        }
+        fn plan_withdrawn(&self, plan: &str, message: &str) {
+            lock(&self.withdrawn).push((plan.to_owned(), message.to_owned()));
+        }
+    }
+
+    fn shared(backend: Arc<Recorder>) -> Arc<Shared> {
+        let file =
+            std::env::temp_dir().join(format!("verrou-server-{}.json", uuid::Uuid::new_v4()));
+        Arc::new(Shared {
+            backend,
+            clients: Mutex::new(ClientStore::open(file)),
+            pending: Mutex::new(None),
+            last_pairing: Mutex::new(None),
+            approvals: Mutex::new(HashMap::new()),
+            refusals: Mutex::new(HashMap::new()),
+            releases: Mutex::new(HashMap::new()),
+            extension_manifest: Mutex::new(None),
+            plans: Mutex::new(Plans::default()),
+        })
+    }
+
+    fn waiting_plan(shared: &Shared, client: &str) -> String {
+        let op = organize::CheckedOp {
+            index: 0,
+            op: crate::protocol::PlanOp::Archive {
+                item: "a".to_owned(),
+                rationale: "r".to_owned(),
+            },
+            rationale: "r".to_owned(),
+            flags: Vec::new(),
+            depends_on: None,
+            display: organize::Display::default(),
+            others: Vec::new(),
+        };
+        lock(&shared.plans)
+            .register(
+                client,
+                SESSION,
+                "tidy",
+                (vec![op], Vec::new(), 0),
+                tokio::time::Instant::now(),
+            )
+            .unwrap()
+            .0
+    }
+
+    const SESSION: &str = "0123456789abcdef";
+
+    fn agent() -> ClientInfo {
+        ClientInfo {
+            id: "agent".to_owned(),
+            name: "verrou".to_owned(),
+            created: 0,
+            kind: ClientKind::Cli,
+        }
+    }
+
+    fn ask_in(session: Option<&str>) -> Terminal<'static> {
+        Terminal {
+            ephemeral: true,
+            session: session.map(str::to_owned),
+            ..Terminal::default()
+        }
+    }
+
+    fn one_plan() -> Plan {
+        Plan {
+            reason: "tidy".to_owned(),
+            operations: vec![crate::protocol::PlanOp::Archive {
+                item: "a".to_owned(),
+                rationale: "old".to_owned(),
+            }],
+        }
+    }
+
+    /// Ten minutes of paused time: the review expires on its own, the app is
+    /// told to close it, and the agent reads why.
+    #[tokio::test(start_paused = true)]
+    async fn a_plan_nobody_reviews_expires_and_the_app_is_told() {
+        let backend = Arc::new(Recorder::default());
+        let shared = shared(Arc::clone(&backend));
+        let id = waiting_plan(&shared, "agent");
+        let timer = tokio::spawn(expire_later(Arc::clone(&shared), id.clone()));
+        tokio::time::sleep(
+            plans::REVIEW_TTL
+                .checked_sub(Duration::from_secs(1))
+                .unwrap(),
+        )
+        .await;
+        assert!(lock(&backend.withdrawn).is_empty(), "not yet");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        timer.await.unwrap();
+        assert_eq!(lock(&backend.withdrawn).len(), 1);
+        let state = lock(&shared.plans)
+            .state("agent", SESSION, &id, tokio::time::Instant::now())
+            .unwrap();
+        assert_eq!(state.state, crate::protocol::PlanPhase::Expired);
+        assert!(state.message.contains("in time"));
+    }
+
+    /// A plan the user answered before the timer fires is not "withdrawn".
+    #[tokio::test(start_paused = true)]
+    async fn an_answered_plan_does_not_expire() {
+        let backend = Arc::new(Recorder::default());
+        let shared = shared(Arc::clone(&backend));
+        let id = waiting_plan(&shared, "agent");
+        let timer = tokio::spawn(expire_later(Arc::clone(&shared), id.clone()));
+        lock(&shared.plans).decline(&id, "no", tokio::time::Instant::now());
+        tokio::time::sleep(plans::REVIEW_TTL + Duration::from_secs(1)).await;
+        timer.await.unwrap();
+        assert!(lock(&backend.withdrawn).is_empty());
+        // Still declined, not expired (the entry itself is forgotten ten
+        // minutes after the answer).
+        let mut plans = lock(&shared.plans);
+        let state = plans.state("agent", SESSION, &id, tokio::time::Instant::now());
+        assert!(state.is_none_or(|s| s.state == crate::protocol::PlanPhase::Declined));
+    }
+
+    /// `plan_status` waits for the answer, but never longer than asked.
+    #[tokio::test(start_paused = true)]
+    async fn a_status_waits_for_the_answer_up_to_the_time_asked() {
+        let backend = Arc::new(Recorder::default());
+        let shared = shared(Arc::clone(&backend));
+        let id = waiting_plan(&shared, "agent");
+        let client = agent();
+        let ask = ask_in(Some(SESSION));
+        let status = |wait: u32| {
+            plan_command(
+                &shared,
+                &client,
+                Command::PlanStatus {
+                    plan: id.clone(),
+                    wait,
+                },
+                &ask,
+            )
+        };
+        // Nobody answers: it comes back after the wait, still awaiting.
+        let started = tokio::time::Instant::now();
+        let ReplyResult::Plan(state) = status(50).await else {
+            panic!("a plan state");
+        };
+        assert_eq!(state.state, crate::protocol::PlanPhase::AwaitingReview);
+        assert_eq!(started.elapsed(), Duration::from_secs(50));
+        // Asked for more than a minute: a minute.
+        let started = tokio::time::Instant::now();
+        let _ = status(3600).await;
+        assert_eq!(started.elapsed(), Duration::from_secs(60));
+        // The user declines meanwhile: it comes back at once.
+        let (shared2, id2) = (Arc::clone(&shared), id.clone());
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            lock(&shared2.plans).decline(&id2, "no", tokio::time::Instant::now());
+        });
+        let started = tokio::time::Instant::now();
+        let ReplyResult::Plan(state) = status(50).await else {
+            panic!("a plan state");
+        };
+        assert_eq!(state.state, crate::protocol::PlanPhase::Declined);
+        assert_eq!(started.elapsed(), Duration::from_secs(5));
+        // Not someone else's plan.
+        let stranger = ClientInfo {
+            id: "stranger".to_owned(),
+            ..client.clone()
+        };
+        let reply = plan_command(
+            &shared,
+            &stranger,
+            Command::PlanStatus {
+                plan: id.clone(),
+                wait: 0,
+            },
+            &ask_in(Some(SESSION)),
+        )
+        .await;
+        assert!(matches!(reply, ReplyResult::Denied { .. }));
+        // Nor another session's of the same client.
+        let reply = plan_command(
+            &shared,
+            &client,
+            Command::PlanStatus { plan: id, wait: 0 },
+            &ask_in(Some("fedcba9876543210")),
+        )
+        .await;
+        assert!(matches!(reply, ReplyResult::Denied { .. }));
+    }
+
+    /// The approval to read the catalog belongs to the agent session: the
+    /// next session is asked again, a request without a session is asked
+    /// every time.
+    #[tokio::test]
+    async fn the_catalog_approval_belongs_to_the_agent_session() {
+        let backend = Arc::new(Recorder::default());
+        let shared = shared(Arc::clone(&backend));
+        let client = agent();
+        let asked = || backend.confirmed.load(std::sync::atomic::Ordering::SeqCst);
+        let read = |session: Option<&'static str>| {
+            let (shared, client) = (Arc::clone(&shared), client.clone());
+            async move { catalog(&shared, &client, Command::VaultOverview, &ask_in(session)).await }
+        };
+        assert!(matches!(
+            read(Some(SESSION)).await,
+            ReplyResult::Overview(_)
+        ));
+        assert_eq!(asked(), 1);
+        let _ = read(Some(SESSION)).await;
+        assert_eq!(asked(), 1, "remembered for the session");
+        let _ = read(Some("fedcba9876543210")).await;
+        assert_eq!(asked(), 2, "another session is asked again");
+        let _ = read(None).await;
+        let _ = read(None).await;
+        assert_eq!(asked(), 4, "without a session, asked every time");
+        let held = |session| catalog_held(&shared, &client, Some(session));
+        assert!(held(SESSION) && held("fedcba9876543210"));
+        assert!(!held("00000000ffffffff"));
+        assert!(!catalog_held(&shared, &client, None));
+    }
+
+    /// A plan comes from a session that read the vault: never asked for
+    /// here, refused with what to do. Refused proposals count too.
+    #[tokio::test]
+    async fn a_plan_needs_the_catalog_read_in_the_same_session() {
+        let backend = Arc::new(Recorder::default());
+        let shared = shared(Arc::clone(&backend));
+        let client = agent();
+        let refused = plan_propose(&shared, &client, SESSION, one_plan()).await;
+        let ReplyResult::Denied { reason } = refused else {
+            panic!("refused");
+        };
+        assert!(reason.contains("verrou_list_items"), "{reason}");
+        assert_eq!(
+            backend.confirmed.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "nothing was asked"
+        );
+        assert!(lock(&backend.proposed).is_empty(), "the user saw nothing");
+        // Another session's approval does not count.
+        let _ = catalog(
+            &shared,
+            &client,
+            Command::VaultOverview,
+            &ask_in(Some("fedcba9876543210")),
+        )
+        .await;
+        assert!(matches!(
+            plan_propose(&shared, &client, SESSION, one_plan()).await,
+            ReplyResult::Denied { .. }
+        ));
+        // Every proposal is counted, up to the cap.
+        for _ in 2..plans::MAX_ATTEMPTS {
+            let _ = plan_propose(&shared, &client, SESSION, one_plan()).await;
+        }
+        let ReplyResult::Denied { reason } =
+            plan_propose(&shared, &client, SESSION, one_plan()).await
+        else {
+            panic!("refused");
+        };
+        assert!(reason.contains("at most 30"), "{reason}");
+    }
+
+    /// Two proposals admitted while their plans were being checked: only the
+    /// first reaches the user.
+    #[tokio::test]
+    async fn two_concurrent_proposals_do_not_both_reach_the_user() {
+        let backend = Arc::new(Recorder {
+            meeting: Some(Arc::new(tokio::sync::Barrier::new(2))),
+            ..Recorder::default()
+        });
+        let shared = shared(Arc::clone(&backend));
+        let client = agent();
+        lock(&shared.approvals).insert(
+            (client.id.clone(), Purpose::Catalog, catalog_item(SESSION)),
+            (Instant::now(), ApprovalScope::HalfHour),
+        );
+        let (first, second) = tokio::join!(
+            plan_propose(&shared, &client, SESSION, one_plan()),
+            plan_propose(&shared, &client, SESSION, one_plan()),
+        );
+        let reached = [&first, &second]
+            .iter()
+            .filter(|r| matches!(r, ReplyResult::Plan(_)))
+            .count();
+        assert_eq!(reached, 1, "{first:?} {second:?}");
+        assert_eq!(lock(&backend.proposed).len(), 1);
+        let refused = [&first, &second]
+            .into_iter()
+            .find_map(|r| match r {
+                ReplyResult::Denied { reason } => Some(reason.clone()),
+                _ => None,
+            })
+            .unwrap();
+        assert!(refused.contains("awaiting"), "{refused}");
     }
 }

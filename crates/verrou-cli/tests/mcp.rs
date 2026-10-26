@@ -12,7 +12,9 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use verrou_bridge::protocol::{Command, Credentials, ReplyResult, SaveAction, Suggestion};
-use verrou_bridge::{Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan};
+use verrou_bridge::{
+    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, PlanReview, Purpose, WritePlan,
+};
 use verrou_cli::config::Config;
 use verrou_cli::remote::{self, Endpoint, Remote};
 use verrou_core::{Field, FieldKind, Item, ItemKind, ItemState, Vault};
@@ -32,6 +34,8 @@ struct Fake {
     /// Each approval asked.
     asked: Mutex<Vec<Confirmation>>,
     refuse: AtomicBool,
+    /// Plans shown for review.
+    plans: Mutex<Vec<PlanReview>>,
 }
 
 impl Backend for Fake {
@@ -83,6 +87,11 @@ impl Backend for Fake {
         self.asked.lock().unwrap().push(request);
         let granted = !self.refuse.load(Ordering::SeqCst);
         Box::pin(async move { granted })
+    }
+
+    fn plan_proposed(&self, review: PlanReview) -> bool {
+        self.plans.lock().unwrap().push(review);
+        true
     }
 }
 
@@ -225,6 +234,7 @@ impl World {
             pairings: Mutex::new(sender),
             asked: Mutex::new(Vec::new()),
             refuse: AtomicBool::new(false),
+            plans: Mutex::new(Vec::new()),
         });
         let dir = temp_dir();
         let bridge = Arc::new(Bridge::start(0, dir.join("clients.json"), backend.clone()).unwrap());
@@ -310,7 +320,7 @@ impl World {
 fn mcp_never_prints_a_secret_value() {
     let mut world = World::new();
     let tools = world.mcp.request("tools/list", &json!({}));
-    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 4);
+    assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 10);
     assert_eq!(world.mcp.request("ping", &json!({}))["result"], json!({}));
 
     let (error, status, _) = world.mcp.tool("verrou_status", &json!({}));
@@ -546,5 +556,180 @@ fn references_name_exactly_one_item() {
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].item, "twin-b");
     drop(asked);
+    world.finish();
+}
+
+/// The user, in Verrou: waits for the next plan to be shown (the nth), then
+/// applies the operations that are checked by default, or declines it.
+fn user_answers(world: &World, nth: usize, apply: bool) -> std::thread::JoinHandle<()> {
+    let (backend, bridge) = (Arc::clone(&world.backend), Arc::clone(&world.bridge));
+    std::thread::spawn(move || {
+        let review = loop {
+            if let Some(review) = backend.plans.lock().unwrap().get(nth).cloned() {
+                break review;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        std::thread::sleep(Duration::from_millis(200));
+        if apply {
+            let checked: Vec<usize> = review
+                .ops
+                .iter()
+                .filter(|op| op.default_on())
+                .map(|op| op.index)
+                .collect();
+            let taken = bridge.take_plan(&review.id, &checked).unwrap();
+            let mut vault = backend.vault.lock().unwrap();
+            *vault = verrou_bridge::organize::apply_in_memory(&vault, &taken.ops);
+            bridge.finish_plan(
+                &review.id,
+                verrou_bridge::protocol::PlanReport {
+                    applied: u32::try_from(taken.ops.len()).unwrap(),
+                    ..Default::default()
+                },
+            );
+        } else {
+            bridge.decline_plan(&review.id, "the user declined the plan");
+        }
+    })
+}
+
+/// An agent reads the catalog (one approval, no secret), proposes a plan,
+/// the user applies it in Verrou, and the agent reads how it ended.
+#[test]
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
+fn an_agent_organizes_the_vault_and_the_user_decides() {
+    let mut world = World::new();
+
+    // The catalog: one approval for all of it, shown as the agent's.
+    let (error, overview, text) = world.mcp.tool(
+        "verrou_vault_overview",
+        &json!({"reason": "plan a cleanup"}),
+    );
+    assert!(!error, "{text}");
+    assert_eq!(overview["items"], 4);
+    assert_eq!(overview["kinds"]["login"], 4);
+    assert_eq!(world.asked(), 1);
+    {
+        let asked = world.backend.asked.lock().unwrap();
+        assert_eq!(asked[0].purpose, Purpose::Catalog);
+        assert!(
+            asked[0].reason.ends_with(": plan a cleanup"),
+            "{}",
+            asked[0].reason
+        );
+        assert!(!asked[0].ephemeral);
+        // Kept for this agent session, with something an old iPhone shows.
+        let session = asked[0].item.strip_prefix("catalog:").expect("a session");
+        assert_eq!(session.len(), 32, "{session}");
+        assert!(session.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(asked[0].title.contains("no secret"), "{}", asked[0].title);
+    }
+    let (error, page, text) = world
+        .mcp
+        .tool("verrou_list_items", &json!({"reason": "list"}));
+    assert!(!error, "{text}");
+    assert_eq!(page["items"].as_array().unwrap().len(), 4);
+    assert_eq!(page["items"][0]["sites"], json!(["example.com"]));
+    assert!(page["next_offset"].is_null());
+    let (error, dups, _) = world
+        .mcp
+        .tool("verrou_find_duplicates", &json!({"reason": "list"}));
+    assert!(!error);
+    assert!(dups["groups"].as_array().is_some());
+    assert_eq!(world.asked(), 1, "one approval covered all three");
+
+    // A plan: the user applies it, the agent's call returns the outcome.
+    let operations = json!([
+        {"op": "create_folder", "name": "Work", "rationale": "work logins"},
+        {"op": "move", "item": "github", "folder": "Work", "rationale": "it is for work"},
+        {"op": "rename", "item": "deploy", "title": "Deploy key (staging)", "rationale": "say where"},
+        {"op": "rename", "item": "nope", "title": "x", "rationale": "an item that is not there"},
+    ]);
+    let user = user_answers(&world, 0, true);
+    let (error, plan, text) = world.mcp.tool(
+        "verrou_propose_plan",
+        &json!({"reason": "file work logins", "operations": operations}),
+    );
+    user.join().unwrap();
+    assert!(!error, "{text}");
+    assert_eq!(plan["state"], "applied", "{text}");
+    assert_eq!(plan["report"]["applied"], 3);
+    assert_eq!(plan["rejected"][0]["index"], 3);
+    {
+        let shown = world.backend.plans.lock().unwrap();
+        assert_eq!(
+            shown[0].client_name, "terminal (verrou)",
+            "Verrou's own knowledge of the client"
+        );
+        assert_eq!(shown[0].reason, "file work logins");
+        // Nothing needed an approval to be proposed.
+        assert_eq!(world.backend.asked.lock().unwrap().len(), 1);
+    }
+    {
+        let vault = world.backend.vault.lock().unwrap();
+        assert_eq!(vault.get("github").unwrap().folder.as_deref(), Some("Work"));
+        assert_eq!(vault.get("deploy").unwrap().title, "Deploy key (staging)");
+    }
+    let id = plan["plan"].as_str().unwrap().to_owned();
+    let (error, again, _) = world.mcp.tool(
+        "verrou_plan_status",
+        &json!({"plan": id, "wait_seconds": 0}),
+    );
+    assert!(!error);
+    assert_eq!(again["state"], "applied");
+
+    // The result sheet is still open (the user can undo): no other plan yet.
+    let (error, held, text) = world.mcp.tool(
+        "verrou_propose_plan",
+        &json!({"reason": "more", "operations": [
+            {"op": "archive", "item": "twin-a", "rationale": "unused"}]}),
+    );
+    assert!(error, "{held}");
+    assert!(text.contains("still reviewing the previous plan"), "{text}");
+    // The user closes it: the agent may go on.
+    world.bridge.plan_closed(&id);
+
+    // The next one is declined: the agent is told not to insist.
+    let user = user_answers(&world, 1, false);
+    let (error, declined, text) = world.mcp.tool(
+        "verrou_propose_plan",
+        &json!({"reason": "archive a login", "operations": [
+            {"op": "archive", "item": "twin-a", "rationale": "unused"}]}),
+    );
+    user.join().unwrap();
+    assert!(!error, "{text}");
+    assert_eq!(declined["state"], "declined");
+    assert!(
+        declined["hint"]
+            .as_str()
+            .unwrap()
+            .contains("do not propose it again")
+    );
+    // And the bridge holds the next one off for a minute.
+    let (error, paused, text) = world.mcp.tool(
+        "verrou_propose_plan",
+        &json!({"reason": "again", "operations": [
+            {"op": "archive", "item": "twin-a", "rationale": "unused"}]}),
+    );
+    assert!(error, "{paused}");
+    assert!(text.contains("declined a plan a moment ago"), "{text}");
+    world.finish();
+}
+
+/// A plan comes after the catalog: an agent that never read the vault is told
+/// to, and the user is asked nothing.
+#[test]
+fn a_plan_proposed_without_reading_the_vault_is_refused() {
+    let mut world = World::new();
+    let (error, refused, text) = world.mcp.tool(
+        "verrou_propose_plan",
+        &json!({"reason": "tidy", "operations": [
+            {"op": "archive", "item": "twin-a", "rationale": "unused"}]}),
+    );
+    assert!(error, "{refused}");
+    assert!(text.contains("verrou_list_items"), "{text}");
+    assert_eq!(world.asked(), 0);
+    assert!(world.backend.plans.lock().unwrap().is_empty());
     world.finish();
 }

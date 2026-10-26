@@ -193,7 +193,7 @@ targets:
   # Mac unit tests without a host app (nothing is shown): account migration
   # to the app group, PRF input selection, the iPhone approval protocol, the
   # folder tree, AutoFill's "Continue as…" site check, the pinned codes'
-  # TOTP (RFC 6238).
+  # TOTP (RFC 6238), the reorganization review.
   #   xcodebuild test -project apple/Verrou.xcodeproj -scheme VerrouMacTests
   VerrouMacTests:
     type: bundle.unit-test
@@ -209,6 +209,13 @@ targets:
       - path: Verrou/App/UnlockGrant.swift
       - path: Verrou/App/ApprovalKey.swift
       - path: Verrou/App/ApprovalPrompt.swift
+      # The reorganization review (an agent's plan): the flow and the
+      # Swift binding of the core it is made of.
+      - path: Verrou/App/OrganizePlanFlow.swift
+      - path: Shared/Generated/verrou_ffi.swift
+    dependencies:
+      - framework: Frameworks/VerrouFFI.xcframework
+        embed: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests

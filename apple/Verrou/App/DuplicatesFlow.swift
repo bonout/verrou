@@ -206,6 +206,11 @@ extension AppModel {
         if history > 0 {
             parts.append(history > 1 ? String(localized: "\(history) old passwords") : String(localized: "\(history) old password"))
         }
+        let asFields = Int(report.passwordFields)
+        if asFields > 0 {
+            parts.append(asFields > 1 ? String(localized: "\(asFields) passwords as fields")
+                                      : String(localized: "\(asFields) password as a field"))
+        }
         let added = parts.isEmpty ? String(localized: "nothing to take over") : parts.joined(separator: ", ")
         return String(localized: "\(added); \(Int(report.trashed)) in the trash")
     }

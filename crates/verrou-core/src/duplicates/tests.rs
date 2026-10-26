@@ -580,3 +580,74 @@ fn an_item_without_username_joins_only_an_unambiguous_account() {
     ];
     assert_eq!(find_duplicates(&two), Vec::new());
 }
+
+/// Whatever the passwords and one-time codes are, the blind scan says the
+/// same: no group, level or reason tells whether two secrets are equal.
+#[test]
+fn the_blind_scan_never_compares_passwords_or_seeds() {
+    let seeded = |id: &str, password: &str, seed: &str| {
+        let mut item = login(id, "https://github.com", "camille", password, 5);
+        item.fields
+            .push(Field::new("totp", "Code", FieldKind::Totp, seed));
+        item
+    };
+    let blind = |items: &[Item]| {
+        let groups = find_duplicates_blind_with(items, &HashMap::new());
+        groups
+            .iter()
+            .map(|g| {
+                (
+                    g.key.clone(),
+                    g.confidence,
+                    g.reason.clone(),
+                    g.members
+                        .iter()
+                        .map(|m| (m.id.clone(), m.confidence, m.reason.clone()))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let same = vec![
+        seeded("a", "pw", "JBSWY3DPEHPK3PXP"),
+        seeded("b", "pw", "JBSWY3DPEHPK3PXP"),
+    ];
+    let different = vec![
+        seeded("a", "pw", "JBSWY3DPEHPK3PXP"),
+        seeded("b", "other", "MFRGGZDFMZTWQ2LK"),
+    ];
+    let (one, other) = (blind(&same), blind(&different));
+    assert_eq!(one, other);
+    assert_eq!(one.len(), 1);
+    let reason = one[0].2.to_lowercase();
+    assert!(
+        !reason.contains("password") && !reason.contains("one-time"),
+        "{reason}"
+    );
+    assert!(reason.contains("same site") && reason.contains("same username"));
+    // The same pair, scanned with the passwords, does say so.
+    let full = find_duplicates(&same);
+    assert!(full[0].reason.contains("same password"));
+    assert_eq!(full[0].confidence, Confidence::Certain);
+    assert_ne!(
+        one[0].1,
+        Confidence::Certain,
+        "certainty rests on a password"
+    );
+    // A bucket large enough to be split by password is not split by it.
+    let many: Vec<Item> = (0..60)
+        .map(|n| {
+            login(
+                &format!("i{n}"),
+                "https://big.example",
+                &format!("u{n}"),
+                "shared",
+                n,
+            )
+        })
+        .collect();
+    assert!(
+        find_duplicates_blind_with(&many, &HashMap::new()).is_empty(),
+        "sixty different usernames with one password: nothing to say"
+    );
+}

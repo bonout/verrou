@@ -142,6 +142,11 @@ struct MainView: View {
             DuplicatesView(flow: flow)
                 .environment(model)
         }
+        .sheet(item: $model.organizePlan) { flow in
+            OrganizePlanView(flow: flow)
+                .environment(model)
+                .interactiveDismissDisabled()
+        }
         .sheet(item: $model.sshKeyGenerator) { generator in
             NewSshKeyView(generator: generator)
                 .environment(model)

@@ -28813,6 +28813,34 @@
         }
       }
     },
+    "let this agent session read the list of your items for 30 minutes (titles, usernames, sites and folders, no password)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "laisser cette session d’agent lire la liste de vos éléments pendant 30 minutes (titres, identifiants, sites et dossiers, aucun mot de passe)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dieser Agentensitzung erlauben, die Liste deiner Einträge 30 Minuten lang zu lesen (Titel, Benutzernamen, Websites und Ordner, kein Passwort)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dejar que esta sesión del agente lea la lista de tus elementos durante 30 minutos (títulos, usuarios, sitios y carpetas, ninguna contraseña)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "lasciare che questa sessione dell’agente legga l’elenco dei tuoi elementi per 30 minuti (titoli, nomi utente, siti e cartelle, nessuna password)"
+          }
+        }
+      }
+    },
     "link the site %@ to “%@”": {
       "localizations": {
         "fr": {

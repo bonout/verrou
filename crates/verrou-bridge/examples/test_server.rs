@@ -11,6 +11,11 @@
 //! requests too (`CONFIRM …`). The vault holds an ed25519 SSH key,
 //! created at startup, for the SSH agent.
 //!
+//! A plan an agent proposes (`verrou mcp`) is announced (`PLAN <id> <n>`, n
+//! operations to review) and answered by `VERROU_TEST_PLAN`: `approve`
+//! applies every operation in memory (`APPLIED <id>`), `decline` declines
+//! it (`DECLINED <id>`), anything else leaves it awaiting review.
+//!
 //! `VERROU_EXTENSION_MANIFEST`: the `manifest.json` whose version is
 //! announced in response to `status`, like the one in the app bundle (read
 //! again each time: a test can change it to simulate an update).
@@ -21,13 +26,15 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ssh_key::{Algorithm, LineEnding, PrivateKey};
-use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
+use verrou_bridge::protocol::{Credentials, PlanReport, SaveAction, Suggestion};
 use verrou_bridge::{
-    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan, access,
+    Backend, BoxFuture, Bridge, Confirmation, PairingRequest, PlanReview, Purpose, WritePlan,
+    access, organize,
 };
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 static BRIDGE: OnceLock<Mutex<Option<Bridge>>> = OnceLock::new();
+static FAKE: OnceLock<Arc<Fake>> = OnceLock::new();
 
 struct Fake {
     vault: Mutex<Vault>,
@@ -101,7 +108,7 @@ impl Backend for Fake {
         true
     }
 
-    /// Automatic approval, announced (`CONFIRM reveal|ssh|passkey|git|link|card|bulk|create|edit|delete <title>`).
+    /// Automatic approval, announced (`CONFIRM reveal|ssh|passkey|git|link|card|bulk|create|edit|delete|catalog <title>`).
     fn confirm(&self, request: Confirmation) -> BoxFuture<'_, bool> {
         let purpose = match request.purpose {
             Purpose::Reveal => "reveal",
@@ -114,10 +121,55 @@ impl Backend for Fake {
             Purpose::Create => "create",
             Purpose::Edit => "edit",
             Purpose::Delete => "delete",
+            Purpose::Catalog => "catalog",
         };
         println!("CONFIRM {purpose} {}", request.title);
         let _ = std::io::stdout().flush();
         Box::pin(async { true })
+    }
+
+    /// Announced (`PLAN <id> <n>`), then answered as `VERROU_TEST_PLAN` says.
+    fn plan_proposed(&self, review: PlanReview) -> bool {
+        println!("PLAN {} {}", review.id, review.ops.len());
+        let _ = std::io::stdout().flush();
+        let mode = std::env::var("VERROU_TEST_PLAN").unwrap_or_default();
+        if mode != "approve" && mode != "decline" {
+            return true;
+        }
+        // Off the server's thread, after a moment (the agent is waiting).
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let guard = BRIDGE.get().and_then(|b| b.lock().ok());
+            let Some(bridge) = guard.as_deref().and_then(Option::as_ref) else {
+                return;
+            };
+            if mode == "decline" {
+                bridge.decline_plan(&review.id, "the user declined the plan");
+                println!("DECLINED {}", review.id);
+            } else {
+                let all: Vec<usize> = review
+                    .ops
+                    .iter()
+                    .filter(|o| o.default_on())
+                    .map(|o| o.index)
+                    .collect();
+                if let (Ok(taken), Some(fake)) = (bridge.take_plan(&review.id, &all), FAKE.get()) {
+                    let mut vault = fake.vault.lock().unwrap();
+                    *vault = organize::apply_in_memory(&vault, &taken.ops);
+                    let applied = u32::try_from(taken.ops.len()).unwrap_or(u32::MAX);
+                    bridge.finish_plan(
+                        &review.id,
+                        PlanReport {
+                            applied,
+                            ..PlanReport::default()
+                        },
+                    );
+                    println!("APPLIED {}", review.id);
+                }
+            }
+            let _ = std::io::stdout().flush();
+        });
+        true
     }
 
     fn pairing_requested(&self, request: PairingRequest) {
@@ -274,15 +326,12 @@ fn main() {
         identity(),
     ]);
     let file = std::env::temp_dir().join(format!("verrou-bridge-test-{}.json", std::process::id()));
-    let bridge = Bridge::start(
-        verrou_bridge::port_from_env(),
-        file,
-        Arc::new(Fake {
-            vault: Mutex::new(vault),
-            created: AtomicU32::new(0),
-        }),
-    )
-    .unwrap();
+    let fake = Arc::new(Fake {
+        vault: Mutex::new(vault),
+        created: AtomicU32::new(0),
+    });
+    let _ = FAKE.set(Arc::clone(&fake));
+    let bridge = Bridge::start(verrou_bridge::port_from_env(), file, fake).unwrap();
     bridge.set_extension_manifest(std::env::var_os("VERROU_EXTENSION_MANIFEST").map(Into::into));
     println!("PORT {}", bridge.port());
     let _ = std::io::stdout().flush();

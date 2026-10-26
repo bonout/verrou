@@ -1135,6 +1135,10 @@ The terminal must be linked first (`verrou link`). The tools:
   disconnects while you are being asked gets nothing run.
 - `verrou_generate_password`: a new random password or passphrase. It is not
   from your vault, so it is returned.
+- `verrou_vault_overview`, `verrou_list_items`, `verrou_find_duplicates`,
+  `verrou_propose_plan`, `verrou_plan_status`, `verrou_plan_cancel`: the agent
+  reads the vault's catalog and proposes a reorganization that you review and
+  apply yourself; see *Organizing with an agent* below.
 
 **What an approval means.** The mask only hides a value written out exactly:
 a command that prints it encoded, reversed or cut in pieces, or sends it
@@ -1145,13 +1149,70 @@ you don't recognize. The agent's name is whatever its client announced, so it
 proves nothing either.
 
 Writing secrets from an agent (creating an item or a field) is not part of
-this server yet.
+this server yet; the only change it can bring about is a reorganization you
+apply yourself.
 
 References resolve exactly: an item by its identifier or by a title only one
 item has, a field by its identifier or by the label of the one custom field
 that has it (`verrou://Stripe/secret%20key`, or `custom-0`); there is no
 approximate match, and a custom field called like a built-in one
 (*password*) never takes its place.
+
+**Organizing with an agent.** Ask the agent to tidy your vault ("sort my logins
+into folders, merge the duplicates, rename the untitled ones") and it works in
+two steps, the second one yours:
+
+1. *It reads the catalog.* `verrou_vault_overview` (counts and folders),
+   `verrou_list_items` (pages of up to 500 items: title, username, sites as a
+   host, folder, flags, never a password, a code, a note, a custom field or a
+   URL path) and `verrou_find_duplicates` (logins that look alike by site and
+   username; it never says whether their passwords match). Verrou asks you
+   **once, for 30 minutes**, to let that agent session read the list of your
+   items (another agent run is asked again); it is the one thing it learns
+   about your vault (what your accounts are called and where they live), so
+   say yes only to an agent you want to see that. It proposes a plan only
+   after it has read the list.
+2. *It proposes a plan* (`verrou_propose_plan`): folders to create, items to
+   move, rename, archive or trash, duplicates to merge, each operation with a
+   reason of its own. It applies nothing. Verrou first checks the plan against
+   your vault and drops what cannot work (an unknown or trashed item, a
+   read-only shared item, a folder that does not exist, an item that is both
+   renamed and trashed, a merge that would lose an attachment or a passkey);
+   then a sheet opens on your Mac.
+
+The sheet lists the changes in sections (new folders, merges, moves by
+destination, renames, archive, trash). Each row says what changes, from your
+vault, and in italics what the agent says about it ("Agent: …"); badges point
+at what to watch (a protected item, a shared vault, different passwords or
+usernames, other one-time codes). Everything is checked except an operation on
+a protected item, a merge of items with different usernames, anything that
+goes to the trash, and the merge or archive of a shared vault's items. A move
+into a new folder checks the folder with it. What Verrou refused is under
+*Refused by Verrou*. Uncheck what you do not want (or check the trash if you
+mean it), then click **Apply N changes** (one Touch ID, which says how many
+items go to the trash and how many merges); Return does not apply anything.
+*Decline* (Esc) applies nothing and tells the agent. A plan nobody answers
+expires after ten minutes, and while you are reviewing a plan, or can still
+undo one, the agent cannot propose another. Away from the Mac (screen locked,
+no input) a plan is declined: it is reviewed at the Mac, not on the iPhone.
+
+Applying goes folders, merges, renames, moves, archives, trash, through the same
+write path as your own actions (offline queue included). A merge keeps the kept
+item's title, folder and fields, adds the sites, username, code, notes and
+fields it lacks, keeps the most recent password as the current one and the
+others in the history; a username or a code that differs from the kept item's
+becomes a field ("Username (from “X”)", "One-time code (from “X”)"), and so
+does any password the history (five) has no room for, in a hidden field
+("Password (from “X”)", "Old password (from “X”)"): the sheet warns you with a
+*Passwords kept as fields* badge. The other items go to the trash, restorable
+for 30 days. The same applies to the *Merge* button on duplicates. An operation that fails does not
+stop the others, and the result says which did. **Undo** puts back what the
+plan changed for ten minutes (no Touch ID), kept items of merges included,
+leaving alone any item you changed since; the folders it created stay. The agent reads how it ended with
+`verrou_plan_status`: applied (with the report), declined, expired, withdrawn,
+undone, or interrupted if applying stopped halfway (with what was done). Tags are not part of it: Vaultwarden has none, use folders. At most
+1000 operations per plan, one plan awaiting review at a time, a minute's pause
+after you decline, six plans an hour that reach you.
 
 **Hooks.** An agent can still read a `.env` file or print a token on its own,
 without going through Verrou. `verrou hook` is a guard rail for that: before

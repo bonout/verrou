@@ -230,8 +230,26 @@ pub struct MergeReport {
     pub history: u32,
     /// The current password comes from another, more recent item.
     pub newer_password: bool,
+    /// Passwords the history had no room for, kept as hidden fields.
+    pub password_fields: u32,
     /// Items moved to the trash.
     pub trashed: u32,
+}
+
+/// What the merge button (and an agent's plan) did, for the app.
+fn merge_report(summary: &verrou_vaultwarden::MergeSummary, trashed: usize) -> MergeReport {
+    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+    MergeReport {
+        sites: count(summary.uris),
+        username: summary.username,
+        totp: summary.totp,
+        notes: count(summary.notes),
+        fields: count(summary.fields),
+        history: count(summary.history),
+        newer_password: summary.newer_password,
+        password_fields: count(summary.password_fields),
+        trashed: count(trashed),
+    }
 }
 
 /// The view of a group, with the summary of each item.
@@ -516,18 +534,7 @@ impl VaultSession {
             .await
             .merge_duplicates(&keep, &others)
             .await?;
-        let summary = outcome.summary;
-        let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-        let report = MergeReport {
-            sites: count(summary.uris),
-            username: summary.username,
-            totp: summary.totp,
-            notes: count(summary.notes),
-            fields: count(summary.fields),
-            history: count(summary.history),
-            newer_password: summary.newer_password,
-            trashed: count(outcome.trashed),
-        };
+        let report = merge_report(&outcome.summary, outcome.trashed);
         self.install_written(&connection, outcome.vault)?;
         Ok(report)
     }
@@ -561,6 +568,30 @@ mod tests {
         let session = VaultSession::new();
         session.unlock_mock(0, 42, crate::MockLanguage::English);
         session
+    }
+
+    /// The *Merge* button reports what the shared merge did, the passwords it
+    /// kept as fields (the history holds five) included.
+    #[test]
+    fn the_merge_button_reports_the_passwords_kept_as_fields() {
+        let summary = verrou_vaultwarden::MergeSummary {
+            uris: 2,
+            history: 5,
+            password_fields: 3,
+            newer_password: true,
+            ..Default::default()
+        };
+        let report = merge_report(&summary, 4);
+        assert_eq!(
+            (
+                report.sites,
+                report.history,
+                report.password_fields,
+                report.trashed
+            ),
+            (2, 5, 3, 4)
+        );
+        assert!(report.newer_password && !report.username && !report.totp);
     }
 
     #[test]

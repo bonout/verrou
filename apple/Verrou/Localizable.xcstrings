@@ -113,6 +113,34 @@
         }
       }
     },
+    "%@ and %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ et %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ und %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ y %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ e %@"
+          }
+        }
+      }
+    },
     "%@ copied": {
       "localizations": {
         "fr": {
@@ -613,6 +641,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ password controllate"
+          }
+        }
+      }
+    },
+    "%@ proposes these changes. Nothing happens until you apply them.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ propose ces modifications. Rien ne change tant que vous ne les appliquez pas."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ schlägt diese Änderungen vor. Es passiert nichts, bis du sie anwendest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ propone estos cambios. No pasa nada hasta que los apliques."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ propone queste modifiche. Non cambia nulla finché non le applichi."
           }
         }
       }
@@ -1149,6 +1205,34 @@
         }
       }
     },
+    "%lld applied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld appliquées"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld angewendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld aplicados"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld applicate"
+          }
+        }
+      }
+    },
     "%lld attachments added": {
       "localizations": {
         "fr": {
@@ -1649,6 +1733,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld gruppi di duplicati"
+          }
+        }
+      }
+    },
+    "%lld failed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld en échec"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fehlgeschlagen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld con error"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld non riuscite"
           }
         }
       }
@@ -2857,6 +2969,34 @@
         }
       }
     },
+    "%lld left as they were": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld laissées telles quelles"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld unverändert gelassen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld sin tocar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld lasciate come erano"
+          }
+        }
+      }
+    },
     "%lld member": {
       "localizations": {
         "fr": {
@@ -2969,6 +3109,90 @@
         }
       }
     },
+    "%lld merge": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fusion"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Zusammenführung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fusión"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld unione"
+          }
+        }
+      }
+    },
+    "%lld merges": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fusions"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Zusammenführungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld fusiones"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld unioni"
+          }
+        }
+      }
+    },
+    "%lld move": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld déplacement"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Verschiebung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld movimiento"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld spostamento"
+          }
+        }
+      }
+    },
     "%lld moved to the trash": {
       "localizations": {
         "fr": {
@@ -2993,6 +3217,90 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld spostati nel Cestino"
+          }
+        }
+      }
+    },
+    "%lld moves": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld déplacements"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Verschiebungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld movimientos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld spostamenti"
+          }
+        }
+      }
+    },
+    "%lld new folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nouveau dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld neuer Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld carpeta nueva"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nuova cartella"
+          }
+        }
+      }
+    },
+    "%lld new folders": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nouveaux dossiers"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld neue Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld carpetas nuevas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nuove cartelle"
           }
         }
       }
@@ -3389,6 +3697,62 @@
         }
       }
     },
+    "%lld password as a field": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mot de passe en champ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Passwort als Feld"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld contraseña como campo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld password come campo"
+          }
+        }
+      }
+    },
+    "%lld passwords as fields": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mots de passe en champs"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Passwörter als Felder"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld contraseñas como campos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld password come campi"
+          }
+        }
+      }
+    },
     "%lld passwords checked, on this Mac": {
       "localizations": {
         "fr": {
@@ -3641,6 +4005,34 @@
         }
       }
     },
+    "%lld put back, %lld left alone because they changed since": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld remises en place, %2$lld laissées telles quelles car elles ont changé depuis"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld zurückgesetzt, %lld unberührt gelassen, weil sie sich seitdem geändert haben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld restauradas, %lld sin tocar porque han cambiado desde entonces"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ripristinate, %lld lasciate stare perché nel frattempo sono cambiate"
+          }
+        }
+      }
+    },
     "%lld refused item": {
       "localizations": {
         "fr": {
@@ -3693,6 +4085,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld elementi rifiutati"
+          }
+        }
+      }
+    },
+    "%lld rename": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld renommage"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Umbenennung"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cambio de nombre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld rinomina"
+          }
+        }
+      }
+    },
+    "%lld renames": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld renommages"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Umbenennungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cambios de nombre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld rinomine"
           }
         }
       }
@@ -3865,6 +4313,34 @@
         }
       }
     },
+    "%lld to archive": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld à archiver"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld zu archivieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld por archivar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld da archiviare"
+          }
+        }
+      }
+    },
     "%lld to check": {
       "localizations": {
         "fr": {
@@ -3917,6 +4393,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld da confermare"
+          }
+        }
+      }
+    },
+    "%lld to the trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld à la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld in den Papierkorb"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld a la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nel Cestino"
+          }
+        }
+      }
+    },
+    "%lld to trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld à mettre à la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld in den Papierkorb"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld a la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld nel Cestino"
           }
         }
       }
@@ -4029,6 +4561,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld modifiche non sincronizzate andranno perse. Per accedere di nuovo serviranno la password principale e il secondo fattore."
+          }
+        }
+      }
+    },
+    "%lld waiting for the server: they go out as soon as it responds": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld en attente du serveur : elles partiront dès qu’il répondra"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld warten auf den Server: Sie werden gesendet, sobald er antwortet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld esperan al servidor: saldrán en cuanto responda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld in attesa del server: partiranno appena risponde"
           }
         }
       }
@@ -7561,6 +8121,34 @@
         }
       }
     },
+    "Agent: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agent: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Agente: %@"
+          }
+        }
+      }
+    },
     "All": {
       "localizations": {
         "fr": {
@@ -7897,6 +8485,34 @@
         }
       }
     },
+    "Also creates the folder “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crée aussi le dossier « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legt auch den Ordner „%@“ an"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "También crea la carpeta “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea anche la cartella “%@”"
+          }
+        }
+      }
+    },
     "Also unlock from the iPhone": {
       "localizations": {
         "fr": {
@@ -8145,6 +8761,230 @@
           "stringUnit": {
             "state": "translated",
             "value": "Password di Apple (CSV)"
+          }
+        }
+      }
+    },
+    "Apply %lld Change": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer %lld modification"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Änderung anwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar %lld cambio"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica %lld modifica"
+          }
+        }
+      }
+    },
+    "Apply %lld Changes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer %lld modifications"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Änderungen anwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar %lld cambios"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica %lld modifiche"
+          }
+        }
+      }
+    },
+    "Apply %lld change proposed by %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer la modification proposée par %2$@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die von %2$@ vorgeschlagene Änderung anwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar el cambio propuesto por %2$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica la modifica proposta da %2$@"
+          }
+        }
+      }
+    },
+    "Apply %lld change proposed by %@, including %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer la modification proposée par %2$@, dont %3$@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die von %2$@ vorgeschlagene Änderung anwenden, darunter %3$@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar el cambio propuesto por %2$@, entre ellos %3$@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica la modifica proposta da %2$@, tra cui %3$@"
+          }
+        }
+      }
+    },
+    "Apply %lld changes proposed by %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer les %lld modifications proposées par %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld von %@ vorgeschlagene Änderungen anwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar los %lld cambios propuestos por %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica le %lld modifiche proposte da %@"
+          }
+        }
+      }
+    },
+    "Apply %lld changes proposed by %@, including %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appliquer les %lld modifications proposées par %@, dont %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld von %@ vorgeschlagene Änderungen anwenden, darunter %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicar los %lld cambios propuestos por %@, entre ellos %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applica le %lld modifiche proposte da %@, tra cui %@"
+          }
+        }
+      }
+    },
+    "Apply nothing: the agent is told you declined": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ne rien appliquer : l’agent est informé de votre refus"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts anwenden: Der Agent erfährt, dass du abgelehnt hast"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No aplicar nada: se avisa al agente de que lo rechazaste"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non applicare nulla: l’agente viene informato del rifiuto"
+          }
+        }
+      }
+    },
+    "Applying the changes…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Application des modifications…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen werden angewendet …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aplicando los cambios…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applicazione delle modifiche…"
           }
         }
       }
@@ -9993,6 +10833,90 @@
           "stringUnit": {
             "state": "translated",
             "value": "Modificato offline: verrà inviato appena il server risponde."
+          }
+        }
+      }
+    },
+    "Changes applied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifications appliquées"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen angewendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambios aplicados"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifiche applicate"
+          }
+        }
+      }
+    },
+    "Changes undone": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifications annulées"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen rückgängig gemacht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambios deshechos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifiche annullate"
+          }
+        }
+      }
+    },
+    "Check All": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout cocher"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle anhaken"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marcar todo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seleziona tutto"
           }
         }
       }
@@ -15177,6 +16101,62 @@
         }
       }
     },
+    "Different passwords": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mots de passe différents"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unterschiedliche Passwörter"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseñas distintas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password diverse"
+          }
+        }
+      }
+    },
+    "Different usernames": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiants différents"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unterschiedliche Benutzernamen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuarios distintos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nomi utente diversi"
+          }
+        }
+      }
+    },
     "Digits": {
       "localizations": {
         "fr": {
@@ -17189,6 +18169,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Scade prima dell'eliminazione"
+          }
+        }
+      }
+    },
+    "Expires in %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Expire dans %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Läuft ab in %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Caduca en %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scade tra %@"
           }
         }
       }
@@ -20469,6 +21477,34 @@
         }
       }
     },
+    "In “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In “%@”"
+          }
+        }
+      }
+    },
     "Inactive": {
       "localizations": {
         "fr": {
@@ -21613,6 +22649,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "È salvata nella tua cassaforte Vaultwarden, nel formato di Bitwarden: i tuoi altri dispositivi la trovano."
+          }
+        }
+      }
+    },
+    "It is too late to undo this plan here; trashed items stay restorable from the web vault for 30 days.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il est trop tard pour annuler ce plan ici ; les éléments à la corbeille restent récupérables depuis le coffre web pendant 30 jours."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es ist zu spät, diesen Plan hier rückgängig zu machen; Einträge im Papierkorb lassen sich 30 Tage lang über den Web-Tresor wiederherstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es demasiado tarde para deshacer este plan aquí; los elementos de la papelera se pueden recuperar desde la bóveda web durante 30 días."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "È troppo tardi per annullare questo piano qui; gli elementi nel Cestino restano recuperabili dalla cassaforte web per 30 giorni."
           }
         }
       }
@@ -25117,6 +26181,34 @@
         }
       }
     },
+    "Merged in, then trashed: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fusionnés puis mis à la corbeille : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zusammengeführt, dann in den Papierkorb: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fusionados y luego enviados a la papelera: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uniti e poi spostati nel Cestino: %@"
+          }
+        }
+      }
+    },
     "Merged into “%@”": {
       "localizations": {
         "fr": {
@@ -25141,6 +26233,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unito in “%@”"
+          }
+        }
+      }
+    },
+    "Merges": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fusions"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zusammenführungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fusiones"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unioni"
           }
         }
       }
@@ -25453,6 +26573,34 @@
         }
       }
     },
+    "More passwords than an item's history holds: the ones that do not fit are kept as hidden fields of the kept item. None is lost.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus de mots de passe que l’historique d’un élément n’en contient : ceux qui n’y tiennent pas sont gardés dans des champs masqués de l’élément conservé. Aucun n’est perdu."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mehr Passwörter, als der Verlauf eines Eintrags fasst: Die übrigen werden als verborgene Felder im behaltenen Eintrag aufbewahrt. Keines geht verloren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Más contraseñas de las que caben en el historial de un elemento: las que no caben se guardan como campos ocultos del elemento que se conserva. No se pierde ninguna."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Più password di quante ne contenga la cronologia di un elemento: quelle che non ci stanno vengono conservate come campi nascosti dell’elemento mantenuto. Nessuna va persa."
+          }
+        }
+      }
+    },
     "Move": {
       "localizations": {
         "fr": {
@@ -25705,6 +26853,34 @@
         }
       }
     },
+    "Move into “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déplacer dans « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In „%@“ verschieben"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mover a “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sposta in “%@”"
+          }
+        }
+      }
+    },
     "Move the Item": {
       "localizations": {
         "fr": {
@@ -25869,6 +27045,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sposta nella cartella…"
+          }
+        }
+      }
+    },
+    "Move to the trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre à la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In den Papierkorb legen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mover a la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sposta nel Cestino"
           }
         }
       }
@@ -26933,6 +28137,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuova cartella"
+          }
+        }
+      }
+    },
+    "New folders": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveaux dossiers"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neue Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpetas nuevas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuove cartelle"
           }
         }
       }
@@ -28561,6 +29793,34 @@
         }
       }
     },
+    "Not the suggested item": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pas l’élément suggéré"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht der vorgeschlagene Eintrag"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No es el elemento sugerido"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non è l’elemento suggerito"
+          }
+        }
+      }
+    },
     "Notes": {
       "localizations": {
         "fr": {
@@ -28585,6 +29845,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Note"
+          }
+        }
+      }
+    },
+    "Nothing is lost on the way: a merge writes the kept item before it trashes the others.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien ne se perd en route : une fusion écrit l’élément conservé avant de mettre les autres à la corbeille."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unterwegs geht nichts verloren: Eine Zusammenführung schreibt den behaltenen Eintrag, bevor die anderen in den Papierkorb kommen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pierde nada por el camino: una fusión escribe el elemento conservado antes de enviar los demás a la papelera."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla si perde per strada: un’unione scrive l’elemento mantenuto prima di spostare gli altri nel Cestino."
           }
         }
       }
@@ -28753,6 +30041,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notifiche"
+          }
+        }
+      }
+    },
+    "Now in no folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actuellement dans aucun dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derzeit in keinem Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora en ninguna carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ora in nessuna cartella"
+          }
+        }
+      }
+    },
+    "Now in “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actuellement dans « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derzeit in „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora en “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ora in “%@”"
           }
         }
       }
@@ -29201,6 +30545,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Una volta salvata la passkey, l'elemento esce da questo elenco alla prossima sincronizzazione. Conserva la password come riserva; se il sito consente l'accesso senza password, puoi rimuoverla lì, poi qui."
+          }
+        }
+      }
+    },
+    "One Touch ID applies the checked changes.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un seul Touch ID applique les modifications cochées."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein einziges Touch ID wendet die angehakten Änderungen an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un solo Touch ID aplica los cambios marcados."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un solo Touch ID applica le modifiche selezionate."
           }
         }
       }
@@ -30213,6 +31585,34 @@
         }
       }
     },
+    "Other one-time codes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autres codes à usage unique"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Andere Einmalcodes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otros códigos de un solo uso"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Altri codici monouso"
+          }
+        }
+      }
+    },
     "Other templates": {
       "localizations": {
         "fr": {
@@ -31161,6 +32561,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Senza password · %@"
+          }
+        }
+      }
+    },
+    "Passwords kept as fields": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mots de passe gardés en champs"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwörter als Felder behalten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseñas guardadas como campos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password conservate come campi"
           }
         }
       }
@@ -32173,6 +33601,34 @@
         }
       }
     },
+    "Put back what this plan changed, as long as nothing changed it since": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remettre ce que ce plan a changé, tant que rien d’autre ne l’a modifié depuis"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zurücksetzen, was dieser Plan geändert hat, solange es sich seitdem nicht verändert hat"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurar lo que cambió este plan, mientras nada lo haya modificado desde entonces"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ripristina ciò che questo piano ha cambiato, finché nulla l’ha modificato nel frattempo"
+          }
+        }
+      }
+    },
     "Put the created items": {
       "localizations": {
         "fr": {
@@ -32589,6 +34045,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Modificati di recente"
+          }
+        }
+      }
+    },
+    "Refused by Verrou (%lld)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refusé par Verrou (%lld)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Von Verrou abgelehnt (%lld)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechazado por Verrou (%lld)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rifiutato da Verrou (%lld)"
           }
         }
       }
@@ -33349,6 +34833,34 @@
         }
       }
     },
+    "Renames": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renommages"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Umbenennungen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cambios de nombre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rinomine"
+          }
+        }
+      }
+    },
     "Rename…": {
       "localizations": {
         "fr": {
@@ -33373,6 +34885,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rinomina…"
+          }
+        }
+      }
+    },
+    "Reorganize the Vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réorganiser le coffre"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tresor neu ordnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reorganizar la bóveda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riorganizza la cassaforte"
           }
         }
       }
@@ -38837,6 +40377,34 @@
         }
       }
     },
+    "Take out of their folders": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sortir de leurs dossiers"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus ihren Ordnern nehmen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sacar de sus carpetas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Togli dalle loro cartelle"
+          }
+        }
+      }
+    },
     "Takeover": {
       "localizations": {
         "fr": {
@@ -40153,6 +41721,34 @@
         }
       }
     },
+    "The new folders stay.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les nouveaux dossiers restent."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die neuen Ordner bleiben bestehen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las carpetas nuevas se quedan."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le nuove cartelle restano."
+          }
+        }
+      }
+    },
     "The new name shows for all members at their next sync.": {
       "localizations": {
         "fr": {
@@ -40177,6 +41773,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il nuovo nome appare a tutti i membri alla loro prossima sincronizzazione."
+          }
+        }
+      }
+    },
+    "The one-time codes differ: the kept item keeps its own, the others become fields.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les codes à usage unique diffèrent : l’élément conservé garde le sien, les autres deviennent des champs."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Einmalcodes unterscheiden sich: Der behaltene Eintrag behält seinen, die anderen werden zu Feldern."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los códigos de un solo uso difieren: el elemento conservado mantiene el suyo y los demás pasan a ser campos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I codici monouso sono diversi: l’elemento mantenuto conserva il suo, gli altri diventano campi."
           }
         }
       }
@@ -40293,6 +41917,34 @@
         }
       }
     },
+    "The password of “%@” becomes the current one": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le mot de passe de « %@ » devient le mot de passe actuel"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Passwort von „%@“ wird zum aktuellen Passwort"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La contraseña de “%@” pasa a ser la actual"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La password di “%@” diventa quella attuale"
+          }
+        }
+      }
+    },
     "The password travels in clear": {
       "localizations": {
         "fr": {
@@ -40345,6 +41997,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "La password viaggia in chiaro: Verrou non la compila in Brave."
+          }
+        }
+      }
+    },
+    "The passwords differ: the most recent becomes the current one, the others join the history.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les mots de passe diffèrent : le plus récent devient le mot de passe actuel, les autres rejoignent l’historique."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Passwörter unterscheiden sich: Das neueste wird zum aktuellen, die anderen kommen in den Verlauf."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las contraseñas difieren: la más reciente pasa a ser la actual y las demás van al historial."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le password sono diverse: la più recente diventa quella attuale, le altre vanno nella cronologia."
           }
         }
       }
@@ -40429,6 +42109,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "La persona crea il proprio account con questo link (in Verrou: “Crea un account”), che accetta l'invito."
+          }
+        }
+      }
+    },
+    "The plan could not be applied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le plan n’a pas pu être appliqué"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Plan konnte nicht angewendet werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo aplicar el plan"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile applicare il piano"
+          }
+        }
+      }
+    },
+    "The plan is no longer there": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le plan n’est plus là"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Plan ist nicht mehr da"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El plan ya no está"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il piano non c’è più"
           }
         }
       }
@@ -40933,6 +42669,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Le due password non coincidono."
+          }
+        }
+      }
+    },
+    "The usernames differ: these may be two accounts. Not checked by default.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les identifiants diffèrent : ce sont peut-être deux comptes. Non coché par défaut."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Benutzernamen unterscheiden sich: Es könnten zwei Konten sein. Nicht vorab angehakt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los usuarios difieren: pueden ser dos cuentas. No está marcado de forma predeterminada."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I nomi utente sono diversi: potrebbero essere due account. Non selezionato in modo predefinito."
           }
         }
       }
@@ -41633,6 +43397,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Questo invito è destinato a un indirizzo diverso da quello di questo account."
+          }
+        }
+      }
+    },
+    "This item asks for confirmation before it releases a secret: not checked by default.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet élément demande une confirmation avant de livrer un secret : il n’est pas coché par défaut."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Eintrag verlangt eine Bestätigung, bevor er ein Geheimnis herausgibt: Er ist nicht vorab angehakt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este elemento pide confirmación antes de revelar un secreto: no está marcado de forma predeterminada."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elemento chiede una conferma prima di rivelare un segreto: non è selezionato in modo predefinito."
+          }
+        }
+      }
+    },
+    "This item belongs to a shared vault.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet élément appartient à un coffre partagé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Eintrag gehört zu einem geteilten Tresor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este elemento pertenece a una bóveda compartida."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elemento appartiene a una cassaforte condivisa."
           }
         }
       }
@@ -42841,6 +44661,34 @@
         }
       }
     },
+    "Uncheck All": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tout décocher"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle abwählen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desmarcar todo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deseleziona tutto"
+          }
+        }
+      }
+    },
     "Underscore ( _ )": {
       "localizations": {
         "fr": {
@@ -42865,6 +44713,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Trattino basso ( _ )"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rückgängig"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla"
           }
         }
       }
@@ -44241,6 +46117,34 @@
         }
       }
     },
+    "Verrou checked these operations against your vault and refused them: they cannot be applied.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou a vérifié ces opérations d’après votre coffre et les a refusées : elles ne peuvent pas être appliquées."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou hat diese Vorgänge mit deinem Tresor abgeglichen und abgelehnt: Sie können nicht angewendet werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou comprobó estas operaciones con tu bóveda y las rechazó: no se pueden aplicar."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou ha verificato queste operazioni con la tua cassaforte e le ha rifiutate: non possono essere applicate."
+          }
+        }
+      }
+    },
     "Verrou fills your logins, codes and passkeys in Safari and the Mac's apps.": {
       "localizations": {
         "fr": {
@@ -44461,6 +46365,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verrou suggerirà una password complessa e di salvarla"
+          }
+        }
+      }
+    },
+    "Verrou would have kept another item.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou aurait gardé un autre élément."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou hätte einen anderen Eintrag behalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou habría conservado otro elemento."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verrou avrebbe tenuto un altro elemento."
           }
         }
       }
@@ -45641,6 +47573,34 @@
         }
       }
     },
+    "You can undo for %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous pouvez annuler pendant %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kannst noch %@ lang rückgängig machen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puedes deshacer durante %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puoi annullare per %@"
+          }
+        }
+      }
+    },
     "You don't manage this collection": {
       "localizations": {
         "fr": {
@@ -46533,6 +48493,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "consenti al Terminale di leggere “%@”"
+          }
+        }
+      }
+    },
+    "allow this agent session to read the list of your items for 30 minutes (titles, usernames, sites and folders, no password)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "autoriser cette session d’agent à lire la liste de vos éléments pendant 30 minutes (titres, identifiants, sites et dossiers, aucun mot de passe)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dieser Agentensitzung erlauben, die Liste deiner Einträge 30 Minuten lang zu lesen (Titel, Benutzernamen, Websites und Ordner, kein Passwort)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "permitir que esta sesión del agente lea la lista de tus elementos durante 30 minutos (títulos, usuarios, sitios y carpetas, ninguna contraseña)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "consenti a questa sessione dell’agente di leggere l’elenco dei tuoi elementi per 30 minuti (titoli, nomi utente, siti e cartelle, nessuna password)"
           }
         }
       }

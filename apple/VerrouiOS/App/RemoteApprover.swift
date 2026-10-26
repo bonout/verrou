@@ -412,6 +412,8 @@ extension RemoteApproval.Request {
         case "edit" where !site.isEmpty: String(localized: "modify “\(title)” and file it in the folder “\(site)”")
         case "edit": String(localized: "modify “\(title)”")
         case "delete": String(localized: "move “\(title)” to the trash")
+        // An agent session reads the list of items: one approval for half an hour.
+        case "catalog": String(localized: "let this agent session read the list of your items for 30 minutes (titles, usernames, sites and folders, no password)")
         default: String(localized: "access “\(title)”")
         }
     }

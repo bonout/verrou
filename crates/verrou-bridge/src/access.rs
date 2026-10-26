@@ -59,6 +59,12 @@ pub fn allowed(kind: ClientKind, command: &Command) -> bool {
         | Command::ItemCreate { .. }
         | Command::ItemEdit { .. }
         | Command::ItemMove { .. }
+        | Command::VaultOverview
+        | Command::VaultList { .. }
+        | Command::VaultDuplicates
+        | Command::PlanPropose { .. }
+        | Command::PlanStatus { .. }
+        | Command::PlanCancel { .. }
         | Command::SshKeys
         | Command::SshSign { .. } => kind == ClientKind::Cli,
     }
@@ -985,6 +991,23 @@ mod tests {
             Command::ItemMove {
                 item: String::new(),
                 to: crate::protocol::ItemMove::Trash,
+            },
+            Command::VaultOverview,
+            Command::VaultList {
+                offset: 0,
+                limit: None,
+                archived: false,
+            },
+            Command::VaultDuplicates,
+            Command::PlanPropose {
+                plan: crate::protocol::Plan::default(),
+            },
+            Command::PlanStatus {
+                plan: String::new(),
+                wait: 0,
+            },
+            Command::PlanCancel {
+                plan: String::new(),
             },
             Command::VaultItem {
                 query: String::new(),

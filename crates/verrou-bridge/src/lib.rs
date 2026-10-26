@@ -14,13 +14,18 @@
 //! - What each client can get is bounded by [`access`]: for the
 //!   extension, the logins for the current page, over HTTPS; for the
 //!   terminal, results without secrets, and a secret or an SSH signature
-//!   ([`ssh`]) only with the user's approval in Verrou.
+//!   ([`ssh`]) only with the user's approval in Verrou. An AI agent can
+//!   also read the catalog of the vault, with one approval, and propose a
+//!   reorganization that the user reviews and applies in Verrou
+//!   ([`organize`]).
 
 pub mod access;
 mod clients;
 pub mod crypto;
 pub mod items;
+pub mod organize;
 pub mod passkeys;
+mod plans;
 pub mod protocol;
 mod server;
 pub mod ssh;
@@ -30,9 +35,11 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub use clients::ClientInfo;
+pub use organize::PlanReview;
+pub use plans::ApprovedPlan;
 pub use server::{
-    APPROVAL_TTL, ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose,
-    WritePlan,
+    APPROVAL_TTL, ApprovalScope, Backend, BoxFuture, Bridge, CATALOG_TTL, Confirmation,
+    PairingRequest, Purpose, WritePlan,
 };
 
 /// The app's identifier, to open it (`open -b`).

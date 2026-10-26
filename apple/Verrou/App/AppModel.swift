@@ -204,6 +204,9 @@ final class AppModel {
     var importFlow: ImportFlow?
     /// Duplicate cleanup open.
     var duplicatesFlow: DuplicatesFlow?
+    /// A reorganization an agent proposed, in review (see
+    /// `OrganizePlanFlow.swift`).
+    var organizePlan: OrganizePlanFlow?
     /// Emergency access, see `EmergencyAccess.swift`.
     let emergency = EmergencyModel()
     /// Sends (Bitwarden Send), see `Sends.swift`.
@@ -745,6 +748,8 @@ final class AppModel {
         if keyExchange == .enroll { session.cancelSecurityKey() }
         importFlow = nil
         duplicatesFlow = nil
+        // A plan in review is dropped by the bridge on lock; its undo goes too.
+        organizePlan = nil
         emergency.clear()
         members.clear()
         organizationAdmin.clear()

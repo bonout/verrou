@@ -994,8 +994,9 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
     pending, and commands run in their own process group, killed whole at
     the time limit (600 seconds at most) or when the client closes its
     input;
-  - the server cannot write to the vault: it has no tool that creates or
-    changes an item;
+  - the server writes nothing itself: it has no tool that creates or changes
+    an item. The one thing it can do is *propose* a reorganization, which the
+    user reviews and applies in Verrou (see *Organizing with an agent*);
   - limits, plainly: **approving a command an agent chose can give the
     agent the value.** The mask hides exact values only; a command that
     prints one encoded, reversed or split, or sends it elsewhere, gets it
@@ -1111,6 +1112,206 @@ ssh ──Unix socket──▶ verrou ssh-agent ──TCP 127.0.0.1──▶ Ver
 - **Known limits**: approval is given per item, without showing which
   command asks for it; a program running under the user's account can read
   what the CLI displays.
+
+## Organizing with an agent
+
+An agent (`verrou mcp`) can help tidy the vault: it reads the vault's catalog,
+proposes a plan (folders to create, items to move, rename, archive or trash,
+duplicates to merge), and the user reviews it in a sheet on the Mac and applies
+the operations they check with one Touch ID. Same threat model as the rest of
+the MCP server: the agent may be prompt-injected, so it can propose anything and
+is trusted with nothing; **it never writes**, the user does.
+
+- **The catalog is the vault's index, never a secret.** `verrou_vault_overview`,
+  `verrou_list_items` and `verrou_find_duplicates` return titles, kinds, the
+  username of a login, sites as a host or an application identifier (no scheme,
+  port, path, query or fragment: those can carry tokens; a value that is not an
+  address, with no scheme and no dot, is left out, because someone may have
+  typed a secret in the wrong field), folders, favorite, archived or not, the
+  organization of a shared item, read-only, protected ("master password
+  re-prompt"), and whether the item has a one-time code, a passkey, notes, how
+  many attachments, its dates. It never carries a password, a one-time code or
+  seed, a note, the name or value of a custom field, a card number, or a note's
+  body; the trash is never listed. The tests plant a password, a seed, a note, a
+  custom field, a card number and a URL token in the vault and look for them in
+  every serialized reply. Every text is cleaned like an approval's (one line, no
+  control or invisible character, at most 200 characters); a page is cut to fit
+  a reply (at most 500 items and about 600 KB), and duplicates are limited to
+  logins (the only items a plan can merge) and 300 groups.
+- **Reading it needs one approval per agent session, valid 30 minutes**
+  (`Purpose::Catalog`). Every `verrou mcp` process draws a random session
+  identifier when it starts and sends it with the catalog and plan commands; the
+  paired terminal is the same client for all of them, the approval is not. The
+  Mac or the paired iPhone asks once ("allow this agent session to read the
+  list of your items for 30 minutes (titles, usernames, sites and folders, no
+  password)"), and that covers the overview, every page and the duplicates of
+  that session only: another agent run of the same terminal is asked again, and
+  a request that carries no session identifier is asked on its own and not
+  remembered. Unlike the agent's other requests it is remembered (it is read in
+  pages), but a refusal still pauses that agent's prompts for 30 seconds, and
+  the MCP tools pause for a minute. The approval ends with the vault's lock, the
+  terminal's unlink or revocation, or its 30 minutes; nothing else (not another
+  session's, not another client's, not an SSH or secret approval) is covered by
+  it. Without it, the agent knows nothing of the vault: what it can learn is what
+  the user accepted to show it (their accounts' names and sites), which is a
+  privacy cost to weigh before saying yes. The request that asks has a
+  descriptive title ("the vault's catalog: titles, usernames, sites, folders and
+  counts, no secret"), so that an iPhone that does not know the purpose yet still
+  shows something meaningful.
+- **The duplicate groups an agent reads never compare secrets.** Whether two
+  logins have the same password, or the same one-time-code seed, is not for an
+  agent to learn by asking for the groups: they are computed with the passwords
+  treated as unknown and the seeds as different, so their members, their
+  confidence (*probable* or *review*, never *certain*, which rests on a shared
+  password) and their reasons ("same site (github.com), same username") say
+  nothing about secrets, and the tool has no "same password" field. The same
+  groups, with the same keys, are what a plan's merge is checked against, at
+  proposal and again at apply: a key the agent was not given is refused. The
+  review and the merge's own checks read the items themselves (the badge
+  "different passwords" is for the user). *Residual signal, stated plainly:* the
+  groups still tell which logins look alike by site, title and username, which
+  the catalog already tells; a failure report that says an operation "changed
+  since the review" does not name a password or a seed; and the operations the
+  user checks and applies are visible to the agent in the outcome, so a user who
+  unchecks every merge of items with different passwords tells the agent
+  something by their choice. The agent can still *propose* a merge of two logins
+  and see it applied, which tells it the user accepted, not whether the
+  passwords match.
+- **A plan is checked before the user sees it, and again before it is applied.**
+  Validation is pure Rust against the unlocked vault (`organize.rs`), without the
+  network. A plan is refused whole if it has no reason or one over 120
+  characters, no operation or more than 1000, an operation without its
+  rationale (at most 120 characters), or nothing valid in it; each other
+  operation that fails a rule is refused on its own, with its reason (the agent
+  reads it as `rejected`; the user sees them under *Refused by Verrou*). What the
+  agent supplied that Verrou does not know (an item identifier that is not in the
+  vault, a folder name that does not exist) is never repeated back, in a reason
+  or in the name of the refused operation: "an unknown item", "this folder
+  name". The rules: the item exists, is not in the trash and is not shared
+  read-only; no item that goes away (merged, archived, trashed) is also renamed
+  or moved, an item is renamed or moved once, and the item a merge keeps is not
+  also archived or trashed (a merge refused for that does not leave its other
+  members claimed); a move's folder exists or is created in the plan (case
+  matters: `work` is refused when `Work` exists, with a hint), **and no other
+  folder has the same name** (two folders may share a name in Bitwarden: a plan
+  cannot tell which is meant, so it moves nothing into either, and an undo never
+  moves an item back toward a name two folders share); a folder name is 1 to 100
+  characters, with no control or invisible character and no empty level (`A/B`
+  nests); a title is 1 to 200 characters, without control or invisible
+  characters; a merge names a group that is in the *current* scan (the group's
+  key is a fingerprint of its members: a group that changed is refused), a
+  `keep` that is a member, and only logins of one vault, **and, for an
+  organization's items, all in the same collections** (merging items that
+  different people see would widen who sees what: do it in the app); a trashed
+  item is never merged; **no item that goes to the trash by a merge has an
+  attachment or a passkey** (a merge does not move them: keep that item
+  instead), and a protected item is neither merged nor trashed by an agent.
+  Operations that would change nothing are dropped and counted as unchanged.
+  `set_tags` and any operation Verrou does not know are refused individually
+  ("Vaultwarden has no tags: use folders"): they do not make the request fail.
+  The same rules run again, on the checked operations only, when the user
+  applies: an operation that no longer passes is reported as failed ("the vault
+  changed since the review"), never forced; and an operation that passes but
+  differs from what the user approved, in a way they did not see (a warning it
+  did not have, other items in a merge, another item whose password would become
+  current) is not applied either ("changed since the review").
+- **The review shows what Verrou knows, apart from what the agent says.** Each
+  row is built from the vault (the item's title, the folder it is in, the new
+  title, the titles of the items a merge trashes, and, for a merge, the item
+  whose password becomes the current one when it is not the kept item's) and
+  carries the agent's rationale as its claim ("Agent: …"), like the plan's reason
+  ("The agent says: …"). Badges say what to watch: protected, shared vault,
+  different passwords, not the suggested item, different usernames, other
+  one-time codes, passwords kept as fields (see below; the merge stays checked).
+  **Not checked by default: an operation on a protected item, a merge of items
+  with different usernames (maybe two accounts), anything that goes to the trash,
+  and the merge, archive or trash of an organization's items.** A move into a new
+  folder checks the folder too, and unchecking the folder unchecks the moves. The
+  client's name is the one it announced when it was paired, not the MCP client's
+  own: it proves nothing about which program asks. A rename's new title is the
+  agent's text (cleaned): read "Old → New" like any other claim. The Apply button
+  is not the sheet's default action (Return applies nothing), is disabled while
+  Touch ID is up or the plan is being applied (a second tap does nothing), and
+  Touch ID says what is destructive: "Apply N changes proposed by <client>,
+  including T to the trash and M merges".
+- **Proposing is bounded.** Asynchronous: the proposal is answered at once and
+  the agent follows it with `verrou_plan_status` (which waits up to 50 seconds
+  at a time; `verrou_propose_plan` itself waits up to 100). A plan is proposed
+  by an agent that has read the vault in the same session: the approval is
+  looked up, never asked, and a proposal without it is refused with "read it
+  with verrou_list_items first", before anything is shown or any window comes to
+  the front. One plan awaiting review per client and one in review at all (the
+  user is never shown two; two proposals admitted while their plans were being
+  checked cannot both reach the user: the client is admitted again under the lock
+  that registers the plan); a 60-second pause after the user declines (the agent
+  is told not to insist); at most six proposals per client per hour that reach
+  the user, and at most 30 proposals an hour in all, those Verrou refused
+  included (an agent that probes the rules in a loop is stopped); **no new plan
+  from a client whose last plan was applied while its result can still be undone
+  (ten minutes) or its sheet is open**, and a plan that arrives while the sheet
+  is in review, applying or undoable is declined, so that it never takes the
+  sheet, and the Undo, away. A plan nobody reviews expires after ten minutes and
+  the sheet closes; the agent can withdraw a plan awaiting review
+  (`verrou_plan_cancel`), not one being applied. A finished plan is kept ten
+  minutes for the agent to read its outcome, and **belongs to the session that
+  proposed it**: another session of the same terminal cannot read or withdraw
+  it. A plan awaiting review is dropped when the vault locks. The app that cannot
+  show a plan (a demo vault) refuses it; an app older than the terminal tool
+  answers "bad request", and the tool says to update Verrou. **A plan is reviewed
+  on the Mac, in front of it**: when the user is away (screen locked, no input
+  for a minute) it is declined, and the iPhone does not review plans. The agent
+  is told only that "plans are reviewed in Verrou on the Mac; try again later":
+  whether anyone is at the Mac is not for it to learn.
+- **Applying.** One Touch ID, then the checked operations in the order that
+  cannot lose anything: folders first (a move into a folder that could not be
+  created fails with it), then merges (one at a time: the kept item is written
+  first, then the others go to the trash), renames, moves (one request per
+  destination folder), archives, the trash. Each step goes through the same write
+  path as the app's own actions (offline queue, conflicts kept as copies, one
+  sync at the end of the step). A step reports its failures by item identifier,
+  never by title (two items may share a title): a rename that was refused is a
+  failure, not an applied change. An operation that fails does not stop the
+  others and is **never retried by itself**; the report (applied, waiting for the
+  server, left as they were, failed with reasons) goes to the user and, in the
+  same words, to the agent. "Waiting for the server" counts only what the server
+  had not taken when the application ended (offline), not what merely goes out a
+  moment later. Whatever happens, the plan ends: an application that stops (the
+  vault locks, or the vault no longer fits the plan) ends as *interrupted*, with
+  a report of what was done before and nothing more to come, not as a plan stuck
+  "applying" and not as an applied plan that can be undone.
+- **A merge never silently loses what it can carry.** The kept item keeps its
+  title, folder and fields. It receives the sites it lacks (by host; a site with
+  a match rule of its own, such as "starts with", is kept as such), the username
+  and the one-time code if it has none, the notes (appended under "— Merged from
+  "X" —"), the custom fields it lacks (a name clash becomes "Name (X)"), the
+  favorite flag, and the most recently changed password becomes the current one.
+  A password is dated by its last change, otherwise by the item's creation, never
+  by its last edit (renaming an item must not make its old password the newest).
+  **A username or a one-time code that differs from the kept item's becomes a
+  field of it: "Username (from “X”)", or, hidden, "One-time code (from “X”)"**,
+  never dropped. **No password is dropped either.** The other passwords, and the
+  others' histories, join the item's history, which holds five (Bitwarden's
+  limit); every further distinct password becomes a hidden field of the kept
+  item, "Password (from “X”)" (X's current password) or "Old password (from
+  “X”)", identical values once, and never a value in a field's name. The review
+  warns (*passwords kept as fields*) when that will happen.
+- **Undo.** For ten minutes, and only while the vault stays unlocked, the sheet
+  offers *Undo*, without Touch ID (it puts back what the user just approved):
+  restores what went to the trash, unarchives, moves items back, restores titles,
+  and puts a merge's kept item back as it was **if nobody changed it since** (the
+  item must still be exactly as the merge left it, revision included; otherwise
+  it is left as it is, with what the merge gave it, and counted). It only touches
+  an item that still is as the plan left it (an item the user changed since is
+  left alone and counted), and it stops at the window. The undo record the app's
+  interface holds is identifiers and titles, no secret; the kept item as it was
+  before a merge, which does hold secrets, stays in the Rust core's memory only,
+  is never sent to the interface nor to the agent, and is dropped on lock and
+  when the sheet closes. The folders a plan created stay; trashed items are
+  restorable from the web vault for 30 days either way.
+- **What it does not do.** An agent cannot create, edit or delete an item
+  directly; it cannot apply a plan; it cannot read a secret through the catalog;
+  a plan cannot carry a value (a rename's title and a folder's name are text,
+  never a field). The user's decision is the only thing that writes.
 
 ## Approving from the iPhone
 

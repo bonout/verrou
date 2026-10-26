@@ -180,7 +180,7 @@ impl VaultSession {
             failures: outcome
                 .failed
                 .iter()
-                .map(|(title, reason)| format!("{title}: {reason}"))
+                .map(|f| format!("{}: {}", f.title, f.reason))
                 .collect(),
         };
         self.install_if_current(&connection, outcome.vault)?;

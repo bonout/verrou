@@ -410,3 +410,60 @@ async fn merging_duplicates_offline_waits_then_reaches_the_server() {
     assert!(merged.notes.is_some());
     std::fs::remove_dir_all(store.dir()).unwrap();
 }
+
+/// A merge is undone while the kept item is as the merge left it, and not
+/// once anybody edited it, even offline.
+#[tokio::test]
+async fn a_merge_is_undone_only_while_the_kept_item_is_untouched() {
+    let Some(server) = server() else { return };
+    let email = register(&server).await;
+    let store = temp_store();
+    let (mut online, _) = sign_in(&store, &server, &email).await;
+    let (kept, _) = online
+        .create(login_draft("Exemple", "commun"))
+        .await
+        .unwrap();
+    let mut copy = login_draft("exemple.fr", "commun");
+    copy.notes = Some(SecretString::new("une note"));
+    let (other, _) = online.create(copy).await.unwrap();
+    let [kept, other] = sent(&mut online, [&kept, &other]).await;
+    drop(online);
+
+    let (mut offline, _) = reopen(&store, &dead_server()).await;
+    let outcome = offline
+        .merge_duplicates(&kept, std::slice::from_ref(&other))
+        .await
+        .unwrap();
+    assert_eq!(outcome.snapshot.id(), kept);
+    // Untouched since: back as it was, without the carried note.
+    assert!(
+        offline
+            .undo_merge(&outcome.snapshot)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let draft = offline.draft(&kept).await.unwrap();
+    assert!(draft.notes.is_none(), "the kept item is back as it was");
+
+    // Another copy merged, then the kept item edited offline: left as it is.
+    let mut third = login_draft("exemple.fr (2)", "commun");
+    third.notes = Some(SecretString::new("une autre note"));
+    let (third, _) = offline.create(third).await.unwrap();
+    let outcome = offline
+        .merge_duplicates(&kept, std::slice::from_ref(&third))
+        .await
+        .unwrap();
+    let mut draft = offline.draft(&kept).await.unwrap();
+    draft.name = "Exemple (édité)".to_owned();
+    offline.update(&kept, draft).await.unwrap();
+    assert!(
+        offline
+            .undo_merge(&outcome.snapshot)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(offline.draft(&kept).await.unwrap().name, "Exemple (édité)");
+    std::fs::remove_dir_all(store.dir()).unwrap();
+}

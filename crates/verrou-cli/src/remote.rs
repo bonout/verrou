@@ -104,6 +104,9 @@ pub enum Error {
     Locked,
     /// Refusal by Verrou or the user, with its reason.
     Denied(String),
+    /// Verrou could not read the request: an app older than this terminal
+    /// tool (it does not know the command), or a clock out of step.
+    BadRequest,
     Protocol(String),
 }
 
@@ -121,6 +124,10 @@ impl fmt::Display for Error {
             ),
             Self::Locked => write!(f, "the vault stayed locked"),
             Self::Denied(reason) => write!(f, "{reason}"),
+            Self::BadRequest => write!(
+                f,
+                "Verrou could not read the request: the app is probably older than this tool (update Verrou), or the clock of this Mac is wrong"
+            ),
             Self::Protocol(message) => write!(f, "dialogue with Verrou: {message}"),
         }
     }
@@ -222,6 +229,10 @@ pub struct Remote {
     /// What the next commands are for, shown in the approval: the command
     /// line and the fields ([`RunDetail`]).
     pub detail: Option<RunDetail>,
+    /// An agent session (`verrou mcp`): sent with the catalog and plan
+    /// commands, which the approval and the plans belong to it
+    /// ([`Request::session`]).
+    pub session: Option<String>,
 }
 
 impl Remote {
@@ -236,6 +247,7 @@ impl Remote {
             intent: None,
             ephemeral: false,
             detail: None,
+            session: None,
         })
     }
 
@@ -249,6 +261,7 @@ impl Remote {
             reason: self.reason.clone(),
             ephemeral_approval: self.ephemeral,
             detail: self.detail.clone(),
+            session: self.session.clone(),
             command: command.clone(),
         })
         .map_err(|e| Error::Protocol(e.to_string()))?;
@@ -279,6 +292,9 @@ impl Remote {
             Outgoing::Error {
                 code: ErrorCode::UnknownClient,
             } => Err(Error::UnknownClient),
+            Outgoing::Error {
+                code: ErrorCode::BadRequest,
+            } => Err(Error::BadRequest),
             other => Err(Error::Protocol(format!("unexpected reply: {other:?}"))),
         }
     }
@@ -356,6 +372,47 @@ mod tests {
                 "{off:?}"
             );
         }
+    }
+
+    /// An app that does not know a command (older than this tool) answers
+    /// "bad request": the tool says to update Verrou, not "unexpected reply".
+    #[test]
+    fn an_app_that_cannot_read_the_request_is_said_to_be_outdated() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut length = [0u8; 4];
+            stream.read_exact(&mut length).unwrap();
+            let mut body = vec![0u8; u32::from_le_bytes(length) as usize];
+            stream.read_exact(&mut body).unwrap();
+            write_frame(
+                &mut stream,
+                &Outgoing::Error {
+                    code: ErrorCode::BadRequest,
+                },
+            )
+            .unwrap();
+        });
+        let ours = KeyPair::generate();
+        let key = ours
+            .agree(&KeyPair::generate().public_base64(), false)
+            .unwrap();
+        let config = Config {
+            client: "client".to_owned(),
+            key: key.to_base64(),
+            linked: 0,
+        };
+        let endpoint = Endpoint {
+            port,
+            launch: false,
+        };
+        let mut remote = Remote::connect(&config, endpoint).unwrap();
+        let outcome = remote.ask(&Command::VaultOverview);
+        server.join().unwrap();
+        assert_eq!(outcome, Err(Error::BadRequest));
+        let said = Error::BadRequest.to_string();
+        assert!(said.contains("update Verrou"), "{said}");
     }
 
     #[test]

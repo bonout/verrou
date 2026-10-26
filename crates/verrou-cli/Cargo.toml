@@ -24,9 +24,10 @@ serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 zeroize.workspace = true
+# One agent session's identifier (`verrou mcp`).
+uuid.workspace = true
 
 [dev-dependencies]
-uuid.workspace = true
 # Test SSH keys, checking the agent's signatures.
 ssh-key = { version = "0.7.0-rc.11", features = ["ed25519", "rsa"] }
 signature = "3"

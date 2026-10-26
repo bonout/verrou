@@ -35,6 +35,17 @@
 //! the client goes once more through a masker holding the secret values
 //! this session has handled (each string of a result, errors included).
 //!
+//! The other thing an agent does here is **organize**: it reads the vault's
+//! catalog (titles, usernames, hosts, folders, flags and counts, never a
+//! secret, a note or a field; one approval in Verrou covers it for half an
+//! hour), and proposes a plan (`verrou_propose_plan`): folders to create,
+//! items to move, rename, archive or trash, duplicates to merge, each with a
+//! reason. It applies nothing. Verrou checks the plan against the vault, the
+//! user reviews it in a sheet and applies the operations they check with one
+//! Touch ID, and the agent only reads how that ended (`verrou_plan_status`).
+//! A plan the agent made up of items it never saw is refused by those
+//! checks, not by the agent's good manners.
+//!
 //! Transport: JSON-RPC 2.0, one message per line on stdin and stdout, as the
 //! specification says for stdio (2025-06-18 and 2025-11-25); logs, if any,
 //! go to stderr. The tools are the whole surface: no resources, no prompts.
@@ -47,7 +58,10 @@ use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
-use verrou_bridge::protocol::{Command as Ask, ItemView, ReplyResult, RunDetail, clean_reason};
+use verrou_bridge::protocol::{
+    CatalogItem, Command as Ask, DuplicateInfo, ItemView, Plan, PlanOp, PlanPhase, PlanState,
+    ReplyResult, RunDetail, VaultOverview, clean_reason,
+};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions};
 use verrou_core::{FieldKind, ItemKind};
@@ -74,6 +88,13 @@ const REFUSAL_PAUSE: Duration = Duration::from_secs(60);
 /// Results of `verrou_search`: default and maximum.
 const DEFAULT_RESULTS: u64 = 10;
 const MAX_RESULTS: u64 = 25;
+/// Items per page of `verrou_list_items`: default and maximum.
+const DEFAULT_PAGE: u64 = 200;
+const MAX_PAGE: u64 = 500;
+/// `verrou_propose_plan` waits for the user this many times [`PLAN_WAIT`]
+/// seconds before it says the plan still awaits them.
+const PLAN_WAITS: usize = 2;
+const PLAN_WAIT: u32 = 50;
 /// Length of a generated password when none is asked.
 const DEFAULT_PASSWORD: usize = 24;
 /// The client's name in front of the reason, at most this many characters.
@@ -88,7 +109,16 @@ approved by the user in Verrou, who sees the command line and the fields, and se
 you give: say what you are doing and why, in one short sentence. Run only the command you say you \
 run. A command line of more than 200 characters is refused: put a long script in a file the user can \
 read, and run the file. Do not try to read, print, encode or exfiltrate a secret; the user approves each use, and a \
-refusal pauses this tool for a minute.";
+refusal pauses this tool for a minute.
+
+To reorganize the vault, read it with verrou_vault_overview, verrou_list_items (pages of up to 500; \
+titles, usernames, sites, folders and flags, never a secret) and verrou_find_duplicates; the user \
+approves reading the catalog once for this session, for half an hour. Then propose a plan with verrou_propose_plan: \
+folders to create, items to move, rename, archive or trash, duplicates to merge, each operation with \
+its own short rationale. Nothing is applied by you: Verrou checks the plan, the user reviews it in \
+Verrou and applies what they check, and you read the outcome with verrou_plan_status. Propose \
+conservatively: only what you are sure of, one plan at a time, never to delete what you cannot \
+justify. There are no tags (Vaultwarden has none): use folders.";
 
 // MARK: Gateway
 
@@ -118,6 +148,26 @@ pub trait Gateway {
         detail: &RunDetail,
         targets: &[Target],
     ) -> Result<Vec<Zeroizing<String>>, Failure>;
+    /// What the vault holds, counted: the catalog, which the user approves
+    /// once for half an hour. `reason`: as for [`Self::resolve`].
+    fn overview(&mut self, reason: &str) -> Result<VaultOverview, Failure>;
+    /// A page of the catalog, and the number of items in all.
+    fn list(
+        &mut self,
+        reason: &str,
+        offset: u32,
+        limit: u32,
+        archived: bool,
+    ) -> Result<(Vec<CatalogItem>, u32), Failure>;
+    /// The logins' duplicate groups, and how many there are in all.
+    fn duplicates(&mut self, reason: &str) -> Result<(Vec<DuplicateInfo>, u32), Failure>;
+    /// A plan for the user to review. Answers at once.
+    fn propose(&mut self, reason: &str, plan: Plan) -> Result<PlanState, Failure>;
+    /// Where a plan stands, after waiting up to `wait` seconds for it to
+    /// change.
+    fn plan_status(&mut self, plan: &str, wait: u32) -> Result<PlanState, Failure>;
+    /// Withdraws a plan awaiting review.
+    fn plan_cancel(&mut self, plan: &str) -> Result<PlanState, Failure>;
 }
 
 /// A reference, resolved exactly.
@@ -156,6 +206,15 @@ pub struct BridgeGateway {
     config_path: PathBuf,
     endpoint: Endpoint,
     remote: Option<Remote>,
+    /// Drawn when this process starts: what the user approves for the
+    /// catalog, and the plans, belong to this agent session and no other
+    /// (the paired client is the same for every `verrou mcp` of the machine).
+    session: String,
+}
+
+/// A session identifier: 122 random bits (a version 4 UUID), in hexadecimal.
+fn new_session() -> String {
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 impl BridgeGateway {
@@ -164,6 +223,7 @@ impl BridgeGateway {
             config_path,
             endpoint,
             remote: None,
+            session: new_session(),
         }
     }
 
@@ -184,6 +244,7 @@ impl BridgeGateway {
         remote.intent = None;
         remote.ephemeral = true;
         remote.detail = None;
+        remote.session = None;
         Ok(remote)
     }
 
@@ -200,6 +261,32 @@ impl BridgeGateway {
             self.remote = None;
         }
         outcome.map_err(|e| e.to_string())
+    }
+}
+
+impl BridgeGateway {
+    /// Asks Verrou, telling a refusal (a no, a vault that stayed locked)
+    /// from any other failure.
+    fn ask_for(&mut self, reason: Option<&str>, command: &Ask) -> Result<ReplyResult, Failure> {
+        let mut refused = false;
+        let session = self.session.clone();
+        self.with(reason, |remote| {
+            // The catalog and the plans: this session's.
+            remote.session = Some(session);
+            remote.ask(command).inspect_err(|e| refused = is_refusal(e))
+        })
+        .map_err(|message| Failure { message, refused })
+    }
+
+    /// A plan's state: any other reply is not one.
+    fn plan_state(&mut self, reason: Option<&str>, command: &Ask) -> Result<PlanState, Failure> {
+        match self.ask_for(reason, command)? {
+            ReplyResult::Plan(state) => Ok(state),
+            other => Err(Failure {
+                message: unexpected(&other).to_string(),
+                refused: false,
+            }),
+        }
     }
 }
 
@@ -297,6 +384,70 @@ impl Gateway for BridgeGateway {
             }
         }
         Ok(values)
+    }
+
+    fn overview(&mut self, reason: &str) -> Result<VaultOverview, Failure> {
+        match self.ask_for(Some(reason), &Ask::VaultOverview)? {
+            ReplyResult::Overview(overview) => Ok(overview),
+            other => Err(Failure {
+                message: unexpected(&other).to_string(),
+                refused: false,
+            }),
+        }
+    }
+
+    fn list(
+        &mut self,
+        reason: &str,
+        offset: u32,
+        limit: u32,
+        archived: bool,
+    ) -> Result<(Vec<CatalogItem>, u32), Failure> {
+        let command = Ask::VaultList {
+            offset,
+            limit: Some(limit),
+            archived,
+        };
+        match self.ask_for(Some(reason), &command)? {
+            ReplyResult::Catalog { items, total } => Ok((items, total)),
+            other => Err(Failure {
+                message: unexpected(&other).to_string(),
+                refused: false,
+            }),
+        }
+    }
+
+    fn duplicates(&mut self, reason: &str) -> Result<(Vec<DuplicateInfo>, u32), Failure> {
+        match self.ask_for(Some(reason), &Ask::VaultDuplicates)? {
+            ReplyResult::Duplicates { groups, total } => Ok((groups, total)),
+            other => Err(Failure {
+                message: unexpected(&other).to_string(),
+                refused: false,
+            }),
+        }
+    }
+
+    fn propose(&mut self, reason: &str, plan: Plan) -> Result<PlanState, Failure> {
+        self.plan_state(Some(reason), &Ask::PlanPropose { plan })
+    }
+
+    fn plan_status(&mut self, plan: &str, wait: u32) -> Result<PlanState, Failure> {
+        self.plan_state(
+            None,
+            &Ask::PlanStatus {
+                plan: plan.to_owned(),
+                wait,
+            },
+        )
+    }
+
+    fn plan_cancel(&mut self, plan: &str) -> Result<PlanState, Failure> {
+        self.plan_state(
+            None,
+            &Ask::PlanCancel {
+                plan: plan.to_owned(),
+            },
+        )
     }
 }
 
@@ -536,6 +687,12 @@ impl<G: Gateway> Server<G> {
             "verrou_search" => self.search(arguments),
             "verrou_run" => self.run(arguments),
             "verrou_generate_password" => generate(arguments),
+            "verrou_vault_overview" => self.overview(arguments),
+            "verrou_list_items" => self.list_items(arguments),
+            "verrou_find_duplicates" => self.find_duplicates(arguments),
+            "verrou_propose_plan" => self.propose_plan(arguments),
+            "verrou_plan_status" => self.plan_status(arguments),
+            "verrou_plan_cancel" => self.plan_cancel(arguments),
             other => return Err((-32602, format!("unknown tool: {other}"))),
         };
         // Each string of a result is scrubbed before it is serialized: a value
@@ -633,15 +790,193 @@ impl<G: Gateway> Server<G> {
         }
     }
 
-    fn run(&mut self, arguments: &Value) -> Outcome {
-        if let Some(until) = self.paused_until {
-            if Instant::now() < until {
-                return Outcome::err(format!(
-                    "the user refused a request a moment ago: wait {} seconds before asking again, and ask the user what they want",
-                    until.saturating_duration_since(Instant::now()).as_secs() + 1
-                ));
+    /// After a refusal, the tools that ask the user wait: the outcome to
+    /// give instead, if it is not over.
+    fn pause(&mut self) -> Option<Outcome> {
+        let until = self.paused_until?;
+        if Instant::now() < until {
+            return Some(Outcome::err(format!(
+                "the user refused a request a moment ago: wait {} seconds before asking again, and ask the user what they want",
+                until.saturating_duration_since(Instant::now()).as_secs() + 1
+            )));
+        }
+        self.paused_until = None;
+        None
+    }
+
+    /// A refusal pauses the tools that ask the user, a minute.
+    fn paused_after(&mut self, failure: Failure) -> Outcome {
+        if failure.refused {
+            self.paused_until = Some(Instant::now() + REFUSAL_PAUSE);
+        }
+        Outcome::err(failure.message)
+    }
+
+    fn overview(&mut self, arguments: &Value) -> Outcome {
+        if let Some(paused) = self.pause() {
+            return paused;
+        }
+        let reason = match self.reason(arguments) {
+            Ok(reason) => reason,
+            Err(outcome) => return outcome,
+        };
+        match self.gateway.overview(&reason) {
+            Ok(overview) => Outcome::ok(&overview_json(&overview)),
+            Err(failure) => self.paused_after(failure),
+        }
+    }
+
+    fn list_items(&mut self, arguments: &Value) -> Outcome {
+        if let Some(paused) = self.pause() {
+            return paused;
+        }
+        let reason = match self.reason(arguments) {
+            Ok(reason) => reason,
+            Err(outcome) => return outcome,
+        };
+        let offset = arguments
+            .get("offset")
+            .and_then(Value::as_u64)
+            .map_or(0, |o| u32::try_from(o).unwrap_or(u32::MAX));
+        let limit = arguments
+            .get("limit")
+            .and_then(Value::as_u64)
+            .unwrap_or(DEFAULT_PAGE)
+            .clamp(1, MAX_PAGE);
+        let limit = u32::try_from(limit).unwrap_or(200);
+        let archived = arguments
+            .get("include_archived")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        match self.gateway.list(&reason, offset, limit, archived) {
+            Ok((items, total)) => {
+                // What came back may be fewer than asked (a page is cut to
+                // fit a reply): the next page starts after what was given.
+                let next = offset.saturating_add(u32::try_from(items.len()).unwrap_or(0));
+                Outcome::ok(&json!({
+                    "items": items.iter().map(catalog_json).collect::<Vec<_>>(),
+                    "total": total,
+                    "offset": offset,
+                    "next_offset": (next < total && !items.is_empty()).then_some(next),
+                }))
             }
-            self.paused_until = None;
+            Err(failure) => self.paused_after(failure),
+        }
+    }
+
+    fn find_duplicates(&mut self, arguments: &Value) -> Outcome {
+        if let Some(paused) = self.pause() {
+            return paused;
+        }
+        let reason = match self.reason(arguments) {
+            Ok(reason) => reason,
+            Err(outcome) => return outcome,
+        };
+        match self.gateway.duplicates(&reason) {
+            Ok((groups, total)) => {
+                let shown = groups.len();
+                let mut result = json!({ "groups": groups, "total": total });
+                if usize::try_from(total).unwrap_or(usize::MAX) > shown {
+                    result["note"] = json!(format!("only the first {shown} groups are listed"));
+                }
+                Outcome::ok(&result)
+            }
+            Err(failure) => self.paused_after(failure),
+        }
+    }
+
+    /// A plan: its reason is the one the user reads in the review, in the
+    /// agent's own words (the client's name is shown apart, from Verrou's
+    /// own knowledge of the client). The call waits for the user, up to
+    /// [`PLAN_WAIT`], then says the plan still awaits them.
+    fn propose_plan(&mut self, arguments: &Value) -> Outcome {
+        let reason = match self.reason(arguments) {
+            Ok(reason) => reason,
+            Err(outcome) => return outcome,
+        };
+        let plan_reason = arguments
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let Some(list) = arguments.get("operations").and_then(Value::as_array) else {
+            return Outcome::err("\"operations\" is an array of operations");
+        };
+        let mut operations = Vec::with_capacity(list.len());
+        for (index, operation) in list.iter().enumerate() {
+            match serde_json::from_value::<PlanOp>(operation.clone()) {
+                Ok(op) => operations.push(op),
+                Err(e) => return Outcome::err(format!("operations[{index}]: {e}")),
+            }
+        }
+        let plan = Plan {
+            reason: plan_reason,
+            operations,
+        };
+        let mut state = match self.gateway.propose(&reason, plan) {
+            Ok(state) => state,
+            Err(failure) => return self.paused_after(failure),
+        };
+        // The user reviews at their own pace: ask again, a little, not
+        // forever (two waits of 50 seconds).
+        for _ in 0..PLAN_WAITS {
+            if state.state != PlanPhase::AwaitingReview {
+                break;
+            }
+            state = match self.gateway.plan_status(&state.plan, PLAN_WAIT) {
+                Ok(state) => state,
+                // The plan is with the user: say so, and which one it is.
+                Err(failure) => {
+                    return Outcome::err(format!(
+                        "{} (plan {} was proposed and may still be awaiting the user: call verrou_plan_status with it)",
+                        failure.message, state.plan
+                    ));
+                }
+            };
+        }
+        Outcome::ok(&plan_json(&state))
+    }
+
+    fn plan_id(arguments: &Value) -> Result<String, Outcome> {
+        arguments
+            .get("plan")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .map(str::to_owned)
+            .ok_or_else(|| Outcome::err("\"plan\" is the identifier verrou_propose_plan gave"))
+    }
+
+    fn plan_status(&mut self, arguments: &Value) -> Outcome {
+        let plan = match Self::plan_id(arguments) {
+            Ok(plan) => plan,
+            Err(outcome) => return outcome,
+        };
+        let wait = arguments
+            .get("wait_seconds")
+            .and_then(Value::as_u64)
+            .map_or(PLAN_WAIT, |w| {
+                u32::try_from(w.min(u64::from(PLAN_WAIT))).unwrap_or(0)
+            });
+        match self.gateway.plan_status(&plan, wait) {
+            Ok(state) => Outcome::ok(&plan_json(&state)),
+            Err(failure) => Outcome::err(failure.message),
+        }
+    }
+
+    fn plan_cancel(&mut self, arguments: &Value) -> Outcome {
+        let plan = match Self::plan_id(arguments) {
+            Ok(plan) => plan,
+            Err(outcome) => return outcome,
+        };
+        match self.gateway.plan_cancel(&plan) {
+            Ok(state) => Outcome::ok(&plan_json(&state)),
+            Err(failure) => Outcome::err(failure.message),
+        }
+    }
+
+    fn run(&mut self, arguments: &Value) -> Outcome {
+        if let Some(paused) = self.pause() {
+            return paused;
         }
         let request = match RunRequest::parse(arguments) {
             Ok(request) => request,
@@ -756,6 +1091,58 @@ fn client_label(name: &str) -> String {
 
 fn error_reply(id: &Value, code: i32, message: &str) -> String {
     json!({ "jsonrpc": "2.0", "id": id, "error": { "code": code, "message": message } }).to_string()
+}
+
+// MARK: Organizing
+
+fn count_kinds(kinds: &[verrou_bridge::protocol::KindCount]) -> Value {
+    let mut map = Map::new();
+    for entry in kinds {
+        map.insert(entry.kind.keyword().to_owned(), json!(entry.count));
+    }
+    Value::Object(map)
+}
+
+/// The overview as the agent reads it: kinds by their keywords.
+fn overview_json(overview: &VaultOverview) -> Value {
+    let mut value = serde_json::to_value(overview).unwrap_or(Value::Null);
+    value["kinds"] = count_kinds(&overview.kinds);
+    value
+}
+
+/// An item of the catalog: the kind by its keyword (`note`, not
+/// `SecureNote`), as `verrou_search` says it.
+fn catalog_json(item: &CatalogItem) -> Value {
+    let mut value = serde_json::to_value(item).unwrap_or(Value::Null);
+    value["kind"] = json!(item.kind.keyword());
+    value
+}
+
+/// A plan's state with what the agent should do about it.
+fn plan_json(state: &PlanState) -> Value {
+    let mut value = serde_json::to_value(state).unwrap_or(Value::Null);
+    let hint = match state.state {
+        PlanPhase::AwaitingReview => {
+            "the user has not answered yet: call verrou_plan_status with this plan to wait longer; do not propose it again"
+        }
+        PlanPhase::Applying => "the user is applying the plan: call verrou_plan_status again",
+        PlanPhase::Applied => {
+            "applied: the report says what was done, what was left as it was and what failed; the user can still undo it for ten minutes"
+        }
+        PlanPhase::Declined => {
+            "the user declined the plan: do not propose it again, ask them what they want instead"
+        }
+        PlanPhase::Expired => {
+            "nobody reviewed it in time: nothing was applied; ask the user before proposing it again"
+        }
+        PlanPhase::Cancelled => "the plan was withdrawn: nothing was applied",
+        PlanPhase::Undone => "the user undid the plan: do not propose it again",
+        PlanPhase::Interrupted => {
+            "applying stopped halfway (Verrou was locked, or the vault changed): the report says what was done before; read the vault again before proposing anything"
+        }
+    };
+    value["hint"] = json!(hint);
+    value
 }
 
 // MARK: Search
@@ -1096,7 +1483,7 @@ fn tools() -> Value {
         "type": "string",
         "description": "One short sentence: what this is for. The user sees it in Verrou's approval, after your client's name."
     });
-    json!([
+    let mut tools = json!([
         {
             "name": "verrou_status",
             "title": "Verrou status",
@@ -1151,7 +1538,129 @@ fn tools() -> Value {
             },
             "annotations": { "readOnlyHint": true, "idempotentHint": false, "openWorldHint": false }
         }
-    ])
+    ]);
+    if let Some(list) = tools.as_array_mut() {
+        list.extend(organizing_tools(&reason));
+    }
+    tools
+}
+
+/// The tools to read the catalog and propose a reorganization.
+fn organizing_tools(reason: &Value) -> Vec<Value> {
+    let mut tools = catalog_tools(reason);
+    tools.extend(plan_tools(reason));
+    tools
+}
+
+fn catalog_tools(reason: &Value) -> Vec<Value> {
+    vec![
+        json!({
+            "name": "verrou_vault_overview",
+            "title": "What the vault holds",
+            "description": "Counts of the vault's items by kind, its folders (empty ones too, with how many items each holds), and how many items are archived, shared, protected, with a one-time code or a passkey. No item and no value. The first catalog call asks the user once for this agent session, for half an hour (the same approval covers verrou_list_items and verrou_find_duplicates). Start here to plan a reorganization.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "reason": reason },
+                "required": ["reason"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true, "idempotentHint": true, "openWorldHint": false }
+        }),
+        json!({
+            "name": "verrou_list_items",
+            "title": "List the vault's items",
+            "description": "A page of the vault's catalog, by title: id, kind, title, username (logins), sites (host or application only, no path), folder, favorite, state, organization, read_only, protected, has_totp, has_passkey, attachments, has_notes, created, modified. Never a password, a one-time code, a note, a field's name or value, or a URL path. The trash is never listed. Follow next_offset until it is null. Item ids are what a plan names.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "offset": { "type": "integer", "minimum": 0, "description": "Items to skip (use next_offset from the previous page)." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": MAX_PAGE, "description": "Items per page (default 200)." },
+                    "include_archived": { "type": "boolean", "description": "Archived items too (default false)." },
+                    "reason": reason
+                },
+                "required": ["reason"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true, "idempotentHint": true, "openWorldHint": false }
+        }),
+        json!({
+            "name": "verrou_find_duplicates",
+            "title": "Find duplicate logins",
+            "description": "Groups of logins that look like the same account (by site, title and username: passwords and one-time codes are never compared for you), most certain first: group (the key a merge names), label, username, confidence (probable or review), the reason, the item Verrou would keep, and each member's id and title. Only logins, which are the only items a plan can merge. Needs the same approval as verrou_list_items.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "reason": reason },
+                "required": ["reason"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true, "idempotentHint": true, "openWorldHint": false }
+        }),
+    ]
+}
+
+fn plan_tools(reason: &Value) -> Vec<Value> {
+    vec![
+        json!({
+            "name": "verrou_propose_plan",
+            "title": "Propose a reorganization",
+            "description": "Propose a reorganization of the vault for the user to review in Verrou: nothing is applied by you. Each operation needs a short rationale (at most 120 characters). The user sees the plan in a sheet, checks what they accept and applies it with one Touch ID; Verrou has already refused operations that break its rules (an unknown or trashed item, a read-only shared item, an item that is both renamed and trashed, a merge that would lose an attachment or a passkey, a folder that does not exist), and says which in rejected. At most 1000 operations and one plan awaiting review at a time; the call waits up to 100 seconds for the user, then returns the plan's state: use verrou_plan_status to keep waiting. Operations: create_folder{name}; move{item, folder} (an empty folder takes the item out of its folder; the folder must exist or be created in the same plan); rename{item, title}; merge{group, keep} (merges the other items of a verrou_find_duplicates group into keep, then trashes them); archive{item}; trash{item} (restorable for 30 days). No tags: use folders.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "reason": { "type": "string", "maxLength": 120, "description": "One short sentence: what this reorganization is for. The user reads it, in your words, at the top of the review." },
+                    "operations": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 1000,
+                        "items": {
+                            "oneOf": [
+                                { "type": "object", "properties": { "op": { "const": "create_folder" }, "name": { "type": "string", "maxLength": 100 }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "name", "rationale"], "additionalProperties": false },
+                                { "type": "object", "properties": { "op": { "const": "move" }, "item": { "type": "string" }, "folder": { "type": "string", "maxLength": 100 }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "item", "folder", "rationale"], "additionalProperties": false },
+                                { "type": "object", "properties": { "op": { "const": "rename" }, "item": { "type": "string" }, "title": { "type": "string", "maxLength": 200 }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "item", "title", "rationale"], "additionalProperties": false },
+                                { "type": "object", "properties": { "op": { "const": "merge" }, "group": { "type": "string" }, "keep": { "type": "string" }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "group", "keep", "rationale"], "additionalProperties": false },
+                                { "type": "object", "properties": { "op": { "const": "archive" }, "item": { "type": "string" }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "item", "rationale"], "additionalProperties": false },
+                                { "type": "object", "properties": { "op": { "const": "trash" }, "item": { "type": "string" }, "rationale": { "type": "string", "maxLength": 120 } }, "required": ["op", "item", "rationale"], "additionalProperties": false }
+                            ]
+                        }
+                    }
+                },
+                "required": ["reason", "operations"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false }
+        }),
+        json!({
+            "name": "verrou_plan_status",
+            "title": "Where a plan stands",
+            "description": "The state of a plan: awaiting_review, applying, applied (with a report of what was applied, queued, left as it was and what failed), declined, expired, cancelled, undone or interrupted (applying stopped halfway: the report says what was done). Waits up to 50 seconds for a plan that is awaiting the user.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plan": { "type": "string", "description": "The plan's identifier." },
+                    "wait_seconds": { "type": "integer", "minimum": 0, "maximum": PLAN_WAIT, "description": "Longest wait for a change (default 50)." },
+                    "reason": reason
+                },
+                "required": ["plan"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true, "idempotentHint": true, "openWorldHint": false }
+        }),
+        json!({
+            "name": "verrou_plan_cancel",
+            "title": "Withdraw a plan",
+            "description": "Withdraw a plan that still awaits the user's review: it disappears from Verrou. A plan being applied cannot be withdrawn.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plan": { "type": "string", "description": "The plan's identifier." },
+                    "reason": reason
+                },
+                "required": ["plan"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": false, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false }
+        }),
+    ]
 }
 
 // MARK: Loop
@@ -1206,6 +1715,19 @@ mod tests {
         inspected: usize,
         /// Set while the user "answers": the client goes away meanwhile.
         leave_while_asking: Option<Arc<AtomicBool>>,
+        /// What the catalog tools answer, and the reasons they were asked
+        /// with.
+        catalog: Vec<CatalogItem>,
+        groups: Vec<DuplicateInfo>,
+        catalog_asked: Vec<String>,
+        /// The states `plan_status` answers in turn (the last one repeats),
+        /// the plans proposed, and the waits asked.
+        states: Vec<PlanState>,
+        proposed: Vec<(String, Plan)>,
+        waits: Vec<u32>,
+        cancelled: Vec<String>,
+        /// What the next `plan_status` fails with.
+        poll_failure: Option<Failure>,
     }
 
     const PASSWORD: &str = "correct-horse-9!";
@@ -1253,6 +1775,87 @@ mod tests {
                     }
                 })
                 .collect())
+        }
+
+        fn overview(&mut self, reason: &str) -> Result<VaultOverview, Failure> {
+            self.catalog_asked.push(reason.to_owned());
+            self.fail.take().map_or_else(
+                || {
+                    Ok(VaultOverview {
+                        items: 3,
+                        kinds: vec![verrou_bridge::protocol::KindCount {
+                            kind: ItemKind::SecureNote,
+                            count: 1,
+                        }],
+                        ..VaultOverview::default()
+                    })
+                },
+                Err,
+            )
+        }
+
+        fn list(
+            &mut self,
+            reason: &str,
+            offset: u32,
+            limit: u32,
+            _archived: bool,
+        ) -> Result<(Vec<CatalogItem>, u32), Failure> {
+            self.catalog_asked
+                .push(format!("{reason} @{offset}+{limit}"));
+            if let Some(failure) = self.fail.take() {
+                return Err(failure);
+            }
+            let total = u32::try_from(self.catalog.len()).unwrap();
+            let page = self
+                .catalog
+                .iter()
+                .skip(offset as usize)
+                .take(limit as usize)
+                .cloned()
+                .collect();
+            Ok((page, total))
+        }
+
+        fn duplicates(&mut self, reason: &str) -> Result<(Vec<DuplicateInfo>, u32), Failure> {
+            self.catalog_asked.push(reason.to_owned());
+            Ok((
+                self.groups.clone(),
+                u32::try_from(self.groups.len()).unwrap(),
+            ))
+        }
+
+        fn propose(&mut self, reason: &str, plan: Plan) -> Result<PlanState, Failure> {
+            self.proposed.push((reason.to_owned(), plan));
+            if let Some(failure) = self.fail.take() {
+                return Err(failure);
+            }
+            Ok(self
+                .states
+                .first()
+                .cloned()
+                .unwrap_or_else(|| state(PlanPhase::AwaitingReview)))
+        }
+
+        fn plan_status(&mut self, _: &str, wait: u32) -> Result<PlanState, Failure> {
+            self.waits.push(wait);
+            if let Some(failure) = self.poll_failure.take() {
+                return Err(failure);
+            }
+            // `states[0]` answered the proposal: the polls read on from
+            // there, the last one repeating.
+            let poll = self.waits.len();
+            Ok(self
+                .states
+                .get(poll)
+                .or_else(|| self.states.last())
+                .cloned()
+                .unwrap_or_else(|| state(PlanPhase::AwaitingReview)))
+        }
+
+        fn plan_cancel(&mut self, plan: &str) -> Result<PlanState, Failure> {
+            self.cancelled.push(plan.to_owned());
+            Ok(state(PlanPhase::Cancelled))
         }
 
         fn resolve(
@@ -1437,7 +2040,13 @@ mod tests {
                 "verrou_status",
                 "verrou_search",
                 "verrou_run",
-                "verrou_generate_password"
+                "verrou_generate_password",
+                "verrou_vault_overview",
+                "verrou_list_items",
+                "verrou_find_duplicates",
+                "verrou_propose_plan",
+                "verrou_plan_status",
+                "verrou_plan_cancel"
             ]
         );
         for tool in tools {
@@ -1910,6 +2519,324 @@ mod tests {
             client_label(&"x".repeat(100)).chars().count(),
             MAX_CLIENT_NAME
         );
+    }
+
+    #[test]
+    fn the_organizing_tools_ask_for_the_reasons_that_prompt() {
+        let mut server = Server::new(Fake::default());
+        let reply = ask(
+            &mut server,
+            &json!({"jsonrpc":"2.0","id":1,"method":"tools/list"}),
+        );
+        let tools = reply["result"]["tools"].as_array().unwrap();
+        let required = |name: &str| -> Vec<String> {
+            let tool = tools.iter().find(|t| t["name"] == name).unwrap();
+            tool["inputSchema"]["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_str().unwrap().to_owned())
+                .collect()
+        };
+        for tool in [
+            "verrou_vault_overview",
+            "verrou_list_items",
+            "verrou_find_duplicates",
+        ] {
+            assert_eq!(required(tool), ["reason"], "{tool}");
+        }
+        assert_eq!(required("verrou_propose_plan"), ["reason", "operations"]);
+        assert_eq!(required("verrou_plan_status"), ["plan"]);
+        assert_eq!(required("verrou_plan_cancel"), ["plan"]);
+        // The operations are a closed set, one schema each, the unsupported
+        // ones (tags) not among them.
+        let propose = tools
+            .iter()
+            .find(|t| t["name"] == "verrou_propose_plan")
+            .unwrap();
+        let ops: Vec<&str> = propose["inputSchema"]["properties"]["operations"]["items"]["oneOf"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|o| o["properties"]["op"]["const"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            ops,
+            [
+                "create_folder",
+                "move",
+                "rename",
+                "merge",
+                "archive",
+                "trash"
+            ]
+        );
+        assert!(
+            server
+                .handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"initialize","params":{}}"#)
+                .unwrap()
+                .contains("verrou_propose_plan")
+        );
+    }
+
+    fn catalog_item(id: &str, title: &str) -> CatalogItem {
+        CatalogItem {
+            id: id.to_owned(),
+            kind: ItemKind::SecureNote,
+            title: title.to_owned(),
+            username: None,
+            sites: vec!["example.com".to_owned()],
+            folder: None,
+            favorite: false,
+            state: "active".to_owned(),
+            shared: None,
+            read_only: false,
+            protected: false,
+            has_totp: false,
+            has_passkey: false,
+            attachments: 0,
+            has_notes: true,
+            created: 1,
+            modified: 2,
+        }
+    }
+
+    fn state(phase: PlanPhase) -> PlanState {
+        PlanState {
+            plan: "p1".to_owned(),
+            state: phase,
+            message: String::new(),
+            expires_in: None,
+            rejected: Vec::new(),
+            report: None,
+        }
+    }
+
+    #[test]
+    fn the_catalog_is_read_in_pages_with_the_kind_as_a_keyword() {
+        let mut server = initialized("Coding Agent");
+        server.gateway.catalog = (0..5)
+            .map(|n| catalog_item(&format!("id{n}"), &format!("Item {n}")))
+            .collect();
+        let reply = call(
+            &mut server,
+            "verrou_list_items",
+            &json!({"limit": 2, "reason": "tidy"}),
+        );
+        assert_eq!(reply["result"]["isError"], false, "{}", text(&reply));
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["items"].as_array().unwrap().len(), 2);
+        assert_eq!(body["items"][0]["kind"], "note", "as verrou_search says it");
+        assert_eq!(
+            (body["total"].as_u64(), body["next_offset"].as_u64()),
+            (Some(5), Some(2))
+        );
+        // The last page has no next one; the limit is clamped to a page.
+        let reply = call(
+            &mut server,
+            "verrou_list_items",
+            &json!({"offset": 4, "limit": 9999, "include_archived": true, "reason": "tidy"}),
+        );
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert!(body["next_offset"].is_null());
+        // The reason the user reads, with the client's name.
+        assert_eq!(
+            server.gateway.catalog_asked,
+            ["Coding Agent: tidy @0+2", "Coding Agent: tidy @4+500"]
+        );
+        // A reason is required: it is what the approval says.
+        let reply = call(&mut server, "verrou_list_items", &json!({}));
+        assert_eq!(reply["result"]["isError"], true);
+        assert!(text(&reply).contains("reason"));
+        let reply = call(
+            &mut server,
+            "verrou_vault_overview",
+            &json!({"reason": "look"}),
+        );
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["items"], 3);
+        assert_eq!(body["kinds"]["note"], 1);
+    }
+
+    #[test]
+    fn duplicates_come_back_with_their_group_keys() {
+        let mut server = initialized("x");
+        server.gateway.groups = vec![DuplicateInfo {
+            group: "key-1".to_owned(),
+            label: "github.com".to_owned(),
+            username: "camille".to_owned(),
+            confidence: "certain".to_owned(),
+            reason: "same site".to_owned(),
+            mergeable: true,
+            suggested_keep: "a".to_owned(),
+            members: Vec::new(),
+        }];
+        let reply = call(
+            &mut server,
+            "verrou_find_duplicates",
+            &json!({"reason": "merge"}),
+        );
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["groups"][0]["group"], "key-1");
+        assert_eq!(body["total"], 1);
+        assert!(body.get("note").is_none());
+    }
+
+    #[test]
+    fn a_refused_catalog_pauses_the_tools_that_ask() {
+        let mut server = initialized("x");
+        server.gateway.fail = Some(Fake::refusing());
+        let reply = call(&mut server, "verrou_list_items", &json!({"reason": "tidy"}));
+        assert_eq!(reply["result"]["isError"], true);
+        // Not asked again at once, by this tool or by `verrou_run`.
+        for (tool, arguments) in [
+            ("verrou_list_items", json!({"reason": "again"})),
+            ("verrou_vault_overview", json!({"reason": "again"})),
+            ("verrou_find_duplicates", json!({"reason": "again"})),
+            (
+                "verrou_run",
+                json!({"command":["true"],"env":{"T":"verrou://A/password"},"reason":"x"}),
+            ),
+        ] {
+            let reply = call(&mut server, tool, &arguments);
+            assert_eq!(reply["result"]["isError"], true, "{tool}");
+            assert!(
+                text(&reply).contains("refused a request a moment ago"),
+                "{tool}"
+            );
+        }
+        assert_eq!(server.gateway.catalog_asked.len(), 1);
+        assert_eq!(server.gateway.asked.len(), 0);
+    }
+
+    #[test]
+    fn a_plan_is_proposed_in_the_agents_words_and_followed_twice() {
+        let mut server = initialized("Coding Agent");
+        let reply = call(
+            &mut server,
+            "verrou_propose_plan",
+            &json!({"reason": "file the bank logins", "operations": [
+                {"op": "create_folder", "name": "Bank", "rationale": "one place"},
+                {"op": "move", "item": "id1", "folder": "Bank", "rationale": "it is a bank"},
+                {"op": "set_tags", "item": "id1", "tags": ["a"]},
+            ]}),
+        );
+        assert_eq!(reply["result"]["isError"], false, "{}", text(&reply));
+        let (asked, plan) = &server.gateway.proposed[0];
+        // The request's reason names the client; the plan's own reason is
+        // the agent's alone (the review shows the client apart).
+        assert_eq!(asked, "Coding Agent: file the bank logins");
+        assert_eq!(plan.reason, "file the bank logins");
+        assert_eq!(plan.operations.len(), 3);
+        assert_eq!(plan.operations[2], PlanOp::Unsupported);
+        // Nobody answered: two waits of 50 seconds, then it says so.
+        assert_eq!(server.gateway.waits, [50, 50]);
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["state"], "awaiting_review");
+        assert!(
+            body["hint"]
+                .as_str()
+                .unwrap()
+                .contains("verrou_plan_status")
+        );
+    }
+
+    #[test]
+    fn a_plan_answered_in_time_is_not_waited_for_again() {
+        let mut server = initialized("x");
+        server.gateway.states = vec![state(PlanPhase::AwaitingReview), state(PlanPhase::Applied)];
+        let reply = call(
+            &mut server,
+            "verrou_propose_plan",
+            &json!({"reason": "r", "operations": [{"op": "archive", "item": "a", "rationale": "old"}]}),
+        );
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["state"], "applied");
+        assert_eq!(server.gateway.waits.len(), 1);
+        // A plan declined says not to propose it again.
+        let mut declined = state(PlanPhase::Declined);
+        "the user declined the plan".clone_into(&mut declined.message);
+        let hint = plan_json(&declined);
+        assert!(
+            hint["hint"]
+                .as_str()
+                .unwrap()
+                .contains("do not propose it again")
+        );
+        assert_eq!(hint["message"], "the user declined the plan");
+    }
+
+    #[test]
+    fn an_error_after_the_plan_was_proposed_names_the_plan() {
+        let mut server = initialized("x");
+        server.gateway.states = vec![state(PlanPhase::AwaitingReview)];
+        server.gateway.poll_failure = Some(Failure {
+            message: "the connection to Verrou broke".to_owned(),
+            refused: false,
+        });
+        let reply = call(
+            &mut server,
+            "verrou_propose_plan",
+            &json!({"reason": "r", "operations": [{"op": "archive", "item": "a", "rationale": "old"}]}),
+        );
+        assert_eq!(reply["result"]["isError"], true);
+        let message = text(&reply);
+        assert!(
+            message.contains("the connection to Verrou broke"),
+            "{message}"
+        );
+        assert!(
+            message.contains("p1") && message.contains("verrou_plan_status"),
+            "the plan is with the user, and the agent can follow it: {message}"
+        );
+    }
+
+    #[test]
+    fn a_badly_formed_plan_is_told_where() {
+        let mut server = initialized("x");
+        for (arguments, needle) in [
+            (json!({"operations": []}), "reason"),
+            (json!({"reason": "r"}), "operations"),
+            (
+                json!({"reason": "r", "operations": [{"op": "rename", "item": 3, "title": "x", "rationale": "y"}]}),
+                "operations[0]",
+            ),
+        ] {
+            let reply = call(&mut server, "verrou_propose_plan", &arguments);
+            assert_eq!(reply["result"]["isError"], true, "{arguments}");
+            assert!(text(&reply).contains(needle), "{}", text(&reply));
+        }
+        assert!(server.gateway.proposed.is_empty(), "nothing reached Verrou");
+    }
+
+    #[test]
+    fn a_plan_is_followed_and_withdrawn_by_its_identifier() {
+        let mut server = initialized("x");
+        let reply = call(
+            &mut server,
+            "verrou_plan_status",
+            &json!({"plan": "p1", "wait_seconds": 7}),
+        );
+        assert_eq!(reply["result"]["isError"], false);
+        assert_eq!(server.gateway.waits, [7]);
+        // Never longer than 50 seconds, and by default 50.
+        call(
+            &mut server,
+            "verrou_plan_status",
+            &json!({"plan": "p1", "wait_seconds": 500}),
+        );
+        call(&mut server, "verrou_plan_status", &json!({"plan": "p1"}));
+        assert_eq!(server.gateway.waits, [7, 50, 50]);
+        let reply = call(&mut server, "verrou_plan_cancel", &json!({"plan": "p1"}));
+        let body: Value = serde_json::from_str(text(&reply)).unwrap();
+        assert_eq!(body["state"], "cancelled");
+        assert_eq!(server.gateway.cancelled, ["p1"]);
+        for tool in ["verrou_plan_status", "verrou_plan_cancel"] {
+            assert_eq!(
+                call(&mut server, tool, &json!({}))["result"]["isError"],
+                true
+            );
+        }
     }
 
     #[test]

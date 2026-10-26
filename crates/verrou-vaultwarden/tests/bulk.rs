@@ -332,3 +332,79 @@ async fn offline_bulk_actions_wait_in_the_outbox_then_reach_the_server() {
     std::fs::remove_dir_all(store.dir()).unwrap();
     std::fs::remove_dir_all(other.dir()).unwrap();
 }
+
+#[tokio::test]
+async fn renaming_in_bulk_is_an_edit_per_item_in_the_outbox() {
+    let Some(server) = server() else { return };
+    let email = register(&server).await;
+    let store = temp_store();
+    let (mut online, _) = sign_in(&store, &server, &email).await;
+    let [a, b, c, d] = four_items(&mut online).await;
+    // `d` goes to the trash: renaming it is set aside.
+    bulk(&mut online, &[&d], BulkAction::Trash).await;
+    sent(&mut online).await;
+    drop(online);
+
+    // Offline: the new titles wait in the queue, none of them in the clear.
+    let (mut offline, _) = reopen(&store, &dead_server()).await;
+    let steps = Mutex::new(Vec::new());
+    let gone = uuid::Uuid::new_v4().to_string();
+    let renames = vec![
+        (a.clone(), " Banque principale ".to_owned()),
+        (b.clone(), "GitHub".to_owned()),
+        (c.clone(), "  ".to_owned()),
+        (d.clone(), "Mutuelle santé".to_owned()),
+        (gone.clone(), "Nowhere".to_owned()),
+        (a.clone(), "ignored: the same item twice".to_owned()),
+    ];
+    let outcome = offline
+        .bulk_rename(&renames, &|done, total| {
+            steps.lock().unwrap().push((done, total));
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (outcome.done, outcome.queued),
+        (2, 1),
+        "GitHub already is GitHub"
+    );
+    assert_eq!(steps.into_inner().unwrap(), [(1, 1)]);
+    assert_eq!(
+        outcome.skipped,
+        [(d.clone(), Skipped::InTrash), (gone, Skipped::NotFound)]
+    );
+    assert_eq!(
+        outcome.failed,
+        [verrou_vaultwarden::BulkFailure {
+            id: c.clone(),
+            title: "Impôts".to_owned(),
+            reason: "the title is required".to_owned()
+        }],
+        "a refusal names the item, not only its title"
+    );
+    assert_eq!(item(&outcome.vault, &a).title, "Banque principale");
+    assert_eq!(
+        item(&outcome.vault, &c).title,
+        "Impôts",
+        "an empty title changes nothing"
+    );
+    assert_eq!(offline.pending_changes(), 1);
+    let file = std::fs::read_to_string(store.dir().join("outbox.json")).unwrap();
+    assert!(!file.contains("Banque principale"));
+    drop(offline);
+
+    // Back online, the edit goes out; the item keeps everything else.
+    let (mut reconnected, _) = reopen(&store, &server).await;
+    let vault = reconnected.sync().await.unwrap().unwrap();
+    let report = reconnected.take_report();
+    assert_eq!(report.sent, 1);
+    assert!(report.conflicts.is_empty() && report.rejected.is_empty());
+    assert_eq!(vault.pending_changes, 0);
+    let other = temp_store();
+    let (_, seen) = sign_in(&other, &server, &email).await;
+    assert_eq!(item(&seen, &a).title, "Banque principale");
+    assert_eq!(item(&seen, &a).urls, ["https://exemple.fr"]);
+    assert_eq!(item(&seen, &a).subtitle, "camille");
+    std::fs::remove_dir_all(store.dir()).unwrap();
+    std::fs::remove_dir_all(other.dir()).unwrap();
+}

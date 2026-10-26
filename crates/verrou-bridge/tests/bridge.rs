@@ -16,8 +16,8 @@ use ssh_key::{Algorithm, LineEnding, PrivateKey, Signature};
 use verrou_bridge::crypto::{ChannelKey, Direction, KeyPair};
 use verrou_bridge::protocol::{ClientKind, Credentials, SaveAction, Suggestion};
 use verrou_bridge::{
-    ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan,
-    access,
+    ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, PlanReview, Purpose,
+    WritePlan, access,
 };
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
@@ -37,6 +37,11 @@ struct FakeBackend {
     lock_while_confirming: AtomicBool,
     /// What the backend answers to `approval_scope`, for any purpose.
     scope: Mutex<ApprovalScope>,
+    /// Plans shown for review, and those the app was told to close.
+    plans: Mutex<Vec<PlanReview>>,
+    withdrawn: Mutex<Vec<(String, String)>>,
+    /// The app can show a plan.
+    show_plans: AtomicBool,
 }
 
 impl Backend for FakeBackend {
@@ -128,6 +133,25 @@ impl Backend for FakeBackend {
 
     fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
         *self.scope.lock().unwrap()
+    }
+
+    fn folders(&self) -> Vec<String> {
+        vec!["Empty".to_owned()]
+    }
+
+    fn plan_proposed(&self, review: PlanReview) -> bool {
+        if !self.show_plans.load(Ordering::SeqCst) {
+            return false;
+        }
+        self.plans.lock().unwrap().push(review);
+        true
+    }
+
+    fn plan_withdrawn(&self, plan: &str, message: &str) {
+        self.withdrawn
+            .lock()
+            .unwrap()
+            .push((plan.to_owned(), message.to_owned()));
     }
 }
 
@@ -295,6 +319,9 @@ fn start_with(
         confirmations: Mutex::new(Vec::new()),
         lock_while_confirming: AtomicBool::new(false),
         scope: Mutex::new(ApprovalScope::FiveMinutes),
+        plans: Mutex::new(Vec::new()),
+        withdrawn: Mutex::new(Vec::new()),
+        show_plans: AtomicBool::new(true),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -1160,4 +1187,412 @@ fn approval_scopes_for_ssh_keys() {
     );
     // The extension revoked: its approvals go with it.
     let _ = std::fs::remove_file(file);
+}
+
+// MARK: Catalog and plans
+
+/// The agent session of these tests (what `verrou mcp` draws when it starts).
+const SESSION: &str = "feedfacefeedface";
+const OTHER_SESSION: &str = "0123456789abcdef0123456789abcdef";
+
+fn plan_of(operations: &Value) -> Value {
+    json!({ "cmd": "plan_propose", "session": SESSION, "plan": { "reason": "tidy the vault", "operations": operations } })
+}
+
+fn status_of(plan: &str, wait: u32) -> Value {
+    json!({ "cmd": "plan_status", "session": SESSION, "plan": plan, "wait": wait })
+}
+
+/// The user approves this session reading the catalog (one Touch ID).
+fn read_catalog(cli: &mut Client, backend: &FakeBackend) {
+    backend.approve.store(true, Ordering::SeqCst);
+    let reply = cli.request(&json!({ "cmd": "vault_overview", "session": SESSION }));
+    assert_eq!(reply["result"], "overview", "{reply}");
+}
+
+fn rename_github() -> Value {
+    json!([{ "op": "rename", "item": "github", "title": "GitHub (work)", "rationale": "say what it is" }])
+}
+
+/// One approval opens the whole catalog for half an hour for one agent
+/// session, an agent's refusal pauses its prompts, and nothing a page of it
+/// says is a secret.
+#[test]
+fn the_catalog_is_approved_once_per_session_and_carries_no_secret() {
+    let (bridge, backend, pairings, file) = start();
+    {
+        let mut vault = backend.vault.lock().unwrap();
+        let mut items = vault.items().to_vec();
+        items.push(banque());
+        *vault = Vault::new(items);
+    }
+    let mut cli = paired(&bridge, &pairings, "cli");
+    let asked = |backend: &FakeBackend| backend.confirmations.lock().unwrap().len();
+    let list = json!({ "cmd": "vault_list", "offset": 0, "limit": 2, "session": SESSION });
+    let agent = json!({ "cmd": "vault_list", "limit": 2, "session": SESSION, "reason": "Coding Agent: tidy", "ephemeral_approval": true });
+
+    // Refused: nothing is read, the agent's prompts pause.
+    backend.approve.store(false, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "denied");
+    backend.approve.store(true, Ordering::SeqCst);
+    assert_eq!(cli.request(&agent)["result"], "denied");
+    assert_eq!(asked(&backend), 1, "the declined prompt does not come back");
+
+    // The user's own terminal is not paused; its approval holds.
+    let page = cli.request(&list);
+    assert_eq!(page["result"], "catalog");
+    assert_eq!(asked(&backend), 2);
+    {
+        let first = &backend.confirmations.lock().unwrap()[1];
+        assert_eq!(first.purpose, Purpose::Catalog);
+        assert_eq!(first.item, format!("catalog:{SESSION}"));
+        assert!(!first.ephemeral, "an approval an earlier one may cover");
+        assert!(
+            first.title.contains("catalog") && first.title.contains("no secret"),
+            "an old iPhone approver shows something meaningful: {:?}",
+            first.title
+        );
+    }
+    assert_eq!(page["items"].as_array().unwrap().len(), 2);
+    assert_eq!(page["total"], 5);
+    assert_eq!(cli.request(&list)["result"], "catalog");
+    assert_eq!(
+        cli.request(&json!({ "cmd": "vault_overview", "session": SESSION }))["result"],
+        "overview"
+    );
+    assert_eq!(
+        cli.request(&json!({ "cmd": "vault_duplicates", "session": SESSION }))["result"],
+        "duplicates"
+    );
+    assert_eq!(asked(&backend), 2, "one approval for all three");
+
+    // Another agent session of the same client is asked again.
+    let mut other = list.clone();
+    other["session"] = json!(OTHER_SESSION);
+    assert_eq!(cli.request(&other)["result"], "catalog");
+    assert_eq!(asked(&backend), 3);
+    // A request without a session is asked on its own, every time.
+    let alone = json!({ "cmd": "vault_list", "limit": 1 });
+    assert_eq!(cli.request(&alone)["result"], "catalog");
+    assert_eq!(cli.request(&alone)["result"], "catalog");
+    assert_eq!(asked(&backend), 5);
+    assert!(backend.confirmations.lock().unwrap()[4].ephemeral);
+
+    // Never a secret, whatever the page.
+    let mut everything = String::new();
+    for offset in 0..5 {
+        everything += &cli
+            .request(
+                &json!({ "cmd": "vault_list", "offset": offset, "limit": 1, "session": SESSION }),
+            )
+            .to_string();
+    }
+    everything += &cli
+        .request(&json!({ "cmd": "vault_overview", "session": SESSION }))
+        .to_string();
+    for secret in [
+        "hunter2",
+        "coffre-fort",
+        "JBSWY3DPEHPK3PXP",
+        "question secrète",
+        "4242 4242",
+        "CAMILLE MARTIN",
+    ] {
+        assert!(!everything.contains(secret), "{secret} leaked");
+    }
+    assert!(
+        everything.contains("Empty"),
+        "the folders the app knows, empty ones too"
+    );
+
+    // It ends with the vault's lock, and the browser never has it.
+    bridge.forget_approvals();
+    assert_eq!(cli.request(&list)["result"], "catalog");
+    assert_eq!(asked(&backend), 6);
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_browser_cannot_read_the_catalog_or_propose_a_plan() {
+    let (bridge, backend, pairings, file) = start();
+    let mut browser = paired(&bridge, &pairings, "browser");
+    backend.approve.store(true, Ordering::SeqCst);
+    for command in [
+        json!({ "cmd": "vault_list" }),
+        json!({ "cmd": "vault_overview" }),
+        json!({ "cmd": "vault_duplicates" }),
+        plan_of(&rename_github()),
+        json!({ "cmd": "plan_status", "plan": "x" }),
+        json!({ "cmd": "plan_cancel", "plan": "x" }),
+    ] {
+        assert_eq!(browser.request(&command)["result"], "denied", "{command}");
+    }
+    assert!(backend.confirmations.lock().unwrap().is_empty());
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_plan_needs_the_catalog_read_in_the_same_session_and_asks_nothing() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    backend.approve.store(true, Ordering::SeqCst);
+    // Not read yet: refused, and the user is not asked anything.
+    let refused = cli.request(&plan_of(&rename_github()));
+    assert_eq!(refused["result"], "denied");
+    assert!(
+        refused["reason"]
+            .as_str()
+            .unwrap()
+            .contains("verrou_list_items"),
+        "{refused}"
+    );
+    assert!(backend.confirmations.lock().unwrap().is_empty());
+    assert!(backend.plans.lock().unwrap().is_empty());
+    // Read by another session of the client: not this one's.
+    let other = json!({ "cmd": "vault_overview", "session": OTHER_SESSION });
+    assert_eq!(cli.request(&other)["result"], "overview");
+    assert_eq!(cli.request(&plan_of(&rename_github()))["result"], "denied");
+    // Read in this session: it goes through, with no new approval.
+    read_catalog(&mut cli, &backend);
+    let asked = backend.confirmations.lock().unwrap().len();
+    assert_eq!(cli.request(&plan_of(&rename_github()))["result"], "plan");
+    assert_eq!(backend.confirmations.lock().unwrap().len(), asked);
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_plan_is_checked_then_shown_and_the_agent_follows_it() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    let asked = backend.confirmations.lock().unwrap().len();
+    let proposed = cli.request(&plan_of(&json!([
+        { "op": "rename", "item": "github", "title": "GitHub (work)", "rationale": "clearer" },
+        { "op": "rename", "item": "nope", "title": "x", "rationale": "y" },
+        { "op": "move", "item": "visa", "folder": "Empty", "rationale": "money" },
+        { "op": "set_tags", "item": "visa", "tags": ["a"] },
+    ])));
+    assert_eq!(proposed["result"], "plan", "{proposed}");
+    assert_eq!(proposed["state"], "awaiting_review");
+    assert_eq!(proposed["expires_in"], 600);
+    let rejected = proposed["rejected"].as_array().unwrap();
+    assert_eq!(rejected.len(), 2);
+    assert_eq!(rejected[0]["index"], 1);
+    assert!(
+        !rejected[0]["reason"].as_str().unwrap().contains("nope"),
+        "an unknown id is not repeated"
+    );
+    assert!(
+        rejected[1]["reason"]
+            .as_str()
+            .unwrap()
+            .contains("use folders")
+    );
+    assert_eq!(
+        backend.confirmations.lock().unwrap().len(),
+        asked,
+        "the review is the user's decision"
+    );
+    let id = proposed["plan"].as_str().unwrap().to_owned();
+    {
+        let shown = backend.plans.lock().unwrap();
+        assert_eq!(shown.len(), 1);
+        assert_eq!(
+            (
+                shown[0].id.as_str(),
+                shown[0].ops.len(),
+                shown[0].refused.len()
+            ),
+            (id.as_str(), 2, 2)
+        );
+        assert_eq!(shown[0].reason, "tidy the vault");
+        assert_eq!(shown[0].client_name, "verrou");
+    }
+
+    // A second one while this one waits, from anyone, is refused.
+    let again = cli.request(&plan_of(&rename_github()));
+    assert_eq!(again["result"], "denied");
+    assert!(again["reason"].as_str().unwrap().contains(&id));
+
+    // Another session of the client does not see it.
+    let mut stranger = status_of(&id, 0);
+    stranger["session"] = json!(OTHER_SESSION);
+    assert_eq!(cli.request(&stranger)["result"], "denied");
+
+    // The agent waits for the answer; the user applies from the app.
+    let started = std::time::Instant::now();
+    let done = std::thread::scope(|scope| {
+        let applying = scope.spawn(|| {
+            std::thread::sleep(Duration::from_millis(400));
+            let taken = bridge.take_plan(&id, &[0, 2]).unwrap();
+            assert_eq!(taken.ops.len(), 2);
+            bridge.finish_plan(
+                &id,
+                verrou_bridge::protocol::PlanReport {
+                    applied: 2,
+                    ..Default::default()
+                },
+            );
+        });
+        let reply = cli.request(&status_of(&id, 5));
+        applying.join().unwrap();
+        reply
+    });
+    let waited = started.elapsed();
+    assert_eq!(done["state"], "applied", "{done}");
+    assert_eq!(done["report"]["applied"], 2);
+    assert_eq!(done["report"]["unchanged"], 0);
+    assert!(
+        waited >= Duration::from_millis(300) && waited < Duration::from_secs(4),
+        "{waited:?}"
+    );
+
+    // While the user can still undo it, the agent proposes nothing else:
+    // the result sheet is open. Closing the sheet frees it.
+    let held = cli.request(&plan_of(&rename_github()));
+    assert_eq!(held["result"], "denied");
+    assert!(
+        held["reason"].as_str().unwrap().contains("still reviewing"),
+        "{held}"
+    );
+    bridge.plan_closed(&id);
+    assert_eq!(cli.request(&plan_of(&rename_github()))["result"], "plan");
+
+    // The user undoes the first one.
+    bridge.mark_undone(&id);
+    assert_eq!(cli.request(&status_of(&id, 0))["state"], "undone");
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_plan_that_stopped_halfway_ends_interrupted_with_its_report() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    let proposed = cli.request(&plan_of(&rename_github()));
+    let id = proposed["plan"].as_str().unwrap().to_owned();
+    bridge.take_plan(&id, &[0]).unwrap();
+    bridge.interrupt_plan(
+        &id,
+        verrou_bridge::protocol::PlanReport {
+            applied: 1,
+            ..Default::default()
+        },
+        "stopped before the end",
+    );
+    let status = cli.request(&status_of(&id, 0));
+    assert_eq!(status["state"], "interrupted", "{status}");
+    assert_eq!(status["report"]["applied"], 1);
+    assert_eq!(status["message"], "stopped before the end");
+    // Nothing to undo: another plan may come.
+    assert_eq!(cli.request(&plan_of(&rename_github()))["result"], "plan");
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_declined_plan_pauses_proposals_and_a_withdrawn_one_closes_the_review() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    let first = cli.request(&plan_of(&rename_github()));
+    let id = first["plan"].as_str().unwrap().to_owned();
+    bridge.decline_plan(&id, "the user declined the plan");
+    let status = cli.request(&status_of(&id, 0));
+    assert_eq!(status["state"], "declined");
+    assert_eq!(status["message"], "the user declined the plan");
+    let paused = cli.request(&plan_of(&rename_github()));
+    assert_eq!(paused["result"], "denied");
+    assert!(paused["reason"].as_str().unwrap().contains("declined"));
+
+    // A plan the app cannot take is refused, and does not count.
+    let (bridge, backend2, pairings, file2) = start();
+    backend2.show_plans.store(false, Ordering::SeqCst);
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend2);
+    let refused = cli.request(&plan_of(&rename_github()));
+    assert_eq!(refused["result"], "denied");
+    let reason = refused["reason"].as_str().unwrap();
+    assert!(reason.contains("cannot show"), "{reason}");
+    assert!(
+        !reason.contains("open Verrou"),
+        "nothing says whether the user is there: {reason}"
+    );
+    backend2.show_plans.store(true, Ordering::SeqCst);
+    let shown = cli.request(&plan_of(&rename_github()));
+    assert_eq!(shown["result"], "plan");
+    let id = shown["plan"].as_str().unwrap();
+    // Withdrawn by the agent: the app is told to close its sheet.
+    let cancelled = cli.request(&json!({ "cmd": "plan_cancel", "session": SESSION, "plan": id }));
+    assert_eq!(cancelled["state"], "cancelled");
+    assert_eq!(backend2.withdrawn.lock().unwrap()[0].0, id);
+    // Applying it now is refused.
+    assert!(bridge.take_plan(id, &[0]).unwrap_err().contains("withdrew"));
+    assert!(backend.withdrawn.lock().unwrap().is_empty());
+    let _ = std::fs::remove_file(file);
+    let _ = std::fs::remove_file(file2);
+}
+
+#[test]
+fn locking_drops_the_plans_awaiting_review() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    let proposed = cli.request(&plan_of(&rename_github()));
+    let id = proposed["plan"].as_str().unwrap().to_owned();
+    bridge.drop_plans();
+    let status = cli.request(&status_of(&id, 0));
+    assert_eq!(status["state"], "cancelled");
+    assert!(status["message"].as_str().unwrap().contains("locked"));
+    assert!(bridge.take_plan(&id, &[0]).is_err());
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn a_whole_plan_that_is_wrong_is_refused_with_its_reason() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    for (operations, needle) in [
+        (json!([]), "no operation"),
+        (
+            json!([{ "op": "rename", "item": "github", "title": "x" }]),
+            "rationale is required",
+        ),
+        (
+            json!([{ "op": "trash", "item": "nope", "rationale": "x" }]),
+            "none of the operations",
+        ),
+    ] {
+        let reply = cli.request(&plan_of(&operations));
+        assert_eq!(reply["result"], "denied");
+        assert!(
+            reply["reason"].as_str().unwrap().contains(needle),
+            "{reply}"
+        );
+    }
+    assert!(
+        backend.plans.lock().unwrap().is_empty(),
+        "nothing reached the user"
+    );
+    let _ = std::fs::remove_file(file);
+}
+
+/// Every proposal counts toward the hourly cap, those Verrou refused too.
+#[test]
+fn refused_proposals_count_toward_the_hourly_cap() {
+    let (bridge, backend, pairings, file) = start();
+    let mut cli = paired(&bridge, &pairings, "cli");
+    read_catalog(&mut cli, &backend);
+    let wrong = plan_of(&json!([{ "op": "trash", "item": "nope", "rationale": "x" }]));
+    for _ in 0..30 {
+        assert_eq!(cli.request(&wrong)["result"], "denied");
+    }
+    let reply = cli.request(&rename_proposal());
+    assert_eq!(reply["result"], "denied");
+    assert!(reply["reason"].as_str().unwrap().contains("at most 30"));
+    let _ = std::fs::remove_file(file);
+}
+
+fn rename_proposal() -> Value {
+    plan_of(&rename_github())
 }

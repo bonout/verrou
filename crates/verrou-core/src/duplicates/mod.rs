@@ -34,7 +34,7 @@ use std::hash::BuildHasher;
 use sha2::{Digest as _, Sha256};
 
 pub use signals::{Confidence, site_of};
-use signals::{PasswordLink, Signals, Source, relate, same_secret};
+use signals::{PasswordLink, Signals, Source, relate, relate_with, same_secret};
 
 use crate::import::{IdentityData, ImportKind, ImportedItem};
 use crate::model::{Item, ItemKind, ItemState};
@@ -227,14 +227,14 @@ impl Buckets {
     }
 
     /// Pairs to compare, each once.
-    fn pairs(&self, signals: &[Signals]) -> HashSet<(usize, usize)> {
+    fn pairs(&self, signals: &[Signals], blind: bool) -> HashSet<(usize, usize)> {
         let hasher = std::collections::hash_map::RandomState::new();
         let mut pairs = HashSet::new();
         for members in self.web.values() {
-            bucket_pairs(members, signals, false, &hasher, &mut pairs);
+            bucket_pairs(members, signals, false, blind, &hasher, &mut pairs);
         }
         for members in self.name.values() {
-            bucket_pairs(members, signals, true, &hasher, &mut pairs);
+            bucket_pairs(members, signals, true, blind, &hasher, &mut pairs);
         }
         pairs
     }
@@ -276,6 +276,7 @@ fn bucket_pairs<S: BuildHasher>(
     members: &[usize],
     signals: &[Signals],
     name: bool,
+    blind: bool,
     hasher: &S,
     pairs: &mut HashSet<(usize, usize)>,
 ) {
@@ -296,10 +297,12 @@ fn bucket_pairs<S: BuildHasher>(
         } else {
             by_user.entry(s.user.base.as_str()).or_default().push(m);
         }
-        by_password
-            .entry(hasher.hash_one(s.password))
-            .or_default()
-            .push(m);
+        if !blind {
+            by_password
+                .entry(hasher.hash_one(s.password))
+                .or_default()
+                .push(m);
+        }
     }
     for group in by_user.values().chain(by_password.values()) {
         all_pairs(group, signals, name, pairs);
@@ -693,7 +696,19 @@ pub fn find_duplicates_with(
     items: &[Item],
     extras: &HashMap<String, ItemExtras>,
 ) -> Vec<DuplicateGroup> {
-    Finder::new(items, extras).groups()
+    Finder::new(items, extras, false).groups()
+}
+
+/// Like [`find_duplicates_with`], without ever comparing two passwords or two
+/// one-time code seeds: the groups, their confidence and their reasons say
+/// nothing about whether secrets are equal. For what an agent may read: a
+/// group only tells that logins look alike by site, title and username.
+#[allow(clippy::implicit_hasher)]
+pub fn find_duplicates_blind_with(
+    items: &[Item],
+    extras: &HashMap<String, ItemExtras>,
+) -> Vec<DuplicateGroup> {
+    Finder::new(items, extras, true).groups()
 }
 
 fn owner_of(item: &Item) -> &str {
@@ -733,10 +748,12 @@ struct Finder<'a> {
     login_of: HashMap<usize, usize>,
     /// Resemblances (positions in `items`).
     edges: Vec<Edge>,
+    /// Passwords and seeds are never compared (see [`find_duplicates_blind_with`]).
+    blind: bool,
 }
 
 impl<'a> Finder<'a> {
-    fn new(items: &'a [Item], extras: &'a HashMap<String, ItemExtras>) -> Self {
+    fn new(items: &'a [Item], extras: &'a HashMap<String, ItemExtras>, blind: bool) -> Self {
         let mut logins = Vec::new();
         let mut signals = Vec::new();
         let mut login_of = HashMap::new();
@@ -790,10 +807,10 @@ impl<'a> Finder<'a> {
         for (position, s) in signals.iter().enumerate() {
             buckets.add(position, s);
         }
-        let mut pairs: Vec<(usize, usize)> = buckets.pairs(&signals).into_iter().collect();
+        let mut pairs: Vec<(usize, usize)> = buckets.pairs(&signals, blind).into_iter().collect();
         pairs.sort_unstable();
         for (a, b) in pairs {
-            if let Some(relation) = relate(&signals[a], &signals[b]) {
+            if let Some(relation) = relate_with(&signals[a], &signals[b], blind) {
                 let vague = if relation.confidence == Confidence::Review
                     && relation.password != PasswordLink::Same
                 {
@@ -822,6 +839,7 @@ impl<'a> Finder<'a> {
             signals,
             login_of,
             edges,
+            blind,
         }
     }
 
@@ -830,7 +848,14 @@ impl<'a> Finder<'a> {
         match self.items[kept].kind {
             ItemKind::Login => {
                 let (a, b) = (self.login_of.get(&kept)?, self.login_of.get(&other)?);
-                relate(&self.signals[*a], &self.signals[*b]).map(|r| (r.confidence, r.reason()))
+                relate_with(&self.signals[*a], &self.signals[*b], self.blind).map(|r| {
+                    let reason = if self.blind {
+                        r.reason_without_secrets()
+                    } else {
+                        r.reason()
+                    };
+                    (r.confidence, reason)
+                })
             }
             ItemKind::Card => Some((Confidence::Certain, SAME_CARD.to_owned())),
             _ => Some((Confidence::Certain, SAME_NOTE.to_owned())),

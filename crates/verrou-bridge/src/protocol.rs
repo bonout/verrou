@@ -98,8 +98,28 @@ pub struct Request {
     /// what actually decides what happens to the values ([`RunDetail`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<RunDetail>,
+    /// An agent session (`verrou mcp` draws one when it starts): the
+    /// approval to read the catalog, and the plans, belong to the session,
+    /// not to the client that every session of that terminal shares
+    /// ([`clean_session`]). Additive: absent, nothing is remembered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
     #[serde(flatten)]
     pub command: Command,
+}
+
+/// The longest session identifier, in characters.
+const MAX_SESSION: usize = 64;
+
+/// The session identifier as it will be used: 8 to 64 hexadecimal
+/// characters, lowercased; anything else is no session.
+#[must_use]
+pub fn clean_session(session: Option<&str>) -> Option<String> {
+    let session = session?.trim();
+    (session.len() >= 8
+        && session.len() <= MAX_SESSION
+        && session.chars().all(|c| c.is_ascii_hexdigit()))
+    .then(|| session.to_ascii_lowercase())
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // the signature serde wants
@@ -210,6 +230,14 @@ fn is_invisible(c: char) -> bool {
     use icu_properties::{CodePointMapData, CodePointSetData};
     CodePointMapData::<GeneralCategory>::new().get(c) == GeneralCategory::Format
         || CodePointSetData::new::<DefaultIgnorableCodePoint>().contains(c)
+}
+
+/// Does the text hold a control or invisible formatting character? A title
+/// or a folder name with one reads as another ([`clean_text`] would drop it
+/// from a display, but a written name must be refused instead).
+#[must_use]
+pub fn has_hidden_characters(text: &str) -> bool {
+    text.chars().any(|c| c.is_control() || is_invisible(c))
 }
 
 /// One line: control characters become spaces, invisible ones vanish,
@@ -388,6 +416,42 @@ pub enum Command {
         item: String,
         to: ItemMove,
     },
+    /// Terminal: what the vault holds, counted (kinds, folders), to plan a
+    /// reorganization. Needs the user's approval for the whole catalog
+    /// ([`crate::Purpose::Catalog`]).
+    VaultOverview,
+    /// Terminal: a page of the catalog of items: titles, usernames, sites,
+    /// folders, flags; never a secret, a note or a field value. Same
+    /// approval as [`Command::VaultOverview`]. `limit`: at most 500.
+    /// `archived`: archived items too (the trash never is).
+    VaultList {
+        #[serde(default)]
+        offset: u32,
+        #[serde(default)]
+        limit: Option<u32>,
+        #[serde(default)]
+        archived: bool,
+    },
+    /// Terminal: the vault's duplicate groups, for `merge` operations. Same
+    /// approval as [`Command::VaultOverview`].
+    VaultDuplicates,
+    /// Terminal: a reorganization plan, for the user to review in Verrou
+    /// ([`Plan`]). Answered at once with the plan's state: the user answers
+    /// later, in the app.
+    PlanPropose {
+        plan: Plan,
+    },
+    /// Terminal: the state of a plan, waiting up to `wait` seconds (at most
+    /// 60) for it to change.
+    PlanStatus {
+        plan: String,
+        #[serde(default)]
+        wait: u32,
+    },
+    /// Terminal: withdraw a plan still awaiting the user's review.
+    PlanCancel {
+        plan: String,
+    },
     /// SSH agent: the public keys of the vault's SSH keys.
     SshKeys,
     /// SSH agent: sign `data` (base64) with the key whose SSH binary form is
@@ -561,6 +625,19 @@ pub enum ReplyResult {
     },
     Assertion(PasskeyAssertion),
     Registration(PasskeyRegistration),
+    Overview(VaultOverview),
+    /// A page of the catalog, and the number of items it has in all.
+    Catalog {
+        items: Vec<CatalogItem>,
+        total: u32,
+    },
+    /// The logins' duplicate groups (as many as a reply holds), and how
+    /// many there are in all.
+    Duplicates {
+        groups: Vec<DuplicateInfo>,
+        total: u32,
+    },
+    Plan(PlanState),
 }
 
 impl ReplyResult {
@@ -590,6 +667,10 @@ impl ReplyResult {
             Self::PasskeyTargets { .. } => "passkey_targets",
             Self::Assertion(_) => "assertion",
             Self::Registration(_) => "registration",
+            Self::Overview(_) => "overview",
+            Self::Catalog { .. } => "catalog",
+            Self::Duplicates { .. } => "duplicates",
+            Self::Plan(_) => "plan",
         }
     }
 }
@@ -742,6 +823,268 @@ impl std::fmt::Debug for FormData {
             .field("kind", &self.kind)
             .finish_non_exhaustive()
     }
+}
+
+// MARK: Reorganization plans
+//
+// An agent reads the catalog, proposes a plan, the user reviews it in
+// Verrou and applies the operations they check. Nothing here carries a
+// secret: titles, usernames, sites (host or application only), folder names
+// and counts. The agent's own words (reasons, rationales, new titles and
+// folder names) are cleaned like any text an approval shows.
+
+/// A plan: why, and the operations, each with its own reason. Checked by
+/// [`crate::organize::validate`] when proposed and again when applied.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Plan {
+    /// One sentence for the whole plan, shown in the review.
+    pub reason: String,
+    pub operations: Vec<PlanOp>,
+}
+
+/// One operation of a plan. Items are named by identifier, duplicate groups
+/// by the key [`DuplicateInfo::group`] gave. `rationale`: why this one, in
+/// at most [`crate::organize::MAX_RATIONALE`] characters; required.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum PlanOp {
+    /// A new, empty folder (`A/B` nests). One that exists is left alone.
+    CreateFolder {
+        name: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    /// Files an item in a folder (an empty `folder`: out of any folder).
+    Move {
+        item: String,
+        folder: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    Rename {
+        item: String,
+        title: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    /// Merges the other items of a duplicate group into `keep`, which keeps
+    /// what it has and receives what the others had that it lacks; the
+    /// others go to the trash.
+    Merge {
+        group: String,
+        keep: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    Archive {
+        item: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    /// To the trash, restorable for 30 days.
+    Trash {
+        item: String,
+        #[serde(default)]
+        rationale: String,
+    },
+    /// Anything else an agent may try (`set_tags`: Vaultwarden has no
+    /// tags): refused for that operation alone, with the supported ones
+    /// named.
+    #[serde(other)]
+    Unsupported,
+}
+
+impl PlanOp {
+    /// The operation's name, as on the wire.
+    #[must_use]
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::CreateFolder { .. } => "create_folder",
+            Self::Move { .. } => "move",
+            Self::Rename { .. } => "rename",
+            Self::Merge { .. } => "merge",
+            Self::Archive { .. } => "archive",
+            Self::Trash { .. } => "trash",
+            Self::Unsupported => "unsupported",
+        }
+    }
+
+    /// What the agent said about this operation (as sent).
+    #[must_use]
+    pub fn rationale(&self) -> &str {
+        match self {
+            Self::CreateFolder { rationale, .. }
+            | Self::Move { rationale, .. }
+            | Self::Rename { rationale, .. }
+            | Self::Merge { rationale, .. }
+            | Self::Archive { rationale, .. }
+            | Self::Trash { rationale, .. } => rationale,
+            Self::Unsupported => "",
+        }
+    }
+}
+
+/// What the vault holds, counted. No item, no value.
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct VaultOverview {
+    /// Active items.
+    pub items: u32,
+    pub archived: u32,
+    pub kinds: Vec<KindCount>,
+    /// Every folder, the empty ones too, with its active and archived items.
+    pub folders: Vec<FolderCount>,
+    pub without_folder: u32,
+    /// Items of an organization (shared vault).
+    pub shared: u32,
+    /// Items that ask for confirmation before they release a secret.
+    pub protected: u32,
+    pub with_totp: u32,
+    pub with_passkey: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct KindCount {
+    pub kind: ItemKind,
+    pub count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct FolderCount {
+    pub name: String,
+    pub count: u32,
+}
+
+/// An item of the catalog. Never a password, a one-time code, a note, the
+/// name or value of a custom field, or the path of a site.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)] // the flags an agent reads, as JSON
+pub struct CatalogItem {
+    pub id: String,
+    pub kind: ItemKind,
+    pub title: String,
+    /// Logins only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    /// Hosts and application identifiers: no scheme, path or query for a
+    /// site.
+    pub sites: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
+    pub favorite: bool,
+    /// `active` or `archived`.
+    pub state: String,
+    /// The organization, for a shared item.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shared: Option<String>,
+    /// The account cannot change it.
+    pub read_only: bool,
+    /// Asks for confirmation before it releases a secret.
+    pub protected: bool,
+    pub has_totp: bool,
+    pub has_passkey: bool,
+    pub attachments: u32,
+    pub has_notes: bool,
+    /// Unix timestamps, in seconds.
+    pub created: i64,
+    pub modified: i64,
+}
+
+/// A group of items that look like the same account ([`Command::VaultDuplicates`]).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DuplicateInfo {
+    /// What a `merge` operation names the group by.
+    pub group: String,
+    pub label: String,
+    pub username: String,
+    /// `certain`, `probable` or `review`.
+    pub confidence: String,
+    /// Why they look alike (site, title, username): never anything about
+    /// their passwords or one-time codes.
+    pub reason: String,
+    /// Logins that can be merged.
+    pub mergeable: bool,
+    /// The member Verrou would keep.
+    pub suggested_keep: String,
+    pub members: Vec<DuplicateMemberInfo>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct DuplicateMemberInfo {
+    pub item: String,
+    pub title: String,
+    /// Resemblance to the suggested one; missing for that one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub confidence: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanPhase {
+    AwaitingReview,
+    Applying,
+    Applied,
+    Declined,
+    /// Nobody answered in ten minutes.
+    Expired,
+    /// Withdrawn by the agent, or dropped when Verrou locked.
+    Cancelled,
+    Undone,
+    /// Applying stopped halfway (the vault locked, or the plan no longer
+    /// fit the vault): the report says what was done before.
+    Interrupted,
+}
+
+impl PlanPhase {
+    /// Still waiting on the user, or being applied.
+    #[must_use]
+    pub fn is_open(self) -> bool {
+        matches!(self, Self::AwaitingReview | Self::Applying)
+    }
+}
+
+/// An operation Verrou refused, and why.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct Rejection {
+    /// Position in the plan's `operations`, from 0.
+    pub index: u32,
+    pub reason: String,
+}
+
+/// An operation that was checked and failed when applied.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PlanFailure {
+    pub index: u32,
+    pub op: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PlanReport {
+    /// Operations carried out (the queued ones included).
+    pub applied: u32,
+    /// Of which waiting for the server (offline).
+    pub queued: u32,
+    /// Left as they were: already as wanted, or not checked by the user.
+    pub unchanged: u32,
+    pub failed: Vec<PlanFailure>,
+}
+
+/// Where a plan stands. What `plan_propose` and `plan_status` answer.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+pub struct PlanState {
+    pub plan: String,
+    pub state: PlanPhase,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub message: String,
+    /// While awaiting review: seconds left to review it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_in: Option<u64>,
+    /// Operations refused when proposed (the others are in review).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rejected: Vec<Rejection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub report: Option<PlanReport>,
 }
 
 // MARK: Passkeys
@@ -970,6 +1313,73 @@ mod reason_tests {
         assert!(!plain.ephemeral_approval && plain.detail.is_none());
         let json = serde_json::to_string(&plain).unwrap();
         assert!(!json.contains("ephemeral") && !json.contains("detail"));
+    }
+
+    #[test]
+    fn plans_travel_as_the_agent_writes_them() {
+        let request: Request = serde_json::from_str(
+            r#"{"id":1,"ts":0,"cmd":"plan_propose","plan":{"reason":"tidy","operations":[
+                {"op":"create_folder","name":"Work","rationale":"a"},
+                {"op":"move","item":"x","folder":"","rationale":"b"},
+                {"op":"merge","group":"g","keep":"k","rationale":"c"},
+                {"op":"set_tags","item":"x","tags":["a"]},
+                {"op":"rename","item":"x","title":"T"}]}}"#,
+        )
+        .unwrap();
+        let Command::PlanPropose { plan } = request.command else {
+            panic!("a proposal");
+        };
+        assert_eq!(plan.operations.len(), 5);
+        // What this Verrou does not know is an unsupported operation, not a
+        // refused request; a missing rationale reads as empty (the plan is
+        // refused for it, with the reason).
+        assert_eq!(plan.operations[3], PlanOp::Unsupported);
+        assert_eq!(plan.operations[4].rationale(), "");
+        assert_eq!(plan.operations[2].name(), "merge");
+        // And back: what is sent is what is read.
+        let json = serde_json::to_string(&plan).unwrap();
+        assert_eq!(serde_json::from_str::<Plan>(&json).unwrap(), plan);
+        // A status asks for no wait by default.
+        let status: Request =
+            serde_json::from_str(r#"{"id":1,"ts":0,"cmd":"plan_status","plan":"abc"}"#).unwrap();
+        assert!(matches!(
+            status.command,
+            Command::PlanStatus { wait: 0, .. }
+        ));
+        let list: Request = serde_json::from_str(r#"{"id":1,"ts":0,"cmd":"vault_list"}"#).unwrap();
+        assert!(matches!(
+            list.command,
+            Command::VaultList {
+                offset: 0,
+                limit: None,
+                archived: false
+            }
+        ));
+    }
+
+    #[test]
+    fn a_plan_state_says_only_what_is_known() {
+        let waiting = PlanState {
+            plan: "abc".to_owned(),
+            state: PlanPhase::AwaitingReview,
+            message: String::new(),
+            expires_in: Some(600),
+            rejected: Vec::new(),
+            report: None,
+        };
+        let json = serde_json::to_value(&waiting).unwrap();
+        assert_eq!(json["state"], "awaiting_review");
+        assert!(json.get("message").is_none() && json.get("rejected").is_none());
+        assert!(json.get("report").is_none());
+        let reply = Reply {
+            id: 3,
+            result: ReplyResult::Plan(waiting),
+        };
+        assert_eq!(reply.result.kind(), "plan");
+        let round: Reply = serde_json::from_str(&serde_json::to_string(&reply).unwrap()).unwrap();
+        assert_eq!(round, reply);
+        assert!(PlanPhase::Applying.is_open() && !PlanPhase::Applied.is_open());
+        assert!(!PlanPhase::Expired.is_open() && !PlanPhase::Declined.is_open());
     }
 
     #[test]

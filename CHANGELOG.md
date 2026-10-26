@@ -7,6 +7,19 @@ tagging (docs/RELEASING.md).
 ## Unreleased
 
 **Mac**
+- An agent can propose a reorganization of your vault, and you apply it in a
+  sheet: new folders, moves, renames, archives, trash and duplicates to
+  merge, each with the reason the agent gave. Everything is checked except
+  the trash, what touches a protected item or a shared vault's items, and
+  merges of what may be two accounts; one Touch ID, which says how much goes
+  to the trash or is merged, applies what you check (Return does not), and
+  *Undo* puts it back for ten minutes, merges included. A new plan cannot
+  take the sheet of one you are reviewing or can still undo. Nothing is
+  applied by the agent, and a plan is only reviewed at the Mac.
+- Merging duplicates (the *Merge* button too) no longer drops an old password
+  when there are more than the history of five holds: the rest becomes hidden
+  fields ("Password (from “X”)"). A password is dated by its last change, then
+  by the item's creation, never by its last edit.
 - ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
   prompts expect, instead of the username, Tab and the password.
@@ -30,6 +43,16 @@ tagging (docs/RELEASING.md).
   approval shows control characters instead of spaces, and the iPhone
   "unlock and read" approval no longer covers an agent's request or another
   terminal.
+- `verrou mcp` can read the vault's catalog for an agent that organizes it
+  (`verrou_vault_overview`, `verrou_list_items`, `verrou_find_duplicates`:
+  titles, usernames, hosts, folders and flags, never a password, a code, a
+  note, a custom field or a URL path, and never whether two passwords are
+  equal), after one approval that holds for 30 minutes for that agent session
+  only, and propose a plan (`verrou_propose_plan`, `verrou_plan_status`,
+  `verrou_plan_cancel`) that Verrou checks before you see it and again when
+  you apply it. Merging duplicates no longer drops a username or a one-time
+  code that differs from the kept item's: it becomes a field, and a site with
+  a match rule of its own is kept.
 - References to a custom field now work by the field's name as shown in the
   app (`verrou://Stripe/secret%20key`), as the guide always said.
 
