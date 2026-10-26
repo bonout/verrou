@@ -145,7 +145,7 @@ struct ShowOneTimeCodeIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog & ShowsSnippetView {
         guard case .codes(let codes) = PinnedCodes.read() else { throw IntentFailure.keychainLocked }
-        guard let pinned = codes.first(where: { $0.id == code.id }) else { throw IntentFailure.codeNotPinned }
+        guard let pinned = codes.first(where: { ItemID.same($0.id, code.id) }) else { throw IntentFailure.codeNotPinned }
         let current = pinned.code()
         return .result(value: current.value, dialog: IntentDialog("Code for \(pinned.title)"),
                        view: CodeSnippet(code: current))

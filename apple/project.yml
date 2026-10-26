@@ -206,6 +206,7 @@ targets:
       - path: Shared/Core/FolderNode.swift
       - path: VerrouAutoFill/RecentFill.swift
       - path: Shared/Core/PinnedCodes.swift
+      - path: Shared/Core/ItemID.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.verrou.mac.tests
@@ -391,6 +392,7 @@ targets:
     sources:
       - path: VerrouWidgets
       - path: Shared/Core/PinnedCodes.swift
+      - path: Shared/Core/ItemID.swift
       - path: VerrouiOS/Resources/Assets.xcassets
     dependencies:
       - sdk: WidgetKit.framework
@@ -427,6 +429,7 @@ targets:
     sources:
       - path: VerrouWatch
       - path: Shared/Core/PinnedCodes.swift
+      - path: Shared/Core/ItemID.swift
     dependencies:
       - target: VerrouWatchWidgets
     info:
@@ -459,6 +462,7 @@ targets:
     sources:
       - path: VerrouWatchWidgets
       - path: Shared/Core/PinnedCodes.swift
+      - path: Shared/Core/ItemID.swift
       - path: VerrouWatch/Resources/Assets.xcassets
     dependencies:
       - sdk: WidgetKit.framework

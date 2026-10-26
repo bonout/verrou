@@ -106,7 +106,7 @@ impl VaultSession {
                 .into_iter()
                 .take(5)
                 .map(|item| OtpTarget {
-                    id: item.id.clone(),
+                    id: self.qualify(&item.id),
                     title: item.title.clone(),
                     subtitle: item.subtitle.clone(),
                 })

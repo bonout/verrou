@@ -647,7 +647,7 @@ final class PhoneModel {
 
     func lock() {
         // AutoFill without Face ID ends with the app's lock.
-        AutofillSession.forget()
+        AutofillSession.forgetAll()
         syncLoop?.cancel()
         syncLoop = nil
         live.stop(session: session)

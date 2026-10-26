@@ -122,6 +122,18 @@ pub trait Backend: Send + Sync + 'static {
     fn gate(&self, item: &verrou_core::Item) -> bool {
         !item.reprompt
     }
+    /// An item id as the clients see it. The default leaves it as the vault
+    /// has it; the app qualifies it with its account's tag
+    /// (`"<tag>:<id>"`, see [`crate::ids`]).
+    fn qualify(&self, id: &str) -> String {
+        id.to_owned()
+    }
+    /// The vault's own id for an id a client sent: the qualified id of this
+    /// account, or an unqualified one (an older client). `None`: it names
+    /// another account.
+    fn local_id(&self, id: &str) -> Option<String> {
+        Some(id.to_owned())
+    }
     /// How long an approval for this purpose and item holds. The default
     /// keeps the historical five minutes; the server ignores any other
     /// answer for a purpose other than SSH or signing.
@@ -482,7 +494,39 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     }
     let backend = &shared.backend;
     let reason = crate::protocol::clean_reason(request.reason.as_deref());
-    let result = match request.command {
+    let local = |id: &str| backend.local_id(id);
+    let localized = if access::allowed(info.kind, &request.command) {
+        crate::ids::localize(request.command, &local)
+    } else {
+        Ok(request.command)
+    };
+    let mut result = match localized {
+        Err(reason) => ReplyResult::Denied {
+            reason: reason.to_owned(),
+        },
+        Ok(command) => dispatch(shared, &info, command, &reason).await,
+    };
+    crate::ids::qualify(&mut result, &|id| backend.qualify(id));
+    let Ok(mut body) = serde_json::to_vec(&Reply {
+        id: request.id,
+        result,
+    }) else {
+        return bad;
+    };
+    let (iv, data) = key.seal(client, Direction::Response, &body);
+    body.zeroize();
+    Outgoing::Response { iv, data }
+}
+
+/// One command, with the vault's own ids ([`crate::ids`]).
+async fn dispatch(
+    shared: &Shared,
+    info: &ClientInfo,
+    command: Command,
+    reason: &str,
+) -> ReplyResult {
+    let backend = &shared.backend;
+    match command {
         command if !access::allowed(info.kind, &command) => ReplyResult::Denied {
             reason: "command not allowed for this client".to_owned(),
         },
@@ -496,18 +540,18 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
             None => ReplyResult::Locked,
             Some(items) => ReplyResult::Suggestions { items },
         },
-        Command::Fill { url, item } => fill(shared, &info, &url, &item).await,
+        Command::Fill { url, item } => fill(shared, info, &url, &item).await,
         command @ (Command::Forms { .. }
         | Command::FillForm { .. }
         | Command::LinkSite { .. }
-        | Command::SearchLogins { .. }) => forms(shared, &info, command).await,
+        | Command::SearchLogins { .. }) => forms(shared, info, command).await,
         command @ (Command::PasskeyList(_)
         | Command::PasskeyGet(_)
         | Command::PasskeyTargets(_)
-        | Command::PasskeyCreate(_)) => passkey(shared, &info, command).await,
+        | Command::PasskeyCreate(_)) => passkey(shared, info, command).await,
         Command::Unlock { then } => {
             let then = then.map(|intent| intent.cleaned());
-            backend.request_unlock(info.kind, &reason, then.as_ref());
+            backend.request_unlock(info.kind, reason, then.as_ref());
             ReplyResult::Done
         }
         Command::Check {
@@ -539,17 +583,8 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
                 }))
                 .await,
         ),
-        command => terminal(shared, &info, command, &reason).await,
-    };
-    let Ok(mut body) = serde_json::to_vec(&Reply {
-        id: request.id,
-        result,
-    }) else {
-        return bad;
-    };
-    let (iv, data) = key.seal(client, Direction::Response, &body);
-    body.zeroize();
-    Outgoing::Response { iv, data }
+        command => terminal(shared, info, command, reason).await,
+    }
 }
 
 /// Reads the unlocked vault; `None`: locked.

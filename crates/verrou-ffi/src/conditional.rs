@@ -189,6 +189,7 @@ impl VaultSession {
     /// name (the previous ticket is then erased). Returns `true` if
     /// a ticket is ready.
     pub async fn prepare_passkey_upgrade(&self, id: String) -> Result<bool, VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let dir = self.store()?.dir().to_path_buf();
         remove(&dir, TICKET_FILE);
         let target = self.with_vault(|v| {
@@ -288,7 +289,7 @@ impl VaultSession {
             },
         )?;
         Ok(PasskeyRegistrationResult {
-            item_id: ticket.item_id,
+            item_id: self.qualify(&ticket.item_id),
             credential_id: registration.credential_id,
             attestation_object: registration.attestation_object,
         })
@@ -440,9 +441,10 @@ mod tests {
     #[test]
     fn the_background_request_consumes_the_ticket_once() {
         let dir = std::env::temp_dir().join(format!("verrou-conditional-{}", uuid::Uuid::new_v4()));
-        let session = VaultSession::with_store(verrou_vaultwarden::Store::new(
-            dir.to_string_lossy().into_owned(),
-        ));
+        let session = VaultSession::with_store(
+            verrou_vaultwarden::Store::new(dir.to_string_lossy().into_owned()),
+            None,
+        );
         let prepared = passkey::prepare_credential(&mut rand::rngs::OsRng).unwrap();
         let mut t = ticket(now());
         t.credential_id = passkey::b64url(&prepared.credential_id);

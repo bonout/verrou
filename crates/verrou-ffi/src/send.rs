@@ -216,6 +216,7 @@ impl VaultSession {
         item_id: String,
         attachment_id: String,
     ) -> Result<AttachmentSendFields, VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         let title = self.with_vault(|v| {
             let item = Self::item(v, &item_id)?;
             self.require_authorized(item)?;
@@ -248,6 +249,7 @@ impl VaultSession {
         item_id: String,
         attachment_id: String,
     ) -> Result<CreatedSend, VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         self.with_vault(|v| self.require_authorized(Self::item(v, &item_id)?))?;
         let draft = SendDraft::try_from(fields)?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
@@ -294,6 +296,7 @@ impl VaultSession {
         item_id: String,
         field_id: String,
     ) -> Result<SendFields, VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         self.with_vault(|v| {
             let item = Self::item(v, &item_id)?;
             self.require_authorized(item)?;

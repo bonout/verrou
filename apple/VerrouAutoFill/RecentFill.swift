@@ -12,6 +12,10 @@ import Security
 /// for its site: never the vault key, never another item, never a protected
 /// one ("re-ask for the master password"). In the keychain of this device,
 /// readable while it is unlocked, never synced.
+///
+/// The item id is written qualified (`<tag>:<id>`, `ItemID`); an entry an
+/// earlier version wrote, or a suggestion the system published before the
+/// ids carried the account's tag, has the plain id: both match the same item.
 enum RecentFill {
     static let lifetime: TimeInterval = 90
 
@@ -48,7 +52,7 @@ enum RecentFill {
 
     /// The login if it is the one filled less than 90 seconds ago.
     static func credential(for itemID: String) -> (user: String, password: String)? {
-        guard let entry = current(), entry.itemID == itemID else { return nil }
+        guard let entry = current(), ItemID.same(entry.itemID, itemID) else { return nil }
         return (entry.user, entry.password)
     }
 

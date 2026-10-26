@@ -1,7 +1,7 @@
 //! iOS `AutoFill` (`VerrouAutoFill` extension).
 //!
 //! The extension opens the shared folder's vault as a **guest**
-//! (`VaultSession::for_autofill`): it reads the app's cache and queue,
+//! (`Accounts::for_autofill`): it reads the app's cache and queue,
 //! writes directly to the server what can't wait (created passkey, a
 //! passkey's counter), then saves the resynced cache; it never sends
 //! nor writes the app's queue (see `verrou_vaultwarden::Store::guest`).
@@ -11,15 +11,13 @@
 //! passkey identifiers, **never a secret**.
 
 use std::collections::HashSet;
-use std::sync::Arc;
 
 use verrou_bridge::access::Write;
 use verrou_core::matching::host_of;
 use verrou_core::passkey::{self, Passkey, SystemRegistrationRequest};
 use verrou_core::{FieldKind, Item, ItemKind, Vault};
-use verrou_vaultwarden::Store;
 
-use crate::{ItemSummary, VaultSession, VerrouError, summary};
+use crate::{ItemSummary, VaultSession, VerrouError};
 
 /// Maximum length of texts coming from the site (name, user).
 const MAX_TEXT: usize = 256;
@@ -244,13 +242,6 @@ impl VaultSession {
 
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Session of the `AutoFill` extension: same folder as the app, opened
-    /// as a guest (never sends nor writes the queue).
-    #[uniffi::constructor]
-    pub fn for_autofill(data_dir: String) -> Arc<Self> {
-        Self::with_store(Store::new(data_dir).guest())
-    }
-
     /// What the app publishes for the system's suggestions (`QuickType`):
     /// sites, usernames, passkeys. No secret.
     /// The sites' signals (rejected passkeys, unneeded passwords,
@@ -260,6 +251,10 @@ impl VaultSession {
             let mut list = identities(v);
             if let Ok(store) = self.store() {
                 crate::signals::apply_to_identities(v, store.dir(), &mut list);
+            }
+            // The signals name items by the vault's own ids: qualified last.
+            for identity in &mut list {
+                identity.item_id = self.qualify(&identity.item_id);
             }
             Ok(list)
         })
@@ -285,7 +280,7 @@ impl VaultSession {
     /// an organization's "hide passwords" doesn't prevent filling.
     pub fn autofill_password(&self, id: String) -> Result<AutofillPassword, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             if item.kind != ItemKind::Login {
                 return Err(VerrouError::Invalid {
                     message: "only a login can be filled".to_owned(),
@@ -322,7 +317,7 @@ impl VaultSession {
                     }
                     let item = v.get(&p.item)?;
                     Some(AutofillPasskey {
-                        item_id: item.id.clone(),
+                        item_id: self.qualify(&item.id),
                         title: item.title.clone(),
                         credential_id: id,
                         rp_id: p.rp_id.clone(),
@@ -345,7 +340,7 @@ impl VaultSession {
             Ok(v.suggestions_for(&site_uri(&rp_id))
                 .into_iter()
                 .filter(|i| i.kind == ItemKind::Login && i.is_writable())
-                .map(summary)
+                .map(|i| self.summary(i))
                 .collect())
         })
     }
@@ -391,7 +386,10 @@ impl VaultSession {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         self.perform_write(&connection, write).await?;
         self.record_use(&result.item_id);
-        Ok(result)
+        Ok(PasskeyAssertionResult {
+            item_id: self.qualify(&result.item_id),
+            ..result
+        })
     }
 
     /// Creates a passkey for the system (`none` attestation) and saves it
@@ -404,6 +402,11 @@ impl VaultSession {
             message: e.to_string(),
         })?;
         let user_name = clip(&request.user_name);
+        let item_id = request
+            .item_id
+            .as_deref()
+            .map(|id| self.local_id(id).map(str::to_owned))
+            .transpose()?;
         let (write, registration) = self.with_vault(|v| {
             if v.passkeys_for(&rp_id).iter().any(|p| {
                 p.raw_id()
@@ -414,7 +417,7 @@ impl VaultSession {
                         .to_owned(),
                 });
             }
-            if let Some(id) = &request.item_id {
+            if let Some(id) = &item_id {
                 let item = Self::item(v, id)?;
                 if item.kind != ItemKind::Login || !item.is_writable() {
                     return Err(VerrouError::ReadOnly);
@@ -431,7 +434,7 @@ impl VaultSession {
                     client_data_hash: &request.client_data_hash,
                     user_verified: request.user_verified,
                 },
-                request.item_id.as_deref().unwrap_or_default(),
+                item_id.as_deref().unwrap_or_default(),
                 chrono::Utc::now().timestamp(),
                 &mut rand::rngs::OsRng,
             )
@@ -440,7 +443,7 @@ impl VaultSession {
             })?;
             Ok((
                 Write::Passkey {
-                    item: request.item_id.clone(),
+                    item: item_id.clone(),
                     title: rp_id.clone(),
                     uri: site_uri(&rp_id),
                     username: user_name.clone(),
@@ -452,7 +455,7 @@ impl VaultSession {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let item_id = self.perform_write(&connection, write).await?;
         Ok(PasskeyRegistrationResult {
-            item_id,
+            item_id: self.qualify(&item_id),
             credential_id: registration.credential_id,
             attestation_object: registration.attestation_object,
         })

@@ -1006,7 +1006,9 @@ verrou run --env-file .env -- npm run deploy
 ```
 
 A variable whose value is `verrou://<item>/<field>` gets the field's value;
-the others pass as is. The item is a title or an identifier (percent-encode
+the others pass as is. The item is a title or an identifier (an identifier
+is `<tag>:<id>` as `verrou item` prints it; one without the `<tag>:` still
+works; percent-encode
 a `/` or a space: `verrou://GitHub%20work/token`); the field is `password`,
 `username`, `totp` (the current code), `notes` or a custom field's name. A
 `.env` file can mix references and plain values, so it can be committed

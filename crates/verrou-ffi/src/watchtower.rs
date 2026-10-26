@@ -13,7 +13,7 @@ use verrou_vaultwarden::change_password::{self, Source};
 use verrou_vaultwarden::passkey_setup;
 use verrou_vaultwarden::{Connection, Decrypted};
 
-use crate::{BreachedPassword, ItemSummary, VaultSession, VerrouError, summary};
+use crate::{BreachedPassword, ItemSummary, VaultSession, VerrouError};
 
 fn now() -> i64 {
     SystemTime::now()
@@ -127,12 +127,36 @@ pub struct PasskeySetupPage {
     pub source: PasskeySetupSource,
 }
 
-fn passkey_candidates(v: &Vault, directory: &PasskeyDirectory) -> Vec<PasskeyCandidate> {
+/// The logins that could have a one-time code, with the site's methods.
+pub(crate) fn missing_two_factor(
+    session: &VaultSession,
+    v: &Vault,
+    directory: &verrou_core::watchtower::TwoFactorDirectory,
+) -> Vec<MissingTwoFactor> {
+    watchtower::missing_two_factor(v, directory)
+        .into_iter()
+        .filter_map(|(id, site)| {
+            v.get(&id).map(|i| MissingTwoFactor {
+                item: session.summary(i),
+                site: site.name.clone(),
+                totp: site.supports_totp(),
+                methods: site.methods.clone(),
+                documentation: site.documentation.clone(),
+            })
+        })
+        .collect()
+}
+
+pub(crate) fn passkey_candidates(
+    session: &VaultSession,
+    v: &Vault,
+    directory: &PasskeyDirectory,
+) -> Vec<PasskeyCandidate> {
     passkey_upgrade::passkey_candidates(v, directory)
         .into_iter()
         .filter_map(|(id, site)| {
             v.get(&id).map(|i| PasskeyCandidate {
-                item: summary(i),
+                item: session.summary(i),
                 domain: site.domain.clone(),
                 passwordless: site.passwordless(),
                 required: site.passwordless == Some(Support::Required)
@@ -177,6 +201,33 @@ fn fingerprint(password: &str) -> [u8; 32] {
 }
 
 impl VaultSession {
+    /// `watchtower` as of `now` (Unix timestamp).
+    pub(crate) fn watchtower_at(&self, now: i64) -> Result<WatchtowerReport, VerrouError> {
+        self.with_vault(|v| {
+            Ok(WatchtowerReport {
+                cards: watchtower::expiring_cards(v, now)
+                    .into_iter()
+                    .filter_map(|c| {
+                        v.get(&c.id).map(|i| ExpiringCard {
+                            item: self.summary(i),
+                            expiry: format!("{:02}/{}", c.expiry.month, c.expiry.year),
+                            days_left: c.days_left,
+                        })
+                    })
+                    .collect(),
+                old: watchtower::old_passwords(v, now)
+                    .into_iter()
+                    .filter_map(|(id, days)| {
+                        v.get(&id).map(|i| OldPassword {
+                            item: self.summary(i),
+                            days,
+                        })
+                    })
+                    .collect(),
+            })
+        })
+    }
+
     /// Remembers the fingerprint of passwords found in breaches, as they
     /// were checked (see `still_breached`).
     pub(crate) fn remember_breached(
@@ -186,7 +237,8 @@ impl VaultSession {
     ) {
         let mut breached = self.breached.lock().unwrap_or_else(PoisonError::into_inner);
         for (id, password) in checked {
-            if found.iter().any(|b| &b.item.id == id) {
+            let qualified = self.qualify(id);
+            if found.iter().any(|b| b.item.id == qualified) {
                 breached.insert(id.clone(), fingerprint(password.expose()));
             } else {
                 breached.remove(id);
@@ -225,30 +277,7 @@ impl VaultSession {
 impl VaultSession {
     /// Expired or soon-to-expire cards, old passwords.
     pub fn watchtower(&self) -> Result<WatchtowerReport, VerrouError> {
-        let now = now();
-        self.with_vault(|v| {
-            Ok(WatchtowerReport {
-                cards: watchtower::expiring_cards(v, now)
-                    .into_iter()
-                    .filter_map(|c| {
-                        v.get(&c.id).map(|i| ExpiringCard {
-                            item: summary(i),
-                            expiry: format!("{:02}/{}", c.expiry.month, c.expiry.year),
-                            days_left: c.days_left,
-                        })
-                    })
-                    .collect(),
-                old: watchtower::old_passwords(v, now)
-                    .into_iter()
-                    .filter_map(|(id, days)| {
-                        v.get(&id).map(|i| OldPassword {
-                            item: summary(i),
-                            days,
-                        })
-                    })
-                    .collect(),
-            })
-        })
+        self.watchtower_at(now())
     }
 
     /// Breaches still current: the logins whose password hasn't changed
@@ -262,11 +291,15 @@ impl VaultSession {
             Ok(breaches
                 .into_iter()
                 .filter_map(|b| {
-                    let item = v.get(&b.item.id).filter(|i| i.is_active())?;
+                    // An id of another account is dropped (it is no longer a
+                    // breach of this vault).
+                    let item = v
+                        .get(self.local_id(&b.item.id).ok()?)
+                        .filter(|i| i.is_active())?;
                     let password = verrou_core::audit::password_of(item)?;
                     (known.get(&item.id) == Some(&fingerprint(password))).then(|| {
                         BreachedPassword {
-                            item: summary(item),
+                            item: self.summary(item),
                             count: b.count,
                         }
                     })
@@ -296,18 +329,7 @@ impl VaultSession {
         let loaded = verrou_vaultwarden::two_factor_directory::load(&dir).await?;
         self.with_vault(|v| {
             Ok(TwoFactorReport {
-                missing: watchtower::missing_two_factor(v, &loaded.directory)
-                    .into_iter()
-                    .filter_map(|(id, site)| {
-                        v.get(&id).map(|i| MissingTwoFactor {
-                            item: summary(i),
-                            site: site.name.clone(),
-                            totp: site.supports_totp(),
-                            methods: site.methods.clone(),
-                            documentation: site.documentation.clone(),
-                        })
-                    })
-                    .collect(),
+                missing: missing_two_factor(self, v, &loaded.directory),
                 fetched_at: loaded.fetched_at,
                 stale: loaded.stale,
             })
@@ -329,7 +351,7 @@ impl VaultSession {
                 })?;
             return self.with_vault(|v| {
                 Ok(PasskeyReport {
-                    candidates: passkey_candidates(v, &directory),
+                    candidates: passkey_candidates(self, v, &directory),
                     fetched_at: now(),
                     stale: false,
                 })
@@ -339,7 +361,7 @@ impl VaultSession {
         let loaded = verrou_vaultwarden::passkey_directory::load(&dir).await?;
         self.with_vault(|v| {
             Ok(PasskeyReport {
-                candidates: passkey_candidates(v, &loaded.directory),
+                candidates: passkey_candidates(self, v, &loaded.directory),
                 fetched_at: loaded.fetched_at,
                 stale: loaded.stale,
             })
@@ -353,6 +375,7 @@ impl VaultSession {
     /// request, for this item alone: requests only go to the site they are
     /// about to open.
     pub async fn passkey_setup_page(&self, id: String) -> Result<PasskeySetupPage, VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let host = self
             .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
             .ok_or_else(|| VerrouError::Invalid {
@@ -420,7 +443,7 @@ impl VaultSession {
                 .filter(|(_, count)| *count > 0)
                 .filter_map(|((id, _), count)| {
                     v.get(id).map(|i| BreachedPassword {
-                        item: summary(i),
+                        item: self.summary(i),
                         count,
                     })
                 })
@@ -438,6 +461,7 @@ impl VaultSession {
         &self,
         id: String,
     ) -> Result<ChangePasswordPage, VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let host = self
             .with_vault(|v| Ok(v.get(&id).ok_or(VerrouError::NotFound)?.primary_host()))?
             .ok_or_else(|| VerrouError::Invalid {
@@ -479,7 +503,7 @@ mod tests {
                 Ok((
                     item.id.clone(),
                     verrou_core::audit::password_of(item).unwrap().to_owned(),
-                    summary(item),
+                    session.summary(item),
                 ))
             })
             .unwrap();

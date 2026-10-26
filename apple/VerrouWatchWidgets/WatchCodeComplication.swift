@@ -25,7 +25,7 @@ struct PinnedCodeEntity: AppEntity {
 
 struct PinnedCodeQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [PinnedCodeEntity] {
-        PinnedCodes.all.filter { identifiers.contains($0.id) }.map(PinnedCodeEntity.init)
+        PinnedCodes.all.filter { code in identifiers.contains { ItemID.same($0, code.id) } }.map(PinnedCodeEntity.init)
     }
 
     func suggestedEntities() async throws -> [PinnedCodeEntity] {
@@ -119,7 +119,7 @@ struct CodeProvider: AppIntentTimelineProvider {
         guard case .codes(let codes) = PinnedCodes.read() else {
             return [CodeEntry(date: now, content: .unavailable)]
         }
-        let chosen = configuration.code.map { entity in codes.first { $0.id == entity.id } } ?? codes.first
+        let chosen = configuration.code.map { entity in codes.first { ItemID.same($0.id, entity.id) } } ?? codes.first
         guard let pinned = chosen else { return [CodeEntry(date: now, content: .nothingPinned)] }
         var entries: [CodeEntry] = []
         var moment = now

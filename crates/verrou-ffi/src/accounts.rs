@@ -33,6 +33,9 @@ pub struct AccountEntry {
     pub created: i64,
     pub order: u32,
     pub is_default: bool,
+    /// Came from the layout migration of an existing account: its items may
+    /// still be known by plain ids.
+    pub legacy_ids: bool,
 }
 
 /// The registry of one root, and the sessions opened on its accounts.
@@ -135,7 +138,10 @@ impl Accounts {
             .root()
             .to_path_buf();
         let store = Store::for_account(root, &tag)?;
-        let session = VaultSession::with_store(if self.guest { store.guest() } else { store });
+        let session = VaultSession::with_store(
+            if self.guest { store.guest() } else { store },
+            Some(tag.clone()),
+        );
         sessions.insert(tag, Arc::clone(&session));
         Ok(session)
     }
@@ -171,6 +177,7 @@ fn entry(e: Entry, default: Option<&str>) -> AccountEntry {
         color: e.color,
         created: e.created,
         order: e.order,
+        legacy_ids: e.legacy_ids,
     }
 }
 
@@ -200,6 +207,7 @@ mod tests {
         let list = accounts.list().unwrap();
         assert_eq!(list.len(), 1);
         assert!(list[0].is_default);
+        assert!(list[0].legacy_ids, "migrated: plain ids may still be held");
         let tag = accounts.primary_tag().unwrap().unwrap();
         assert_eq!(tag, list[0].tag);
         let session = accounts.session(tag.clone()).unwrap();

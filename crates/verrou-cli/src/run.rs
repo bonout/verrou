@@ -208,6 +208,24 @@ pub fn pump(mut from: impl Read, mut to: impl Write, mut masker: Masker) -> io::
 mod tests {
     use super::*;
 
+    /// An item id is opaque to the terminal: qualified (`<tag>:<id>`) or
+    /// not, it passes through a reference as it is.
+    #[test]
+    fn references_by_id_keep_the_qualified_form() {
+        for id in [
+            "k3f7qa:0b6e9c1e-4f6e-4a41-9d5b-6f0f4c1a2b3c",
+            "0b6e9c1e-4f6e-4a41",
+        ] {
+            assert_eq!(
+                Reference::parse(&format!("verrou://{id}/password")),
+                Some(Ok(Reference {
+                    item: id.into(),
+                    field: "password".into()
+                }))
+            );
+        }
+    }
+
     #[test]
     fn references_are_parsed() {
         assert_eq!(

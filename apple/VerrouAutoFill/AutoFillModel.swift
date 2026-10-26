@@ -171,7 +171,7 @@ final class AutoFillModel {
         #if os(iOS)
         recentLogin = nil
         guard phase == .locked, case .list(let services, _) = request else { return }
-        if !wantsPasskey, AutofillSession.userKey() != nil { return }
+        if !wantsPasskey, let tag = vault?.tag, AutofillSession.userKey(tag: tag) != nil { return }
         recentLogin = RecentFill.login(forSites: services.map(Self.host))
         #endif
     }
@@ -216,7 +216,8 @@ final class AutoFillModel {
     /// the user was verified.
     private func unlockWithSession() async -> Bool {
         #if os(iOS)
-        guard let vault, phase == .locked, !wantsPasskey, let key = AutofillSession.userKey() else { return false }
+        guard let vault, let tag = vault.tag, phase == .locked, !wantsPasskey,
+              let key = AutofillSession.userKey(tag: tag) else { return false }
         phase = .unlocking
         do {
             _ = try await vault.session.unlockWithUserKey(userKey: key)
@@ -224,7 +225,7 @@ final class AutoFillModel {
             didUnlock()
             return true
         } catch {
-            AutofillSession.forget()
+            AutofillSession.forget(tag: tag)
             phase = .locked
             offerRecentLogin()
             return false
@@ -241,12 +242,12 @@ final class AutoFillModel {
         #if os(iOS)
         guard request.type == .password,
               let id = request.credentialIdentity.recordIdentifier,
-              let key = AutofillSession.userKey(), let vault else { return nil }
+              let vault, let tag = vault.tag, let key = AutofillSession.userKey(tag: tag) else { return nil }
         let session = vault.session
         do {
             _ = try await session.unlockWithUserKey(userKey: key)
         } catch {
-            AutofillSession.forget()
+            AutofillSession.forget(tag: tag)
             return nil
         }
         defer { vault.lock() }
@@ -281,8 +282,8 @@ final class AutoFillModel {
     /// 5 minutes (iPhone).
     private func startSession() async {
         #if os(iOS)
-        guard AutofillSession.isEnabled, let key = try? await vault?.session.userKey() else { return }
-        AutofillSession.remember(userKey: key)
+        guard AutofillSession.isEnabled, let tag = vault?.tag, let key = try? await vault?.session.userKey() else { return }
+        AutofillSession.remember(userKey: key, tag: tag)
         #endif
     }
 
@@ -494,8 +495,8 @@ final class AutoFillModel {
             if protectedItems.contains(id) {
                 RecentFill.forget()
             } else {
-                RecentFill.remember(itemID: id, user: credential.username, password: credential.password,
-                                    sites: sites(filling: id))
+                RecentFill.remember(itemID: ItemID.qualified(id, tag: vault?.tag), user: credential.username,
+                                    password: credential.password, sites: sites(filling: id))
             }
             // Conditional creation (iOS 18): Safari may request, right after,
             // a passkey for this account, in the background with the vault
@@ -527,7 +528,7 @@ final class AutoFillModel {
         default:
             break
         }
-        if let host = (matches + everything).first(where: { $0.id == id })?.host { hosts.append(host) }
+        if let host = (matches + everything).first(where: { ItemID.same($0.id, id) })?.host { hosts.append(host) }
         return hosts
     }
 

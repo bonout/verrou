@@ -45,6 +45,7 @@ pub struct AttachmentContent {
 impl VaultSession {
     /// An item's attachments (empty for the mock vault).
     pub async fn attachments(&self, item_id: String) -> Result<Vec<AttachmentEntry>, VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         self.with_vault(|v| Self::item(v, &item_id).map(drop))?;
         let Some(connection) = self.current_connection() else {
             return Ok(Vec::new());
@@ -60,6 +61,7 @@ impl VaultSession {
         item_id: String,
         attachment_id: String,
     ) -> Result<AttachmentContent, VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         self.with_vault(|v| self.require_authorized(Self::item(v, &item_id)?))?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (file_name, data) = connection
@@ -80,6 +82,7 @@ impl VaultSession {
         file_name: String,
         data: Vec<u8>,
     ) -> Result<(), VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         let data = zeroize::Zeroizing::new(data);
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection
@@ -96,6 +99,7 @@ impl VaultSession {
         item_id: String,
         attachment_id: String,
     ) -> Result<(), VerrouError> {
+        let item_id = self.local_id(&item_id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection
             .lock()
@@ -121,6 +125,6 @@ impl VaultSession {
             .create_document(&file_name, &data, folder_id)
             .await?;
         self.install_if_current(&connection, decrypted)?;
-        Ok(id)
+        Ok(self.qualify(&id))
     }
 }

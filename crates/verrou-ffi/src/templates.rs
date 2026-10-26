@@ -172,7 +172,7 @@ impl VaultSession {
     /// hides passwords refuses it.
     pub fn wifi_qr_code(&self, id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             if item.template() != Some(Template::Wifi) {
                 return Err(VerrouError::NotFound);
             }

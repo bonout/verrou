@@ -191,6 +191,7 @@ impl VaultSession {
         collection_ids: Vec<String>,
         progress: Box<dyn BulkProgress>,
     ) -> Result<ShareResult, VerrouError> {
+        let ids = self.local_ids(&ids)?;
         let connection = self.sharing_connection()?;
         self.with_vault(|v| {
             for id in &ids {
@@ -236,6 +237,7 @@ impl VaultSession {
         ids: Vec<String>,
         progress: Box<dyn BulkProgress>,
     ) -> Result<UnshareResult, VerrouError> {
+        let ids = self.local_ids(&ids)?;
         let connection = self.sharing_connection()?;
         self.with_vault(|v| {
             for id in &ids {
@@ -255,14 +257,7 @@ impl VaultSession {
             self.rename_use(from, to);
         }
         let result = UnshareResult {
-            moved: outcome
-                .moved
-                .iter()
-                .map(|(from, to)| IdMapping {
-                    temporary: from.clone(),
-                    server: to.clone(),
-                })
-                .collect(),
+            moved: self.id_mappings(outcome.moved.iter().cloned()),
             not_shared: count(Skipped::NotShared),
             read_only: count(Skipped::ReadOnly),
             passwords_hidden: count(Skipped::PasswordsHidden),

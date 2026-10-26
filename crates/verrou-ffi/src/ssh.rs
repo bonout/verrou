@@ -48,6 +48,6 @@ impl VaultSession {
             .create_ssh_key(name, folder_id, key)
             .await?;
         self.install_if_current(&connection, decrypted)?;
-        Ok(id)
+        Ok(self.qualify(&id))
     }
 }

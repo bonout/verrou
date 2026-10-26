@@ -25,7 +25,9 @@ struct PinnedCodeEntity: AppEntity {
 
 struct PinnedCodeQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [PinnedCodeEntity] {
-        PinnedCodes.all.filter { identifiers.contains($0.id) }.map(PinnedCodeEntity.init)
+        // A configuration saved before ids carried the account's tag still names
+        // its code by the plain id.
+        PinnedCodes.all.filter { code in identifiers.contains { ItemID.same($0, code.id) } }.map(PinnedCodeEntity.init)
     }
 
     func suggestedEntities() async throws -> [PinnedCodeEntity] {

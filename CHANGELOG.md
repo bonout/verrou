@@ -7,6 +7,17 @@ tagging (docs/RELEASING.md).
 ## Unreleased
 
 **Under the hood**
+- Item identifiers now say which account they belong to (`<tag>:<id>`), to
+  prepare for several accounts. Nothing changes on screen, and links,
+  Shortcuts, widgets, Watch complications and the terminal's
+  `verrou://<id>/…` references made before keep working. What you will notice
+  once after the update: the **AutoFill suggestions are refreshed** at the
+  first unlock (the list the system keeps is replaced, not added to), the
+  **pinned one-time codes** are rewritten at the first unlock, and the
+  approvals the browser and the terminal had been given (kept five minutes,
+  in memory) are gone, as after any restart of Verrou, so each is asked once
+  more. The 5-minute "AutoFill without Face ID" session is now kept per
+  account (the old keychain item is deleted).
 - Verrou's files are now laid out for several accounts: a registry
   (`accounts.json`) and one folder per account (`accounts/<tag>/`). Nothing
   changes on screen, and you don't sign in again: the first launch after the

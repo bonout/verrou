@@ -35,6 +35,8 @@ struct FakeBackend {
     lock_while_confirming: AtomicBool,
     /// What the backend answers to `approval_scope`, for any purpose.
     scope: Mutex<ApprovalScope>,
+    /// The account's tag, as `VaultSession` qualifies ids with it.
+    tag: Option<&'static str>,
 }
 
 impl Backend for FakeBackend {
@@ -124,6 +126,30 @@ impl Backend for FakeBackend {
 
     fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
         *self.scope.lock().unwrap()
+    }
+
+    fn qualify(&self, id: &str) -> String {
+        self.tag
+            .map_or_else(|| id.to_owned(), |tag| format!("{tag}:{id}"))
+    }
+
+    fn local_id(&self, id: &str) -> Option<String> {
+        let Some(tag) = self.tag else {
+            return Some(id.to_owned());
+        };
+        match id.split_once(':') {
+            Some((prefix, rest)) if prefix == tag => Some(rest.to_owned()),
+            // Another account's tag (six characters of `a-z2-7`).
+            Some((prefix, _))
+                if prefix.len() == 6
+                    && prefix
+                        .bytes()
+                        .all(|b| matches!(b, b'a'..=b'z' | b'2'..=b'7')) =>
+            {
+                None
+            }
+            _ => Some(id.to_owned()),
+        }
     }
 }
 
@@ -279,6 +305,18 @@ fn start_with(
     mpsc::Receiver<PairingRequest>,
     std::path::PathBuf,
 ) {
+    start_tagged(items, None)
+}
+
+fn start_tagged(
+    items: Vec<Item>,
+    tag: Option<&'static str>,
+) -> (
+    Bridge,
+    Arc<FakeBackend>,
+    mpsc::Receiver<PairingRequest>,
+    std::path::PathBuf,
+) {
     let (sender, receiver) = mpsc::channel();
     let backend = Arc::new(FakeBackend {
         vault: Mutex::new(Vault::new(items)),
@@ -290,6 +328,7 @@ fn start_with(
         confirmations: Mutex::new(Vec::new()),
         lock_while_confirming: AtomicBool::new(false),
         scope: Mutex::new(ApprovalScope::FiveMinutes),
+        tag,
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -1033,4 +1072,119 @@ fn approval_scopes_for_ssh_keys() {
     );
     // The extension revoked: its approvals go with it.
     let _ = std::fs::remove_file(file);
+}
+
+/// With a tagged account the replies carry `"<tag>:<id>"`; the requests are
+/// taken with the account's tag, without any (an older extension or
+/// terminal), and refused with another account's.
+#[test]
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
+fn ids_are_qualified_in_replies_and_both_forms_are_accepted() {
+    let (bridge, backend, pairings, _file) = start_tagged(
+        vec![github(), banque(), visa(), me(), ssh_item(&test_key())],
+        Some("k3f7qa"),
+    );
+    backend.approve.store(true, Ordering::SeqCst);
+    let mut browser = paired(&bridge, &pairings, "browser");
+
+    let suggestions =
+        browser.request(&json!({ "cmd": "suggest", "url": "https://github.com/login" }));
+    assert_eq!(suggestions["items"][0]["id"], "k3f7qa:github");
+    let found = browser.request(&json!({ "cmd": "search_logins", "query": "git" }));
+    assert_eq!(found["items"][0]["id"], "k3f7qa:github");
+    let forms = browser.request(&json!({ "cmd": "forms", "url": "https://boutique.example/p" }));
+    assert_eq!(forms["cards"][0]["id"], "k3f7qa:visa");
+    assert_eq!(forms["identities"][0]["id"], "k3f7qa:moi");
+
+    // The same item, asked for with the tag, without, and with another's.
+    let fill =
+        |item: &str| json!({ "cmd": "fill", "url": "https://github.com/login", "item": item });
+    for item in ["k3f7qa:github", "github"] {
+        let filled = browser.request(&fill(item));
+        assert_eq!(filled["result"], "credentials", "{item}");
+        assert_eq!(filled["password"], "hunter2");
+    }
+    let foreign = browser.request(&fill("zzzzzz:github"));
+    assert_eq!(foreign["result"], "denied");
+    assert_eq!(foreign["reason"], "item not found");
+    assert!(foreign.get("password").is_none());
+    // A colon that is not a tag's stays part of the id: no such item.
+    assert_eq!(browser.request(&fill("git:hub"))["result"], "denied");
+
+    // Forms and site linking route the same way.
+    let card = |item: &str| json!({ "cmd": "fill_form", "url": "https://boutique.example/", "item": item });
+    assert_eq!(browser.request(&card("k3f7qa:visa"))["result"], "form");
+    assert_eq!(browser.request(&card("visa"))["result"], "form");
+    let refused = browser.request(&card("zzzzzz:visa"));
+    assert_eq!(refused["result"], "denied");
+    assert!(refused.get("number").is_none());
+    let link =
+        json!({ "cmd": "link_site", "url": "https://github.example/", "item": "zzzzzz:github" });
+    assert_eq!(browser.request(&link)["result"], "denied");
+
+    // The approval is asked about the account's own id.
+    let asked = backend.confirmations.lock().unwrap().clone();
+    assert!(asked.iter().all(|c| !c.item.contains(':')), "{asked:?}");
+
+    // A save names its item with the tag too.
+    let saved = browser.request(&json!({
+        "cmd": "save", "url": "https://banque.fr/", "username": "camille",
+        "password": "autre-mot-de-passe", "item": "k3f7qa:banque",
+    }));
+    assert_eq!(saved["result"], "saved");
+    assert_eq!(saved["item"], "k3f7qa:banque");
+    let check = browser.request(&json!({
+        "cmd": "check", "url": "https://banque.fr/", "username": "camille", "password": "autre",
+    }));
+    assert_eq!(check["item"]["id"], "k3f7qa:banque");
+}
+
+/// The terminal, same rules.
+#[test]
+#[allow(clippy::too_many_lines)] // a complete walkthrough, readable in one go
+fn the_terminal_gets_qualified_ids_and_sends_either_form() {
+    let (bridge, backend, pairings, _file) = start_tagged(
+        vec![github(), banque(), ssh_item(&test_key())],
+        Some("k3f7qa"),
+    );
+    backend.approve.store(true, Ordering::SeqCst);
+    let mut cli = paired(&bridge, &pairings, "cli");
+    let found = cli.request(&json!({ "cmd": "vault_search", "query": "banq" }));
+    assert_eq!(found["items"][0]["id"], "k3f7qa:banque");
+    for query in ["k3f7qa:banque", "banque", "Banque"] {
+        let item = cli.request(&json!({ "cmd": "vault_item", "query": query }));
+        assert_eq!(item["result"], "item", "{query}");
+        assert_eq!(item["item"]["id"], "k3f7qa:banque");
+    }
+    let other = cli.request(&json!({ "cmd": "vault_item", "query": "zzzzzz:banque" }));
+    assert_eq!(other["result"], "denied");
+    for item in ["k3f7qa:banque", "banque"] {
+        let secret = cli.request(&json!({ "cmd": "reveal", "item": item, "field": "password" }));
+        assert_eq!(secret["value"], "coffre-fort", "{item}");
+    }
+    let secret =
+        cli.request(&json!({ "cmd": "reveal", "item": "zzzzzz:banque", "field": "password" }));
+    assert_eq!(secret["result"], "denied");
+    assert_eq!(secret["reason"], "item not found");
+    assert_eq!(
+        cli.request(&json!({ "cmd": "totp", "item": "zzzzzz:banque" }))["result"],
+        "denied"
+    );
+    let code = cli.request(&json!({ "cmd": "totp", "item": "k3f7qa:banque" }));
+    assert_eq!(code["result"], "code");
+    let edit = cli.request(&json!({
+        "cmd": "item_edit", "item": "zzzzzz:banque",
+        "changes": { "title": "Pirate" },
+    }));
+    assert_eq!(edit["result"], "denied");
+    let keys = cli.request(&json!({ "cmd": "ssh_keys" }));
+    assert_eq!(keys["keys"][0]["item"], "k3f7qa:cle-ssh");
+}
+
+fn test_key() -> PrivateKey {
+    PrivateKey::random(
+        &mut getrandom::rand_core::UnwrapErr(getrandom::SysRng),
+        Algorithm::Ed25519,
+    )
+    .unwrap()
 }

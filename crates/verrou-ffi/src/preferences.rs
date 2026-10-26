@@ -399,8 +399,13 @@ impl VaultSession {
     /// How long the terminal's approval of this SSH key holds, as chosen on
     /// this device (five minutes if never changed).
     pub fn ssh_approval_scope(&self, id: String) -> SshApprovalScope {
+        // The file is keyed by the account's own ids; an id of another
+        // account gets the default, never that account's setting.
+        let Ok(id) = self.local_id(&id) else {
+            return SshApprovalScope::default();
+        };
         self.load_ssh_approvals()
-            .get(&id)
+            .get(id)
             .copied()
             .unwrap_or_default()
     }
@@ -413,6 +418,7 @@ impl VaultSession {
         id: String,
         scope: SshApprovalScope,
     ) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let is_key = self.with_vault(|v| Ok(v.get(&id).map(|i| i.kind == ItemKind::SshKey)))?;
         if is_key != Some(true) {
             return Err(VerrouError::Invalid {
@@ -453,10 +459,10 @@ impl VaultSession {
     /// a one-time code, opening the site).
     pub fn record_item_use(&self, id: String) {
         if self
-            .with_vault(|v| Ok(v.get(&id).is_some()))
+            .with_vault(|v| Ok(v.get(self.local_id(&id)?).is_some()))
             .unwrap_or(false)
         {
-            self.record_use(&id);
+            self.record_use(self.local_id(&id).unwrap_or_default());
         }
     }
 }

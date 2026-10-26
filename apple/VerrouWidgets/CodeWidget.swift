@@ -68,7 +68,7 @@ struct CodeProvider: AppIntentTimelineProvider {
         guard case .codes(let codes) = PinnedCodes.read() else {
             return [CodeEntry(date: now, content: .unavailable)]
         }
-        let chosen = configuration.code.map { entity in codes.first { $0.id == entity.id } } ?? codes.first
+        let chosen = configuration.code.map { entity in codes.first { ItemID.same($0.id, entity.id) } } ?? codes.first
         guard let pinned = chosen else { return [CodeEntry(date: now, content: .nothingPinned)] }
         var entries: [CodeEntry] = []
         var moment = now

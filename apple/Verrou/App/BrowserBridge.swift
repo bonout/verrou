@@ -200,7 +200,7 @@ final class BrowserBridge {
         // Already approved on the iPhone with the unlock: "unlock and read
         // this item".
         if purpose == .reveal, let grant = unlockGrant, grant.until > Date(),
-           grant.item == item || grant.item.localizedCaseInsensitiveCompare(title) == .orderedSame {
+           ItemID.same(grant.item, item) || grant.item.localizedCaseInsensitiveCompare(title) == .orderedSame {
             unlockGrant = nil
             if model.session.needsConfirmation(id: item) { model.session.authorizeItem(id: item) }
             model.extendRemoteSession()

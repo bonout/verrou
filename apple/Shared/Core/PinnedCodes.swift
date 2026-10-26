@@ -250,15 +250,18 @@ enum PinnedCodes {
         return []
     }
 
+    /// A pinned code by its item's id, qualified or not (`ItemID`): widgets,
+    /// Shortcuts and the Watch may still hold the id from before it carried
+    /// the account's tag.
     static func code(id: String) -> PinnedCode? {
-        all.first { $0.id == id }
+        all.first { ItemID.same($0.id, id) }
     }
 
     /// Adds or replaces an item's code (kept in pinning order).
     @discardableResult
     static func save(_ code: PinnedCode) -> Bool {
         var codes = all
-        if let index = codes.firstIndex(where: { $0.id == code.id }) {
+        if let index = codes.firstIndex(where: { ItemID.same($0.id, code.id) }) {
             codes[index] = code
         } else {
             codes.append(code)
@@ -269,8 +272,8 @@ enum PinnedCodes {
     @discardableResult
     static func remove(id: String) -> Bool {
         let codes = all
-        guard codes.contains(where: { $0.id == id }) else { return true }
-        return replace(with: codes.filter { $0.id != id })
+        guard codes.contains(where: { ItemID.same($0.id, id) }) else { return true }
+        return replace(with: codes.filter { !ItemID.same($0.id, id) })
     }
 
     /// Writes the whole list (an empty list deletes the keychain item).

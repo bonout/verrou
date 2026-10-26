@@ -152,6 +152,7 @@ impl VaultSession {
         action: BulkItemAction,
         progress: Box<dyn BulkProgress>,
     ) -> Result<BulkResult, VerrouError> {
+        let ids = self.local_ids(&ids)?;
         let Some(connection) = self.current_connection() else {
             return Err(if self.is_unlocked() {
                 VerrouError::Invalid {

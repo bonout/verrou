@@ -1109,6 +1109,27 @@ private container of the ad hoc Mac):
   never the other way, and neither is held during a network call (the iOS
   `0xdead10cc` rule). A test checks that a store writes nothing in another
   account's folder or at the root.
+- **Item identifiers carry the account**: every item id a session hands to
+  the apps, the AutoFill extension, the bridge (browser extension, terminal)
+  and the system's identity store is `<tag>:<id>`, and every entry point that
+  takes an id goes through one function (`VaultSession::local_id`) that
+  strips the tag and checks it: an id with another account's tag is refused
+  (`NotFound`, or ignored where the call cannot fail) and never looked up,
+  even if the same uuid were in this vault. An id without a tag is taken as
+  the session's own, because the system's identity store, an older
+  browser extension or terminal, a Shortcut and a widget may still hold ids
+  from before; that tolerance gives access to nothing: the id is looked up
+  in this account's vault only, after the same unlock and confirmations as
+  any other. Nothing on disk changes: the account folder's own files
+  (`usage.json`, `ssh-approvals.json`, the passkey tickets, the offline
+  queue) keep the plain ids, since each lives in one account's folder.
+  Folders, organizations, collections, Sends and attachments keep their
+  plain ids. The bridge translates at its two edges (`verrou-bridge`
+  `ids.rs`): the ids of a command become the vault's own, the ids of a reply
+  are qualified, so the extension and the terminal, which treat ids as opaque
+  strings, are unchanged; the approvals it remembers are keyed by the plain
+  id. The tag is not a secret and reveals nothing about the account (see
+  "Tag").
 - **Migration of the existing account** (no new sign-in): `Registry::open` in
   the Rust core, under the root lock, so the app, the iPhone extension and
   the Mac extension all share it, and whichever runs first after an update
@@ -1215,8 +1236,10 @@ above; what changes:
   `CODE_SIGNING_ALLOWED=NO` build has no entitlement: the app falls back to
   its private folder, and the extension doesn't see the vault. The
   `app.verrou.shared` keychain group (the default group of the app and its
-  extensions) only holds the AutoFill session (5 minutes), the last filled
-  login (90 s) and the pinned one-time codes (see "Widgets and Shortcuts").
+  extensions) only holds the AutoFill session (5 minutes, one keychain item
+  per account, `user-key.<tag>`; the single item of earlier versions is
+  deleted at first use), the last filled login (90 s) and the pinned
+  one-time codes (see "Widgets and Shortcuts").
 
 ### Scanning a QR code (one-time codes)
 
@@ -1273,8 +1296,10 @@ Watch" on an item's page (`Shared/Core/PinnedCodes.swift`,
   in the trash), **never a protected item** ("re-ask for the master
   password"), nor an item whose organization hides passwords; the account's
   vault only (not the demo vault).
-- **What is kept**: per pinned item, its identifier, title, first site and
-  the code's parameters (decoded seed, algorithm, digits, period), with the
+- **What is kept**: per pinned item, its identifier (qualified, `<tag>:<id>`;
+  a code pinned before that keeps its plain id until the next reload, which
+  rewrites it, and widgets and Shortcuts find it either way), title, first
+  site and the code's parameters (decoded seed, algorithm, digits, period), with the
   item's revision. Never a password, never a key of the vault.
 - **Where**: one item of this device's keychain (`app.verrou.shared`
   group), `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, not
@@ -1469,7 +1494,7 @@ processes that would each rewrite the offline changes queue
 and rewrites it whole. Chosen approach:
 
 - **The extension opens the folder as a guest** (`Store::guest`,
-  `VaultSession::for_autofill`): it reads the app's cache and queue (to also
+  `Accounts::for_autofill`): it reads the app's cache and queue (to also
   fill what was changed offline), but never sends the queue and never writes
   it (writes of `outbox.json` have no effect as a guest, sending is cut off
   at the source).

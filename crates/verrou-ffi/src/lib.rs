@@ -44,6 +44,7 @@ use verrou_core::totp::Totp;
 use verrou_core::{FieldKind, Filter, Item, ItemKind, ItemState, SecretString, Sort, Vault, mock};
 
 pub use accounts::{AccountEntry, Accounts};
+pub(crate) use ids::split_item_id;
 pub use preferences::{FolderMatchRule, MatchSettingsView, UriMatchRule};
 use verrou_vaultwarden::security_key::{SecurityKeyStatus, SigningSession};
 use verrou_vaultwarden::unlock_keys::{self, EnrolledKey};
@@ -61,6 +62,7 @@ mod autofill;
 mod bulk;
 mod conditional;
 mod emergency;
+mod ids;
 mod import;
 mod members;
 mod otp_scan;
@@ -943,6 +945,11 @@ pub struct VaultSession {
     /// Organizations (shared vaults) and collections of the open vault.
     organizations: RwLock<Vec<Organization>>,
     store: Option<Store>,
+    /// The account's tag (`Accounts::session`): every item id this session
+    /// hands out is `"<tag>:<id>"`, and every id it receives goes through
+    /// `local_id`. `None` for a session outside the registry (the mock
+    /// vault, tests): ids stay as the vault has them.
+    tag: Option<String>,
     /// Open Vaultwarden vault. The outer lock is held only for an instant:
     /// `lock()` must never wait for a sync in progress.
     connection: Mutex<Option<Arc<tokio::sync::Mutex<Connection>>>>,
@@ -1032,12 +1039,13 @@ impl Drop for PendingConfirmation<'_> {
 impl VaultSession {
     /// Session tied to the account folder (`with_storage`), or opened as a
     /// guest by the autofill extension (`for_autofill`).
-    fn with_store(store: Store) -> Arc<Self> {
+    fn with_store(store: Store, tag: Option<String>) -> Arc<Self> {
         Arc::new(Self {
             vault: RwLock::new(None),
             folders: RwLock::new(Vec::new()),
             organizations: RwLock::new(Vec::new()),
             store: Some(store),
+            tag,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
             security_key: Mutex::new(None),
@@ -1070,6 +1078,44 @@ impl VaultSession {
 
     fn item<'v>(vault: &'v Vault, id: &str) -> Result<&'v Item, VerrouError> {
         vault.get(id).ok_or(VerrouError::NotFound)
+    }
+
+    /// The id as this session hands it out: `"<tag>:<id>"` (the id itself
+    /// for a session without a tag).
+    pub(crate) fn qualify(&self, id: &str) -> String {
+        match &self.tag {
+            Some(tag) => format!("{tag}:{id}"),
+            None => id.to_owned(),
+        }
+    }
+
+    /// The vault's own id for an id received from outside: the ONE place
+    /// that strips and checks the account tag, for every entry point that
+    /// takes an item id.
+    ///
+    /// - `"<this tag>:<id>"` gives `<id>`;
+    /// - `"<another tag>:<id>"` is `NotFound` (fails closed: an id of another
+    ///   account never reaches this vault, even if the same uuid were in it);
+    /// - an unqualified id is this session's own and is accepted (identities
+    ///   the system still holds from before the update, an older browser
+    ///   extension or terminal, bridge clients that kept an id).
+    pub(crate) fn local_id<'a>(&self, id: &'a str) -> Result<&'a str, VerrouError> {
+        split_item_id(self.tag.as_deref(), id)
+    }
+
+    /// `local_id` for a list: one foreign id refuses the whole list.
+    pub(crate) fn local_ids(&self, ids: &[String]) -> Result<Vec<String>, VerrouError> {
+        ids.iter()
+            .map(|id| self.local_id(id).map(str::to_owned))
+            .collect()
+    }
+
+    /// An item summary as the apps see it (qualified id).
+    fn summary(&self, item: &Item) -> ItemSummary {
+        ItemSummary {
+            id: self.qualify(&item.id),
+            ..summary(item)
+        }
     }
 
     fn store(&self) -> Result<&Store, VerrouError> {
@@ -1343,6 +1389,56 @@ impl VaultSession {
         })
     }
 
+    /// The breached logins among `candidates`, with the number of
+    /// appearances `counts` gives each (same order).
+    pub(crate) fn breached_passwords(
+        &self,
+        vault: &Vault,
+        candidates: &[(String, SecretString)],
+        counts: impl IntoIterator<Item = u64>,
+    ) -> Vec<BreachedPassword> {
+        candidates
+            .iter()
+            .zip(counts)
+            .filter(|(_, count)| *count > 0)
+            .filter_map(|((id, _), count)| {
+                vault.get(id).map(|i| BreachedPassword {
+                    item: self.summary(i),
+                    count,
+                })
+            })
+            .collect()
+    }
+
+    /// Id changes (`from`, `to`) as the apps see them: both qualified.
+    pub(crate) fn id_mappings(
+        &self,
+        pairs: impl IntoIterator<Item = (String, String)>,
+    ) -> Vec<IdMapping> {
+        pairs
+            .into_iter()
+            .map(|(from, to)| IdMapping {
+                temporary: self.qualify(&from),
+                server: self.qualify(&to),
+            })
+            .collect()
+    }
+
+    /// Session on a bare folder, without an account tag: ids stay plain.
+    /// Not exported: the apps go through `Accounts::session`, which tags
+    /// every id. Integration tests of this crate only.
+    #[doc(hidden)]
+    pub fn with_storage(data_dir: String) -> Arc<Self> {
+        Self::with_store(Store::new(data_dir), None)
+    }
+
+    /// `with_storage` opened as a guest (the extension's view). Not
+    /// exported either: the extension goes through `Accounts::for_autofill`.
+    #[doc(hidden)]
+    pub fn for_autofill(data_dir: String) -> Arc<Self> {
+        Self::with_store(Store::new(data_dir).guest(), None)
+    }
+
     /// The summary, marked if it is waiting for the server.
     fn summary_of(&self, item: &Item) -> ItemSummary {
         ItemSummary {
@@ -1352,7 +1448,7 @@ impl VaultSession {
                 .unwrap_or_else(PoisonError::into_inner)
                 .contains(&item.id),
             last_used: self.last_used(&item.id),
-            ..summary(item)
+            ..self.summary(item)
         }
     }
 
@@ -1418,17 +1514,28 @@ impl VaultSession {
     }
 }
 
+/// What the app is shown as the "item" of a confirmation: a real item id is
+/// qualified; what is not an item id is left as it is. A creation names no
+/// item yet (its "item" is the title); a passkey for a site without a login
+/// is `passkey:<site>`; a site link is `"<id> <host>"` (only the id is
+/// qualified).
+pub(crate) fn shown_item(purpose: Purpose, item: &str, qualify: &dyn Fn(&str) -> String) -> String {
+    match purpose {
+        Purpose::Create => item.to_owned(),
+        Purpose::Passkey if item.starts_with("passkey:") => item.to_owned(),
+        Purpose::LinkSite => match item.split_once(' ') {
+            Some((id, host)) => format!("{} {host}", qualify(id)),
+            None => qualify(item),
+        },
+        _ => qualify(item),
+    }
+}
+
 /// Vaultwarden connection. These methods are async on the Swift side: the
 /// network and password derivation (hundreds of milliseconds) never block
 /// the interface.
 #[uniffi::export(async_runtime = "tokio")]
 impl VaultSession {
-    /// Session tied to an account, whose files live in `data_dir`.
-    #[uniffi::constructor]
-    pub fn with_storage(data_dir: String) -> Arc<Self> {
-        Self::with_store(Store::new(data_dir))
-    }
-
     /// The registered account, if there is one.
     pub fn account(&self) -> Option<AccountInfo> {
         let account = self.store.as_ref()?.load_account().ok()??;
@@ -1613,6 +1720,7 @@ impl VaultSession {
     /// ⚠️ Prefilled draft to edit an item, secrets included: only when the
     /// user opens the edit screen.
     pub async fn edit_draft(&self, id: String) -> Result<ItemDraft, VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         self.with_vault(|v| {
             let item = Self::item(v, &id)?;
             if !item.is_writable() {
@@ -1635,10 +1743,11 @@ impl VaultSession {
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let (id, decrypted) = connection.lock().await.create(draft.into()).await?;
         self.install_written(&connection, decrypted)?;
-        Ok(id)
+        Ok(self.qualify(&id))
     }
 
     pub async fn update_item(&self, id: String, draft: ItemDraft) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.update(&id, draft.into()).await?;
         self.install_written(&connection, decrypted)
@@ -1646,6 +1755,7 @@ impl VaultSession {
 
     /// Moves the item to the server's trash (restorable from the web vault).
     pub async fn trash_item(&self, id: String) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.trash(&id).await?;
         self.install_if_current(&connection, decrypted)
@@ -1653,6 +1763,7 @@ impl VaultSession {
 
     /// Takes the item out of the trash.
     pub async fn restore_item(&self, id: String) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.restore(&id).await?;
         self.install_if_current(&connection, decrypted)
@@ -1660,12 +1771,14 @@ impl VaultSession {
 
     /// Archives the item (or takes it out of the archive).
     pub async fn set_archived(&self, id: String, archived: bool) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.set_archived(&id, archived).await?;
         self.install_if_current(&connection, decrypted)
     }
 
     pub async fn set_favorite(&self, id: String, favorite: bool) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.set_favorite(&id, favorite).await?;
         self.install_if_current(&connection, decrypted)
@@ -1674,6 +1787,7 @@ impl VaultSession {
     /// Links the login to a Mac app: adds `macapp://<bundle_id>` to its
     /// sites, synced like the rest. Returns `false` if it already was.
     pub async fn link_to_app(&self, id: String, bundle_id: String) -> Result<bool, VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let uri = apps::mac_app_uri(&bundle_id).ok_or_else(|| VerrouError::Invalid {
             message: "invalid app identifier".to_owned(),
         })?;
@@ -1714,19 +1828,8 @@ impl VaultSession {
         })?;
         let passwords: Vec<&str> = candidates.iter().map(|(_, p)| p.expose()).collect();
         let counts = verrou_vaultwarden::breach::pwned_counts(&passwords).await?;
-        let mut breached: Vec<BreachedPassword> = self.with_vault(|v| {
-            Ok(candidates
-                .iter()
-                .zip(counts)
-                .filter(|(_, count)| *count > 0)
-                .filter_map(|((id, _), count)| {
-                    v.get(id).map(|i| BreachedPassword {
-                        item: summary(i),
-                        count,
-                    })
-                })
-                .collect())
-        })?;
+        let mut breached =
+            self.with_vault(|v| Ok(self.breached_passwords(v, &candidates, counts)))?;
         self.remember_breached(&candidates, &breached);
         breached.sort_by_key(|b| std::cmp::Reverse(b.count));
         Ok(breached)
@@ -1784,12 +1887,18 @@ impl VaultSession {
     /// An item's current id: the one the server gave to an item created
     /// offline, once pushed (to keep the selection).
     pub fn resolve_item_id(&self, id: String) -> String {
-        self.remapped
+        // An id of another account is not ours to resolve: back as it came.
+        let Ok(local) = self.local_id(&id) else {
+            return id;
+        };
+        let current = self
+            .remapped
             .read()
             .unwrap_or_else(PoisonError::into_inner)
-            .get(&id)
+            .get(local)
             .cloned()
-            .unwrap_or(id)
+            .unwrap_or_else(|| local.to_owned());
+        self.qualify(&current)
     }
 
     /// Report of the push of offline changes since the last call (after a
@@ -1807,11 +1916,7 @@ impl VaultSession {
                 .into_iter()
                 .map(|(title, reason)| format!("\"{title}\": {reason}"))
                 .collect(),
-            remapped: report
-                .remapped
-                .into_iter()
-                .map(|(temporary, server)| IdMapping { temporary, server })
-                .collect(),
+            remapped: self.id_mappings(report.remapped),
         }
     }
 
@@ -1853,6 +1958,7 @@ impl VaultSession {
             folders: RwLock::new(Vec::new()),
             organizations: RwLock::new(Vec::new()),
             store: None,
+            tag: None,
             connection: Mutex::new(None),
             pending: Mutex::new(None),
             security_key: Mutex::new(None),
@@ -1982,14 +2088,23 @@ impl VaultSession {
 
     /// The item is protected and was not confirmed recently: its secrets
     /// wait for a confirmation (`authorize_item`).
+    ///
+    /// An id of another account fails closed: it needs a confirmation.
     pub fn needs_confirmation(&self, id: String) -> bool {
-        self.with_vault(|v| Ok(!self.is_authorized(Self::item(v, &id)?)))
+        let Ok(local) = self.local_id(&id) else {
+            return true;
+        };
+        self.with_vault(|v| Ok(!self.is_authorized(Self::item(v, local)?)))
             .unwrap_or(false)
     }
 
     /// The user just confirmed (Touch ID or master password) for this
     /// protected item: its secrets are accessible for 5 minutes.
     pub fn authorize_item(&self, id: String) {
+        // An id of another account authorizes nothing here.
+        let Ok(id) = self.local_id(&id).map(str::to_owned) else {
+            return;
+        };
         self.authorized
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -2026,7 +2141,7 @@ impl VaultSession {
                     .into_iter()
                     .map(|hit| SearchHit {
                         position: hit.index as u32,
-                        id: v.items()[hit.index].id.clone(),
+                        id: self.qualify(&v.items()[hit.index].id),
                         highlights: hit.title_indices,
                     })
                     .collect(),
@@ -2036,7 +2151,7 @@ impl VaultSession {
 
     pub fn detail(&self, id: String) -> Result<ItemDetail, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             Ok(ItemDetail {
                 summary: self.summary_in(v, item),
                 ..detail(item)
@@ -2047,7 +2162,7 @@ impl VaultSession {
     /// Value of a secret field (or `notes`), at the user's request.
     pub fn reveal(&self, id: String, field_id: String) -> Result<String, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             self.require_authorized(item)?;
             if field_id == "notes" {
                 return item
@@ -2067,7 +2182,7 @@ impl VaultSession {
 
     pub fn totp(&self, id: String, unix_time: u64) -> Result<TotpView, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             self.require_authorized(item)?;
             let field = item
                 .field_of_kind(FieldKind::Totp)
@@ -2138,7 +2253,10 @@ impl VaultSession {
         self.with_vault(|v| {
             let report = verrou_core::audit::audit(v);
             let summaries = |ids: &[String]| -> Vec<ItemSummary> {
-                ids.iter().filter_map(|id| v.get(id)).map(summary).collect()
+                ids.iter()
+                    .filter_map(|id| v.get(id))
+                    .map(|i| self.summary(i))
+                    .collect()
             };
             Ok(AuditReport {
                 reused: report.reused.iter().map(|g| summaries(g)).collect(),
@@ -2147,7 +2265,7 @@ impl VaultSession {
                     .iter()
                     .filter_map(|(id, bits)| {
                         v.get(id).map(|i| WeakPassword {
-                            item: summary(i),
+                            item: self.summary(i),
                             bits: *bits,
                         })
                     })
@@ -2163,7 +2281,7 @@ impl VaultSession {
         self.with_vault(|v| {
             Ok(v.suggestions_for(&page_url)
                 .into_iter()
-                .map(summary)
+                .map(|i| self.summary(i))
                 .collect())
         })
     }
@@ -2175,15 +2293,20 @@ impl VaultSession {
         self.with_vault(|v| {
             Ok(v.app_suggestions(&bundle_id)
                 .into_iter()
-                .map(summary)
+                .map(|i| self.summary(i))
                 .collect())
         })
     }
 
     /// The item is already linked to this app.
     pub fn is_linked_to_app(&self, id: String, bundle_id: String) -> bool {
-        self.with_vault(|v| Ok(apps::matches_app(&Self::item(v, &id)?.urls, &bundle_id)))
-            .unwrap_or(false)
+        self.with_vault(|v| {
+            Ok(apps::matches_app(
+                &Self::item(v, self.local_id(&id)?)?.urls,
+                &bundle_id,
+            ))
+        })
+        .unwrap_or(false)
     }
 
     /// ⚠️ Keystrokes that fill login `id` into the frontmost app: its
@@ -2196,7 +2319,7 @@ impl VaultSession {
         password_only: bool,
     ) -> Result<Vec<AutofillKeystroke>, VerrouError> {
         self.with_vault(|v| {
-            let item = Self::item(v, &id)?;
+            let item = Self::item(v, self.local_id(&id)?)?;
             self.require_authorized(item)?;
             let keys = apps::item_keystrokes(item, submit, password_only).ok_or_else(|| {
                 VerrouError::Invalid {
@@ -2368,7 +2491,8 @@ impl VaultSession {
             .create_shared(draft.into(), &organization_id, &collection_ids)
             .await?;
         self.install_if_current(&connection, decrypted)?;
-        // Created here: not news to announce to this account.
+        // Created here: not news to announce to this account (the account's
+        // own id, not the qualified one).
         if let Some(store) = &self.store {
             let user_id = connection.lock().await.account().user_id.clone();
             let _ = verrou_vaultwarden::activity::acknowledge_items(
@@ -2377,7 +2501,7 @@ impl VaultSession {
                 std::slice::from_ref(&id),
             );
         }
-        Ok(id)
+        Ok(self.qualify(&id))
     }
 
     /// "Share…": moves a personal item into collections of an organization
@@ -2388,6 +2512,7 @@ impl VaultSession {
         organization_id: String,
         collection_ids: Vec<String>,
     ) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         self.with_vault(|v| self.require_authorized(Self::item(v, &id)?))?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection
@@ -2404,6 +2529,7 @@ impl VaultSession {
         id: String,
         collection_ids: Vec<String>,
     ) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection
             .lock()
@@ -2618,8 +2744,11 @@ impl Backend for SessionBackend {
                 )
             })
             .ok();
-        if let Some(title) = confirm {
-            self.delegate.reprompt_requested(item.to_owned(), title);
+        if let Some(title) = confirm
+            && let Some(session) = self.session.upgrade()
+        {
+            self.delegate
+                .reprompt_requested(session.qualify(item), title);
         }
         outcome
     }
@@ -2667,7 +2796,7 @@ impl Backend for SessionBackend {
                         .ok()
                         .flatten()
                         .unwrap_or_default();
-                    self.delegate.vault_changed(id.clone(), title);
+                    self.delegate.vault_changed(session.qualify(&id), title);
                     Some(Ok(id))
                 }
                 Err(VerrouError::Locked) => None,
@@ -2692,6 +2821,19 @@ impl Backend for SessionBackend {
         );
     }
 
+    fn qualify(&self, id: &str) -> String {
+        self.session
+            .upgrade()
+            .map_or_else(|| id.to_owned(), |session| session.qualify(id))
+    }
+
+    fn local_id(&self, id: &str) -> Option<String> {
+        match self.session.upgrade() {
+            Some(session) => session.local_id(id).ok().map(str::to_owned),
+            None => Some(id.to_owned()),
+        }
+    }
+
     fn read(&self, reader: &mut dyn FnMut(&Vault)) -> bool {
         self.session.upgrade().is_some_and(|session| {
             session
@@ -2713,7 +2855,7 @@ impl Backend for SessionBackend {
             return true;
         }
         self.delegate
-            .reprompt_requested(item.id.clone(), item.title.clone());
+            .reprompt_requested(session.qualify(&item.id), item.title.clone());
         false
     }
 
@@ -2737,11 +2879,15 @@ impl Backend for SessionBackend {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(id.clone(), sender);
         let item = request.item.clone();
+        let shown = match self.session.upgrade() {
+            Some(session) => shown_item(request.purpose, &item, &|id| session.qualify(id)),
+            None => item.clone(),
+        };
         self.delegate.confirm_requested(
             id.clone(),
             request.client_name,
             request.purpose.into(),
-            request.item,
+            shown,
             request.title,
             request.site,
             request.reason,
@@ -3174,7 +3320,7 @@ impl VaultSession {
     /// The item's passkeys (site, user, date), without private key.
     pub fn passkeys(&self, id: String) -> Vec<PasskeyInfo> {
         self.with_vault(|v| {
-            Ok(v.passkeys_of(&id)
+            Ok(v.passkeys_of(self.local_id(&id)?)
                 .into_iter()
                 .map(|p| PasskeyInfo {
                     credential_id: p.credential_id.clone(),
@@ -3194,6 +3340,7 @@ impl VaultSession {
         id: String,
         credential_id: String,
     ) -> Result<(), VerrouError> {
+        let id = self.local_id(&id)?.to_owned();
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection
             .lock()

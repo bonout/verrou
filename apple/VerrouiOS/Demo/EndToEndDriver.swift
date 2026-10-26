@@ -918,7 +918,11 @@ final class EndToEndDriver {
 
         let directory = FileManager.default.temporaryDirectory.appending(path: "verrou-e2e-owner-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: directory) }
-        let owner = VaultSession.withStorage(dataDir: directory.path)
+        guard let accounts = try? Accounts.open(root: directory.path),
+              let ownerTag = try? accounts.primaryTag(),
+              let owner = try? accounts.session(tag: ownerTag) else {
+            return check(false, "owner's account folder")
+        }
         var result = try? await owner.login(server: config.server, email: config.email, password: config.password)
         let now = Date().timeIntervalSince1970
         for offset in [0.0, 30.0, 60.0] {

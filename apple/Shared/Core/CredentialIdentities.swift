@@ -13,6 +13,13 @@ import os
 /// code and private key leave the vault only in the extension, after Face ID
 /// or the master password. The store is emptied on sign-out; locking keeps
 /// it (nothing secret, and the suggestions stay useful).
+///
+/// `recordIdentifier` is the item's qualified id (`<tag>:<id>`, `ItemID`), as
+/// the Rust core emits it in `AutofillIdentity.itemId`: the digest below
+/// covers it, so the first publication after the update that introduced the
+/// tag replaces the whole store, and the suggestions the system still holds
+/// with a plain id until then keep working (the core takes an id without a
+/// tag as the account's own).
 enum CredentialIdentities {
     private static let log = Logger(subsystem: "app.verrou", category: "autofill")
     /// Digest of the last published list: nothing to redo if it hasn't

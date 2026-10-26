@@ -25,7 +25,7 @@ use verrou_core::passkey::{self, Passkey};
 use verrou_core::{FieldKind, Item, ItemKind, Vault};
 
 use crate::autofill::{AutofillIdentity, AutofillIdentityKind};
-use crate::{ItemSummary, VaultSession, VerrouError, summary};
+use crate::{ItemSummary, VaultSession, VerrouError};
 use verrou_vaultwarden::Store;
 
 const FILE: &str = "credential-signals.json";
@@ -406,7 +406,7 @@ impl VaultSession {
                     if seen.insert((kind as u8, item.id.clone())) {
                         findings.push(SignalFinding {
                             kind,
-                            item: summary(item),
+                            item: self.summary(item),
                             site,
                             detail,
                             at: entry.at,
@@ -491,9 +491,10 @@ mod tests {
 
     fn temp_session() -> (std::path::PathBuf, std::sync::Arc<VaultSession>) {
         let dir = std::env::temp_dir().join(format!("verrou-signals-{}", uuid::Uuid::new_v4()));
-        let session = VaultSession::with_store(verrou_vaultwarden::Store::new(
-            dir.to_string_lossy().into_owned(),
-        ));
+        let session = VaultSession::with_store(
+            verrou_vaultwarden::Store::new(dir.to_string_lossy().into_owned()),
+            None,
+        );
         (dir, session)
     }
 

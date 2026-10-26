@@ -304,6 +304,19 @@ fn read_export(path: &str) -> Result<Zeroizing<Vec<u8>>, VerrouError> {
 }
 
 impl VaultSession {
+    /// The duplicate groups of `items`, described with qualified ids.
+    pub(crate) fn duplicate_groups(
+        &self,
+        items: &[Item],
+        extras: &HashMap<String, ItemExtras>,
+    ) -> Vec<DuplicateGroupView> {
+        let by_id: HashMap<&str, &Item> = items.iter().map(|i| (i.id.as_str(), i)).collect();
+        duplicates::find_duplicates_with(items, extras)
+            .into_iter()
+            .filter_map(|group| group_view(group, |id| by_id.get(id).map(|i| self.summary_of(i))))
+            .collect()
+    }
+
     fn review(&self, pending: &PendingImport) -> Result<ImportReview, VerrouError> {
         let items = &pending.parsed.items;
         self.with_vault(|vault| {
@@ -491,12 +504,7 @@ impl VaultSession {
             for (id, count) in attachments {
                 extras.entry(id).or_default().attachments = count;
             }
-            Ok(duplicates::find_duplicates_with(vault.items(), &extras)
-                .into_iter()
-                .filter_map(|group| {
-                    group_view(group, |id| vault.get(id).map(|i| self.summary_of(i)))
-                })
-                .collect())
+            Ok(self.duplicate_groups(vault.items(), &extras))
         })
     }
 
@@ -508,6 +516,8 @@ impl VaultSession {
         keep: String,
         others: Vec<String>,
     ) -> Result<MergeReport, VerrouError> {
+        let keep = self.local_id(&keep)?.to_owned();
+        let others = self.local_ids(&others)?;
         let Some(connection) = self.current_connection() else {
             return Err(invalid("mock vault: read-only"));
         };
@@ -535,6 +545,7 @@ impl VaultSession {
     /// Moves these items to the server's trash in one request
     /// (restorable from the web vault), then resyncs.
     pub async fn trash_items(&self, ids: Vec<String>) -> Result<(), VerrouError> {
+        let ids = self.local_ids(&ids)?;
         let connection = self.current_connection().ok_or(VerrouError::Locked)?;
         let decrypted = connection.lock().await.trash_many(&ids).await?;
         self.install_if_current(&connection, decrypted)

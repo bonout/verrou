@@ -95,6 +95,7 @@ fn assert_migrated(root: &Path, files: &BTreeMap<&'static str, Vec<u8>>) -> Stri
     assert_eq!(entry.email, "me@example.org");
     assert_eq!(entry.label, "me@example.org");
     assert_eq!(entry.user_id, "uid-1");
+    assert!(entry.legacy_ids, "the migrated account keeps plain ids");
     assert_eq!(registry.default_tag(), Some(entry.tag.as_str()));
     let dir = registry.account_dir(&entry.tag).unwrap();
     for (name, data) in files {
@@ -637,6 +638,68 @@ fn a_signed_out_device_id_at_the_root_is_kept() {
             .unwrap(),
         device
     );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn legacy_ids_marks_only_the_migrated_account() {
+    let root = temp_root();
+    let files = make_legacy(&root);
+    let migrated = assert_migrated(&root, &files);
+    // A second account, signed in afterwards: qualified ids from the start.
+    let mut registry = Registry::open(&root).unwrap();
+    let added = registry.add_pending().unwrap();
+    registry
+        .commit(
+            &added,
+            &account("https://elsewhere.example", "you@example.org", "uid-2"),
+        )
+        .unwrap();
+    registry.reload().unwrap();
+    assert!(registry.entry(&migrated).unwrap().legacy_ids);
+    assert!(!registry.entry(&added).unwrap().legacy_ids);
+    // The flag is on disk, and a refresh of the entry keeps it.
+    registry
+        .commit(
+            &migrated,
+            &account("https://vault.example", "me@example.org", "uid-1"),
+        )
+        .unwrap();
+    let reopened = Registry::open(&root).unwrap();
+    assert!(reopened.entry(&migrated).unwrap().legacy_ids);
+    assert!(!reopened.entry(&added).unwrap().legacy_ids);
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_registry_without_the_field_reads_false_and_stays_version_one() {
+    let root = temp_root();
+    let files = make_legacy(&root);
+    let tag = assert_migrated(&root, &files);
+    let path = root.join(REGISTRY_FILE);
+    let mut value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(value["version"], 1);
+    assert_eq!(value["accounts"][0]["legacy_ids"], true);
+    value["accounts"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("legacy_ids");
+    fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    let registry = Registry::open(&root).unwrap();
+    assert!(!registry.entry(&tag).unwrap().legacy_ids);
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
+fn a_rebuilt_registry_cannot_tell_a_migrated_account() {
+    // The folder does not say where it came from: a rebuilt entry is
+    // `false` (documented on `Entry::legacy_ids`).
+    let root = temp_root();
+    let files = make_legacy(&root);
+    let tag = assert_migrated(&root, &files);
+    fs::write(root.join(REGISTRY_FILE), "{ not json").unwrap();
+    let registry = Registry::open(&root).unwrap();
+    assert!(!registry.entry(&tag).unwrap().legacy_ids);
     fs::remove_dir_all(&root).unwrap();
 }
 

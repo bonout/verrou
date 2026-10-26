@@ -107,6 +107,15 @@ pub struct Entry {
     /// Unix timestamp.
     pub created: i64,
     pub order: u32,
+    /// The account came from the layout migration of an existing root
+    /// account: its items may still be known by plain ids (identities the
+    /// system holds, browser and terminal clients). Set once, by the
+    /// migration; an account added later, or an entry rebuilt from a folder
+    /// (the folder does not say where it came from), has it `false`.
+    /// Additive: a registry written before this field reads `false`, and the
+    /// registry stays at version 1.
+    #[serde(default)]
+    pub legacy_ids: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -457,7 +466,8 @@ fn finish_migration(
     move_legacy_files(root, tag, steps, notices)?;
     let dir = root.join(ACCOUNTS_DIR).join(tag);
     let mut file = RegistryFile::empty();
-    let entry = entry_from_folder(&dir, tag, 0);
+    let mut entry = entry_from_folder(&dir, tag, 0);
+    entry.legacy_ids = true;
     file.default = Some(tag.to_owned());
     file.accounts.push(entry);
     steps.next()?;
@@ -861,6 +871,7 @@ pub(crate) fn commit_at(root: &Path, tag: &str, account: &Account) -> Result<Reg
                 color: COLORS[order as usize % COLORS.len()].to_owned(),
                 created: unix_now(),
                 order,
+                legacy_ids: false,
             });
             if file.default.is_none() {
                 file.default = Some(tag.to_owned());
@@ -921,6 +932,7 @@ fn entry_from_folder(dir: &Path, tag: &str, order: u32) -> Entry {
         color: COLORS[order as usize % COLORS.len()].to_owned(),
         created: unix_now(),
         order,
+        legacy_ids: false,
     }
 }
 
