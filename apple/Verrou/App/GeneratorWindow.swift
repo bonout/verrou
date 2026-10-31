@@ -40,7 +40,7 @@ private struct StandaloneGeneratorView: View {
             GeneratorView(copy: { value in
                 model.copy(value, label: String(localized: "Password"), secret: true)
                 copied = Toast(message: String(localized: "Password copied"),
-                               detail: String(localized: "Cleared from the clipboard in 90 s"))
+                               detail: Clipboard.clearedLabel)
             }, showsTitle: false)
             if let copied {
                 Label {

@@ -242,7 +242,8 @@ extension AppModel {
                 guard lockState == .unlocked else { return }
                 copy(created.link, label: String(localized: "Send link"), secret: true)
                 sends.selection = created.id
-                sends.notice = String(localized: "Send “\(fields.name)” created: link copied (cleared from the clipboard in 90 s).")
+                let delay = DurationLabel.short(Clipboard.clearDelay)
+                sends.notice = String(localized: "Send “\(fields.name)” created: link copied (cleared from the clipboard in \(delay)).")
             }
             sends.composer = nil
             sends.error = nil
@@ -257,7 +258,8 @@ extension AppModel {
         do {
             let link = try await session.sendLink(id: send.id)
             copy(link, label: String(localized: "Send link"), secret: true)
-            sends.notice = String(localized: "Link of “\(send.name)” copied (cleared from the clipboard in 90 s).")
+            let delay = DurationLabel.short(Clipboard.clearDelay)
+            sends.notice = String(localized: "Link of “\(send.name)” copied (cleared from the clipboard in \(delay)).")
         } catch {
             sends.error = Self.describe(error)
         }

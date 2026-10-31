@@ -1382,7 +1382,7 @@ final class AppModel {
 
     func copy(_ value: String, label: String, secret: Bool, item: String? = nil) {
         clipboard.copy(value, concealed: secret)
-        let detail = [item, secret ? String(localized: "Cleared from the clipboard in 90 s") : nil]
+        let detail = [item, secret ? Clipboard.clearedLabel : nil]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         withAnimation(.snappy) {
             toast = Toast(message: String(localized: "\(label) copied"), detail: detail.isEmpty ? nil : detail)
