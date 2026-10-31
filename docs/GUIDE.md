@@ -780,6 +780,12 @@ the browser extension and the terminal use the Mac's.
 - **Mac and iPhone**: the *Email alias* mode of the generator (*Use as
   Username* fills the editor's username; the iPhone's Generator tab copies
   it), or the **@** button next to a login's username, for its first site.
+- **iPhone keyboard** (iOS 18 and later), like iCloud's *Hide My Email*:
+  in a sign-up form's email field (or any field), touch the field again →
+  *AutoFill* → *Passwords* → *Verrou*. The sheet shows a fresh alias: type
+  the site to start it with its name, then *Insert Alias*. No Face ID: the
+  alias reveals nothing from the vault. Save the login once signed up
+  (Verrou keeps no list of aliases).
 - **Terminal**: `verrou generate alias`.
 
 ```sh
