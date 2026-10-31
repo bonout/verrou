@@ -62,7 +62,7 @@ extension AppModel {
     private func openSharing(items ids: [String], title: String) {
         guard let org = writableOrganizations.first else {
             toast = Toast(message: String(localized: "No shared vault"),
-                          detail: String(localized: "Create an organization (Shared Vaults → New Organization…)"), failure: true)
+                          detail: String(localized: "Create a shared vault (Shared Vaults → New Shared Vault…)"), failure: true)
             return
         }
         let first = org.collections.first { !$0.readOnly }
