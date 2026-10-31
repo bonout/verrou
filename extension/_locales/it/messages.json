@@ -65,10 +65,10 @@
     "message": "nessun pannello"
   },
   "pairRefused": {
-    "message": "Abbinamento rifiutato in Verrou."
+    "message": "Collegamento rifiutato in Verrou."
   },
   "pairBusy": {
-    "message": "È già in corso un abbinamento: riprova tra un momento."
+    "message": "È già in corso un collegamento: riprova tra un momento."
   },
   "pairNoAnswer": {
     "message": "Verrou non risponde. È installato, con \"$SETTING$\" attivato nelle sue impostazioni? ($DETAIL$)",
@@ -271,7 +271,7 @@
     "message": "Passkey salvata in Verrou"
   },
   "popupPairing": {
-    "message": "Abbinamento…"
+    "message": "Collegamento…"
   },
   "popupCheckCode": {
     "message": "Verifica che Verrou mostri lo stesso codice, poi accetta:"

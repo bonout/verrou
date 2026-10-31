@@ -65,10 +65,10 @@
     "message": "kein Tab"
   },
   "pairRefused": {
-    "message": "Kopplung in Verrou abgelehnt."
+    "message": "Verknüpfung in Verrou abgelehnt."
   },
   "pairBusy": {
-    "message": "Eine Kopplung läuft bereits: Versuche es gleich erneut."
+    "message": "Eine Verknüpfung läuft bereits: Versuche es gleich erneut."
   },
   "pairNoAnswer": {
     "message": "Verrou antwortet nicht. Ist es installiert und ist „$SETTING$“ in seinen Einstellungen aktiviert? ($DETAIL$)",
@@ -271,7 +271,7 @@
     "message": "Passkey in Verrou gesichert"
   },
   "popupPairing": {
-    "message": "Koppeln …"
+    "message": "Verknüpfen …"
   },
   "popupCheckCode": {
     "message": "Prüfe, ob Verrou denselben Code anzeigt, und akzeptiere dann:"
