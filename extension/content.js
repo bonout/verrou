@@ -1,10 +1,10 @@
 // In every page (and every frame): spots the sign-in forms and, when Verrou
-// has a login (or a passkey) for this site, shows a pill at the top left of
-// the page, like 1Password: the site, the suggested login, "Sign in" and
-// "✕". "Sign in" fills then submits the form when nothing is left to type
-// (setting in the extension's popup, on by default). Under the pill, the
-// "Other logins" tab unrolls the site's other logins,
-// "Fill with another login…" and, on a sign-up,
+// has a login (or a passkey) for this site, shows a pill beside the field
+// (or at the top of the page), like 1Password: the site, the suggested
+// login, "Sign in" and "✕". "Sign in" fills then submits the form when
+// nothing is left to type (setting in the extension's popup, on by
+// default). Under the pill, the "Other logins" tab (or "More options")
+// unrolls the site's other logins, "Fill with another login…" and, on a sign-up,
 // "Generate a password". On a "new password" field, the pill suggests a
 // strong password; on a payment or address form, a card or an identity.
 // After a form is submitted, a banner at the same place offers to save the
@@ -472,6 +472,7 @@
   const ANNOUNCE_DELAY_MS = 150;
   const NOTICE_MS = 6000;
   const FIELD_TARGET_PX = 24;
+  const SIDE_GAP_PX = 12;
 
   // MARK: Shared style
 
@@ -696,10 +697,12 @@
     return node;
   }
 
-  // MARK: Pill at the top left (and save banner)
+  // MARK: Pill (and save banner)
 
-  // A single host, fixed 16 px from the top left corner, above the page: the
-  // pill, then the save banner below.
+  // A single host, fixed above the page: the pill, then the save banner
+  // below. Beside the pill's field when the page leaves room on its right
+  // (the page's heading and links stay visible), otherwise centered at the
+  // top; each move counts as a new appearance (MIN_SHOWN_MS).
   const ui = {
     host: null,
     root: null,
@@ -707,6 +710,7 @@
     live: null,
     said: null,
     saying: null,
+    spot: null,
 
     ensure() {
       if (this.host) return;
@@ -724,20 +728,45 @@
 
     attach() {
       this.ensure();
-      // Centered at the top of the page, like 1Password's: the host takes
-      // the whole width (without a transform, which the page thus can't
-      // hijack) and lets clicks outside the pill through.
-      pin(this.host, {
-        ...HOST_STYLES, position: "fixed", top: "16px", left: "0", right: "0", bottom: "auto",
-        width: "auto", "pointer-events": "none",
-      });
+      if (!this.host.isConnected) this.place(null);
       attach(this.host);
+    },
+
+    // Centered at the top of the page, like 1Password's: the host takes
+    // the whole width (without a transform, which the page thus can't
+    // hijack) and lets clicks outside the pill through.
+    place(anchor) {
+      const spot = this.beside(anchor) ?? { top: "16px", left: "0", right: "0" };
+      const key = `${spot.top} ${spot.left} ${spot.right}`;
+      if (key === this.spot) return;
+      this.spot = key;
+      pin(this.host, {
+        ...HOST_STYLES, position: "fixed", bottom: "auto", width: "auto", "pointer-events": "none", ...spot,
+      });
+      shownAt.set(this.host, Date.now());
+    },
+
+    beside(anchor) {
+      if (!anchor?.isConnected || !pill.node || typeof innerWidth !== "number" || typeof innerHeight !== "number") return null;
+      const field = anchor.getBoundingClientRect();
+      if (!field.width || field.left < 0 || field.bottom < 0 || field.top > innerHeight) return null;
+      const width = Math.max(...[...this.stack.children].map((node) => node.getBoundingClientRect().width));
+      const capsule = pill.node.querySelector(".capsule")?.getBoundingClientRect().height ?? 0;
+      const left = Math.round(field.right + SIDE_GAP_PX);
+      if (!(width > 0) || !capsule || left + width + 16 > innerWidth) return null;
+      const top = Math.round(Math.max(16, Math.min(field.top + (field.height - capsule) / 2, innerHeight - capsule - 16)));
+      return { top: `${top}px`, left: `${left}px`, right: "auto" };
     },
 
     // Nothing left to show: the host leaves the page.
     sync() {
-      if (!this.host || this.stack.children.length) return;
+      if (!this.host) return;
+      if (this.stack.children.length) {
+        this.place(pill.open ? pill.anchor : null);
+        return;
+      }
       this.host.remove();
+      this.spot = null;
       clearTimeout(this.saying);
       this.live.textContent = "";
       this.said = null;
@@ -846,6 +875,7 @@
       this.node = area;
       // Rendered from the keyboard: the focus stays on the same button.
       if (focused) this.buttons().find((b) => b.getAttribute("data-key") === focused)?.focus();
+      ui.place(this.anchor);
       ui.announce(t("announce", view.title, view.subtitle ?? ""));
     },
 
@@ -1251,7 +1281,7 @@
       const relevant = records.some((r) => !ours(r.target)
         && (r.type !== "childList" || ![...r.addedNodes, ...r.removedNodes].every(ours)));
       if (!relevant) return;
-      badge.place();
+      follow();
       scheduleScan();
     })
     : null;
@@ -1428,6 +1458,7 @@
       if (this.node?.isConnected) this.node.replaceWith(box);
       else ui.stack.append(box);
       this.node = box;
+      ui.place(pill.open ? pill.anchor : null);
       ui.announce(t("announce", title, subtitle));
     },
 
@@ -1589,8 +1620,13 @@
     }
   }, true);
 
-  addEventListener("scroll", () => badge.place(), true);
-  addEventListener("resize", () => badge.place());
+  function follow() {
+    badge.place();
+    if (pill.open) ui.place(pill.anchor);
+  }
+
+  addEventListener("scroll", follow, true);
+  addEventListener("resize", follow);
 
   ext.runtime.onMessage.addListener((message) => {
     // Fill requested from the extension's popup: only in the targeted frame,

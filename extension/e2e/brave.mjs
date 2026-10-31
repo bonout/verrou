@@ -258,16 +258,20 @@ try {
     "extension linked");
   step("extension linked");
 
-  // Form: the pill comes by itself at the top left; with the keyboard, down
-  // arrow from the username, then Enter.
+  // Form: the pill comes by itself beside the field (or at the top); with
+  // the keyboard, down arrow from the username, then Enter.
   const tab = await openTab(pageUrl);
   await eventually(() => evaluate(tab, `document.readyState === "complete"`), "page loaded");
   await cdp("Page.bringToFront", {}, tab);
   const signIn = await text("pillSignIn");
   await eventually(async () => (await pillText(tab)).includes(signIn), "Verrou pill");
-  const corner = await evaluate(tab, `(() => { const r = document.querySelector("verrou-pill").getBoundingClientRect(); return [r.left, r.top]; })()`);
-  assert.deepEqual(corner, [16, 16]);
-  step(`pill at the top left: ${await pillText(tab)}`);
+  const placed = await evaluate(tab, `(() => {
+    const pill = document.querySelector("verrou-pill").getBoundingClientRect();
+    const field = document.getElementById("email").getBoundingClientRect();
+    return pill.left >= field.right || pill.top === 16;
+  })()`);
+  assert.equal(placed, true, "beside the field, or at the top");
+  step(`pill beside the field: ${await pillText(tab)}`);
   await evaluate(tab, `document.querySelector("verrou-pill").shadowRoot === null`).then((closed) => {
     assert.equal(closed, true, "the pill must be invisible to the page (closed shadow DOM)");
   });
