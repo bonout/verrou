@@ -174,6 +174,8 @@ final class AppModel {
     var bulkProgress: (done: Int, total: Int)?
     /// "Move to folder…" open, for these items.
     var moveRequest: MoveRequest?
+    var folderPrompt: FolderPrompt?
+    var folderToDelete: FolderOption?
     /// Fields revealed for the selected item, cleared as soon as it changes,
     /// after a minute, or when Verrou goes to the background.
     var revealed: [String: String] = [:] {
@@ -758,6 +760,8 @@ final class AppModel {
         counts = nil
         organizations = []
         sharingFlow = nil
+        folderPrompt = nil
+        folderToDelete = nil
         revealed.removeAll()
         selection = nil
         query = ""
