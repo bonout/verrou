@@ -19,6 +19,7 @@ use verrou_bridge::{
     ApprovalScope, Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan,
     access,
 };
+use verrou_core::alias::AliasSettings;
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 struct FakeBackend {
@@ -35,6 +36,7 @@ struct FakeBackend {
     lock_while_confirming: AtomicBool,
     /// What the backend answers to `approval_scope`, for any purpose.
     scope: Mutex<ApprovalScope>,
+    alias: Mutex<AliasSettings>,
 }
 
 impl Backend for FakeBackend {
@@ -124,6 +126,10 @@ impl Backend for FakeBackend {
 
     fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
         *self.scope.lock().unwrap()
+    }
+
+    fn alias_settings(&self) -> AliasSettings {
+        self.alias.lock().unwrap().clone()
     }
 }
 
@@ -290,6 +296,7 @@ fn start_with(
         confirmations: Mutex::new(Vec::new()),
         lock_while_confirming: AtomicBool::new(false),
         scope: Mutex::new(ApprovalScope::FiveMinutes),
+        alias: Mutex::new(AliasSettings::default()),
     });
     let file = std::env::temp_dir().join(format!("verrou-bridge-{}.json", uuid::Uuid::new_v4()));
     let bridge = Bridge::start(0, file.clone(), backend.clone()).unwrap();
@@ -595,6 +602,46 @@ fn status_announces_the_bundled_extension_version() {
             .get("extension_version")
             .is_none()
     );
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn browser_gets_an_alias_for_its_page() {
+    let (bridge, backend, pairings, file) = start();
+    let mut client = paired(&bridge, &pairings, "browser");
+    let page = json!({ "cmd": "alias", "url": "https://www.netflix.com/signup" });
+    let reply = client.request(&page);
+    assert_eq!(reply["result"], "denied");
+
+    *backend.alias.lock().unwrap() = AliasSettings::catch_all("alias.example.com", true).unwrap();
+    backend.unlocked.store(false, Ordering::SeqCst);
+    let reply = client.request(&page);
+    assert_eq!(reply["result"], "alias");
+    let address = reply["address"].as_str().unwrap();
+    assert!(address.starts_with("netflix."), "{address}");
+    assert!(address.ends_with("@alias.example.com"), "{address}");
+    assert_ne!(client.request(&page)["address"], reply["address"]);
+
+    let reply =
+        client.request(&json!({ "cmd": "alias", "url": "https://netflix.com", "site": false }));
+    let (local, _) = reply["address"].as_str().unwrap().split_once('@').unwrap();
+    assert_eq!(local.len(), verrou_core::alias::RANDOM_LEN);
+    let _ = std::fs::remove_file(file);
+}
+
+#[test]
+fn terminal_gets_an_alias_without_a_page() {
+    let (bridge, backend, pairings, file) = start();
+    *backend.alias.lock().unwrap() = AliasSettings::catch_all("example.org", false).unwrap();
+    let mut client = paired(&bridge, &pairings, "cli");
+    let reply = client.request(&json!({ "cmd": "alias" }));
+    let (local, domain) = reply["address"].as_str().unwrap().split_once('@').unwrap();
+    assert_eq!(domain, "example.org");
+    assert_eq!(local.len(), verrou_core::alias::RANDOM_LEN);
+    let reply = client.request(&json!({ "cmd": "alias", "site": true }));
+    assert!(reply["address"].as_str().unwrap().starts_with("alias."));
+    let reply = client.request(&json!({ "cmd": "alias", "url": "github.com", "site": true }));
+    assert!(reply["address"].as_str().unwrap().starts_with("github."));
     let _ = std::fs::remove_file(file);
 }
 

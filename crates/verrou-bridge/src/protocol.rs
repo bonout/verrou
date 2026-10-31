@@ -265,6 +265,12 @@ pub enum Command {
     PasskeyGet(PasskeyUse),
     PasskeyTargets(PasskeyTargetsQuery),
     PasskeyCreate(Box<PasskeyCreation>),
+    Alias {
+        #[serde(default)]
+        url: Option<String>,
+        #[serde(default)]
+        site: Option<bool>,
+    },
 }
 
 /// What the terminal writes to an item. A missing value leaves it as is.
@@ -399,6 +405,9 @@ pub enum ReplyResult {
     },
     Assertion(PasskeyAssertion),
     Registration(PasskeyRegistration),
+    Alias {
+        address: String,
+    },
 }
 
 /// An item in a terminal list. No secrets.
