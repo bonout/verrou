@@ -372,7 +372,7 @@ final class ShowcaseUITests: XCTestCase {
         pause(1.5)
         mark("start")
         for _ in 0..<3 {
-            app.buttons["Another"].firstMatch.tap()
+            app.buttons[L("Regenerate")].firstMatch.tap()
             pause(1.6)
         }
         app.sliders.firstMatch.adjust(toNormalizedSliderPosition: 0.05)
