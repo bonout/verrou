@@ -53,24 +53,15 @@ struct VerrouApp: App {
                     .keyboardShortcut("i", modifiers: [.command, .shift])
                     .disabled(!delegate.model.canEdit)
             }
+            CommandGroup(replacing: .textEditing) {
+                Button("Find…") { delegate.model.focusSearch() }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .disabled(delegate.model.lockState != .unlocked)
+            }
             // The selected item, as in 1Password and Quick Access: ⌘C alone
             // stays the text copy of the fields.
             CommandMenu("Item") {
-                let item = delegate.model.isMultiSelection ? nil : delegate.model.selectedSummary
-                Button("Copy Username") { if let item { delegate.model.copyUsername(of: item.id) } }
-                    .keyboardShortcut("c", modifiers: [.command, .control])
-                    .disabled(item?.category != .login || item?.subtitle.isEmpty != false)
-                Button("Copy Password") { if let item { delegate.model.copyPassword(of: item.id) } }
-                    .keyboardShortcut("c", modifiers: [.command, .shift])
-                    .disabled(item?.category != .login)
-                Button("Copy One-Time Code") { if let item { delegate.model.copyCode(of: item.id) } }
-                    .keyboardShortcut("c", modifiers: [.command, .option])
-                    .disabled(item?.hasTotp != true)
-                Button("Copy Website") { if let item { delegate.model.copyWebsite(of: item.id) } }
-                    .keyboardShortcut("c", modifiers: [.command, .option, .shift])
-                    .disabled(item?.host == nil)
-                Divider()
-                Text("Hold ⌥ to show the hidden fields")
+                ItemCommands(model: delegate.model)
             }
             CommandMenu("Vault") {
                 Button("Quick Access") { delegate.quickAccess?.toggle() }
@@ -190,6 +181,83 @@ struct MenuBarMenu: View {
     private func showMainWindow() {
         openWindow(id: "main")
         NSApp.activate()
+    }
+}
+
+struct ItemCommands: View {
+    let model: AppModel
+
+    var body: some View {
+        let multi = model.isMultiSelection
+        let item = multi ? nil : model.selectedSummary
+        let ids = multi ? model.selectedIDs : item.map { [$0.id] } ?? []
+        Button("Copy Username") { if let item { model.copyUsername(of: item.id) } }
+            .keyboardShortcut("c", modifiers: [.command, .control])
+            .disabled(item?.category != .login || item?.subtitle.isEmpty != false)
+        Button("Copy Password") { if let item { model.copyPassword(of: item.id) } }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .disabled(item?.category != .login)
+        Button("Copy One-Time Code") { if let item { model.copyCode(of: item.id) } }
+            .keyboardShortcut("c", modifiers: [.command, .option])
+            .disabled(item?.hasTotp != true)
+        Button("Copy Website") { if let item { model.copyWebsite(of: item.id) } }
+            .keyboardShortcut("c", modifiers: [.command, .option, .shift])
+            .disabled(item?.host == nil)
+        Divider()
+        Button("Edit Item…") { if let item { Task { await model.edit(item.id) } } }
+            .keyboardShortcut("e", modifiers: .command)
+            .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
+        Button(item?.favorite == true ? "Remove from Favorites" : "Add to Favorites") {
+            if let item { Task { await model.setFavorite(item.id, !item.favorite) } }
+        }
+        .disabled(!model.canModify(item) || item?.state != .active)
+        if item?.state == .archived {
+            Button("Unarchive") { if let item { Task { await model.setArchived(item.id, false) } } }
+                .disabled(!model.canModify(item))
+        } else {
+            Button("Archive") {
+                if multi {
+                    Task { await model.performBulk(.archive, on: ids) }
+                } else if let item {
+                    Task { await model.setArchived(item.id, true) }
+                }
+            }
+            .disabled(multi ? !model.canEdit || model.availability(of: ids).active == 0
+                            : !model.canModify(item) || item?.state != .active)
+        }
+        Button(item?.sharing == nil ? "Share…" : "Collections…") { if let item { model.openSharing(item.id) } }
+            .disabled(!model.canModify(item) || item?.state != .active
+                      || (item?.sharing == nil && model.writableOrganizations.isEmpty))
+        Button("Open Website") {
+            if let host = item?.host, let url = URL(string: "https://\(host)") { NSWorkspace.shared.open(url) }
+        }
+        .keyboardShortcut("o", modifiers: [.command, .shift])
+        .disabled(item?.host == nil)
+        Divider()
+        if item?.state == .trashed {
+            Button("Restore") { if let item { Task { await model.restore(item.id) } } }
+                .disabled(!model.canModify(item))
+        } else {
+            Button("Move to Trash") { moveToTrash(ids) }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(ids.isEmpty || !model.canEdit || (!multi && !model.canModify(item)) || model.editor != nil)
+        }
+        Divider()
+        Text("Hold ⌥ to show the hidden fields")
+    }
+
+    private func moveToTrash(_ ids: [String]) {
+        let window = NSApp.keyWindow
+        let typed = NSApp.currentEvent?.type == .keyDown
+        guard !typed || (window?.identifier?.rawValue == "main" && !(window?.firstResponder is NSText)) else {
+            window?.firstResponder?.doCommand(by: #selector(NSStandardKeyBindingResponding.deleteToBeginningOfLine(_:)))
+            return
+        }
+        if ids.count == 1 {
+            Task { await model.trash(ids[0]) }
+        } else {
+            Task { await model.performBulk(.trash, on: ids) }
+        }
     }
 }
 
