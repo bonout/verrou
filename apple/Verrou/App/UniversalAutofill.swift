@@ -563,6 +563,7 @@ enum AutofillHUD {
                                   width: size.width, height: size.height), display: true)
         }
         panel.orderFrontRegardless()
+        AccessibilityNotification.Announcement([message, detail].compactMap { $0 }.joined(separator: ". ")).post()
         hideTask?.cancel()
         hideTask = Task {
             try? await Task.sleep(for: .seconds(failure ? 5 : 2.5))
