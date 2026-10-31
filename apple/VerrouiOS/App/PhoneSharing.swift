@@ -33,6 +33,7 @@ final class PhoneSharingModel {
     var confirmRevoke: MemberTarget?
     /// The account's Sends (Bitwarden Send); `nil`: not read yet.
     var sends: [SendSummary]?
+    var sendsError: String?
     var sendComposer: SendComposer?
     /// Link of the Send just created (it carries its key).
     var createdLink: String?
@@ -55,6 +56,7 @@ final class PhoneSharingModel {
         confirmRemove = nil
         confirmRevoke = nil
         sends = nil
+        sendsError = nil
         sendComposer = nil
         createdLink = nil
     }
