@@ -292,7 +292,7 @@ impl Template {
                 const F: &[TemplateField] = &[
                     text("Hosting provider", "Hébergeur"),
                     text("Admin console", "Console d'administration"),
-                    text("Console username", "Identifiant de la console"),
+                    text("Console username", "Nom d'utilisateur de la console"),
                     hidden("Console password", "Mot de passe de la console"),
                 ];
                 F

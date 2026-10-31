@@ -956,7 +956,7 @@ const FR: Texts = Texts {
     tags: &["dev", "pro", "famille", "ancien", "à-vérifier", "partagé"],
     habits: ["soleil2019", "Azerty123!", "motdepasse"],
     labels: Labels {
-        username: "Identifiant",
+        username: "Nom d'utilisateur",
         password: "Mot de passe",
         totp: "Code à usage unique",
         cardholder: "Titulaire",
