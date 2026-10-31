@@ -100,7 +100,7 @@ struct SettingsTab: View {
                             SettingsLabel("Approve from the Mac", symbol: "laptopcomputer.and.iphone", tint: .indigo)
                         }
                     } footer: {
-                        Text("Face ID on this iPhone approves what the terminal asks the Mac while you are away.")
+                        Text("\(Biometrics.name) on this iPhone approves what the terminal asks the Mac while you are away.")
                     }
                 }
 
