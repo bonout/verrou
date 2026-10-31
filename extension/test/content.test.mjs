@@ -64,30 +64,6 @@ test("the pill comes once with a login for the site, without a menu under the fi
   assert.equal(icon.getAttribute("title"), icon.getAttribute("aria-label"));
 });
 
-test("wide page: the pill beside its field, off the page's heading; moving counts as appearing", async () => {
-  const background = fakeBackground();
-  const page = openPage(loginForm, background);
-  Object.assign(page.context, { innerWidth: 1280, innerHeight: 800 });
-  await eventually(() => page.pillText().includes("Sign in"), "pill");
-  const host = page.host("verrou-pill");
-  const at = () => ["top", "left", "right"].map((name) => host.style.getPropertyValue(name));
-  assert.deepEqual(at(), [`${page.byId("email").getBoundingClientRect().top}px`, `${350 + 12}px`, "auto"], "right of the field, at its height");
-  assert.equal(host.style.getPropertyValue("position"), "fixed");
-  assert.equal(host.style.getPropertyPriority("left"), "important");
-  assert.equal(host.style.getPropertyValue("pointer-events"), "none");
-
-  await sleep(350);
-  page.context.innerWidth = 600;
-  page.press("Other logins");
-  assert.deepEqual(at(), ["16px", "0", "0"], "no room on the right: centered at the top");
-  mouseClick(page, "Sign in");
-  await sleep(30);
-  assert.equal(background.sent("fill").length, 0, "just moved: the click doesn't count");
-  await sleep(350);
-  mouseClick(page, "Sign in");
-  await eventually(() => page.byId("password").value, "fill once it stayed put");
-});
-
 test("the pill's text follows the browser's font size: no size in pixels", () => {
   const style = /const STYLE = `([^`]*)`/.exec(source("content.js"))[1];
   assert.match(style, /font: \.8125em/);
