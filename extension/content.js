@@ -919,19 +919,19 @@
     if (reply?.ok && target) applyForm(reply.data, target);
   }
 
-  // After "Unlock": the pill fills in as soon as Verrou is open (a minute
-  // and a half at most).
+  // After "Unlock" or "Open Verrou": the pill fills in as soon as Verrou
+  // is open (a minute and a half at most).
   async function unlock(anchor, kind) {
-    await send({ kind: "unlock" });
     pill.wait(t("unlockWait"), t("unlockHint"));
     const token = pill.token;
+    await send({ kind: "unlock" });
     const form = kind === "card" || kind === "identity";
     for (let tries = 0; tries < 90; tries += 1) {
       await sleep(1000);
       if (pill.token !== token) return;
       const reply = await send({ kind: form ? "forms" : "suggest" });
       if (pill.token !== token) return;
-      if (reply.state === "locked") continue;
+      if (reply.state === "locked" || reply.state === "offline") continue;
       const view = reply.state === "unlocked" ? await viewFor(anchor, kind, true) : null;
       if (pill.token !== token) return;
       if (view) pill.show(anchor, kind, view, { expanded: !view.primary });
@@ -953,10 +953,14 @@
   }
 
   // Opened by hand (field icon) while Verrou doesn't respond.
-  function unavailableView(state) {
-    return state === "unpaired"
-      ? { title: t("pillUnpairedTitle"), subtitle: t("pillUnpairedHint"), primary: null, others: [] }
-      : { title: t("verrouUnreachable"), subtitle: t("pillOpenApp"), primary: null, others: [] };
+  function unavailableView(state, anchor, kind) {
+    if (state === "unpaired") return { title: t("pillUnpairedTitle"), subtitle: t("pillUnpairedHint"), primary: null, others: [] };
+    return {
+      title: SITE,
+      subtitle: t("verrouUnreachable"),
+      primary: { label: t("pillOpenVerrou"), run: () => unlock(anchor, kind) },
+      others: [],
+    };
   }
 
   // The interface of passkeys.js, in the main frame only.
@@ -1010,7 +1014,7 @@
       // Locked: not for a mere verification code, unless by hand.
       return kind === "otp" && !manual ? null : lockedView(anchor, kind);
     }
-    if (reply.state !== "unlocked" && passkeys.state !== "ready") return manual ? unavailableView(reply.state) : null;
+    if (reply.state !== "unlocked" && passkeys.state !== "ready") return manual ? unavailableView(reply.state, anchor, kind) : null;
     // Passkeys first, like the browser.
     const rows = [
       ...(passkeys.state === "ready" ? passkeys.items : []).map((item) => ({
@@ -1056,7 +1060,7 @@
     const card = kind === "card";
     const reply = await send({ kind: "forms" });
     if (reply.state === "locked") return lockedView(anchor, kind);
-    if (reply.state !== "unlocked") return manual ? unavailableView(reply.state) : null;
+    if (reply.state !== "unlocked") return manual ? unavailableView(reply.state, anchor, kind) : null;
     const rows = ((card ? reply.cards : reply.identities) ?? []).map((item) => ({
       badge: card ? "💳" : "👤",
       title: item.title,

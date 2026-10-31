@@ -115,8 +115,8 @@
   "pillUnpairedHint": {
     "message": "Vincúlala desde su icono en la barra de herramientas"
   },
-  "pillOpenApp": {
-    "message": "Abre la app Verrou"
+  "pillOpenVerrou": {
+    "message": "Abrir Verrou"
   },
   "pillGenerate": {
     "message": "Generar una contraseña"
