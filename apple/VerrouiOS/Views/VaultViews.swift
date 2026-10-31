@@ -305,7 +305,7 @@ private struct VaultStatusFooter: View {
     }
 
     private var detail: String {
-        guard model.mode == .vaultwarden, let account = model.account else { return String(localized: "Offline · local data") }
+        guard model.mode == .vaultwarden, let account = model.account else { return String(localized: "Read-only · sample data") }
         let host = URL(string: account.server)?.host() ?? account.server
         switch model.syncState {
         case .syncing: return String(localized: "\(host) · syncing…")
@@ -492,6 +492,21 @@ struct NewItemMenu: View {
     var showsSharing = false
 
     var body: some View {
+        if model.mode == .demo, !model.canEdit {
+            Button {
+                model.toast = Toast(message: String(localized: "Read-only demo"),
+                                    detail: String(localized: "Sign in to your server to create and edit items."))
+            } label: {
+                Image(systemName: "plus")
+            }
+            .accessibilityLabel("New item")
+            .accessibilityHint("The demo vault is read-only")
+        } else {
+            menu
+        }
+    }
+
+    private var menu: some View {
         Menu {
             Button("Login", systemImage: ItemCategory.login.symbol) { new(.login) }
             Button("Secure note", systemImage: ItemCategory.secureNote.symbol) { new(.note) }
