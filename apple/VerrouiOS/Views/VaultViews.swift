@@ -612,7 +612,7 @@ struct ItemListView: View {
                 }
             }
         } message: {
-            Text("Can be restored from the trash for 30 days.")
+            Text("Can be restored from the trash")
         }
         .onChange(of: model.revision) {
             // The items that left the list leave the selection.
@@ -650,7 +650,7 @@ struct ItemListView: View {
             switch filter {
             case .trash:
                 ContentUnavailableView("Trash is empty", systemImage: "trash",
-                                       description: Text("Deleted items stay there for 30 days."))
+                                       description: Text("Deleted items stay here until you restore them, or until the server deletes them for good."))
             case .archived:
                 ContentUnavailableView("No archived items", systemImage: "archivebox",
                                        description: Text("Archive an item to keep it out of the list and the search."))
