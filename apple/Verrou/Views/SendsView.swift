@@ -35,7 +35,7 @@ struct SendsListView: View {
                 ContentUnavailableView {
                     Label(sends.loaded ? "No sends" : "Loading…", systemImage: "paperplane")
                 } description: {
-                    Text("Create a send here, drop a file on this list, or start from an item or an attachment: right-click → “Send Securely…”.")
+                    Text("Create a Send here, drop a file on this list, or start from an item or an attachment: right-click → “Send Securely…”.")
                 }
                 .frame(maxHeight: .infinity)
             } else {
@@ -67,7 +67,7 @@ struct SendsListView: View {
                 RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                     .strokeBorder(Theme.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
                     .background(Theme.accent.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                    .overlay(Label("Drop to create a file send", systemImage: "doc.badge.arrow.up")
+                    .overlay(Label("Drop to create a file Send", systemImage: "doc.badge.arrow.up")
                         .font(.headline).foregroundStyle(Theme.accent))
                     .padding(8)
                     .allowsHitTesting(false)
@@ -91,7 +91,7 @@ struct NewSendMenu: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
         .disabled(model.sends.busy)
-        .help("Create a text or file send")
+        .help("Create a text or file Send")
     }
 }
 
@@ -341,7 +341,7 @@ struct SendEditorView: View {
             Form {
                 if let source = composer.source {
                     Section {
-                        Label("Prefilled from “\(source)”. Check the settings, then create the send: the link will be copied.",
+                        Label("Prefilled from “\(source)”. Check the settings, then create the Send: the link will be copied.",
                               systemImage: "info.circle")
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -367,7 +367,7 @@ struct SendEditorView: View {
                         }
                     }
                     if !isFile {
-                        Toggle("Hide the text from the recipient", isOn: $fields.hidden)
+                        Toggle("Hide the text until the recipient reveals it", isOn: $fields.hidden)
                     }
                 }
 
@@ -392,12 +392,12 @@ struct SendEditorView: View {
                                 text: $password,
                                 prompt: Text(isNew || !composer.hasPassword ? "optional" : "leave empty to keep the current one"))
                     if !isNew, composer.hasPassword {
-                        Text("To remove the password: “Remove Password” on the send's detail.")
+                        Text("To remove the password: “Remove Password” on the Send's detail.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle("Hide my email address", isOn: $fields.hideEmail)
                     if !isNew {
-                        Toggle("Disable this send", isOn: $fields.disabled)
+                        Toggle("Disable this Send", isOn: $fields.disabled)
                     }
                 }
 
@@ -502,7 +502,7 @@ struct SendEditorView: View {
             }
             Text(isNew
                  ? "The file and its name are encrypted before upload; only the link can open them."
-                 : "The file of a send can't be replaced: create a new send for another file.")
+                 : "The file of a Send can't be replaced: create a new Send for another file.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
