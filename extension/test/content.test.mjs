@@ -392,6 +392,22 @@ test("keyboard: down arrow in the field, then Escape brings back to the field", 
   assert.equal(page.pillNode(), null);
   assert.equal(page.document.activeElement, email);
 
+  const back = openPage(loginForm, fakeBackground());
+  await eventually(() => back.pillNode(), "pill");
+  const field = back.byId("email");
+  field.focus();
+  back.fire(field, "keydown", { key: "ArrowDown" });
+  const shadow = back.host("verrou-pill").shadow;
+  assert.equal(back.fire(shadow.activeElement, "keydown", { key: "Tab" }).defaultPrevented, false, "inside the pill: the browser's Tab");
+  back.button("Other logins").focus();
+  assert.equal(back.fire(shadow.activeElement, "keydown", { key: "Tab", trusted: false }).defaultPrevented, false, "made-up key: nothing");
+  assert.equal(back.fire(shadow.activeElement, "keydown", { key: "Tab" }).defaultPrevented, true, "Tab past the last button");
+  assert.equal(back.document.activeElement, field);
+  back.fire(field, "keydown", { key: "ArrowDown" });
+  assert.equal(back.fire(shadow.activeElement, "keydown", { key: "Tab", shiftKey: true }).defaultPrevented, true, "Shift-Tab before the first");
+  assert.equal(back.document.activeElement, field);
+  assert.ok(back.pillNode(), "the pill stays");
+
   // Site's suggestion list open: the arrow stays with the site.
   const site = openPage(loginForm, fakeBackground());
   await eventually(() => site.pillNode(), "pill");

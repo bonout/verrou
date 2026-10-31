@@ -838,13 +838,24 @@
   };
 
   // Keyboard in the pill (real keys only): Escape closes it, the arrows move
-  // from one button to the next; Enter and Space are the buttons' own.
+  // from one button to the next, Tab past either end goes back to the
+  // field; Enter and Space are the buttons' own.
   function pillKey(event) {
     if (!event.isTrusted || !pill.open) return;
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
       pill.dismiss();
+      return;
+    }
+    if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const buttons = pill.buttons();
+      const index = buttons.indexOf(ui.root.activeElement);
+      const edge = event.shiftKey ? 0 : buttons.length - 1;
+      if (index < 0 || index !== edge || !pill.anchor?.isConnected) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pill.anchor.focus({ preventScroll: true });
       return;
     }
     const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
