@@ -498,13 +498,14 @@
       font-weight: 700; font-size: 13px; color: #2b2b6e; background: #b9b9f6;
     }
     .banner {
-      width: 360px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
+      width: 400px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
       box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2); animation: drop .18s ease-out;
     }
     .banner .title { white-space: normal; }
     .head { display: flex; gap: 10px; align-items: center; }
-    .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
-    .actions button { padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.1); }
+    .actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+    .choice { display: flex; gap: 8px; margin-left: auto; }
+    .actions button { padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.1); white-space: nowrap; }
     .actions button.primary { background: #5b5bd6; }
     .actions button.quiet { background: none; color: #a3a3ad; padding: 6px 4px; margin-right: auto; }
     .field { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 6px; }
@@ -1367,9 +1368,12 @@
     },
   };
 
-  function actions(...buttons) {
+  function actions(aside, ...choice) {
     const row = div("actions");
-    row.append(...buttons);
+    const group = div("choice");
+    group.append(...choice);
+    if (aside) row.append(aside);
+    row.append(group);
     return row;
   }
 
@@ -1392,6 +1396,7 @@
       banner.show(
         { title: t("bannerSaveTitle"), subtitle: who },
         actions(
+          null,
           trustedButton(t("bannerNotNow"), "", dismissSave),
           trustedButton(t("unlock"), "primary", async () => {
             await send({ kind: "unlock" });

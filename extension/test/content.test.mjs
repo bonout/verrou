@@ -624,6 +624,10 @@ test("the save banner in the same corner as the pill", async () => {
   const banner = () => page.host("verrou-pill")?.shadow?.querySelector(".banner");
   await eventually(banner, "banner");
   assert.match(banner().textContent, /Save in Verrou\?/);
+  const choice = page.button("Save").parentNode;
+  assert.equal(choice.className, "choice", "\"Not now\" and \"Save\" wrap together");
+  assert.equal(page.button("Not now").parentNode, choice);
+  assert.notEqual(page.button("Never for this site").parentNode, choice);
   assert.equal(page.host("verrou-pill").style.getPropertyValue("left"), "0");
   page.press("Save", false);
   await sleep(20);
