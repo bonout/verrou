@@ -278,7 +278,7 @@ struct SidebarView: View {
             SharedVaultsSection()
             if let counts = model.counts, counts.archived + counts.trashed > 0 {
                 Section("Storage") {
-                    row(.archived, String(localized: "Archive"), "archivebox", count: counts.archived, tint: .secondary)
+                    row(.archived, String(localized: "Archived"), "archivebox", count: counts.archived, tint: .secondary)
                     row(.trash, String(localized: "Trash"), "trash", count: counts.trashed, tint: .secondary)
                 }
             }
@@ -408,29 +408,66 @@ struct PaneHeader<Action: View>: View {
 /// Account and sync status. A click starts the sync again.
 struct VaultFooter: View {
     @Environment(AppModel.self) private var model
+    @State private var showError = false
 
     var body: some View {
-        HStack(spacing: 8) {
-            if model.syncState == .syncing {
-                ProgressView().controlSize(.mini).frame(width: 7, height: 7)
-            } else {
-                Circle().fill(dotColor).frame(width: 7, height: 7)
+        HStack(spacing: 4) {
+            Button {
+                Task { await model.syncNow() }
+            } label: {
+                HStack(spacing: 8) {
+                    if model.syncState == .syncing {
+                        ProgressView().controlSize(.mini).frame(width: 7, height: 7)
+                    } else {
+                        Circle().fill(dotColor).frame(width: 7, height: 7)
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(title).font(.caption.weight(.semibold)).lineLimit(1)
+                            .layoutMark("sidebar-footer")
+                        Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).font(.caption.weight(.semibold)).lineLimit(1)
-                    .layoutMark("sidebar-footer")
-                Text(status).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+            .buttonStyle(.plain)
+            .disabled(model.mode != .vaultwarden)
+            .help(help)
+            .accessibilityElement(children: .combine)
+            .accessibilityHint(model.mode == .vaultwarden ? "Syncs now" : "")
+            if let failure {
+                Button {
+                    showError = true
+                } label: {
+                    Image(systemName: "exclamationmark.circle")
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Show the sync error")
+                }
+                .buttonStyle(.borderless)
+                .help("Show the sync error")
+                .popover(isPresented: $showError, arrowEdge: .top) {
+                    Text(failure)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(width: 300, alignment: .leading)
+                        .padding(14)
+                }
             }
-            Spacer()
         }
-        .contentShape(Rectangle())
-        .onTapGesture { Task { await model.syncNow() } }
-        .help(model.mode == .vaultwarden
-              ? (model.pendingLabel.map { String(localized: "\($0): sent when the server is back. Sync (⌘R)") }
-                    ?? String(localized: "Sync (⌘R)"))
-              : "")
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private var failure: String? {
+        if case .failed(let message) = model.syncState { message } else { nil }
+    }
+
+    private var help: String {
+        guard model.mode == .vaultwarden else { return "" }
+        if let failure { return String(localized: "\(failure). Sync (⌘R)") }
+        return model.pendingLabel.map { String(localized: "\($0): sent when the server is back. Sync (⌘R)") }
+            ?? String(localized: "Sync (⌘R)")
     }
 
     private var title: String {
@@ -438,6 +475,7 @@ struct VaultFooter: View {
     }
 
     private var dotColor: Color {
+        if model.mode == .demo { return .secondary }
         // Changes are waiting for the server.
         if model.pendingChanges > 0, model.syncState != .syncing, model.syncState != .offline { return .orange }
         return switch model.syncState {
