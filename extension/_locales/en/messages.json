@@ -193,7 +193,7 @@
     }
   },
   "fieldButton": {
-    "message": "Verrou: logins for this site"
+    "message": "Verrou: logins for this site (in the field, ↓ reaches Verrou's suggestion)"
   },
   "bannerLabel": {
     "message": "Verrou: saving"

@@ -471,6 +471,7 @@
   const SITE = location.hostname.replace(/^www\./, "");
   const ANNOUNCE_DELAY_MS = 150;
   const NOTICE_MS = 6000;
+  const FIELD_TARGET_PX = 24;
 
   // MARK: Shared style
 
@@ -1283,7 +1284,7 @@
       ({ host: this.host, root: this.root } = shadowHost("verrou-field"));
       const button = trustedButton("", "field", () => this.toggle());
       button.setAttribute("aria-label", t("fieldButton"));
-      button.setAttribute("title", "Verrou");
+      button.setAttribute("title", t("fieldButton"));
       // Out of the page's tab order; a click keeps the focus in the
       // field.
       button.setAttribute("tabindex", "-1");
@@ -1308,12 +1309,13 @@
         return false;
       }
       const box = this.input.getBoundingClientRect();
-      const size = Math.min(22, box.height - 6);
-      if (size < 14 || box.width < 80) {
+      const glyph = Math.min(22, box.height - 6);
+      if (glyph < 14 || box.width < 80) {
         this.host?.remove();
         return false;
       }
-      this.button.style.setProperty("--scale", String(size / 26));
+      const size = Math.max(FIELD_TARGET_PX, glyph);
+      this.button.style.setProperty("--scale", String(glyph / 26));
       pin(this.host, {
         ...HOST_STYLES, position: "absolute", width: `${size}px`, height: `${size}px`,
         left: `${box.right + scrollX - size - 6}px`, top: `${box.top + scrollY + (box.height - size) / 2}px`,

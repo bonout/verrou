@@ -193,7 +193,7 @@
     }
   },
   "fieldButton": {
-    "message": "Verrou: login per questo sito"
+    "message": "Verrou: login per questo sito (nel campo, ↓ porta al suggerimento di Verrou)"
   },
   "bannerLabel": {
     "message": "Verrou: salvataggio"
