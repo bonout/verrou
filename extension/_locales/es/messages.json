@@ -190,7 +190,7 @@
     }
   },
   "fieldButton": {
-    "message": "Verrou: inicios de sesión para este sitio"
+    "message": "Verrou: inicios de sesión para este sitio (en el campo, ↓ lleva a la sugerencia de Verrou)"
   },
   "bannerLabel": {
     "message": "Verrou: guardando"

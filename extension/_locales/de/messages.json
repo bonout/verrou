@@ -190,7 +190,7 @@
     }
   },
   "fieldButton": {
-    "message": "Verrou: Logins für diese Website"
+    "message": "Verrou: Logins für diese Website (im Feld führt ↓ zum Vorschlag von Verrou)"
   },
   "bannerLabel": {
     "message": "Verrou: Sichern"
