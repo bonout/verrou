@@ -146,6 +146,9 @@ struct AuditView: View {
         let selected = summary.id == model.selection
         return HStack {
             ItemRow(summary: summary, highlights: [], selected: selected)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction { model.selection = summary.id }
             if let note {
                 Text(note).font(.caption).monospacedDigit()
                     .foregroundStyle(selected ? AnyShapeStyle(Theme.onAccentSecondary(0.85)) : AnyShapeStyle(.secondary))
