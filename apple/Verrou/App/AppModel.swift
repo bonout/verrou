@@ -1305,8 +1305,8 @@ final class AppModel {
     /// Archive: the item leaves the list, the search and autofill, without
     /// being deleted.
     func setArchived(_ itemID: String, _ archived: Bool) async {
-        await perform(archived ? String(localized: "Archived") : String(localized: "Unarchived"),
-                      detail: archived ? String(localized: "Find it in Archive") : nil,
+        await perform(archived ? String(localized: "Item archived") : String(localized: "Unarchived"),
+                      detail: archived ? String(localized: "Find it in Archived") : nil,
                       select: archived ? nil : itemID) {
             try await self.session.setArchived(id: itemID, archived: archived)
         }
