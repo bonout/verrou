@@ -141,6 +141,34 @@
         }
       }
     },
+    "%@ copied (cleared from the clipboard in %@).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ copié (effacé du presse-papiers dans %2$@)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ kopiert (wird in %2$@ aus der Zwischenablage gelöscht)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ copiado (se borrará del portapapeles en %2$@)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ copiato (cancellato dagli appunti tra %2$@)."
+          }
+        }
+      }
+    },
     "%@ copied (cleared from the clipboard in 90 s).": {
       "localizations": {
         "fr": {
@@ -893,6 +921,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "La cassaforte di %@ è aperta per te."
+          }
+        }
+      }
+    },
+    "%@. Sync (⌘R)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Synchroniser (⌘R)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Synchronisieren (⌘R)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Sincronizar (⌘R)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Sincronizza (⌘R)"
           }
         }
       }
@@ -1761,6 +1817,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld inviti inviati: vedi “E ora?”."
+          }
+        }
+      }
+    },
+    "%lld item": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld élément"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Eintrag"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elemento"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld elemento"
           }
         }
       }
@@ -5713,6 +5797,34 @@
         }
       }
     },
+    "A shared vault (an organization, in Bitwarden) that you own. Its key is created here and encrypted for your account: the server never sees it.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un coffre partagé (une organisation, dans Bitwarden) dont vous êtes propriétaire. Sa clé est créée ici et chiffrée pour votre compte : le serveur ne la voit jamais."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein geteilter Tresor (in Bitwarden eine Organisation), der dir gehört. Sein Schlüssel wird hier erstellt und für deinen Account verschlüsselt: Der Server sieht ihn nie."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una bóveda compartida (una organización, en Bitwarden) de tu propiedad. Su clave se crea aquí y se cifra para tu cuenta: el servidor nunca la ve."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una cassaforte condivisa (un'organizzazione, in Bitwarden) di tua proprietà. La sua chiave viene creata qui e cifrata per il tuo account: il server non la vede mai."
+          }
+        }
+      }
+    },
     "A shared vault you own. Its key is created here and encrypted for your account: the server never sees it.": {
       "localizations": {
         "fr": {
@@ -7085,6 +7197,34 @@
         }
       }
     },
+    "Add your first login, or import the ones of another password manager.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutez votre premier identifiant, ou importez ceux d'un autre gestionnaire de mots de passe."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Füge dein erstes Login hinzu oder importiere die eines anderen Passwort-Managers."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añade tu primer inicio de sesión o importa los de otro gestor de contraseñas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi il tuo primo login o importa quelli di un altro gestore di password."
+          }
+        }
+      }
+    },
     "Added on %@": {
       "localizations": {
         "fr": {
@@ -7361,6 +7501,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Amministratore"
+          }
+        }
+      }
+    },
+    "Advanced": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avancé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erweitert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avanzado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avanzate"
           }
         }
       }
@@ -8378,7 +8546,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Archivé"
+            "value": "Archivés"
           }
         },
         "de": {
@@ -8390,13 +8558,13 @@
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Archivado"
+            "value": "Archivados"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Archiviato"
+            "value": "Archiviati"
           }
         }
       }
@@ -11453,6 +11621,34 @@
         }
       }
     },
+    "Collections organize the shared items; each member accesses the ones you open to them. The server can restrict the creation of shared vaults to some accounts (ORG_CREATION_USERS).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les collections rangent les éléments partagés ; chaque membre accède à celles que vous lui ouvrez. Le serveur peut réserver la création de coffres partagés à certains comptes (ORG_CREATION_USERS)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sammlungen ordnen die geteilten Einträge; jedes Mitglied greift auf die zu, die du ihm öffnest. Der Server kann das Erstellen geteilter Tresore auf bestimmte Accounts beschränken (ORG_CREATION_USERS)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las colecciones organizan los elementos compartidos; cada miembro accede a las que le abres. El servidor puede restringir la creación de bóvedas compartidas a algunas cuentas (ORG_CREATION_USERS)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le raccolte organizzano gli elementi condivisi; ogni membro accede a quelle che gli apri. Il server può limitare la creazione di casseforti condivise ad alcuni account (ORG_CREATION_USERS)."
+          }
+        }
+      }
+    },
     "Collections saved": {
       "localizations": {
         "fr": {
@@ -12121,6 +12317,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copiato"
+          }
+        }
+      }
+    },
+    "Copied secrets are hidden from clipboard managers and cleared after this delay, if the clipboard still holds them.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les secrets copiés échappent aux gestionnaires de presse-papiers et sont effacés au bout de ce délai, si le presse-papiers les contient encore."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopierte Geheimnisse bleiben vor Zwischenablage-Managern verborgen und werden nach dieser Frist gelöscht, wenn die Zwischenablage sie noch enthält."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los secretos copiados no aparecen en los gestores de portapapeles y se borran tras este tiempo, si el portapapeles aún los contiene."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I segreti copiati restano nascosti ai gestori degli appunti e vengono cancellati dopo questo tempo, se gli appunti li contengono ancora."
           }
         }
       }
@@ -13077,6 +13301,34 @@
         }
       }
     },
+    "Couldn't create the Send": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoi impossible"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send konnte nicht erstellt werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido crear el envío"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile creare il Send"
+          }
+        }
+      }
+    },
     "Couldn't create the folder": {
       "localizations": {
         "fr": {
@@ -13157,6 +13409,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Impossibile eliminare"
+          }
+        }
+      }
+    },
+    "Couldn't delete the folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier impossible à supprimer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner konnte nicht gelöscht werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido eliminar la carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile eliminare la cartella"
           }
         }
       }
@@ -13413,6 +13693,34 @@
         }
       }
     },
+    "Couldn't rename the folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier impossible à renommer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner konnte nicht umbenannt werden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se ha podido renombrar la carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Impossibile rinominare la cartella"
+          }
+        }
+      }
+    },
     "Couldn't save": {
       "localizations": {
         "fr": {
@@ -13609,6 +13917,34 @@
         }
       }
     },
+    "Create a Send here, drop a file on this list, or start from an item or an attachment: right-click → “Send Securely…”.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créez un envoi ici, déposez un fichier sur cette liste, ou partez d'un élément ou d'une pièce jointe : clic droit → « Envoyer de façon sécurisée… »."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstelle hier ein Send, lege eine Datei auf dieser Liste ab oder beginne mit einem Eintrag oder Anhang: Rechtsklick → „Sicher senden …“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea un envío aquí, suelta un archivo en esta lista o parte de un elemento o un archivo adjunto: clic derecho → “Enviar de forma segura…”."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea un Send qui, trascina un file su questo elenco oppure parti da un elemento o da un allegato: clic destro → “Invia in modo sicuro…”."
+          }
+        }
+      }
+    },
     "Create a new login": {
       "localizations": {
         "fr": {
@@ -13693,6 +14029,34 @@
         }
       }
     },
+    "Create a shared vault (Shared Vaults → New Shared Vault…)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créez un coffre partagé (Coffres partagés → Nouveau coffre partagé…)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erstelle einen geteilten Tresor (Geteilte Tresore → Neuer geteilter Tresor …)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea una bóveda compartida (Bóvedas compartidas → Nueva bóveda compartida…)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea una cassaforte condivisa (Casseforti condivise → Nuova cassaforte condivisa…)"
+          }
+        }
+      }
+    },
     "Create a shared vault, then invite other accounts of your server to it": {
       "localizations": {
         "fr": {
@@ -13717,6 +14081,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Crea una cassaforte condivisa, poi invita altri account del tuo server"
+          }
+        }
+      }
+    },
+    "Create a text or file Send": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Créer un envoi de texte ou de fichier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text- oder Datei-Send erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crear un envío de texto o de archivo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Crea un Send di testo o di file"
           }
         }
       }
@@ -14505,6 +14897,90 @@
         }
       }
     },
+    "Delete Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner löschen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina cartella"
+          }
+        }
+      }
+    },
+    "Delete Folder…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le dossier…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner löschen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar carpeta…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina cartella…"
+          }
+        }
+      }
+    },
+    "Delete Group": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le groupe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gruppe löschen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminar grupo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimina gruppo"
+          }
+        }
+      }
+    },
     "Delete Reports": {
       "localizations": {
         "fr": {
@@ -14645,6 +15121,34 @@
         }
       }
     },
+    "Delete the folder “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le dossier « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner „%@“ löschen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eliminar la carpeta “%@”?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminare la cartella “%@”?"
+          }
+        }
+      }
+    },
     "Delete the group (its members keep their direct access)": {
       "localizations": {
         "fr": {
@@ -14669,6 +15173,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Elimina il gruppo (i suoi membri mantengono l'accesso diretto)"
+          }
+        }
+      }
+    },
+    "Delete the group “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Supprimer le groupe « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gruppe „%@“ löschen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Eliminar el grupo “%@”?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eliminare il gruppo “%@”?"
           }
         }
       }
@@ -15233,6 +15765,34 @@
         }
       }
     },
+    "Disable this Send": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Désactiver cet envoi"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Send deaktivieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desactivar este envío"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disattiva questo Send"
+          }
+        }
+      }
+    },
     "Disable this send": {
       "localizations": {
         "fr": {
@@ -15285,6 +15845,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Disattivato"
+          }
+        }
+      }
+    },
+    "Discard Changes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abandonner les modifications"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen verwerfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar cambios"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarta modifiche"
+          }
+        }
+      }
+    },
+    "Discard your changes?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abandonner vos modifications ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Änderungen verwerfen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Descartar tus cambios?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annullare le modifiche?"
           }
         }
       }
@@ -15765,6 +16381,34 @@
         }
       }
     },
+    "Drop to create a file Send": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déposer pour créer un envoi de fichier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ablegen, um ein Datei-Send zu erstellen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suelta para crear un envío de archivo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rilascia per creare un Send di file"
+          }
+        }
+      }
+    },
     "Drop to create a file send": {
       "localizations": {
         "fr": {
@@ -16069,6 +16713,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Modifica raccolta…"
+          }
+        }
+      }
+    },
+    "Edit Item…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifier l'élément…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eintrag bearbeiten …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editar elemento…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Modifica elemento…"
           }
         }
       }
@@ -17809,6 +18481,34 @@
         }
       }
     },
+    "Find it in Archived": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retrouvez-le dans Archivés"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du findest ihn unter „Archiviert“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo encontrarás en Archivados"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo trovi in Archiviati"
+          }
+        }
+      }
+    },
     "Find it in Archived items": {
       "localizations": {
         "fr": {
@@ -17833,6 +18533,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Trovalo in Elementi archiviati"
+          }
+        }
+      }
+    },
+    "Find…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rechercher…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suchen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buscar…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerca…"
           }
         }
       }
@@ -18117,6 +18845,90 @@
         }
       }
     },
+    "Folder renamed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier renommé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner umbenannt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta renombrada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella rinominata"
+          }
+        }
+      }
+    },
+    "Folder “%@” created": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier « %@ » créé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner „%@“ erstellt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta “%@” creada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella “%@” creata"
+          }
+        }
+      }
+    },
+    "Folder “%@” deleted": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dossier « %@ » supprimé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner „%@“ gelöscht"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carpeta “%@” eliminada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cartella “%@” eliminata"
+          }
+        }
+      }
+    },
     "Folders": {
       "localizations": {
         "fr": {
@@ -18369,6 +19181,34 @@
         }
       }
     },
+    "Forgot your master password, or moved to another server? Log out, then log in again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe principal oublié, ou serveur changé ? Déconnectez-vous, puis reconnectez-vous."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Master-Passwort vergessen oder Server gewechselt? Melde dich ab und dann wieder an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Olvidaste tu contraseña maestra o cambiaste de servidor? Cierra sesión y vuelve a iniciarla."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hai dimenticato la password principale o cambiato server? Esci, poi accedi di nuovo."
+          }
+        }
+      }
+    },
     "Format": {
       "localizations": {
         "fr": {
@@ -18561,6 +19401,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Genera"
+          }
+        }
+      }
+    },
+    "Generate Password": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Générer un mot de passe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort erzeugen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generar contraseña"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genera password"
+          }
+        }
+      }
+    },
+    "Generate Password…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Générer un mot de passe…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort erzeugen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generar contraseña…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genera password…"
           }
         }
       }
@@ -19573,6 +20469,34 @@
         }
       }
     },
+    "Hide the note": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer la note"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notiz ausblenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar la nota"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi la nota"
+          }
+        }
+      }
+    },
     "Hide the text from the recipient": {
       "localizations": {
         "fr": {
@@ -19597,6 +20521,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nascondi il testo al destinatario"
+          }
+        }
+      }
+    },
+    "Hide the text until the recipient reveals it": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer le texte jusqu'à ce que le destinataire l'affiche"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Text verbergen, bis der Empfänger ihn einblendet"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar el texto hasta que el destinatario lo muestre"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi il testo finché il destinatario non lo mostra"
           }
         }
       }
@@ -20437,6 +21389,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "In Verrou sull'iPhone: Impostazioni › Approva dal Mac › Abbina a un Mac, poi scansiona questo codice. Entrambi i dispositivi devono usare lo stesso account iCloud."
+          }
+        }
+      }
+    },
+    "In the Trash: restore it to use it again. The server may delete it permanently after a while.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À la corbeille : restaurez-le pour vous en servir à nouveau. Le serveur peut le supprimer définitivement au bout d'un certain temps."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Papierkorb: Stelle ihn wieder her, um ihn wieder zu verwenden. Der Server kann ihn nach einer Weile endgültig löschen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la papelera: restáuralo para volver a usarlo. El servidor puede eliminarlo definitivamente pasado un tiempo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nel Cestino: ripristinalo per usarlo di nuovo. Il server può eliminarlo definitivamente dopo un po'."
           }
         }
       }
@@ -21757,6 +22737,34 @@
         }
       }
     },
+    "It will no longer unlock the vault on this Mac. To use it again, you will have to add it again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elle ne déverrouillera plus le coffre sur ce Mac. Pour vous en servir à nouveau, il faudra l'ajouter de nouveau."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Er entsperrt den Tresor auf diesem Mac nicht mehr. Um ihn wieder zu verwenden, musst du ihn erneut hinzufügen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya no desbloqueará la bóveda en este Mac. Para volver a usarla, tendrás que añadirla de nuevo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non sbloccherà più la cassaforte su questo Mac. Per usarla di nuovo, dovrai aggiungerla di nuovo."
+          }
+        }
+      }
+    },
     "Item": {
       "localizations": {
         "fr": {
@@ -21781,6 +22789,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Elemento"
+          }
+        }
+      }
+    },
+    "Item archived": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élément archivé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eintrag archiviert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento archivado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elemento archiviato"
           }
         }
       }
@@ -22093,6 +23129,62 @@
         }
       }
     },
+    "Its items stay in the vault, without a folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses éléments restent dans le coffre, sans dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seine Einträge bleiben im Tresor, ohne Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sus elementos permanecen en la bóveda, sin carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I suoi elementi restano nella cassaforte, senza cartella"
+          }
+        }
+      }
+    },
+    "Its items stay in the vault, without a folder.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses éléments restent dans le coffre, sans dossier."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seine Einträge bleiben im Tresor, ohne Ordner."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sus elementos permanecen en la bóveda, sin carpeta."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I suoi elementi restano nella cassaforte, senza cartella."
+          }
+        }
+      }
+    },
     "Its items will disappear from your vault (they stay in the organization). To come back, a new invitation will be needed.": {
       "localizations": {
         "fr": {
@@ -22117,6 +23209,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "I suoi elementi scompariranno dalla tua cassaforte (restano nell'organizzazione). Per tornare servirà un nuovo invito."
+          }
+        }
+      }
+    },
+    "Its members keep their direct access to the collections. This can't be undone.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses membres gardent leurs accès directs aux collections. Cette action est irréversible."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Mitglieder behalten ihren direkten Zugriff auf die Sammlungen. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sus miembros conservan su acceso directo a las colecciones. No se puede deshacer."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I suoi membri mantengono l'accesso diretto alle raccolte. L'operazione è irreversibile."
           }
         }
       }
@@ -22229,6 +23349,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unisciti"
+          }
+        }
+      }
+    },
+    "Join a Shared Vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejoindre un coffre partagé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einem geteilten Tresor beitreten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unirse a una bóveda compartida"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unisciti a una cassaforte condivisa"
+          }
+        }
+      }
+    },
+    "Join a Shared Vault…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejoindre un coffre partagé…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einem geteilten Tresor beitreten …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unirse a una bóveda compartida…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unisciti a una cassaforte condivisa…"
           }
         }
       }
@@ -22425,6 +23601,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Conserva"
+          }
+        }
+      }
+    },
+    "Keep Editing": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuer la modification"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiter bearbeiten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguir editando"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continua a modificare"
           }
         }
       }
@@ -22849,6 +24053,34 @@
         }
       }
     },
+    "Leave Shared Vault…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitter le coffre partagé…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geteilten Tresor verlassen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salir de la bóveda compartida…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esci dalla cassaforte condivisa…"
+          }
+        }
+      }
+    },
     "Leave organization…": {
       "localizations": {
         "fr": {
@@ -23153,6 +24385,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Collega e compila"
+          }
+        }
+      }
+    },
+    "Link of “%@” copied (cleared from the clipboard in %@).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lien de « %1$@ » copié (effacé du presse-papiers dans %2$@)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link von „%1$@“ kopiert (wird in %2$@ aus der Zwischenablage gelöscht)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enlace de “%1$@” copiado (se borrará del portapapeles en %2$@)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Link di “%1$@” copiato (cancellato dagli appunti tra %2$@)."
           }
         }
       }
@@ -26629,6 +27889,62 @@
         }
       }
     },
+    "New Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Ordner"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cartella"
+          }
+        }
+      }
+    },
+    "New Folder…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau dossier…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer Ordner …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva carpeta…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cartella…"
+          }
+        }
+      }
+    },
     "New Group…": {
       "localizations": {
         "fr": {
@@ -26905,6 +28221,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuovo Send…"
+          }
+        }
+      }
+    },
+    "New Shared Vault": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau coffre partagé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer geteilter Tresor"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva bóveda compartida"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cassaforte condivisa"
+          }
+        }
+      }
+    },
+    "New Shared Vault…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau coffre partagé…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer geteilter Tresor …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva bóveda compartida…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cassaforte condivisa…"
           }
         }
       }
@@ -27413,6 +28785,34 @@
         }
       }
     },
+    "New shared vault, or join one with an invitation link": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau coffre partagé, ou en rejoindre un avec un lien d'invitation"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neuer geteilter Tresor, oder einem mit einem Einladungslink beitreten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva bóveda compartida, o unirse a una con un enlace de invitación"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova cassaforte condivisa, o unisciti a una con un link di invito"
+          }
+        }
+      }
+    },
     "New: %@": {
       "localizations": {
         "fr": {
@@ -27493,6 +28893,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nessun codice QR trovato nell'immagine. Ritaglia lo screenshot sul codice QR, poi riprova."
+          }
+        }
+      }
+    },
+    "No Send selected": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun envoi sélectionné"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kein Send ausgewählt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún envío seleccionado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun Send selezionato"
           }
         }
       }
@@ -28673,6 +30101,34 @@
         }
       }
     },
+    "Nothing matches “%@”.\nTry `tag:bank`, `type:card` or `!word` to exclude.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien ne correspond à « %@ ».\nEssayez `tag:banque`, `type:carte` ou `!mot` pour exclure."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Treffer für „%@“.\nVersuche `tag:bank`, `type:card` oder `!wort` zum Ausschließen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada coincide con “%@”.\nPrueba `tag:bank`, `type:card` o `!palabra` para excluir."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun risultato per “%@”.\nProva `tag:bank`, `type:card` o `!parola` per escludere."
+          }
+        }
+      }
+    },
     "Nothing matches “%@”.\nTry `tag:bank`, `type:carte` or `!word` to exclude.": {
       "localizations": {
         "fr": {
@@ -28697,6 +30153,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nessun risultato per “%@”.\nProva `tag:bank`, `type:carte` o `!word` per escludere."
+          }
+        }
+      }
+    },
+    "Nothing matches “%@”.\nTry `type:card` or `!word` to exclude.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien ne correspond à « %@ ».\nEssayez `type:carte` ou `!mot` pour exclure."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Treffer für „%@“.\nVersuche `type:card` oder `!wort` zum Ausschließen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada coincide con “%@”.\nPrueba `type:card` o `!palabra` para excluir."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun risultato per “%@”.\nProva `type:card` o `!parola` per escludere."
           }
         }
       }
@@ -31109,6 +32593,34 @@
         }
       }
     },
+    "Password copied": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mot de passe copié"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort kopiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contraseña copiada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Password copiata"
+          }
+        }
+      }
+    },
     "Password found in known leaks": {
       "localizations": {
         "fr": {
@@ -31805,6 +33317,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "CAP"
+          }
+        }
+      }
+    },
+    "Prefilled from “%@”. Check the settings, then create the Send: the link will be copied.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prérempli depuis « %@ ». Vérifiez les réglages, puis créez l'envoi : le lien sera copié."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vorausgefüllt aus „%@“. Prüfe die Einstellungen und erstelle dann das Send: Der Link wird kopiert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rellenado a partir de “%@”. Revisa los ajustes y crea el envío: se copiará el enlace."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Precompilato da “%@”. Controlla le impostazioni, poi crea il Send: il link verrà copiato."
           }
         }
       }
@@ -32677,6 +34217,34 @@
         }
       }
     },
+    "Regenerate": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Régénérer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu erzeugen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rigenera"
+          }
+        }
+      }
+    },
     "Regular expression": {
       "localizations": {
         "fr": {
@@ -32925,6 +34493,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rimuovi accesso"
+          }
+        }
+      }
+    },
+    "Remove Key": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer la clé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüssel entfernen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar llave"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovi chiave"
           }
         }
       }
@@ -33181,6 +34777,34 @@
         }
       }
     },
+    "Remove the security key “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer la clé de sécurité « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sicherheitsschlüssel „%@“ entfernen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Quitar la llave de seguridad “%@”?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovere la chiave di sicurezza “%@”?"
+          }
+        }
+      }
+    },
     "Remove their access without deleting them (restorable)": {
       "localizations": {
         "fr": {
@@ -33373,6 +34997,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rinomina"
+          }
+        }
+      }
+    },
+    "Rename Folder": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renommer le dossier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner umbenennen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renombrar carpeta"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rinomina cartella"
+          }
+        }
+      }
+    },
+    "Rename Folder…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renommer le dossier…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ordner umbenennen …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Renombrar carpeta…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rinomina cartella…"
           }
         }
       }
@@ -33881,6 +35561,34 @@
         }
       }
     },
+    "Restore it from the Trash": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restaurez-le depuis la corbeille"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stelle ihn aus dem Papierkorb wieder her"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restáuralo desde la papelera"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ripristinalo dal Cestino"
+          }
+        }
+      }
+    },
     "Restored": {
       "localizations": {
         "fr": {
@@ -33933,6 +35641,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Risultati"
+          }
+        }
+      }
+    },
+    "Return copies the selected login's password": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retour copie le mot de passe de l'identifiant sélectionné"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return kopiert das Passwort des ausgewählten Logins"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retorno copia la contraseña del inicio de sesión seleccionado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invio copia la password del login selezionato"
           }
         }
       }
@@ -35953,6 +37689,34 @@
         }
       }
     },
+    "Send “%@” created: link copied (cleared from the clipboard in %@).": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envoi « %1$@ » créé : lien copié (effacé du presse-papiers dans %2$@)."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send „%1$@“ erstellt: Link kopiert (wird in %2$@ aus der Zwischenablage gelöscht)."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Envío “%1$@” creado: enlace copiado (se borrará del portapapeles en %2$@)."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send “%1$@” creato: link copiato (cancellato dagli appunti tra %2$@)."
+          }
+        }
+      }
+    },
     "Send “%@” created: link copied (cleared from the clipboard in 90 s).": {
       "localizations": {
         "fr": {
@@ -36765,6 +38529,34 @@
         }
       }
     },
+    "Shared vault created": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coffre partagé créé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geteilter Tresor erstellt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bóveda compartida creada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cassaforte condivisa creata"
+          }
+        }
+      }
+    },
     "Shared vault open": {
       "localizations": {
         "fr": {
@@ -36817,6 +38609,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cassaforte condivisa in sospeso"
+          }
+        }
+      }
+    },
+    "Shared vault renamed": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coffre partagé renommé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geteilter Tresor umbenannt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bóveda compartida renombrada"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cassaforte condivisa rinominata"
           }
         }
       }
@@ -37269,6 +39089,34 @@
         }
       }
     },
+    "Show the sync error": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher l'erreur de synchronisation"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synchronisierungsfehler anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar el error de sincronización"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra l'errore di sincronizzazione"
+          }
+        }
+      }
+    },
     "Sign in": {
       "localizations": {
         "fr": {
@@ -37657,6 +39505,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Siti"
+          }
+        }
+      }
+    },
+    "Sites, one-time code, notes, fields and old passwords join the kept item; the most recent password stays the current password. The others then go to the Trash, where you can restore them.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sites, code à usage unique, notes, champs et anciens mots de passe rejoignent l'élément gardé ; le mot de passe le plus récent reste le mot de passe actuel. Les autres partent ensuite à la corbeille, d'où vous pourrez les restaurer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Websites, Einmalcode, Notizen, Felder und alte Passwörter kommen zum behaltenen Eintrag; das neueste Passwort bleibt das aktuelle. Die anderen landen dann im Papierkorb, aus dem du sie wiederherstellen kannst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los sitios, el código de un solo uso, las notas, los campos y las contraseñas antiguas se unen al elemento conservado; la contraseña más reciente sigue siendo la actual. Los demás van luego a la papelera, desde donde puedes restaurarlos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siti, codice monouso, note, campi e vecchie password confluiscono nell'elemento conservato; la password più recente resta quella attuale. Gli altri vanno poi nel Cestino, da cui puoi ripristinarli."
           }
         }
       }
@@ -38077,6 +39953,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Spazio"
+          }
+        }
+      }
+    },
+    "Space copies": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espace copie"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leertaste kopiert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Espacio copia"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spazio copia"
           }
         }
       }
@@ -38865,6 +40769,34 @@
         }
       }
     },
+    "Syncs now": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synchronise maintenant"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synchronisiert jetzt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincroniza ahora"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sincronizza ora"
+          }
+        }
+      }
+    },
     "System Settings → Privacy & Security → Accessibility": {
       "localizations": {
         "fr": {
@@ -39313,6 +41245,34 @@
         }
       }
     },
+    "The browser will need to be linked again, with a new code, to fill your logins.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le navigateur devra être relié de nouveau, avec un nouveau code, pour remplir vos identifiants."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Browser muss mit einem neuen Code erneut verknüpft werden, um deine Logins auszufüllen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habrá que vincular de nuevo el navegador, con un código nuevo, para que rellene tus inicios de sesión."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il browser dovrà essere collegato di nuovo, con un nuovo codice, per compilare i tuoi login."
+          }
+        }
+      }
+    },
     "The clipboard contains neither an otpauth:// link nor a QR code image.": {
       "localizations": {
         "fr": {
@@ -39565,6 +41525,34 @@
         }
       }
     },
+    "The file exceeds 100 MB, the maximum size of an attachment or a Send.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le fichier dépasse 100 Mo, la taille maximale d'une pièce jointe ou d'un envoi."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Datei überschreitet 100 MB, die maximale Größe eines Anhangs oder Sends."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El archivo supera los 100 MB, el tamaño máximo de un archivo adjunto o un envío."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il file supera 100 MB, la dimensione massima di un allegato o di un Send."
+          }
+        }
+      }
+    },
     "The file exceeds 100 MB, the maximum size of an attachment or a send.": {
       "localizations": {
         "fr": {
@@ -39673,6 +41661,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il file viene cifrato prima dell'invio; solo il link può aprirlo (massimo 100 MB)."
+          }
+        }
+      }
+    },
+    "The file of a Send can't be replaced: create a new Send for another file.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le fichier d'un envoi ne peut pas être remplacé : créez un nouvel envoi pour un autre fichier."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Datei eines Sends kann nicht ersetzt werden: Erstelle ein neues Send für eine andere Datei."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El archivo de un envío no se puede sustituir: crea un envío nuevo para otro archivo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il file di un Send non può essere sostituito: crea un nuovo Send per un altro file."
           }
         }
       }
@@ -40993,6 +43009,34 @@
         }
       }
     },
+    "The terminal will need “verrou link” and a new approval to read the vault again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le terminal devra refaire « verrou link » et une nouvelle approbation pour relire le coffre."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das Terminal braucht „verrou link“ und eine neue Freigabe, um den Tresor wieder zu lesen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El terminal necesitará “verrou link” y una nueva aprobación para volver a leer la bóveda."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il terminale dovrà rifare “verrou link” e una nuova approvazione per leggere di nuovo la cassaforte."
+          }
+        }
+      }
+    },
     "The two passwords differ.": {
       "localizations": {
         "fr": {
@@ -41637,6 +43681,34 @@
         }
       }
     },
+    "This Send hasn't been created yet.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet envoi n'a pas encore été créé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieses Send wurde noch nicht erstellt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este envío aún no se ha creado."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo Send non è ancora stato creato."
+          }
+        }
+      }
+    },
     "This form": {
       "localizations": {
         "fr": {
@@ -41773,6 +43845,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Questo elemento non ha una chiave pubblica"
+          }
+        }
+      }
+    },
+    "This item hasn't been created yet.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cet élément n'a pas encore été créé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dieser Eintrag wurde noch nicht erstellt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Este elemento aún no se ha creado."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo elemento non è ancora stato creato."
           }
         }
       }
@@ -42305,6 +44405,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Per proporre le tue password e passkey in Safari e nelle app per Mac, Verrou deve essere firmato da un team di sviluppo Apple (macOS lo richiede al fornitore di credenziali e al gruppo di app condiviso): vedi la guida, “Mac credential provider”."
+          }
+        }
+      }
+    },
+    "To remove the password: “Remove Password” on the Send's detail.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pour retirer le mot de passe : « Retirer le mot de passe » sur la fiche de l'envoi."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um das Passwort zu entfernen: „Passwort entfernen“ in den Details des Sends."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para quitar la contraseña: “Quitar contraseña” en el detalle del envío."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per rimuovere la password: “Rimuovi password” nel dettaglio del Send."
           }
         }
       }
@@ -42953,6 +45081,34 @@
         }
       }
     },
+    "Undo": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerrufen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla"
+          }
+        }
+      }
+    },
     "UniFFI": {
       "localizations": {
         "fr": {
@@ -43065,6 +45221,62 @@
         }
       }
     },
+    "Unlink “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Délier « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verknüpfung mit „%@“ aufheben?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Desvincular “%@”?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scollegare “%@”?"
+          }
+        }
+      }
+    },
+    "Unlink…": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Délier…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verknüpfung aufheben …"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desvincular…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scollega…"
+          }
+        }
+      }
+    },
     "Unlock": {
       "localizations": {
         "fr": {
@@ -43145,6 +45357,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sblocca con %@"
+          }
+        }
+      }
+    },
+    "Unlock with Security Key": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Déverrouiller avec la clé de sécurité"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit Sicherheitsschlüssel entsperren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desbloquear con llave de seguridad"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sblocca con chiave di sicurezza"
           }
         }
       }
@@ -43817,6 +46057,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Usa questo codice"
+          }
+        }
+      }
+    },
+    "Use “/” to nest it, for example “Work/Clients”.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utilisez « / » pour l'imbriquer, par exemple « Travail/Clients »."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit „/“ verschachtelst du ihn, zum Beispiel „Arbeit/Kunden“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa “/” para anidarla, por ejemplo “Trabajo/Clientes”."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa “/” per annidarla, ad esempio “Lavoro/Clienti”."
           }
         }
       }
@@ -45753,6 +48021,62 @@
         }
       }
     },
+    "You can restore it from the Trash.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous pourrez le restaurer depuis la corbeille."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kannst ihn aus dem Papierkorb wiederherstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podrás restaurarlo desde la papelera."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrai ripristinarlo dal Cestino."
+          }
+        }
+      }
+    },
+    "You can restore them from the Trash.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vous pourrez les restaurer depuis la corbeille."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kannst sie aus dem Papierkorb wiederherstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Podrás restaurarlos desde la papelera."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrai ripristinarli dal Cestino."
+          }
+        }
+      }
+    },
     "You don't manage this collection": {
       "localizations": {
         "fr": {
@@ -46089,6 +48413,62 @@
         }
       }
     },
+    "Your changes to this Send will be lost.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos modifications de cet envoi seront perdues."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Änderungen an diesem Send gehen verloren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se perderán tus cambios en este envío."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le modifiche a questo Send andranno perse."
+          }
+        }
+      }
+    },
+    "Your changes to this item will be lost.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos modifications de cet élément seront perdues."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deine Änderungen an diesem Eintrag gehen verloren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se perderán tus cambios en este elemento."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le modifiche a questo elemento andranno perse."
+          }
+        }
+      }
+    },
     "Your role doesn't allow seeing the members: only the name can be edited here.": {
       "localizations": {
         "fr": {
@@ -46225,6 +48605,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "La tua cassaforte viene decifrata su questo Mac; la password principale non viene mai inviata al server."
+          }
+        }
+      }
+    },
+    "Your vault is empty": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Votre coffre est vide"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dein Tresor ist leer"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tu bóveda está vacía"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La tua cassaforte è vuota"
           }
         }
       }

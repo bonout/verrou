@@ -309,6 +309,34 @@
         }
       }
     },
+    "%@ must be set up on this iPhone: it approves each request.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ doit être configuré sur cet iPhone : c'est lui qui approuve chaque demande."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ muss auf diesem iPhone eingerichtet sein: Es genehmigt jede Anfrage."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ debe estar configurado en este iPhone: aprueba cada solicitud."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ deve essere configurato su questo iPhone: approva ogni richiesta."
+          }
+        }
+      }
+    },
     "%@ needs to be turned on again: enter your master password.": {
       "localizations": {
         "fr": {
@@ -337,6 +365,34 @@
         }
       }
     },
+    "%@ on this iPhone approves what the terminal asks the Mac while you are away.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ sur cet iPhone approuve ce que le terminal demande au Mac pendant votre absence."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ auf diesem iPhone genehmigt, was das Terminal vom Mac anfordert, während du nicht da bist."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ en este iPhone aprueba lo que el terminal pide al Mac mientras estás fuera."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ su questo iPhone approva ciò che il Terminale chiede al Mac mentre sei lontano."
+          }
+        }
+      }
+    },
     "%@ passwords checked": {
       "localizations": {
         "fr": {
@@ -361,6 +417,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ password controllate"
+          }
+        }
+      }
+    },
+    "%@ shows what is asked.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ affiche ce qui est demandé."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ zeigt, was angefordert wird."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ muestra lo que se pide."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ mostra cosa viene chiesto."
           }
         }
       }
@@ -781,6 +865,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld modifiche rifiutate dal server, annullate"
+          }
+        }
+      }
+    },
+    "%lld characters": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld caractères"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld Zeichen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld caracteres"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld caratteri"
           }
         }
       }
@@ -9045,6 +9157,34 @@
         }
       }
     },
+    "Deleted items stay here until you restore them, or until the server deletes them for good.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les éléments supprimés restent ici jusqu'à ce que vous les restauriez, ou que le serveur les supprime définitivement."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gelöschte Einträge bleiben hier, bis du sie wiederherstellst oder der Server sie endgültig löscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los elementos eliminados se quedan aquí hasta que los restaures o hasta que el servidor los elimine definitivamente."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gli elementi eliminati restano qui finché non li ripristini, o finché il server non li elimina definitivamente."
+          }
+        }
+      }
+    },
     "Deleted items stay there for 30 days.": {
       "localizations": {
         "fr": {
@@ -9153,6 +9293,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cassaforte demo · dati dimostrativi"
+          }
+        }
+      }
+    },
+    "Demo vault · read-only sample data": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coffre de démonstration · données d'exemple en lecture seule"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo-Tresor · schreibgeschützte Beispieldaten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bóveda de demostración · datos de ejemplo de solo lectura"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cassaforte demo · dati di esempio in sola lettura"
           }
         }
       }
@@ -9293,6 +9461,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cifre"
+          }
+        }
+      }
+    },
+    "Discard Changes": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abandonner les modifications"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen verwerfen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descartar cambios"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scarta modifiche"
+          }
+        }
+      }
+    },
+    "Discard changes?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abandonner les modifications ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Änderungen verwerfen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Descartar los cambios?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scartare le modifiche?"
           }
         }
       }
@@ -10245,6 +10469,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancella l'account, la cache cifrata e %@ da questo iPhone. La tua cassaforte resta sul server."
+          }
+        }
+      }
+    },
+    "Estimated strength: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Robustesse estimée : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geschätzte Stärke: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguridad estimada: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Robustezza stimata: %@"
           }
         }
       }
@@ -12181,6 +12433,34 @@
         }
       }
     },
+    "Hide note": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer la note"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notiz ausblenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar nota"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi nota"
+          }
+        }
+      }
+    },
     "Hide the text when opened": {
       "localizations": {
         "fr": {
@@ -12545,6 +12825,34 @@
         }
       }
     },
+    "In Safari, Verrou can also submit the sign-in form after filling it. Turn it on in **Settings → Apps → Safari → Extensions → Verrou** and allow it on all websites.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans Safari, Verrou peut aussi valider le formulaire de connexion après l'avoir rempli. Activez-le dans **Réglages → Apps → Safari → Extensions → Verrou** et autorisez-le sur tous les sites."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Safari kann Verrou das Anmeldeformular nach dem Ausfüllen auch absenden. Aktiviere es unter **Einstellungen → Apps → Safari → Erweiterungen → Verrou** und erlaube es auf allen Websites."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En Safari, Verrou también puede enviar el formulario de inicio de sesión después de rellenarlo. Actívalo en **Ajustes → Apps → Safari → Extensiones → Verrou** y permítelo en todos los sitios web."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In Safari, Verrou può anche inviare il modulo di accesso dopo averlo compilato. Attivalo in **Impostazioni → App → Safari → Estensioni → Verrou** e consentilo su tutti i siti web."
+          }
+        }
+      }
+    },
     "In Safari, Verrou can also submit the sign-in form once AutoFill has filled it, both steps of a two-step form included. Turn it on in **Settings → Apps → Safari → Extensions → Verrou**, and allow it on all websites. Other browsers don't run extensions.": {
       "localizations": {
         "fr": {
@@ -12597,6 +12905,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "In background, quando iOS lo consente, se la cassaforte è bloccata Verrou guarda solo ciò che l'app ha già scaricato (nessuna chiave, nessuna rete): le novità dal server arrivano alla prossima apertura."
+          }
+        }
+      }
+    },
+    "In the trash until you restore it, or until the server deletes it for good.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "À la corbeille jusqu'à ce que vous le restauriez, ou que le serveur le supprime définitivement."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im Papierkorb, bis du es wiederherstellst oder der Server es endgültig löscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la papelera hasta que lo restaures o hasta que el servidor lo elimine definitivamente."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nel Cestino finché non lo ripristini, o finché il server non lo elimina definitivamente."
           }
         }
       }
@@ -13493,6 +13829,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unisciti a un'organizzazione…"
+          }
+        }
+      }
+    },
+    "Keep Editing": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continuer la modification"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weiter bearbeiten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguir editando"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continua a modificare"
           }
         }
       }
@@ -16969,6 +17333,34 @@
         }
       }
     },
+    "On the Mac: Verrou › Settings › Security › Pair an iPhone, then scan the code. When you are away from the Mac, the terminal's requests come here: %@ opens them, you approve or deny. Sent through iCloud, sealed end to end.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sur le Mac : Verrou › Réglages › Sécurité › Jumeler un iPhone, puis scannez le code. Quand vous êtes loin du Mac, les demandes du terminal arrivent ici : %@ les ouvre, vous approuvez ou refusez. Transmises par iCloud, chiffrées de bout en bout."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf dem Mac: Verrou › Einstellungen › Sicherheit › iPhone koppeln, dann den Code scannen. Wenn du nicht am Mac bist, kommen die Anfragen des Terminals hierher: %@ öffnet sie, du genehmigst oder lehnst ab. Über iCloud übertragen, Ende-zu-Ende versiegelt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En el Mac: Verrou › Ajustes › Seguridad › Enlazar un iPhone y escanea el código. Cuando estés lejos del Mac, las solicitudes del terminal llegan aquí: %@ las abre y tú las apruebas o deniegas. Enviadas por iCloud, cifradas de extremo a extremo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sul Mac: Verrou › Impostazioni › Sicurezza › Abbina un iPhone, poi scansiona il codice. Quando sei lontano dal Mac, le richieste del Terminale arrivano qui: %@ le apre, tu approvi o rifiuti. Inviate tramite iCloud, sigillate end-to-end."
+          }
+        }
+      }
+    },
     "On this iPhone, take a screenshot of the QR code shown by the site, then choose it here. The image is not kept.": {
       "localizations": {
         "fr": {
@@ -18425,6 +18817,34 @@
         }
       }
     },
+    "Password protected": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protégé par un mot de passe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwortgeschützt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protegido con contraseña"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protetto da password"
+          }
+        }
+      }
+    },
     "Passwordless · %@": {
       "localizations": {
         "fr": {
@@ -19293,6 +19713,62 @@
         }
       }
     },
+    "Read-only demo": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Démonstration en lecture seule"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreibgeschützte Demo"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demostración de solo lectura"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo in sola lettura"
+          }
+        }
+      }
+    },
+    "Read-only · sample data": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lecture seule · données d'exemple"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schreibgeschützt · Beispieldaten"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo lectura · datos de ejemplo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sola lettura · dati di esempio"
+          }
+        }
+      }
+    },
     "Reason given: “%@”": {
       "localizations": {
         "fr": {
@@ -19345,6 +19821,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Modificati di recente"
+          }
+        }
+      }
+    },
+    "Regenerate": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Régénérer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neu erzeugen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regenerar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rigenera"
           }
         }
       }
@@ -22205,6 +22709,34 @@
         }
       }
     },
+    "Show with %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher avec %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit %@ anzeigen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostrar con %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra con %@"
+          }
+        }
+      }
+    },
     "Show with Face ID": {
       "localizations": {
         "fr": {
@@ -22397,6 +22929,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Accedi al tuo server Vaultwarden per salvare i codici monouso."
+          }
+        }
+      }
+    },
+    "Sign in to your server to create and edit items.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connectez-vous à votre serveur pour créer et modifier des éléments."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Melde dich bei deinem Server an, um Einträge zu erstellen und zu bearbeiten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inicia sesión en tu servidor para crear y editar elementos."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accedi al tuo server per creare e modificare elementi."
           }
         }
       }
@@ -23801,6 +24361,34 @@
         }
       }
     },
+    "The code then shows without %@, on this iPhone only: its setup key stays in this iPhone's keychain until you turn this off.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le code s'affiche alors sans %@, sur cet iPhone seulement : sa clé de configuration reste dans le trousseau de cet iPhone jusqu'à ce que vous désactiviez ceci."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Code erscheint dann ohne %@, nur auf diesem iPhone: Sein Einrichtungsschlüssel bleibt im Schlüsselbund dieses iPhone, bis du das ausschaltest."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El código se muestra entonces sin %@, solo en este iPhone: su clave de configuración se queda en el llavero de este iPhone hasta que lo desactives."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il codice si mostra allora senza %@, solo su questo iPhone: la sua chiave di configurazione resta nel portachiavi di questo iPhone finché non lo disattivi."
+          }
+        }
+      }
+    },
     "The code then shows without Face ID, on this iPhone only: its seed stays in this iPhone's keychain until you turn this off.": {
       "localizations": {
         "fr": {
@@ -23853,6 +24441,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il ritardo parte dal momento in cui Verrou passa in background. Fuori dal primo piano, la schermata di Verrou è nascosta nel selettore di app."
+          }
+        }
+      }
+    },
+    "The demo vault is read-only": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le coffre de démonstration est en lecture seule"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Demo-Tresor ist schreibgeschützt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La bóveda de demostración es de solo lectura"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La cassaforte demo è in sola lettura"
           }
         }
       }
@@ -24557,6 +25173,34 @@
         }
       }
     },
+    "The system only receives sites and user names: passwords, codes and passkeys need %@ or your master password.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le système ne reçoit que les sites et les noms d'utilisateur : les mots de passe, codes et passkeys demandent %@ ou votre mot de passe principal."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das System erhält nur Websites und Benutzernamen: Passwörter, Codes und Passkeys brauchen %@ oder dein Master-Passwort."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El sistema solo recibe sitios y nombres de usuario: las contraseñas, los códigos y las llaves de acceso necesitan %@ o tu contraseña maestra."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il sistema riceve solo siti e nomi utente: password, codici e passkey richiedono %@ o la password principale."
+          }
+        }
+      }
+    },
     "The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after %@ or your master password. After that, the next fills skip %@ for 5 minutes while the iPhone stays unlocked, until Verrou locks; protected items and passkeys always ask.": {
       "localizations": {
         "fr": {
@@ -24665,6 +25309,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Questi elementi lasciano la tua cassaforte personale: ognuno viene cifrato di nuovo con la chiave dell'organizzazione (allegati inclusi)."
+          }
+        }
+      }
+    },
+    "These sites accept passkeys. “Create” opens the site in Safari: choose Verrou to save the passkey. According to passkeys.2fa.directory": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ces sites acceptent les passkeys. « Créer » ouvre le site dans Safari : choisissez Verrou pour enregistrer la passkey. D'après passkeys.2fa.directory"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Websites akzeptieren Passkeys. „Erstellen“ öffnet die Website in Safari: Wähle Verrou, um den Passkey zu sichern. Laut passkeys.2fa.directory"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estos sitios aceptan llaves de acceso. “Crear” abre el sitio en Safari: elige Verrou para guardar la llave de acceso. Según passkeys.2fa.directory"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questi siti accettano le passkey. “Crea” apre il sito in Safari: scegli Verrou per salvare la passkey. Secondo passkeys.2fa.directory"
           }
         }
       }
@@ -25285,6 +25957,34 @@
         }
       }
     },
+    "Tools": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outils"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Werkzeuge"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herramientas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Strumenti"
+          }
+        }
+      }
+    },
     "Touch and hold a Send to copy its link. The link carries the key: only give it to its recipient.": {
       "localizations": {
         "fr": {
@@ -25365,6 +26065,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il Cestino è vuoto"
+          }
+        }
+      }
+    },
+    "Try Again": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erneut versuchen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reintentar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Riprova"
           }
         }
       }
@@ -25533,6 +26261,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Trattino basso ( _ )"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annuler"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerrufen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deshacer"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annulla"
           }
         }
       }
@@ -25817,6 +26573,34 @@
         }
       }
     },
+    "Unreadable request: %@ changed since pairing? Pair this iPhone again.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demande illisible : %@ a changé depuis le jumelage ? Jumelez à nouveau cet iPhone."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlesbare Anfrage: Hat sich %@ seit dem Koppeln geändert? Koppele dieses iPhone erneut."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solicitud ilegible: ¿ha cambiado %@ desde el enlace? Vuelve a enlazar este iPhone."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Richiesta illeggibile: %@ è cambiato dall'abbinamento? Abbina di nuovo questo iPhone."
+          }
+        }
+      }
+    },
     "Unreadable request: Face ID changed since pairing? Pair this iPhone again.": {
       "localizations": {
         "fr": {
@@ -25869,6 +26653,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seed illeggibile (previsto un link Base32 o otpauth://)"
+          }
+        }
+      }
+    },
+    "Unreadable setup key (Base32 or otpauth:// link expected)": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clé de configuration illisible (Base32 ou lien otpauth:// attendu)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlesbarer Einrichtungsschlüssel (Base32 oder otpauth://-Link erwartet)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clave de configuración ilegible (se esperaba Base32 o un enlace otpauth://)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiave di configurazione illeggibile (previsto Base32 o un link otpauth://)"
           }
         }
       }
@@ -27245,6 +28057,34 @@
         }
       }
     },
+    "With “Never”, the vault stays open in the background until you lock it or close Verrou.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avec « Jamais », le coffre reste ouvert en arrière-plan jusqu'à ce que vous le verrouilliez ou fermiez Verrou."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit „Nie“ bleibt der Tresor im Hintergrund offen, bis du ihn sperrst oder Verrou schließt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con “Nunca”, la bóveda sigue abierta en segundo plano hasta que la bloquees o cierres Verrou."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Con “Mai”, la cassaforte resta aperta in background finché non la blocchi o chiudi Verrou."
+          }
+        }
+      }
+    },
     "Without an account, the person creates one with the link received (Verrou: “Create an account” at sign-in). With an account, they paste the link into “Join an organization”. You will then confirm them by verifying their fingerprint.": {
       "localizations": {
         "fr": {
@@ -27269,6 +28109,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Senza un account, la persona ne crea uno con il link ricevuto (Verrou: “Crea un account” all'accesso). Con un account, incolla il link in “Unisciti a un'organizzazione”. Poi la confermerai verificandone l'impronta."
+          }
+        }
+      }
+    },
+    "Without an account, the person creates one with the link received, in the web vault or in Verrou on a Mac (“Create an account” at sign-in). With an account, they paste the link into “Join an organization”. You will then confirm them by verifying their fingerprint.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sans compte, la personne le crée avec le lien reçu, dans le coffre web ou dans Verrou sur un Mac (« Créer un compte » à la connexion). Avec un compte, elle colle le lien dans « Rejoindre une organisation ». Vous la confirmerez ensuite en vérifiant son empreinte."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ohne Account erstellt die Person einen mit dem erhaltenen Link, im Web-Tresor oder in Verrou auf einem Mac („Account erstellen“ bei der Anmeldung). Mit Account fügt sie den Link unter „Einer Organisation beitreten“ ein. Du bestätigst sie dann, indem du ihren Fingerabdruck überprüfst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Si no tiene cuenta, la persona la crea con el enlace recibido, en la bóveda web o en Verrou en un Mac (“Crear una cuenta” al iniciar sesión). Si ya tiene cuenta, pega el enlace en “Unirse a una organización”. Después la confirmarás verificando su huella digital."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senza un account, la persona ne crea uno con il link ricevuto, nella cassaforte web o in Verrou su un Mac (“Crea un account” all'accesso). Con un account, incolla il link in “Unisciti a un'organizzazione”. Poi la confermerai verificandone l'impronta."
           }
         }
       }
@@ -29775,6 +30643,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "seed o link otpauth://"
+          }
+        }
+      }
+    },
+    "setup key or otpauth:// link": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "clé de configuration ou lien otpauth://"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einrichtungsschlüssel oder otpauth://-Link"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "clave de configuración o enlace otpauth://"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "chiave di configurazione o link otpauth://"
           }
         }
       }
