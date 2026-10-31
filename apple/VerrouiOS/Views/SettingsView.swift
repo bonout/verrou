@@ -19,8 +19,7 @@ struct SettingsTab: View {
                         LabeledContent("Server", value: URL(string: account.server)?.host() ?? account.server)
                         LabeledContent("Synced", value: syncedLabel(account))
                         if let pending = model.pendingLabel {
-                            Label(pending, systemImage: "arrow.triangle.2.circlepath")
-                                .foregroundStyle(.orange)
+                            PendingLabel(text: pending)
                         }
                         Button {
                             Task { await model.syncNow() }
@@ -588,9 +587,21 @@ private struct AuditRow: View {
                 ItemIcon(summary: summary, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summary.title).lineLimit(1)
-                    Text(detail).font(.caption.weight(.medium)).foregroundStyle(tint)
+                    TintedDetail(text: detail, tint: tint)
                 }
             }
+        }
+    }
+}
+
+private struct TintedDetail: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle().fill(tint).frame(width: 7, height: 7).accessibilityHidden(true)
+            Text(text).font(.caption.weight(.medium)).foregroundStyle(.secondary)
         }
     }
 }
@@ -608,7 +619,7 @@ private struct PasskeyCandidateRow: View {
                 ItemIcon(summary: candidate.item, size: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(candidate.item.title).lineLimit(1)
-                    Text(detail).font(.caption.weight(.medium)).foregroundStyle(.teal)
+                    TintedDetail(text: detail, tint: .teal)
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
