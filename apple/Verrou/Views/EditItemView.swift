@@ -18,6 +18,8 @@ struct EditItemView: View {
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
     @State private var confirmDiscard = false
+    @State private var creatingFolder = false
+    @State private var newFolderName = ""
     @FocusState private var titleFocused: Bool
 
     init(editor: AppModel.Editor) {
@@ -93,11 +95,18 @@ struct EditItemView: View {
                 CustomFieldsSection(fields: $draft.fields, template: draft.template)
 
                 Section {
-                    Picker("Folder", selection: $draft.folderId) {
-                        Text("No folder").tag(String?.none)
-                        ForEach(model.folders, id: \.id) { folder in
-                            Text(folder.name).tag(Optional(folder.id))
+                    HStack {
+                        Picker("Folder", selection: $draft.folderId) {
+                            Text("No folder").tag(String?.none)
+                            ForEach(model.folders, id: \.id) { folder in
+                                Text(folder.name).tag(Optional(folder.id))
+                            }
                         }
+                        Button("New Folder…") {
+                            newFolderName = ""
+                            creatingFolder = true
+                        }
+                        .disabled(model.editorBusy)
                     }
                     Toggle("Favorite", isOn: $draft.favorite)
                 }
@@ -159,6 +168,19 @@ struct EditItemView: View {
         }
         .interactiveDismissDisabled(changed)
         .announcing(model.editorError)
+        .alert("New Folder", isPresented: $creatingFolder) {
+            TextField("Name", text: $newFolderName)
+            Button("Create") {
+                let name = newFolderName
+                Task {
+                    if let id = await model.createFolder(name) { draft.folderId = id }
+                }
+            }
+            .disabled(newFolderName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Use “/” to nest it, for example “Work/Clients”.")
+        }
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard) {
             Button("Discard Changes", role: .destructive) { model.editor = nil }
             Button("Keep Editing", role: .cancel) {}
