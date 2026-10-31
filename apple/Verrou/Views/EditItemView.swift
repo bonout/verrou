@@ -240,12 +240,12 @@ struct EditItemView: View {
                 GeneratorView(uri: siteURL, useAlias: { alias in
                     draft.login?.username = alias
                     showGenerator = false
-                }) { password, bits in
+                }, use: { password, bits in
                     draft.login?.password = password
                     generated = bits.map { (password, $0) }
                     showPassword = true
                     showGenerator = false
-                }
+                })
             }
         }
     }
@@ -298,7 +298,9 @@ struct GeneratorView: View {
     @Environment(AppModel.self) private var model
     var uri: String?
     var useAlias: ((String) -> Void)?
-    let use: (String, Double?) -> Void
+    var use: ((String, Double?) -> Void)?
+    var copy: ((String) -> Void)?
+    var showsTitle = true
     @AppStorage("generatorMode") private var mode = GeneratorMode.password
     @AppStorage("generatorLength") private var length = 20.0
     @AppStorage("generatorDigits") private var digits = true
@@ -307,13 +309,15 @@ struct GeneratorView: View {
     @AppStorage("generatorSeparator") private var separator = PassphraseSeparatorChoice.hyphen
     @AppStorage("generatorCapitalize") private var capitalize = false
     @AppStorage("generatorNumber") private var number = false
-    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
+    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.preferred
     @State private var password = ""
     @State private var bits: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Generator").font(.headline)
+            if showsTitle {
+                Text("Generator").font(.headline)
+            }
             Picker("Type", selection: shownMode) {
                 ForEach(GeneratorMode.available(alias: aliasAvailable), id: \.self) { Text($0.label).tag($0) }
             }
@@ -337,19 +341,30 @@ struct GeneratorView: View {
                 Button {
                     regenerate()
                 } label: {
-                    Label("Another", systemImage: "arrow.clockwise")
+                    Label("Regenerate", systemImage: "arrow.clockwise")
                 }
                 Spacer()
-                Button(shownMode.wrappedValue == .alias ? LocalizedStringKey("Use as Username") : LocalizedStringKey("Use")) {
-                    if shownMode.wrappedValue == .alias {
-                        useAlias?(password)
-                    } else {
-                        use(password, bits)
+                if shownMode.wrappedValue == .alias {
+                    Button("Use as Username") { useAlias?(password) }
+                        .disabled(password.isEmpty)
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                } else {
+                    if let copy {
+                        if use == nil {
+                            Button("Copy") { copy(password) }
+                                .keyboardShortcut(.defaultAction)
+                                .buttonStyle(.borderedProminent)
+                        } else {
+                            Button("Copy") { copy(password) }
+                        }
+                    }
+                    if let use {
+                        Button("Use") { use(password, bits) }
+                            .keyboardShortcut(.defaultAction)
+                            .buttonStyle(.borderedProminent)
                     }
                 }
-                .disabled(password.isEmpty)
-                .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
             }
         }
         .padding(16)
@@ -408,19 +423,14 @@ struct GeneratorView: View {
     }
 
     private func regenerate() {
-        switch shownMode.wrappedValue {
-        case .password:
-            password = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
-            bits = nil
-        case .passphrase:
-            let phrase = generatePassphrase(settings: PassphraseSettings(
-                words: UInt32(words), separator: separator.ffi, capitalize: capitalize,
-                includeNumber: number, language: language.ffi))
-            password = phrase.value
-            bits = phrase.entropyBits
-        case .alias:
+        if shownMode.wrappedValue == .alias {
             password = model.emailAlias(for: uri) ?? ""
             bits = nil
+            return
         }
+        let settings = GeneratorSettings(mode: shownMode.wrappedValue, length: length, digits: digits, symbols: symbols,
+                                         words: words, separator: separator, capitalize: capitalize, number: number,
+                                         language: language)
+        (password, bits) = settings.generate()
     }
 }

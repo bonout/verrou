@@ -75,6 +75,8 @@ struct VerrouApp: App {
             CommandMenu("Vault") {
                 Button("Quick Access") { delegate.quickAccess?.toggle() }
                     .keyboardShortcut(.space, modifiers: [.command, .shift])
+                Button("Generate Password…") { delegate.generator?.show() }
+                    .keyboardShortcut("g", modifiers: [.command, .option])
                 Divider()
                 Button("Sync") { Task { await delegate.model.syncNow() } }
                     .keyboardShortcut("r", modifiers: .command)
@@ -129,7 +131,7 @@ struct VerrouApp: App {
         }
 
         MenuBarExtra(isInserted: $showMenuBarExtra) {
-            MenuBarMenu(quickAccess: { delegate.quickAccess?.show() })
+            MenuBarMenu(quickAccess: { delegate.quickAccess?.show() }, generator: { delegate.generator?.show() })
                 .environment(delegate.model)
         } label: {
             MenuBarIcon()
@@ -152,12 +154,14 @@ struct MenuBarMenu: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     let quickAccess: () -> Void
+    let generator: () -> Void
 
     var body: some View {
         Text(status)
         Divider()
         Button("Quick Access", action: quickAccess)
             .keyboardShortcut(.space, modifiers: [.command, .shift])
+        Button("Generate Password…", action: generator)
         Button("Open Verrou", action: showMainWindow)
         Divider()
         if model.lockState == .unlocked {
@@ -255,6 +259,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
     let updates = Updates()
     private(set) var quickAccess: QuickAccessController?
+    private(set) var generator: GeneratorWindow?
     /// Filling in apps (⌘\), through quick access.
     private(set) var autofill: UniversalAutofill?
     private var demo: DemoDriver?
@@ -286,7 +291,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Diagnostics.shared.start()
+        let generator = GeneratorWindow(model: model)
+        self.generator = generator
         let quickAccess = QuickAccessController(model: model)
+        quickAccess.generator = generator
         self.quickAccess = quickAccess
         autofill = UniversalAutofill(model: model, quickAccess: quickAccess)
         quickAccess.autofill = autofill
