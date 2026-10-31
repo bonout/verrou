@@ -65,10 +65,10 @@
     "message": "no tab"
   },
   "pairRefused": {
-    "message": "Pairing refused in Verrou."
+    "message": "Linking refused in Verrou."
   },
   "pairBusy": {
-    "message": "A pairing is already in progress: try again in a moment."
+    "message": "Linking is already in progress: try again in a moment."
   },
   "pairNoAnswer": {
     "message": "Verrou is not responding. Is it installed, with \"$SETTING$\" turned on in its settings? ($DETAIL$)",
@@ -274,7 +274,7 @@
     "message": "Passkey saved in Verrou"
   },
   "popupPairing": {
-    "message": "Pairing…"
+    "message": "Linking…"
   },
   "popupCheckCode": {
     "message": "Check that Verrou shows the same code, then accept:"

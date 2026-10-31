@@ -33,6 +33,18 @@ test("every language has English's messages and placeholders", () => {
   }
 });
 
+test("one word per concept: the login item, linking to Verrou", () => {
+  const en = messages("en");
+  const fr = messages("fr");
+  for (const [name, entry] of Object.entries(en)) {
+    if (/username/i.test(entry.message)) assert.doesNotMatch(fr[name].message, /identifiant/i, `fr: ${name}`);
+  }
+  const others = { en: /\bpair/i, fr: /appair/i, de: /koppl/i, es: /empareja/i, it: /abbina/i };
+  for (const [locale, word] of Object.entries(others)) {
+    for (const [name, entry] of Object.entries(messages(locale))) assert.doesNotMatch(entry.message, word, `${locale}: ${name}`);
+  }
+});
+
 test("every message used by the code and the manifest exists", () => {
   const en = messages("en");
   const manifest = JSON.parse(readFileSync(`${root}manifest.json`, "utf8"));
