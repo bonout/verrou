@@ -399,6 +399,35 @@ impl Api {
             .ok_or_else(|| Error::Server("folder created without an id".to_owned()))
     }
 
+    /// Renames a folder (name already encrypted), `PUT /api/folders/{id}`.
+    pub async fn rename_folder(
+        &self,
+        access_token: &str,
+        id: &str,
+        name: &str,
+    ) -> Result<(), Error> {
+        let response = self
+            .http
+            .put(format!("{}/api/folders/{id}", self.base))
+            .bearer_auth(access_token)
+            .json(&serde_json::json!({ "name": name }))
+            .send_retrying()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
+    /// Deletes a folder, `DELETE /api/folders/{id}`: the server leaves its
+    /// items without a folder.
+    pub async fn delete_folder(&self, access_token: &str, id: &str) -> Result<(), Error> {
+        let response = self
+            .http
+            .delete(format!("{}/api/folders/{id}", self.base))
+            .bearer_auth(access_token)
+            .send_retrying()
+            .await?;
+        write_response(response).await.map(drop)
+    }
+
     /// Moves several items to the trash in one request (restorable).
     pub async fn trash_ciphers(&self, access_token: &str, ids: &[String]) -> Result<(), Error> {
         self.bulk_cipher_action(access_token, ids, "delete")
@@ -762,6 +791,89 @@ mod tests {
             .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}")
             .await
             .unwrap();
+    }
+
+    /// Answers `status` to one request, on `listener`, and returns the
+    /// request as received.
+    async fn capture_once(listener: TcpListener, status: &str) -> String {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0u8; 4096];
+        loop {
+            let read = stream.read(&mut buffer).await.unwrap();
+            request.extend_from_slice(&buffer[..read]);
+            let text = String::from_utf8_lossy(&request);
+            if let Some(end) = text.find("\r\n\r\n") {
+                let length = text[..end]
+                    .lines()
+                    .find_map(|l| {
+                        l.to_ascii_lowercase()
+                            .strip_prefix("content-length:")
+                            .map(|v| v.trim().parse::<usize>().unwrap())
+                    })
+                    .unwrap_or(0);
+                if request.len() >= end + 4 + length {
+                    break;
+                }
+            }
+            if read == 0 {
+                break;
+            }
+        }
+        let answer = format!("HTTP/1.1 {status}\r\ncontent-length: 0\r\nconnection: close\r\n\r\n");
+        stream.write_all(answer.as_bytes()).await.unwrap();
+        String::from_utf8(request).unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_folder_is_renamed_with_its_encrypted_name() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(capture_once(listener, "200 OK"));
+        let api = Api::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        api.rename_folder("jeton", "f1", "2.chiffre").await.unwrap();
+        let request = server.await.unwrap();
+        assert!(
+            request.starts_with("PUT /api/folders/f1 HTTP/1.1"),
+            "{request}"
+        );
+        assert!(
+            request
+                .to_ascii_lowercase()
+                .contains("authorization: bearer jeton")
+        );
+        let body = request.split("\r\n\r\n").nth(1).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(body).unwrap(),
+            serde_json::json!({ "name": "2.chiffre" })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_folder_is_deleted() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(capture_once(listener, "200 OK"));
+        let api = Api::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        api.delete_folder("jeton", "f1").await.unwrap();
+        let request = server.await.unwrap();
+        assert!(
+            request.starts_with("DELETE /api/folders/f1 HTTP/1.1"),
+            "{request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_missing_folder_is_reported() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(capture_once(listener, "404 Not Found"));
+        let api = Api::new(&format!("http://127.0.0.1:{port}")).unwrap();
+        assert!(matches!(
+            api.delete_folder("jeton", "absent").await,
+            Err(Error::NotFound)
+        ));
+        server.await.unwrap();
     }
 
     #[tokio::test]
