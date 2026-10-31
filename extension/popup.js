@@ -7,6 +7,8 @@ import { canReadQrCodes, otpauthFrom } from "./qr.js";
 const main = document.getElementById("main");
 const stateLabel = document.getElementById("state");
 const send = (message) => ext.runtime.sendMessage(message);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const STATUS_TIMEOUT_MS = 3000;
 document.documentElement.lang = ext.i18n.getUILanguage();
 
 // Opened by "Fill with another login…" in the pill in the page
@@ -30,8 +32,27 @@ function element(tag, props = {}, ...children) {
   return node;
 }
 
+let view = {};
 function show(...nodes) {
+  view = {};
   main.replaceChildren(...nodes);
+}
+
+function row(title, subtitle, lead, action) {
+  const button = element("button", { type: "button", className: "row" },
+    lead,
+    element("div", { className: "text" },
+      element("div", { className: "title", textContent: title }),
+      element("div", { className: "sub", textContent: subtitle ?? "" })));
+  button.addEventListener("click", action);
+  return element("li", {}, button);
+}
+
+const badge = (title) => element("div", { className: "badge", textContent: (title.trim()[0] ?? "?").toUpperCase() });
+
+function renderConnecting() {
+  stateLabel.textContent = t("popupConnecting");
+  show(element("p", { textContent: t("popupConnectingToVerrou") }));
 }
 
 function renderPairing(pairing) {
@@ -45,8 +66,7 @@ function renderPairing(pairing) {
     return true;
   }
   if (pairing?.state === "connecting") {
-    stateLabel.textContent = t("popupConnecting");
-    show(element("p", { textContent: t("popupConnectingToVerrou") }));
+    renderConnecting();
     return true;
   }
   return false;
@@ -69,23 +89,17 @@ async function renderUnlocked() {
   const items = reply.items ?? [];
   const list = element("ul");
   for (const item of items) {
-    const row = element("li", {},
-      element("div", { className: "badge", textContent: (item.title.trim()[0] ?? "?").toUpperCase() }),
-      element("div", {},
-        element("div", { className: "title", textContent: item.title }),
-        element("div", { className: "sub", textContent: item.username })));
-    row.addEventListener("click", async () => {
+    list.append(row(item.title, item.username, badge(item.title), async () => {
       let result = await send({ kind: "fillTab", item: item.id });
       // Protected item: confirmation in Verrou, then a new attempt.
       for (let tries = 0; result?.state === "confirm" && tries < 60; tries += 1) {
         stateLabel.textContent = t("confirmInVerrouWait");
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await sleep(1000);
         result = await send({ kind: "fillTab", item: item.id });
       }
       if (result?.ok) window.close();
       else stateLabel.textContent = t("popupUnlocked");
-    });
-    list.append(row);
+    }));
   }
   const other = element("button", { className: "link", textContent: t("otherLogin") });
   other.addEventListener("click", () => renderOtherLogin());
@@ -147,15 +161,8 @@ async function renderOtherLogin(target = null) {
   const results = element("ul");
   const search = async () => {
     const reply = await send({ kind: "searchLogins", query: input.value });
-    results.replaceChildren(...(reply.items ?? []).map((item) => {
-      const row = element("li", {},
-        element("div", { className: "badge", textContent: (item.title.trim()[0] ?? "?").toUpperCase() }),
-        element("div", {},
-          element("div", { className: "title", textContent: item.title }),
-          element("div", { className: "sub", textContent: item.username })));
-      row.addEventListener("click", () => confirmLink(item, host, target));
-      return row;
-    }));
+    results.replaceChildren(...(reply.items ?? []).map((item) =>
+      row(item.title, item.username, badge(item.title), () => confirmLink(item, host, target))));
   };
   let debounce;
   input.addEventListener("input", () => {
@@ -252,16 +259,14 @@ function renderTotpChoice(items, totp) {
   const list = element("ul", { className: "choices" });
   const draw = () => {
     list.replaceChildren(...choices.map((choice) => {
-      const row = element("li", { className: choice.id === chosen ? "chosen" : "" },
-        element("div", { className: "radio" }),
-        element("div", {},
-          element("div", { className: "title", textContent: choice.title }),
-          element("div", { className: "sub", textContent: choice.sub })));
-      row.addEventListener("click", () => {
+      const line = row(choice.title, choice.sub, element("div", { className: "radio" }), () => {
         chosen = choice.id;
         draw();
+        list.querySelectorAll("button")[choices.indexOf(choice)]?.focus();
       });
-      return row;
+      line.className = choice.id === chosen ? "chosen" : "";
+      line.querySelector("button").setAttribute("aria-pressed", String(choice.id === chosen));
+      return line;
     }));
   };
   draw();
@@ -363,7 +368,17 @@ function siteAccessRequest() {
 async function render() {
   const { pairing } = await ext.storage.session.get("pairing");
   if (renderPairing(pairing)) return;
-  const status = await send({ kind: "status" });
+  const answer = send({ kind: "status" }).catch(() => ({ state: "offline" }));
+  const status = await Promise.race([answer, sleep(STATUS_TIMEOUT_MS)]);
+  if (status) return renderStatus(status, pairing);
+  await renderStatus({ state: "offline" }, pairing);
+  const shown = view;
+  answer.then((late) => {
+    rendering = rendering.then(() => (view === shown ? renderStatus(late, pairing) : undefined));
+  });
+}
+
+async function renderStatus(status, pairing) {
   const versionNote = versionWarning(status.extension);
   const accessNote = (await missingSiteAccess()) ? siteAccessRequest() : null;
   switch (status.state) {
@@ -408,4 +423,5 @@ ext.storage.onChanged.addListener((changes, area) => {
   if (area === "session" && changes.pairing) scheduleRender();
 });
 
+renderConnecting();
 scheduleRender();
