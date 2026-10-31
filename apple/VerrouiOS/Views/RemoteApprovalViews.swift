@@ -107,7 +107,7 @@ struct ApprovalScreen: View {
                 .frame(height: 60)
         case .failed(let message):
             Text(message)
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.warningText)
                 .multilineTextAlignment(.center)
             Button("Close") { approver.dismiss() }
                 .glassButton(prominent: false)

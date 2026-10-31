@@ -434,7 +434,7 @@ private struct OTPPreviewView: View {
                       : "\(result.skipped) HOTP (counter-based) accounts skipped: only TOTP codes are supported.",
                       systemImage: "exclamationmark.triangle")
                     .font(.callout)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.warningText)
             }
         }
     }

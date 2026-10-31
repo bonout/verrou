@@ -68,7 +68,7 @@ struct SharingBanners: View {
                             TintedSymbol(symbol: "hourglass", tint: .orange)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(pending.name).foregroundStyle(.primary)
-                                Text("Awaiting confirmation").font(.caption).foregroundStyle(.orange)
+                                Text("Awaiting confirmation").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Image(systemName: "info.circle").foregroundStyle(.secondary)
@@ -585,7 +585,7 @@ private struct PermissionPicker: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title).lineLimit(1)
                     if let subtitle {
-                        Text(subtitle).font(.caption).foregroundStyle(.orange)
+                        Text(subtitle).font(.caption).foregroundStyle(Color.warningText)
                     }
                 }
             }
@@ -1001,11 +1001,11 @@ struct JoinOrganizationSheet: View {
                             if !invitation.forThisAccount && model.mode == .vaultwarden {
                                 Label("This invitation is for an address other than this account's.",
                                       systemImage: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
+                                    .foregroundStyle(Color.warningText)
                             }
                         case .failure(let error):
                             Label(ErrorText.describe(error), systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(Color.warningText)
                         }
                     } footer: {
                         Text("Once the invitation is accepted, an administrator confirms you by comparing your fingerprint phrase: the organization's key is then encrypted for your account.")
