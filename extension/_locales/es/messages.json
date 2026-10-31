@@ -170,6 +170,14 @@
   "pillSuggestPassword": {
     "message": "Sugerir una contraseña segura"
   },
+  "pillPasswordDescription": {
+    "message": "$COUNT$ caracteres: letras, números y símbolos",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "fieldButton": {
     "message": "Verrou: inicios de sesión para este sitio"
   },
