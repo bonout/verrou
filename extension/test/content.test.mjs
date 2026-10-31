@@ -54,7 +54,12 @@ test("the pill comes once with a login for the site, without a menu under the fi
   const badge = page.host("verrou-field");
   assert.ok(badge, "icon in the field");
   assert.equal(badge.style.getPropertyValue("position"), "absolute");
-  assert.equal(badge.style.getPropertyValue("left"), `${350 - 22 - 6}px`, "at the right edge of the field");
+  assert.equal(badge.style.getPropertyValue("left"), `${350 - 24 - 6}px`, "at the right edge of the field");
+  assert.equal(badge.style.getPropertyValue("width"), "24px", "a 24 px target");
+  assert.equal(badge.style.getPropertyValue("height"), "24px");
+  const icon = [...badge.shadow.walk()].find((n) => n.tagName === "BUTTON");
+  assert.match(icon.getAttribute("aria-label"), /logins for this site.*↓/, "the keyboard shortcut is named");
+  assert.equal(icon.getAttribute("title"), icon.getAttribute("aria-label"));
 });
 
 test("no login for this site: nothing by itself; the field icon offers another login", async () => {

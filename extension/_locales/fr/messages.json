@@ -193,7 +193,7 @@
     }
   },
   "fieldButton": {
-    "message": "Verrou : identifiants pour ce site"
+    "message": "Verrou : identifiants pour ce site (dans le champ, ↓ mène à la suggestion de Verrou)"
   },
   "bannerLabel": {
     "message": "Verrou : enregistrement"
