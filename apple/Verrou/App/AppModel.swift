@@ -127,6 +127,7 @@ final class AppModel {
     /// Match rules of this Mac (default, folders) and the account's
     /// equivalent domains.
     var matchSettings: MatchSettingsView?
+    var aliasSettings: EmailAliasSettings?
     /// "Remove from sharing…" waiting for confirmation.
     var unshareRequest: UnshareRequest?
     /// Removal from sharing in progress (sheet open).
@@ -686,6 +687,7 @@ final class AppModel {
         counts = loaded.map(\.counts) ?? (try? session.counts())
         organizations = loaded?.organizations ?? session.organizations()
         matchSettings = session.matchSettings()
+        aliasSettings = session.emailAliasSettings()
         refreshPending()
         // A created item got its ID from the server: the selection follows.
         resolveTemporaryIDs()

@@ -14,6 +14,8 @@ struct GeneratorView: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let purpose: Purpose
+    var uri: String?
+    var useAlias: ((String) -> Void)?
     @AppStorage("generatorMode") private var mode = GeneratorMode.password
     @AppStorage("generatorLength") private var length = 20.0
     @AppStorage("generatorDigits") private var digits = true
@@ -29,6 +31,7 @@ struct GeneratorView: View {
     @State private var draws = 0
     /// "Copy" just copied: checkmark for 1.5 s.
     @State private var copied = false
+    @State private var aliasSite = ""
 
     var body: some View {
         NavigationStack {
@@ -46,7 +49,9 @@ struct GeneratorView: View {
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Generated value")
                         .accessibilityValue(value)
-                        StrengthMeter(password: value, bits: bits)
+                        if shownMode.wrappedValue != .alias {
+                            StrengthMeter(password: value, bits: bits)
+                        }
                         GlassGroup(spacing: 12) {
                             HStack(spacing: 12) {
                                 Button {
@@ -78,16 +83,17 @@ struct GeneratorView: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
                 Section {
-                    Picker("Type", selection: $mode) {
-                        ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
+                    Picker("Type", selection: shownMode) {
+                        ForEach(GeneratorMode.available(alias: aliasAvailable), id: \.self) { Text($0.label).tag($0) }
                     }
                     .pickerStyle(.segmented)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 }
-                switch mode {
+                switch shownMode.wrappedValue {
                 case .password: passwordOptions
                 case .passphrase: passphraseOptions
+                case .alias: aliasOptions
                 }
             }
             .navigationTitle("Generator")
@@ -119,6 +125,19 @@ struct GeneratorView: View {
         .onChange(of: capitalize) { regenerate() }
         .onChange(of: number) { regenerate() }
         .onChange(of: language) { regenerate() }
+        .onChange(of: aliasSite) { regenerate() }
+        .onChange(of: model.aliasSettings?.includeSite) { regenerate() }
+    }
+
+    private var aliasAvailable: Bool {
+        guard model.aliasEnabled else { return false }
+        if case .copy = purpose { return true }
+        return useAlias != nil
+    }
+
+    private var shownMode: Binding<GeneratorMode> {
+        Binding(get: { mode == .alias && !aliasAvailable ? .password : mode },
+                set: { mode = $0 })
     }
 
     private var isSheet: Bool {
@@ -131,7 +150,8 @@ struct GeneratorView: View {
         case .copy:
             Button {
                 let before = model.copies
-                model.copy(value, label: mode == .password ? String(localized: "Password") : String(localized: "Passphrase"), secret: true)
+                let mode = shownMode.wrappedValue
+                model.copy(value, label: mode.label, secret: mode != .alias)
                 if model.copies != before { copied = true }
             } label: {
                 Label {
@@ -145,12 +165,22 @@ struct GeneratorView: View {
             .glassButton(prominent: true)
             .modifier(CopiedFlag(copied: $copied))
         case .use(let use):
-            Button {
-                use(value, bits)
-            } label: {
-                Label("Use", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
+            if shownMode.wrappedValue == .alias {
+                Button {
+                    useAlias?(value)
+                } label: {
+                    Label("Use as Username", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
+                }
+                .glassButton(prominent: true)
+                .disabled(value.isEmpty)
+            } else {
+                Button {
+                    use(value, bits)
+                } label: {
+                    Label("Use", systemImage: "checkmark").labelStyle(.titleAndIcon).frame(maxWidth: .infinity)
+                }
+                .glassButton(prominent: true)
             }
-            .glassButton(prominent: true)
         }
     }
 
@@ -192,8 +222,25 @@ struct GeneratorView: View {
         }
     }
 
+    @ViewBuilder private var aliasOptions: some View {
+        Section {
+            if case .copy = purpose {
+                TextField("Website", text: $aliasSite, prompt: Text(verbatim: "https://example.com"))
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            Toggle("Start with the site's name", isOn: Binding(
+                get: { model.aliasSettings?.includeSite ?? true },
+                set: { try? model.setAliasSettings(domain: model.aliasSettings?.domain, includeSite: $0) }))
+            LabeledContent("Alias domain", value: model.aliasSettings?.domain ?? "")
+        } header: {
+            SectionHeader("Email alias")
+        }
+    }
+
     private func regenerate() {
-        switch mode {
+        switch shownMode.wrappedValue {
         case .password:
             value = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
             bits = nil
@@ -203,6 +250,9 @@ struct GeneratorView: View {
                 includeNumber: number, language: language.ffi))
             value = phrase.value
             bits = phrase.entropyBits
+        case .alias:
+            value = model.emailAlias(for: uri ?? aliasSite) ?? ""
+            bits = nil
         }
     }
 }

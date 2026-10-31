@@ -36,8 +36,7 @@ struct EditItemView: View {
                         .focused($titleFocused)
                         .layoutMark("edit-title")
                     if isLogin {
-                        TextField("Username", text: loginText(\.username), prompt: Text("email or username"))
-                            .textContentType(.username)
+                        usernameRow
                         passwordRow
                         if let password = draft.login?.password, !password.isEmpty {
                             StrengthMeter(password: password, bits: generated?.value == password ? generated?.bits : nil)
@@ -189,6 +188,27 @@ struct EditItemView: View {
         return isLogin ? String(localized: "New Login") : String(localized: "New Secure Note")
     }
 
+    private var usernameRow: some View {
+        HStack(spacing: 8) {
+            TextField("Username", text: loginText(\.username), prompt: Text("email or username"))
+                .textContentType(.username)
+            if model.aliasEnabled {
+                Button {
+                    if let alias = model.emailAlias(for: siteURL) { draft.login?.username = alias }
+                } label: {
+                    Image(systemName: "at")
+                        .accessibilityLabel("Generate email alias")
+                }
+                .buttonStyle(.borderless)
+                .help("Generate email alias")
+            }
+        }
+    }
+
+    private var siteURL: String? {
+        draft.login?.urls.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     private var passwordRow: some View {
         HStack(spacing: 8) {
             Group {
@@ -217,7 +237,10 @@ struct EditItemView: View {
             .buttonStyle(.borderless)
             .help("Generate a password or a passphrase")
             .popover(isPresented: $showGenerator, arrowEdge: .trailing) {
-                GeneratorView { password, bits in
+                GeneratorView(uri: siteURL, useAlias: { alias in
+                    draft.login?.username = alias
+                    showGenerator = false
+                }) { password, bits in
                     draft.login?.password = password
                     generated = bits.map { (password, $0) }
                     showPassword = true
@@ -272,6 +295,9 @@ struct EditItemView: View {
 /// strength. `use` receives the value and, for a passphrase, its exact
 /// entropy.
 struct GeneratorView: View {
+    @Environment(AppModel.self) private var model
+    var uri: String?
+    var useAlias: ((String) -> Void)?
     let use: (String, Double?) -> Void
     @AppStorage("generatorMode") private var mode = GeneratorMode.password
     @AppStorage("generatorLength") private var length = 20.0
@@ -288,8 +314,8 @@ struct GeneratorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Generator").font(.headline)
-            Picker("Type", selection: $mode) {
-                ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
+            Picker("Type", selection: shownMode) {
+                ForEach(GeneratorMode.available(alias: aliasAvailable), id: \.self) { Text($0.label).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
@@ -298,10 +324,14 @@ struct GeneratorView: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .padding(10)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-            StrengthMeter(password: password, bits: bits)
-            switch mode {
-            case .password: passwordOptions
-            case .passphrase: passphraseOptions
+            switch shownMode.wrappedValue {
+            case .password:
+                StrengthMeter(password: password, bits: bits)
+                passwordOptions
+            case .passphrase:
+                StrengthMeter(password: password, bits: bits)
+                passphraseOptions
+            case .alias: aliasOptions
             }
             HStack {
                 Button {
@@ -310,9 +340,16 @@ struct GeneratorView: View {
                     Label("Another", systemImage: "arrow.clockwise")
                 }
                 Spacer()
-                Button("Use") { use(password, bits) }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                Button(shownMode.wrappedValue == .alias ? LocalizedStringKey("Use as Username") : LocalizedStringKey("Use")) {
+                    if shownMode.wrappedValue == .alias {
+                        useAlias?(password)
+                    } else {
+                        use(password, bits)
+                    }
+                }
+                .disabled(password.isEmpty)
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
             }
         }
         .padding(16)
@@ -327,6 +364,21 @@ struct GeneratorView: View {
         .onChange(of: capitalize) { regenerate() }
         .onChange(of: number) { regenerate() }
         .onChange(of: language) { regenerate() }
+        .onChange(of: model.aliasSettings?.includeSite) { regenerate() }
+    }
+
+    private var aliasAvailable: Bool { useAlias != nil && model.aliasEnabled }
+
+    private var shownMode: Binding<GeneratorMode> {
+        Binding(get: { mode == .alias && !aliasAvailable ? .password : mode },
+                set: { mode = $0 })
+    }
+
+    @ViewBuilder private var aliasOptions: some View {
+        Toggle("Start with the site's name", isOn: Binding(
+            get: { model.aliasSettings?.includeSite ?? true },
+            set: { try? model.setAliasSettings(domain: model.aliasSettings?.domain, includeSite: $0) }))
+        LabeledContent("Alias domain", value: model.aliasSettings?.domain ?? "")
     }
 
     @ViewBuilder private var passwordOptions: some View {
@@ -356,7 +408,7 @@ struct GeneratorView: View {
     }
 
     private func regenerate() {
-        switch mode {
+        switch shownMode.wrappedValue {
         case .password:
             password = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
             bits = nil
@@ -366,6 +418,9 @@ struct GeneratorView: View {
                 includeNumber: number, language: language.ffi))
             password = phrase.value
             bits = phrase.entropyBits
+        case .alias:
+            password = model.emailAlias(for: uri) ?? ""
+            bits = nil
         }
     }
 }

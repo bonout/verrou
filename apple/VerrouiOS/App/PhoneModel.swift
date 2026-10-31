@@ -188,6 +188,7 @@ final class PhoneModel {
     }
     /// This iPhone's match rules and the account's equivalent domains.
     var matchSettings: MatchSettingsView?
+    var aliasSettings: EmailAliasSettings?
     /// Decrypted attachment shown by Quick Look (temporary file).
     var preview: URL? {
         didSet { if let oldValue, oldValue != preview { Attachments.discard(oldValue) } }
@@ -898,6 +899,7 @@ final class PhoneModel {
         organizations = loaded?.organizations ?? session.organizations()
         folders = loaded?.folders ?? session.folders()
         matchSettings = session.matchSettings()
+        aliasSettings = session.emailAliasSettings()
         if let known = breaches { breaches = session.stillBreached(breaches: known) }
         if audit != nil {
             audit = try? session.audit()

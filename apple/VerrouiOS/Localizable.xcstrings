@@ -3473,6 +3473,34 @@
         }
       }
     },
+    "A domain whose mail provider forwards every address to you (catch-all). The generator then makes one address per site, such as netflix.k3x9a@alias.example.com, saved as the login's username. Kept on this device.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un domaine dont le fournisseur de messagerie vous transfère toutes les adresses (catch-all). Le générateur crée alors une adresse par site, comme netflix.k3x9a@alias.example.com, enregistrée comme identifiant de la connexion. Gardé sur cet appareil."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine Domain, deren E-Mail-Anbieter dir jede Adresse weiterleitet (Catch-all). Der Generator erzeugt dann eine Adresse pro Website, etwa netflix.k3x9a@alias.example.com, die als Benutzername des Logins gespeichert wird. Bleibt auf diesem Gerät."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un dominio cuyo proveedor de correo te reenvía todas las direcciones (catch-all). El generador crea entonces una dirección por sitio, como netflix.k3x9a@alias.example.com, que se guarda como nombre de usuario del inicio de sesión. Se guarda en este dispositivo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un dominio il cui provider di posta ti inoltra ogni indirizzo (catch-all). Il generatore crea quindi un indirizzo per sito, come netflix.k3x9a@alias.example.com, salvato come nome utente del login. Resta su questo dispositivo."
+          }
+        }
+      }
+    },
     "A group gives the same access to several members. Its collections add to each member's.": {
       "localizations": {
         "fr": {
@@ -4813,6 +4841,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dopo 90 secondi"
+          }
+        }
+      }
+    },
+    "Alias domain": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Domaine des alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias-Domain"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dominio de los alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dominio degli alias"
           }
         }
       }
@@ -9885,6 +9941,62 @@
         }
       }
     },
+    "Email alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias e-mail"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail-Alias"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias de correo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias email"
+          }
+        }
+      }
+    },
+    "Email aliases": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias e-mail"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail-Aliasse"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias de correo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias email"
+          }
+        }
+      }
+    },
     "Emergency access granted": {
       "localizations": {
         "fr": {
@@ -11365,6 +11477,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Genera una password"
+          }
+        }
+      }
+    },
+    "Generate email alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Générer un alias e-mail"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mail-Alias erzeugen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generar un alias de correo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genera un alias email"
           }
         }
       }
@@ -22877,6 +23017,34 @@
         }
       }
     },
+    "Start with the site's name": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commencer par le nom du site"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit dem Namen der Website beginnen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Empezar por el nombre del sitio"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniziare con il nome del sito"
+          }
+        }
+      }
+    },
     "Starts with": {
       "localizations": {
         "fr": {
@@ -25789,6 +25957,34 @@
         }
       }
     },
+    "Use as Username": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utiliser comme identifiant"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Als Benutzername verwenden"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usar como nombre de usuario"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usa come nome utente"
+          }
+        }
+      }
+    },
     "Use for this new login": {
       "localizations": {
         "fr": {
@@ -26737,6 +26933,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Server web"
+          }
+        }
+      }
+    },
+    "Website": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Site"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sitio web"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sito web"
           }
         }
       }
@@ -30363,6 +30587,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "“%@” ha già un codice monouso."
+          }
+        }
+      }
+    },
+    "“%@” is not a domain name.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "« %@ » n'est pas un nom de domaine."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "„%@“ ist kein Domainname."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«%@» no es un nombre de dominio."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«%@» non è un nome di dominio."
           }
         }
       }
