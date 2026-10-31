@@ -490,7 +490,7 @@
     .shell, .tab, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
     /* The capsule, then, open, a rounded card: header, rule, accounts. */
     .shell {
-      display: flex; flex-direction: column; min-width: 360px; max-width: min(480px, calc(100vw - 32px));
+      display: flex; flex-direction: column; min-width: 360px; max-width: min(560px, calc(100vw - 32px));
       border-radius: 999px; overflow: hidden;
       box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(108,108,240,.18);
     }
@@ -500,7 +500,8 @@
       background: linear-gradient(135deg, #7474f4, #3b3bbd); }
     .icon svg { width: 20px; height: 20px; display: block; }
     .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 280px; }
+    .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .capsule .title { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
     .title { font-weight: 600; font-size: 14.5px; }
     .sub { color: #a3a3ad; font-size: 12.5px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
@@ -534,7 +535,7 @@
       width: 360px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
       box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2); animation: drop .18s ease-out;
     }
-    .banner .title { white-space: normal; max-width: none; }
+    .banner .title { white-space: normal; }
     .head { display: flex; gap: 10px; align-items: center; }
     .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 10px; }
     .actions button { padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.1); }
@@ -942,8 +943,8 @@
 
   function lockedView(anchor, kind) {
     return {
-      title: t("verrouLocked"),
-      subtitle: SITE,
+      title: SITE,
+      subtitle: t("verrouLocked"),
       primary: { label: t("unlock"), run: () => unlock(anchor, kind) },
       others: [],
     };
