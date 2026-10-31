@@ -3473,6 +3473,34 @@
         }
       }
     },
+    "A login holds one passkey: choosing one that already has a passkey replaces it, after confirmation.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un identifiant porte une seule passkey : choisir un identifiant qui en a déjà une la remplace, après confirmation."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Login enthält einen Passkey: Wählst du eines, das schon einen hat, wird er nach einer Bestätigung ersetzt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un inicio de sesión contiene una llave de acceso: si eliges uno que ya tiene una, se sustituye tras confirmarlo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un login contiene una sola passkey: se ne scegli uno che ne ha già una, viene sostituita dopo una conferma."
+          }
+        }
+      }
+    },
     "A login holds one passkey: the one it had is replaced.": {
       "localizations": {
         "fr": {
@@ -11033,6 +11061,34 @@
         }
       }
     },
+    "Has a passkey: %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A déjà une passkey : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hat bereits einen Passkey: %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya tiene una llave de acceso: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ha già una passkey: %@"
+          }
+        }
+      }
+    },
     "Help from %@ on passkeys": {
       "localizations": {
         "fr": {
@@ -12317,6 +12373,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Elemento condiviso"
+          }
+        }
+      }
+    },
+    "Its current passkey (%@) is deleted: the site will no longer accept it. To keep it, choose “New login”.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sa passkey actuelle (%@) est supprimée : le site ne l'acceptera plus. Pour la garder, choisissez « Nouvel identifiant »."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sein aktueller Passkey (%@) wird gelöscht: Die Website akzeptiert ihn dann nicht mehr. Um ihn zu behalten, wähle „Neues Login“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Su llave de acceso actual (%@) se elimina: el sitio dejará de aceptarla. Para conservarla, elige “Nuevo inicio de sesión”."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La sua passkey attuale (%@) viene eliminata: il sito non la accetterà più. Per tenerla, scegli “Nuovo login”."
           }
         }
       }
@@ -18365,6 +18449,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rinomina organizzazione…"
+          }
+        }
+      }
+    },
+    "Replace Passkey": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplacer la passkey"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passkey ersetzen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sustituir llave de acceso"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sostituisci passkey"
+          }
+        }
+      }
+    },
+    "Replace the passkey of “%@”?": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remplacer la passkey de « %@ » ?"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passkey von „%@“ ersetzen?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Sustituir la llave de acceso de “%@”?"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sostituire la passkey di “%@”?"
           }
         }
       }

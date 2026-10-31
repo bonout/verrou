@@ -263,6 +263,7 @@ private struct MacSymbolRow: View {
 
 private struct MacPasskeyRegistrationView: View {
     @Environment(AutoFillModel.self) private var model
+    @State private var replacing: ItemSummary?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -296,9 +297,19 @@ private struct MacPasskeyRegistrationView: View {
                 if !model.targets.isEmpty {
                     Section {
                         ForEach(model.targets, id: \.id) { item in
-                            Button { model.register(into: item) } label: {
-                                ItemRowContent(summary: item, highlights: [], spacing: 10, subtitleFont: .caption) {
-                                    ItemIconContent(summary: item, image: nil, size: 28)
+                            Button {
+                                if item.passkeyRpId != nil { replacing = item } else { model.register(into: item) }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ItemRowContent(summary: item, highlights: [], spacing: 10, subtitleFont: .caption) {
+                                        ItemIconContent(summary: item, image: nil, size: 28)
+                                    }
+                                    if let passkey = item.passkeyLine {
+                                        Label("Has a passkey: \(passkey)", systemImage: "person.badge.key.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .padding(.leading, 38)
+                                    }
                                 }
                                 .contentShape(Rectangle())
                             }
@@ -308,11 +319,18 @@ private struct MacPasskeyRegistrationView: View {
                     } header: {
                         Text("Add to a login")
                     } footer: {
-                        Text("A login holds one passkey: the one it had is replaced.")
+                        Text("A login holds one passkey: choosing one that already has a passkey replaces it, after confirmation.")
                     }
                 }
             }
             .listStyle(.inset)
+            .confirmationDialog("Replace the passkey of “\(replacing?.title ?? "")”?",
+                                isPresented: Binding(get: { replacing != nil }, set: { if !$0 { replacing = nil } }),
+                                titleVisibility: .visible, presenting: replacing) { item in
+                Button("Replace Passkey", role: .destructive) { model.register(into: item) }
+            } message: { item in
+                Text("Its current passkey (\(item.passkeyLine ?? "")) is deleted: the site will no longer accept it. To keep it, choose “New login”.")
+            }
             if model.phase == .working, !model.passkeyCreated {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
