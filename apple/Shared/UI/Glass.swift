@@ -231,6 +231,8 @@ struct MasterPasswordField: View {
                         .contentTransition(.symbolEffect(.replace))
                 }
             }
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
             .disabled(password.isEmpty)
             .accessibilityLabel("Unlock")
         }
