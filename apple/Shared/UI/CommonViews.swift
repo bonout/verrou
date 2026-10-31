@@ -9,8 +9,10 @@ import SwiftUI
 enum Theme {
     static let accent = Color("AccentColor")
     static let cornerRadius: CGFloat = 10
-    static let digit = Color(red: 0.20, green: 0.48, blue: 0.98)
-    static let symbol = Color(red: 0.93, green: 0.36, blue: 0.27)
+    static let digit = Color(light: Color(red: 0.05, green: 0.36, blue: 0.82),
+                             dark: Color(red: 0.45, green: 0.66, blue: 1.0))
+    static let symbol = Color(light: Color(red: 0.78, green: 0.20, blue: 0.12),
+                              dark: Color(red: 1.0, green: 0.48, blue: 0.40))
 
     /// Stable hue per site or title: the same icon from one launch to the
     /// next, when the server has no icon for the site.
@@ -20,6 +22,22 @@ enum Theme {
             hash = (hash ^ UInt64(byte)) &* 1099511628211
         }
         return Double(hash % 360) / 360
+    }
+}
+
+extension Color {
+    init(light: Color, dark: Color) {
+        #if os(macOS)
+        self.init(nsColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua,
+                                        .accessibilityHighContrastVibrantDark]) != nil
+                ? NSColor(dark) : NSColor(light)
+        })
+        #else
+        self.init(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        })
+        #endif
     }
 }
 
@@ -163,6 +181,7 @@ struct HighlightedText: View {
 struct PasswordText: View {
     let value: String
     var size: CGFloat = 15
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
     /// Selectable text. False under a TextRenderer (the iPhone's "decrypted"
     /// effect): selection goes through another render, which would ignore it.
     var selectable = true
@@ -177,7 +196,8 @@ struct PasswordText: View {
 
     private var text: some View {
         Text(attributed)
-            .font(.system(size: size, design: .monospaced))
+            .speechSpellsOutCharacters()
+            .font(.system(size: size * scale, design: .monospaced))
     }
 
     private var attributed: AttributedString {
@@ -197,11 +217,12 @@ struct PasswordText: View {
 
 struct MaskedText: View {
     var count = 12
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 15
     var body: some View {
         Text(String(repeating: "•", count: count))
-            .font(.system(size: 15, design: .monospaced))
+            .font(.system(size: size, design: .monospaced))
             .foregroundStyle(.secondary)
-            .accessibilityLabel("hidden")
+            .accessibilityLabel("Hidden value")
     }
 }
 
@@ -210,10 +231,13 @@ struct MaskedText: View {
 struct TotpCodeView: View {
     let code: TotpView
     var size: CGFloat = 22
+    @ScaledMetric(relativeTo: .title2) private var scale: CGFloat = 1
 
     var body: some View {
+        let size = size * scale
         HStack(spacing: 10) {
             Text(grouped)
+                .speechSpellsOutCharacters()
                 .font(.system(size: size, weight: .semibold, design: .monospaced))
                 .contentTransition(.numericText())
                 // The digits roll when the code changes.
@@ -236,6 +260,7 @@ struct CountdownRing: View {
     let remaining: UInt64
     let period: UInt64
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .caption2) private var numberSize: CGFloat = 9
 
     var body: some View {
         let fraction = Double(remaining) / Double(max(period, 1))
@@ -249,7 +274,7 @@ struct CountdownRing: View {
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 1), value: remaining)
             Text("\(remaining)")
-                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .font(.system(size: numberSize, weight: .bold, design: .rounded))
                 .contentTransition(.numericText(countsDown: true))
                 .animation(.snappy, value: remaining)
                 .foregroundStyle(urgent ? Color.orange : Color.secondary)
@@ -291,6 +316,7 @@ struct ToastView: View {
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .task(id: toast.id) { toast.announce() }
     }
 }
 
@@ -309,6 +335,20 @@ struct Toast: Equatable, Identifiable {
     let message: String
     let detail: String?
     var failure = false
-    /// Display duration.
-    var seconds = 2.2
+    var seconds: Double
+
+    init(message: String, detail: String?, failure: Bool = false, seconds: Double? = nil) {
+        self.message = message
+        self.detail = detail
+        self.failure = failure
+        self.seconds = seconds ?? (failure ? 6 : 2.2)
+    }
+
+    var spoken: String {
+        [message, detail].compactMap { $0 }.joined(separator: ". ")
+    }
+
+    func announce() {
+        AccessibilityNotification.Announcement(spoken).post()
+    }
 }
