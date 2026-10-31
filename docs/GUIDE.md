@@ -680,6 +680,92 @@ Each word is drawn uniformly from the system's random generator. The Brave
 extension's strong password suggestion stays a random password, since many
 sites refuse spaces.
 
+## Email aliases
+
+Verrou can give each site its own email address on a domain you own, such
+as `netflix.k3x9a@alias.example.com`, and save it as the login's username.
+A leaked or sold address then tells you which site it came from, and one
+site's spam never reaches the others. Everything happens on your device: no
+API, no token, no server besides your mail provider, no network request.
+
+**Prerequisite: a catch-all.** Your mail provider must deliver every
+address of the domain to you, including ones it has never seen, because
+Verrou makes up a new address each time and tells no one. Set it up first:
+
+- **Cloudflare Email Routing**: Email Routing → Routing rules → *Catch-all
+  address*, action *Send to an email*
+  ([docs](https://developers.cloudflare.com/email-service/configuration/email-routing-addresses/)).
+  Cloudflare's catch-all only covers the apex domain, not its subdomains:
+  use a spare domain rather than a subdomain.
+- **Fastmail**: Settings → My email addresses, a new address
+  `*@alias.example.com`
+  ([docs](https://www.fastmail.help/hc/en-us/articles/1500000277942-Catch-all-wildcard-aliases)).
+- **iCloud+**: Custom Email Domain → your domain → *Allow All Incoming
+  Messages*
+  ([docs](https://support.apple.com/guide/icloud/allow-all-incoming-emails-mm9e3ee0680f/icloud)).
+- **Proton Mail** (paid plans): Settings → Domain names → *Set catch-all*
+  ([docs](https://proton.me/support/catch-all)).
+- **Google Workspace**: Admin console → Gmail → Routing, a rule that
+  sends mail for unrecognized addresses to your mailbox
+  ([docs](https://support.google.com/a/answer/12943537)).
+
+OVH, ImprovMX and most other providers call it a catch-all or a wildcard
+redirection. Use a **dedicated domain or subdomain** (`alias.example.com`
+rather than `example.com`) where your provider allows it: the catch-all
+then never collects typos sent to your real addresses, and the aliases stay
+apart from them.
+
+**In Verrou**: Settings → *Vault and Filling* → *Email aliases*, enter the
+domain (checked: a real domain name, no `https://`, no `@` before it).
+Leave it empty to turn the feature off: nothing about aliases shows then.
+*Start with the site's name* is on by default; off, the address is 10
+random characters (`k3x9a7q2mz@…`), so that it says nothing about the site.
+The setting is kept on each device (Mac, iPhone), like the match rules, and
+the browser extension and the terminal use the Mac's.
+
+- **Format**: `<site>.<suffix>@<domain>`. The site is the name of the
+  page's or item's registrable domain (`accounts.netflix.com` → `netflix`,
+  `shop.example.co.uk` → `example`), lowercase, `a-z`, `0-9` and `-`, at
+  most 20 characters, accents removed (`bücher.de` → `bucher`); `alias`
+  when there is no site (or an IP address). The suffix is 5 characters from
+  `a-z0-9`, drawn from the system's random generator like passwords.
+- **Browser**: on a sign-up form, the email field's pill offers *Create
+  email alias*. It fills the field (and an empty "confirm email" field);
+  when you submit the form, the banner offers to save the login with the
+  alias as its username.
+- **Mac and iPhone**: the *Email alias* mode of the generator (*Use as
+  Username* fills the editor's username; the iPhone's Generator tab copies
+  it), or the **@** button next to a login's username, for its first site.
+- **Terminal**: `verrou generate alias`.
+
+```sh
+verrou generate alias --uri https://www.netflix.com/signup   # netflix.k3x9a@alias.example.com
+verrou generate alias --no-site                              # k3x9a7q2mz@alias.example.com
+verrou generate alias --domain alias.example.com --uri github.com
+verrou --json generate alias --uri netflix.com               # {"value": …}
+```
+
+Without `--domain` (or `VERROU_ALIAS_DOMAIN`), a linked terminal asks
+Verrou for the domain of its settings.
+
+<p align="center">
+  <img src="media/email-alias-pill.png" width="430" alt="The Verrou pill above a sign-up form: the site, the alias streamly.r595v@alias.example.com and a “Create email alias” button">
+  <img src="media/email-alias-save.png" width="430" alt="After the form is submitted, the “Save in Verrou?” banner with the alias as the username">
+</p>
+
+**Limits of this first version**:
+- You can't **reply or write from an alias**: Verrou only makes the
+  address. Most providers let you send from any address of a catch-all
+  domain if you set it up on their side.
+- Verrou keeps **no list of aliases**: the logins are the list (search
+  `alias.example.com`).
+- **Disabling an alias** happens at your provider: a rule for that exact
+  address that drops or bounces its mail (on Cloudflare, a custom address
+  with the *Drop* action), which wins over the catch-all.
+- No API provider yet (Cloudflare Email Routing API, SimpleLogin, addy.io):
+  the generator is built so that one can be added behind the same mode, and
+  the aliases made today keep working as they are.
+
 ## Import from another password manager
 
 Export your passwords from the other app, then in Verrou: File →
