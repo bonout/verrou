@@ -99,12 +99,12 @@ struct VerrouApp: App {
                     Button("Emergency Access") { delegate.model.openEmergency() }
                         .disabled(!delegate.model.emergencyAvailable)
                     Divider()
-                    Button("New Organization…") {
+                    Button("New Shared Vault…") {
                         delegate.model.showMainWindow()
                         delegate.model.openNewOrganization()
                     }
                     .disabled(!delegate.model.canEdit)
-                    Button("Join an Organization…") {
+                    Button("Join a Shared Vault…") {
                         delegate.model.showMainWindow()
                         delegate.model.openJoin()
                     }

@@ -110,15 +110,15 @@ struct NewOrganizationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "person.2.badge.plus", title: String(localized: "New Organization"),
-                        subtitle: String(localized: "A shared vault you own. Its key is created here and encrypted for your account: the server never sees it."))
+            SheetHeader(symbol: "person.2.badge.plus", title: String(localized: "New Shared Vault"),
+                        subtitle: String(localized: "A shared vault (an organization, in Bitwarden) that you own. Its key is created here and encrypted for your account: the server never sees it."))
             Divider()
             Form {
                 Section {
                     TextField("Name", text: $name, prompt: Text("Martin Family"))
                     TextField("First collection", text: $collection, prompt: Text("General"))
                 } footer: {
-                    Text("Collections organize the shared items; each member accesses the ones you open to them. The server can restrict organization creation to some accounts (ORG_CREATION_USERS).")
+                    Text("Collections organize the shared items; each member accesses the ones you open to them. The server can restrict the creation of shared vaults to some accounts (ORG_CREATION_USERS).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ErrorSection()
@@ -472,7 +472,7 @@ struct JoinOrganizationView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SheetHeader(symbol: "envelope.open", title: String(localized: "Join an Organization"),
+            SheetHeader(symbol: "envelope.open", title: String(localized: "Join a Shared Vault"),
                         subtitle: InvitationHelp.join(server: model.account?.server))
             Divider()
             Form {

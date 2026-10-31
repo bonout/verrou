@@ -137,7 +137,7 @@ extension AppModel {
             self.afterWrite(select: nil)
             self.organizationAdmin.sheet = nil
             self.filter = .organization(id: id)
-            self.toast = Toast(message: String(localized: "Organization created"),
+            self.toast = Toast(message: String(localized: "Shared vault created"),
                                detail: String(localized: "Invite its members from “Members”, under its collections"))
         }
     }
@@ -152,7 +152,7 @@ extension AppModel {
             try await self.session.renameOrganization(organizationId: organization.id, name: name)
             self.afterWrite(select: nil)
             self.organizationAdmin.sheet = nil
-            self.toast = Toast(message: String(localized: "Organization renamed"), detail: name.trimmingCharacters(in: .whitespaces))
+            self.toast = Toast(message: String(localized: "Shared vault renamed"), detail: name.trimmingCharacters(in: .whitespaces))
         }
     }
 
