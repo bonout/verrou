@@ -36,6 +36,10 @@ final class SendsModel {
         /// File send: the file to send (creation) or the send's file (edit,
         /// it doesn't change).
         var file: SendFile?
+        var password = ""
+        var original: SendFields?
+
+        var baseline: SendFields { original ?? fields }
 
         init(sendID: String?, fields: SendFields, hasPassword: Bool, source: String?, file: SendFile? = nil) {
             self.sendID = sendID
@@ -44,6 +48,17 @@ final class SendsModel {
             self.source = source
             self.file = file
         }
+    }
+
+    @ObservationIgnored var liveFields: SendFields?
+    @ObservationIgnored var livePassword = ""
+
+    func parked(_ composer: Composer) -> Composer {
+        var parked = Composer(sendID: composer.sendID, fields: liveFields ?? composer.fields,
+                              hasPassword: composer.hasPassword, source: composer.source, file: composer.file)
+        parked.password = livePassword
+        parked.original = composer.baseline
+        return parked
     }
 
     /// The file of a file send.
@@ -82,6 +97,8 @@ final class SendsModel {
         busy = false
         error = nil
         composer = nil
+        liveFields = nil
+        livePassword = ""
         notice = nil
         selection = nil
         confirmDelete = nil

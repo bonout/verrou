@@ -17,6 +17,7 @@ struct EditItemView: View {
     /// overestimate it by a lot.
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
+    @State private var confirmDiscard = false
     @FocusState private var titleFocused: Bool
 
     init(editor: AppModel.Editor) {
@@ -127,13 +128,20 @@ struct EditItemView: View {
                 if model.editorBusy {
                     ProgressView().controlSize(.small)
                 }
-                Button("Cancel") { model.editor = nil }
+                Button("Cancel") { cancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(isNew ? "Create" : "Save") { save() }
-                    .keyboardShortcut("s", modifiers: .command)
+                    .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .layoutMark("sheet-primary")
-                    .disabled(draft.name.trimmingCharacters(in: .whitespaces).isEmpty || model.editorBusy)
+                    .disabled(!canSave)
+                    .background(
+                        Button("") { save() }
+                            .keyboardShortcut("s", modifiers: .command)
+                            .disabled(!canSave)
+                            .opacity(0)
+                            .accessibilityHidden(true)
+                    )
             }
             .padding(16)
         }
@@ -141,6 +149,20 @@ struct EditItemView: View {
         .frame(minHeight: isLogin ? 640 : 520, maxHeight: 700)
         .navigationTitle(windowTitle)
         .onAppear { titleFocused = isNew }
+        .onChange(of: draft, initial: true) { _, value in model.editorDraft = value }
+        .onChange(of: destination, initial: true) { _, value in model.editorDestination = value }
+        .onDisappear {
+            model.editorDraft = nil
+            model.editorDestination = nil
+        }
+        .interactiveDismissDisabled(changed)
+        .announcing(model.editorError)
+        .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard) {
+            Button("Discard Changes", role: .destructive) { model.editor = nil }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text(isNew ? "This item hasn't been created yet." : "Your changes to this item will be lost.")
+        }
         .confirmationDialog("Move “\(draft.name)” to the trash?", isPresented: $confirmTrash) {
             Button("Move to Trash", role: .destructive) {
                 if let id = editor.itemID { Task { await model.trash(id) } }
@@ -250,7 +272,24 @@ struct EditItemView: View {
         }
     }
 
+    private var canSave: Bool {
+        !draft.name.trimmingCharacters(in: .whitespaces).isEmpty && !model.editorBusy
+    }
+
+    private var changed: Bool {
+        draft != editor.baseline || destination != editor.destination
+    }
+
+    private func cancel() {
+        if changed {
+            confirmDiscard = true
+        } else {
+            model.editor = nil
+        }
+    }
+
     private func save() {
+        guard canSave else { return }
         // Sites left empty are not sent.
         draft.login?.dropEmptyURLs()
         // A field added then left without name or value is not sent.

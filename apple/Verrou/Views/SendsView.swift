@@ -318,11 +318,13 @@ struct SendEditorView: View {
     @State private var showText: Bool
     @State private var expires: Bool
     @State private var limited: Bool
-    @State private var password = ""
+    @State private var password: String
+    @State private var confirmDiscard = false
 
     init(composer: SendsModel.Composer) {
         self.composer = composer
         _fields = State(initialValue: composer.fields)
+        _password = State(initialValue: composer.password)
         // Prefilled from an item: the secret stays hidden until asked to see
         // it.
         _showText = State(initialValue: composer.source == nil)
@@ -421,12 +423,19 @@ struct SendEditorView: View {
                     }
                 }
                 Spacer()
-                Button("Cancel") { model.sends.composer = nil }
+                Button("Cancel") { cancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(isNew ? "Create and Copy Link" : "Save") { save() }
-                    .keyboardShortcut("s", modifiers: .command)
+                    .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(!canSave)
+                    .background(
+                        Button("") { save() }
+                            .keyboardShortcut("s", modifiers: .command)
+                            .disabled(!canSave)
+                            .opacity(0)
+                            .accessibilityHidden(true)
+                    )
             }
             .padding(16)
         }
@@ -434,6 +443,39 @@ struct SendEditorView: View {
         .frame(minHeight: 560)
         .navigationTitle(isNew ? (isFile ? "New File Send" : "New Send") : "Edit Send")
         .onAppear { model.sends.error = nil }
+        .onChange(of: normalized, initial: true) { _, value in model.sends.liveFields = value }
+        .onChange(of: password, initial: true) { _, value in model.sends.livePassword = value }
+        .onDisappear {
+            model.sends.liveFields = nil
+            model.sends.livePassword = ""
+        }
+        .interactiveDismissDisabled(changed)
+        .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard) {
+            Button("Discard Changes", role: .destructive) { model.sends.composer = nil }
+            Button("Keep Editing", role: .cancel) {}
+        } message: {
+            Text(isNew ? "This Send hasn't been created yet." : "Your changes to this Send will be lost.")
+        }
+        .announcing(model.sends.error)
+    }
+
+    private var normalized: SendFields {
+        var final = fields
+        final.expirationDate = expires ? (fields.expirationDate ?? fields.deletionDate) : nil
+        final.maxAccessCount = limited ? (fields.maxAccessCount ?? 1) : nil
+        return final
+    }
+
+    private var changed: Bool {
+        normalized != composer.baseline || !password.isEmpty
+    }
+
+    private func cancel() {
+        if changed {
+            confirmDiscard = true
+        } else {
+            model.sends.composer = nil
+        }
     }
 
     private var canSave: Bool {
@@ -493,9 +535,8 @@ struct SendEditorView: View {
     }
 
     private func save() {
-        var final = fields
-        final.expirationDate = expires ? (fields.expirationDate ?? fields.deletionDate) : nil
-        final.maxAccessCount = limited ? (fields.maxAccessCount ?? 1) : nil
+        guard canSave else { return }
+        var final = normalized
         final.password = password.isEmpty ? nil : password
         Task {
             await model.saveSend(final, id: composer.sendID, file: composer.file)
