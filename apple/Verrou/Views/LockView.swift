@@ -52,6 +52,7 @@ struct LockView: View {
             .padding(48)
         }
         .frame(minWidth: 520, minHeight: 460)
+        .announcing(model.unlockError)
         .onAppear {
             Perf.log.notice("lock screen shown at +\(Perf.msSinceLaunch) ms after launch")
             model.activatedAt = .now
