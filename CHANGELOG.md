@@ -59,7 +59,7 @@ tagging (docs/RELEASING.md).
 **Brave and Firefox**
 - The popup always shows a state ("Connecting to Verrou…", then offline)
   and its logins work with the keyboard.
-- The pill sits beside its field when there's room, never cuts the site's
+- The pill stays at the top center of the page, never cuts the site's
   name, describes the suggested password instead of showing it, offers
   "Open Verrou" when Verrou can't be reached, and is announced to screen
   readers.
