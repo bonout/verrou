@@ -6,6 +6,17 @@ tagging (docs/RELEASING.md).
 
 ## Unreleased
 
+**Email aliases**
+- With a catch-all domain at your mail provider (Cloudflare, Fastmail,
+  iCloud+, Proton, Google Workspace…), Verrou makes a unique address per
+  site, such as `netflix.k3x9a@alias.example.com`, and saves it as the
+  login's username: set the domain in Settings → *Vault and Filling* →
+  *Email aliases*. In Brave and Firefox, a sign-up form's email field
+  offers *Create email alias*; on the Mac and the iPhone, the generator
+  has an *Email alias* mode and a login's username an @ button; in the
+  terminal, `verrou generate alias [--uri <url>] [--no-site]`. Nothing
+  leaves your device. See *Email aliases* in docs/GUIDE.md.
+
 **Mac**
 - ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
