@@ -273,6 +273,60 @@ final class AutoFillUITests: XCTestCase {
         XCTAssertTrue(result?.contains("verified=true") == true && result?.contains("counter=1") == true, result ?? "")
     }
 
+    // MARK: 7. Email alias
+
+    func test7_EmailAliasInsertsFromTheAutoFillMenu() throws {
+        guard #available(iOS 18.0, *) else { throw XCTSkip("text insertion: iOS 18 and later") }
+        try openPage()
+        mark("alias")
+        pause()
+        let field = safari.webViews.textFields["Email"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        if !field.isHittable { safari.swipeUp() }
+        focus(field)
+        let label = { (text: String) in NSPredicate(format: "label == %@", text) }
+        var autoFill: XCUIElement?
+        for _ in 0..<3 {
+            field.tap()
+            autoFill = find(4) { $0.descendants(matching: .any).matching(label("AutoFill")).firstMatch }
+            if autoFill != nil { break }
+        }
+        shot("12-alias-edit-menu")
+        guard let autoFill else {
+            dump("edit menu")
+            return XCTFail("no AutoFill in the edit menu")
+        }
+        autoFill.tap()
+        guard let passwords = find(10, { $0.descendants(matching: .any).matching(label("Passwords")).firstMatch }) else {
+            dump("AutoFill menu")
+            return XCTFail("no Passwords in the AutoFill menu")
+        }
+        shot("13-alias-autofill-menu")
+        passwords.tap()
+        let insert = find(30) { $0.buttons["autofill-alias-insert"] }
+        shot("14-alias-extension")
+        guard let insert else {
+            dump("alias sheet")
+            throw XCTSkip("AutoFill → Passwords didn't open the extension in this simulator")
+        }
+        let site = find(5) { $0.textFields["autofill-alias-site"] }
+        site?.tap()
+        site?.typeText("netflix.com")
+        let alias = find(5) { $0.staticTexts["autofill-alias"] }
+        _ = waitFor(5) { alias?.label.hasPrefix("netflix.") == true }
+        shot("15-alias-sheet")
+        pause()
+        insert.tap()
+        let filled = waitFor(30) {
+            let value = self.safari.webViews.textFields["Email"].value as? String ?? ""
+            return value.hasPrefix("netflix.") && value.hasSuffix("@alias.example.com")
+        }
+        shot("16-alias-inserted")
+        pause()
+        if !filled { dump("alias inserted") }
+        XCTAssertTrue(filled, "alias inserted: \(safari.webViews.textFields["Email"].value ?? "")")
+    }
+
     // MARK: 3. One-time code
 
     func test3_OneTimeCodeFills() throws {
