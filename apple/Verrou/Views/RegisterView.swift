@@ -75,25 +75,34 @@ struct RegisterStep: View {
                         .focused($focus, equals: .hint)
                         .onSubmit(submit)
                 }
-                Picker("Key derivation", selection: $flow.kdf) {
-                    Text("PBKDF2 (600,000 iterations)").tag(NewAccountKdfChoice.pbkdf2)
-                    Text("Argon2id (64 MiB)").tag(NewAccountKdfChoice.argon2id)
-                }
-                .pickerStyle(.menu)
-                .font(.callout)
-                .help("PBKDF2: the default setting of the Bitwarden apps. Argon2id better withstands graphics card attacks.")
                 ForEach(flow.problems, id: \.self) { problem in
                     hintLine(problem, symbol: "exclamationmark.circle", tint: .orange)
                 }
+                DisclosureGroup("Advanced") {
+                    Picker("Key derivation", selection: $flow.kdf) {
+                        Text("PBKDF2 (600,000 iterations)").tag(NewAccountKdfChoice.pbkdf2)
+                        Text("Argon2id (64 MiB)").tag(NewAccountKdfChoice.argon2id)
+                    }
+                    .pickerStyle(.menu)
+                    .font(.callout)
+                    .help("PBKDF2: the default setting of the Bitwarden apps. Argon2id better withstands graphics card attacks.")
+                    .padding(.top, 4)
+                }
+                .font(.callout)
             }
             .frame(width: 340)
             .disabled(flow.busy)
 
-            Text("The master password can't be recovered: without it, the vault is lost.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(width: 340)
+            Label {
+                Text("The master password can't be recovered: without it, the vault is lost.")
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            }
+            .font(.callout.weight(.medium))
+            .padding(12)
+            .frame(width: 340, alignment: .leading)
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
 
             Button(action: submit) {
                 HStack(spacing: 8) {
@@ -120,6 +129,7 @@ struct RegisterStep: View {
                 .buttonStyle(.link)
         }
         .onAppear { focus = .link }
+        .announcing(flow.error)
     }
 
     private var subtitle: LocalizedStringKey {
