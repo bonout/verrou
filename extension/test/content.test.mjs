@@ -537,6 +537,84 @@ test("sign-in on a sign-up page: \"Generate a password\" in the list", async () 
   assert.equal(page.byId("current").value, "");
 });
 
+const signupForm = (h) => h("form", { id: "signup", action: "/inscription" },
+  h("input", { id: "pseudo", type: "text", name: "username" }),
+  h("input", { id: "new-email", type: "email", name: "email" }),
+  h("input", { id: "confirm-email", type: "email", name: "confirm_email", placeholder: "Confirm your email" }),
+  h("input", { id: "new-password", type: "password", name: "password", autocomplete: "new-password" }),
+  h("input", { id: "confirm", type: "password", name: "confirm", autocomplete: "new-password" }),
+  h("button", { id: "create", type: "submit" }, "Créer mon compte"));
+
+test("sign-up with an alias domain: \"Create email alias\" fills the email, saved as the username", async () => {
+  const background = fakeBackground({ items: [], aliasDomain: "alias.example.com" });
+  const page = openPage(signupForm, background);
+  await sleep(50);
+  assert.equal(page.pillNode(), null, "nothing by itself before the field");
+  assert.equal(background.sent("alias").length, 0);
+  page.byId("new-email").focus();
+  await eventually(() => page.pillText().includes("Create email alias"), "alias offered");
+  assert.match(page.pillText(), /maif\.a1x1z@alias\.example\.com/);
+  page.press("Create email alias");
+  assert.equal(page.byId("new-email").value, "maif.a1x1z@alias.example.com");
+  assert.equal(page.byId("confirm-email").value, "maif.a1x1z@alias.example.com");
+  assert.equal(page.pillNode(), null);
+
+  page.byId("pseudo").value = "camille";
+  page.byId("new-password").value = "un-mot-de-passe-solide";
+  page.byId("confirm").value = "un-mot-de-passe-solide";
+  formOf(page).requestSubmit();
+  const [capture] = background.sent("capture");
+  assert.equal(capture.username, "maif.a1x1z@alias.example.com");
+  assert.equal(capture.password, "un-mot-de-passe-solide");
+
+  page.byId("pseudo").focus();
+  page.byId("new-email").focus();
+  await sleep(50);
+  assert.equal(background.sent("alias").length, 1, "once per page");
+});
+
+test("no alias domain: the sign-up email field stays quiet", async () => {
+  const background = fakeBackground({ aliasDomain: null });
+  const page = openPage(signupForm, background);
+  page.byId("new-email").focus();
+  await eventually(() => background.sent("alias").length === 1, "alias asked");
+  await sleep(50);
+  assert.equal(page.pillNode(), null);
+  const icon = [...page.host("verrou-field").shadow.walk()].find((n) => n.tagName === "BUTTON");
+  page.fire(icon, "click");
+  await eventually(() => page.pillNode(), "pill by hand");
+  assert.doesNotMatch(page.pillText(), /Create email alias/);
+});
+
+test("alias beside the site's logins, and first when Verrou is locked", async () => {
+  const background = fakeBackground({ aliasDomain: "alias.example.com" });
+  const page = openPage(signupForm, background);
+  page.byId("new-email").focus();
+  await eventually(() => page.pillText().includes("Sign in"), "logins first");
+  page.press("Other logins");
+  await eventually(() => page.pillText().includes("Create email alias"), "alias in the list");
+  page.press("Create email alias");
+  assert.match(page.byId("new-email").value, /@alias\.example\.com$/);
+
+  const locked = fakeBackground({ state: "locked", aliasDomain: "alias.example.com" });
+  const other = openPage(signupForm, locked);
+  other.byId("new-email").focus();
+  await eventually(() => other.pillText().includes("Create email alias"), "alias while locked");
+  other.press("Other logins");
+  other.press("Unlock");
+  assert.equal(locked.sent("unlock").length, 1);
+});
+
+test("a sign-in form's email field asks for no alias", async () => {
+  const background = fakeBackground({ aliasDomain: "alias.example.com" });
+  const page = openPage(loginForm, background);
+  await eventually(() => page.pillText().includes("Sign in"), "pill");
+  page.byId("email").focus();
+  await sleep(50);
+  assert.doesNotMatch(page.pillText(), /Create email alias/);
+  assert.equal(background.sent("alias").length, 0);
+});
+
 test("payment form: \"Fill card Visa •••• 0005\", the other cards under the tab", async () => {
   const background = fakeBackground({
     cards: [{ id: "visa", title: "Carte perso", subtitle: "Visa •••• 0005" }, { id: "amex", title: "Carte pro", subtitle: "Amex •••• 1000" }],

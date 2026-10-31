@@ -39,6 +39,8 @@
   const LOGIN_FORM_HINT = /log.?in|sign.?in|se.?connecter|connexion|identifi/i;
   const SIGN_IN_STEP_HINT = /log.?in|sign.?in|connecter|connexion|identifi|\bnext\b|continue|continuer|suivant/i;
   const NEWSLETTER_FORM_HINT = /newsletter|subscribe|abonn/i;
+  const EMAIL_HINT = /e-?mail|courriel/i;
+  const CONFIRM_HINT = /confirm|repeat|retype|again|verify|vérif|répét/i;
   const TEXT_TYPES = new Set(["text", "email", "tel", ""]);
 
   // MARK: Fields
@@ -409,6 +411,39 @@
       await sleep(150);
       if (enabled && readyToSubmit(scope, filled, button)) submit(scope, button);
     })();
+  }
+
+  function emailField(input) {
+    const autocomplete = (input.autocomplete || "").toLowerCase();
+    return typeOf(input) === "email" || /\bemail\b/.test(autocomplete) || EMAIL_HINT.test(hintOf(input));
+  }
+
+  function signupEmail(input) {
+    if (!emailField(input) || CONFIRM_HINT.test(hintOf(input))) return false;
+    if (newPasswordField(input)) return true;
+    const scope = scopeOf(input);
+    return scope !== document && SIGNUP_FORM_HINT.test(formHint(scope))
+      || SIGNUP_FORM_HINT.test(`${location.pathname} ${document.title}`);
+  }
+
+  let lastAlias = { value: null, at: 0 };
+
+  function applyAlias(address, anchor) {
+    withFilling(() => {
+      setValue(anchor, address);
+      for (const input of inputsOf(scopeOf(anchor))) {
+        if (input !== anchor && isText(input) && !input.value && emailField(input) && CONFIRM_HINT.test(hintOf(input))) {
+          setValue(input, address);
+        }
+      }
+      anchor.focus({ preventScroll: true });
+    });
+    lastAlias = { value: address, at: Date.now() };
+  }
+
+  function aliasInput(inputs) {
+    if (!lastAlias.value || Date.now() - lastAlias.at > FILL_MEMORY_MS) return null;
+    return inputs.find((input) => isText(input) && input.value.trim() === lastAlias.value) ?? null;
   }
 
   // The generated password in all the "new" fields of the form (the
@@ -954,6 +989,29 @@
     };
   }
 
+  async function aliasFor(anchor, kind) {
+    if (kind !== "username" || !anchor || !signupEmail(anchor)) return null;
+    const reply = await send({ kind: "alias" });
+    if (!reply?.ok || typeof reply.address !== "string") return null;
+    return {
+      badge: "@", title: t("pillCreateAlias"), subtitle: reply.address, mono: true,
+      run: () => {
+        pill.hide();
+        applyAlias(reply.address, anchor);
+      },
+    };
+  }
+
+  function aliasView(row, others = []) {
+    return {
+      title: SITE,
+      subtitle: row.subtitle,
+      mono: true,
+      primary: { label: t("pillCreateAlias"), run: row.run },
+      others,
+    };
+  }
+
   // "Fill with another login…": the extension's popup, where the login to
   // link to this site is chosen. The page sees nothing of it.
   function linkRow() {
@@ -966,9 +1024,16 @@
     };
   }
 
-  async function loginView(anchor, kind, manual) {
-    const [reply, passkeys] = await Promise.all([send({ kind: "suggest" }), passkeyEntries(kind)]);
+  async function loginView(anchor, kind, manual, aliasOnly = false) {
+    const [reply, passkeys, alias] = await Promise.all([
+      send({ kind: "suggest" }), passkeyEntries(kind), aliasFor(anchor, kind),
+    ]);
+    if (aliasOnly && !alias) return null;
     if (reply.state === "locked" || passkeys.state === "locked") {
+      if (alias) {
+        const locked = lockedView(anchor, kind);
+        return aliasView(alias, [{ badge: "🔒", title: locked.primary.label, subtitle: locked.title, run: locked.primary.run }]);
+      }
       // Locked: not for a mere verification code, unless by hand.
       return kind === "otp" && !manual ? null : lockedView(anchor, kind);
     }
@@ -998,13 +1063,15 @@
           run: () => fillLogin(item, kind, anchor),
         })),
     ];
-    if (!rows.length && !manual) return null;
+    if (!rows.length && !manual && !alias) return null;
     const [top, ...rest] = rows;
     const fresh = newPasswordField(anchor);
     const extras = [
+      ...(alias && top ? [alias] : []),
       ...(fresh ? [generateRow(fresh)] : []),
       ...(reply.state === "unlocked" ? [linkRow()] : []),
     ];
+    if (!top && alias) return { ...aliasView(alias, extras), tab: t("pillOtherLogins") };
     return {
       title: SITE,
       subtitle: top ? top.username || "—" : kind === "otp" ? t("pillNoCode") : t("pillNoLogin"),
@@ -1055,19 +1122,19 @@
     };
   }
 
-  async function viewFor(anchor, kind, manual) {
+  async function viewFor(anchor, kind, manual, aliasOnly) {
     // Offered even with the vault locked: nothing leaves Verrou.
     if (kind === "new") return generatorView(anchor);
     if (kind === "card" || kind === "identity") return formView(anchor, kind, manual);
-    return loginView(anchor, kind, manual);
+    return loginView(anchor, kind, manual, aliasOnly);
   }
 
   // Shows the pill for `anchor`. By itself (`manual` false): nothing without
   // a login for this site, nor after a close. `refresh`: update of the open
   // pill, which goes away if nothing is left.
-  async function offer(anchor, kind, { manual = false, refresh = false } = {}) {
+  async function offer(anchor, kind, { manual = false, refresh = false, aliasOnly = false } = {}) {
     const seq = ++offerSeq;
-    const view = await viewFor(anchor, kind, manual);
+    const view = await viewFor(anchor, kind, manual, aliasOnly);
     if (seq !== offerSeq) return;
     if (!view) {
       if (refresh && pill.open && !pill.busy) pill.hide();
@@ -1248,7 +1315,7 @@
     const inputs = [...scope.querySelectorAll("input")].filter((i) => !i.disabled);
     if (!roles.size) {
       // First step of a sign-in: the username alone, kept for the next step.
-      const username = inputs.find((i) => classify(i) === "username");
+      const username = aliasInput(inputs) ?? inputs.find((i) => classify(i) === "username");
       if (username?.value.trim()) send({ kind: "rememberUsername", username: username.value.trim() });
       return;
     }
@@ -1262,7 +1329,7 @@
     const firstPassword = [...roles.keys()][0];
     const texts = inputs.filter(isText);
     const before = texts.filter((i) => i.compareDocumentPosition(firstPassword) & Node.DOCUMENT_POSITION_FOLLOWING);
-    const username = (texts.find((i) => classify(i) === "username") ?? before.at(-1))?.value.trim() ?? "";
+    const username = (aliasInput(texts) ?? texts.find((i) => classify(i) === "username") ?? before.at(-1))?.value.trim() ?? "";
     // Username and password as Verrou just filled them (automatic submit or
     // Enter): nothing new to save.
     if (!fresh.length && password === lastFill.password && (!username || username === lastFill.username)
@@ -1419,6 +1486,11 @@
     if (LOGIN_KINDS.has(kind)) {
       // Form that appeared without a visible mutation (style of a parent…).
       scheduleScan(0);
+      if (kind === "username" && !target.value && !dismissed && !pill.busy && !queried.has("alias")
+        && signupEmail(target)) {
+        queried.add("alias");
+        offer(target, kind, { aliasOnly: true });
+      }
       return;
     }
     // Password to create (empty field: don't overwrite what is being typed),
