@@ -133,6 +133,7 @@ extension AppModel {
     func performBulk(_ action: BulkItemAction, on ids: [String], folderName: String? = nil) async {
         guard canEdit, !editorBusy, !ids.isEmpty else { return }
         if case .trash = action, ids.count > 1, !confirmBulkTrash(count: ids.count) { return }
+        let notTrashed = ids.filter { summary(id: $0)?.state != .trashed }
         editorBusy = true
         bulkProgress = (0, ids.count)
         defer {
@@ -152,7 +153,12 @@ extension AppModel {
             if let focus = selection, !resultIDs.contains(focus) {
                 withoutAnimation { selection = resultIDs.first }
             }
-            toast = bulkToast(result, action: action, folderName: folderName)
+            var done = bulkToast(result, action: action, folderName: folderName)
+            if case .trash = action, result.done > 0, result.failures.isEmpty {
+                done.action = undoAction { [weak self] in await self?.performBulk(.restore, on: notTrashed) }
+                done.seconds = 8
+            }
+            toast = done
         } catch {
             toast = Toast(message: String(localized: "Action failed"), detail: Self.describe(error), failure: true)
         }
@@ -173,7 +179,7 @@ extension AppModel {
     private func confirmBulkTrash(count: Int) -> Bool {
         let alert = NSAlert()
         alert.messageText = String(localized: "Move \(count) items to the trash?")
-        alert.informativeText = String(localized: "Restorable for 30 days from the trash.")
+        alert.informativeText = String(localized: "You can restore them from the Trash.")
         alert.addButton(withTitle: String(localized: "Move to Trash"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         return alert.runModal() == .alertFirstButtonReturn

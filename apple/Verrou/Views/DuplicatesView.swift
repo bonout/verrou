@@ -86,7 +86,7 @@ struct DuplicatesView: View {
                 Task { await model.trashDuplicates(flow) }
             }
         } message: {
-            Text("The items stay restorable from the web vault for 30 days.")
+            Text("You can restore them from the Trash.")
         }
         .confirmationDialog(mergeTitle, isPresented: Binding(
             get: { merging != nil }, set: { if !$0 { merging = nil } })
@@ -97,7 +97,7 @@ struct DuplicatesView: View {
                 }
             }
         } message: {
-            Text("Sites, one-time code, notes, fields and old passwords join the kept item; the most recent password stays the current password. The others then go to the trash, restorable for 30 days.")
+            Text("Sites, one-time code, notes, fields and old passwords join the kept item; the most recent password stays the current password. The others then go to the Trash, where you can restore them.")
         }
     }
 
