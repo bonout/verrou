@@ -28,6 +28,7 @@ use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::oneshot;
 use url::Url;
+use verrou_core::alias::AliasSettings;
 use verrou_core::{ItemKind, Vault};
 use zeroize::Zeroize as _;
 
@@ -127,6 +128,9 @@ pub trait Backend: Send + Sync + 'static {
     /// answer for a purpose other than SSH or signing.
     fn approval_scope(&self, _purpose: Purpose, _item: &str) -> ApprovalScope {
         ApprovalScope::FiveMinutes
+    }
+    fn alias_settings(&self) -> AliasSettings {
+        AliasSettings::default()
     }
 }
 
@@ -539,6 +543,7 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
                 }))
                 .await,
         ),
+        Command::Alias { url, site } => alias(&backend.alias_settings(), url.as_deref(), site),
         command => terminal(shared, &info, command, &reason).await,
     };
     let Ok(mut body) = serde_json::to_vec(&Reply {
@@ -550,6 +555,16 @@ async fn answer(shared: &Shared, client: &str, iv: &str, data: &str) -> Outgoing
     let (iv, data) = key.seal(client, Direction::Response, &body);
     body.zeroize();
     Outgoing::Response { iv, data }
+}
+
+fn alias(settings: &AliasSettings, url: Option<&str>, site: Option<bool>) -> ReplyResult {
+    let url = url.filter(|u| !u.trim().is_empty());
+    match settings.generate(url, site) {
+        Ok(address) => ReplyResult::Alias { address },
+        Err(error) => ReplyResult::Denied {
+            reason: error.to_string(),
+        },
+    }
 }
 
 /// Reads the unlocked vault; `None`: locked.

@@ -37,7 +37,7 @@ const MAX_RESULTS: usize = 200;
 /// and the unlock request.
 pub fn allowed(kind: ClientKind, command: &Command) -> bool {
     match command {
-        Command::Status | Command::Unlock { .. } => true,
+        Command::Status | Command::Unlock { .. } | Command::Alias { .. } => true,
         Command::Suggest { .. }
         | Command::Fill { .. }
         | Command::Check { .. }
