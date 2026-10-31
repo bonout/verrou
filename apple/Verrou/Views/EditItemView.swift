@@ -152,9 +152,11 @@ struct EditItemView: View {
         .onAppear { titleFocused = isNew }
         .onChange(of: draft, initial: true) { _, value in model.editorDraft = value }
         .onChange(of: destination, initial: true) { _, value in model.editorDestination = value }
+        .onChange(of: showPassword) { _, shown in model.setSecretShown("editor", shown) }
         .onDisappear {
             model.editorDraft = nil
             model.editorDestination = nil
+            model.setSecretShown("editor", false)
         }
         .interactiveDismissDisabled(changed)
         .announcing(model.editorError)
