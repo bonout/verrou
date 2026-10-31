@@ -15,8 +15,13 @@ extension PhoneModel {
         guard mode == .vaultwarden, lockState == .unlocked else { return }
         do {
             sharing.sends = try await session.sends()
+            sharing.sendsError = nil
         } catch {
-            toast = Toast(message: String(localized: "Could not read Sends"), detail: ErrorText.describe(error), failure: true)
+            if sharing.sends == nil {
+                sharing.sendsError = ErrorText.describe(error)
+            } else {
+                toast = Toast(message: String(localized: "Could not read Sends"), detail: ErrorText.describe(error), failure: true)
+            }
         }
     }
 
@@ -108,6 +113,19 @@ struct SendsScreen: View {
                         Text("Touch and hold a Send to copy its link. The link carries the key: only give it to its recipient.")
                     }
                 }
+            } else if let error = model.sharing.sendsError {
+                ContentUnavailableView {
+                    Label("Could not read Sends", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") {
+                        model.sharing.sendsError = nil
+                        Task { await model.reloadSends() }
+                    }
+                    .accessibilityIdentifier("sends-retry")
+                }
+                .listRowBackground(Color.clear)
             } else {
                 ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
