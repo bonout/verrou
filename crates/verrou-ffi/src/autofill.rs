@@ -19,7 +19,7 @@ use verrou_core::passkey::{self, Passkey, SystemRegistrationRequest};
 use verrou_core::{FieldKind, Item, ItemKind, Vault};
 use verrou_vaultwarden::Store;
 
-use crate::{ItemSummary, VaultSession, VerrouError, summary};
+use crate::{ItemSummary, VaultSession, VerrouError};
 
 /// Maximum length of texts coming from the site (name, user).
 const MAX_TEXT: usize = 256;
@@ -345,7 +345,7 @@ impl VaultSession {
             Ok(v.suggestions_for(&site_uri(&rp_id))
                 .into_iter()
                 .filter(|i| i.kind == ItemKind::Login && i.is_writable())
-                .map(summary)
+                .map(|i| self.summary_in(v, i))
                 .collect())
         })
     }
@@ -568,6 +568,23 @@ mod tests {
         assert_eq!(passkey.user_handle, b"u-1");
         let dump = format!("{all:?}");
         assert!(!dump.contains("s3cret") && !dump.contains("JBSWY3DP"));
+    }
+
+    #[test]
+    fn passkey_targets_say_which_login_already_holds_one() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
+        let targets = session
+            .autofill_passkey_targets("github.com".to_owned())
+            .unwrap();
+        let github = targets.iter().find(|t| t.title == "GitHub").unwrap();
+        assert_eq!(github.passkey_rp_id.as_deref(), Some("github.com"));
+        assert_eq!(github.passkey_user_name.as_deref(), Some("emily-dev"));
+        let amazon = session
+            .autofill_passkey_targets("amazon.com".to_owned())
+            .unwrap();
+        assert!(!amazon.is_empty());
+        assert!(amazon.iter().all(|t| t.passkey_rp_id.is_none()));
     }
 
     #[test]
