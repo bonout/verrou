@@ -217,7 +217,8 @@ extension AppModel {
         }
     }
 
-    /// Copies a field of the grantor's vault (concealed clipboard, 90 s).
+    /// Copies a field of the grantor's vault (concealed clipboard, cleared
+    /// after the chosen delay).
     func copyGrantorField(_ field: FieldView, itemID: String, in vault: GrantorVault) {
         let value: String?
         if field.fieldType == .totp {
@@ -229,7 +230,8 @@ extension AppModel {
         }
         guard let value else { return }
         copy(value, label: field.label, secret: field.secret)
-        emergency.notice = field.secret ? String(localized: "\(field.label) copied (cleared from the clipboard in 90 s).")
+        let delay = DurationLabel.short(Clipboard.clearDelay)
+        emergency.notice = field.secret ? String(localized: "\(field.label) copied (cleared from the clipboard in \(delay)).")
                                          : String(localized: "\(field.label) copied.")
     }
 

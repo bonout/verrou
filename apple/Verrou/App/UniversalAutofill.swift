@@ -196,7 +196,7 @@ final class UniversalAutofill {
         if Self.copiesTotp, summary?.hasTotp == true, let code = model.totpCode(of: itemID) {
             model.copy(code.code, label: String(localized: "Code"), secret: true)
             AutofillHUD.show(String(localized: "One-time code copied"),
-                             detail: String(localized: "Cleared from the clipboard in 90 s"))
+                             detail: Clipboard.clearedLabel)
         }
         if link, model.canEdit {
             await self.link(itemID: itemID, to: target)

@@ -4,11 +4,18 @@ import AppKit
 ///
 /// - Marked "concealed" and "transient" (nspasteboard.org conventions):
 ///   clipboard history managers don't record it.
-/// - Cleared after 90 s, but only if it still holds what Verrou put there:
-///   we don't destroy what the user copied in the meantime.
+/// - Cleared after the chosen delay (90 s by default), but only if it still
+///   holds what Verrou put there: we don't destroy what the user copied in
+///   the meantime.
 @MainActor
 final class Clipboard {
-    static let clearDelay: TimeInterval = 90
+    static let delayKey = "clipboardSeconds"
+    static var clearDelay: Int {
+        UserDefaults.standard.object(forKey: delayKey) as? Int ?? 90
+    }
+    static var clearedLabel: String {
+        String(localized: "Cleared from the clipboard in \(DurationLabel.short(clearDelay))")
+    }
     private var ownedChangeCount: Int?
     private var clearTask: Task<Void, Never>?
 
@@ -23,8 +30,9 @@ final class Clipboard {
         ownedChangeCount = pasteboard.changeCount
         clearTask?.cancel()
         guard concealed else { return }
+        let delay = Self.clearDelay
         clearTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.clearDelay))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
             self?.clearIfOurs()
         }
