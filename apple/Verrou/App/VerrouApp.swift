@@ -48,6 +48,8 @@ struct VerrouApp: App {
                     .disabled(!delegate.model.canEdit)
                 Button("New Document…") { delegate.model.newDocument() }
                     .disabled(!delegate.model.canEdit)
+                Button("New Folder…") { delegate.model.promptNewFolder() }
+                    .disabled(!delegate.model.canManageFolders)
                 Divider()
                 Button("Import…") { delegate.model.startImport() }
                     .keyboardShortcut("i", modifiers: [.command, .shift])

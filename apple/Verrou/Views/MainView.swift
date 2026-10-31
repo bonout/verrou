@@ -265,13 +265,30 @@ struct SidebarView: View {
                         count: entry.count, tint: entry.template.tint)
                 }
             }
-            if let folders = model.counts?.folders, !folders.isEmpty {
-                Section("Folders") {
+            let folders = model.counts?.folders ?? []
+            if !folders.isEmpty || model.canManageFolders {
+                Section {
                     // Nested by name ("Work/Clients"); items dropped on a
                     // folder move into it.
                     OutlineGroup(FolderNode.tree(folders.map { ($0.name, $0.count) }), children: \.children) { node in
                         row(.folder(name: node.path), node.name, "folder", count: node.count, tint: .secondary)
                             .modifier(FolderDropTarget(path: node.path))
+                            .contextMenu { folderMenu(node.path) }
+                    }
+                } header: {
+                    HStack {
+                        Text("Folders")
+                        Spacer()
+                        if model.canManageFolders {
+                            Button {
+                                model.promptNewFolder()
+                            } label: {
+                                Image(systemName: "plus")
+                                    .accessibilityLabel("New Folder…")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("New Folder…")
+                        }
                     }
                 }
             }
@@ -305,6 +322,39 @@ struct SidebarView: View {
                 VaultFooter()
             }
             .background(.bar)
+        }
+        .alert(model.folderPrompt?.folder == nil ? "New Folder" : "Rename Folder",
+               isPresented: Binding(get: { model.folderPrompt != nil }, set: { if !$0 { model.folderPrompt = nil } })) {
+            TextField("Name", text: Binding(get: { model.folderPrompt?.name ?? "" },
+                                            set: { model.folderPrompt?.name = $0 }))
+            Button(model.folderPrompt?.folder == nil ? "Create" : "Rename") {
+                Task { await model.submitFolderPrompt() }
+            }
+            .disabled((model.folderPrompt?.name ?? "").trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) { model.folderPrompt = nil }
+        } message: {
+            Text("Use “/” to nest it, for example “Work/Clients”.")
+        }
+        .confirmationDialog("Delete the folder “\(model.folderToDelete?.name ?? "")”?",
+                            isPresented: Binding(get: { model.folderToDelete != nil },
+                                                 set: { if !$0 { model.folderToDelete = nil } })) {
+            Button("Delete Folder", role: .destructive) {
+                if let folder = model.folderToDelete { Task { await model.deleteFolder(folder) } }
+                model.folderToDelete = nil
+            }
+        } message: {
+            Text("Its items stay in the vault, without a folder.")
+        }
+    }
+
+    @ViewBuilder
+    private func folderMenu(_ path: String) -> some View {
+        if model.canManageFolders {
+            Button("New Folder…") { model.promptNewFolder() }
+            if let folder = model.folder(at: path) {
+                Button("Rename Folder…") { model.promptRenameFolder(folder) }
+                Button("Delete Folder…", role: .destructive) { model.folderToDelete = folder }
+            }
         }
     }
 
@@ -807,9 +857,11 @@ struct RowMenu: View {
                 Button(summary.favorite ? "Remove from Favorites" : "Add to Favorites") {
                     Task { await model.setFavorite(summary.id, !summary.favorite) }
                 }
+                Button("Move to Folder…") { model.moveRequest = MoveRequest(itemIDs: [summary.id]) }
                 Button("Archive") { Task { await model.setArchived(summary.id, true) } }
                 Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .archived:
+                Button("Move to Folder…") { model.moveRequest = MoveRequest(itemIDs: [summary.id]) }
                 Button("Unarchive") { Task { await model.setArchived(summary.id, false) } }
                 Button("Move to Trash") { Task { await model.trash(summary.id) } }
             case .trashed:
