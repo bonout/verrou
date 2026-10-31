@@ -112,7 +112,12 @@ final class AppModel {
     var changingPassword: String?
     /// Cards, old passwords, two-factor authentication (`Watchtower.swift`).
     let watchtower = Watchtower()
-    var query: String = "" { didSet { refresh() } }
+    var query: String = "" {
+        didSet {
+            refresh()
+            if query != oldValue { selectFirstResult() }
+        }
+    }
     /// List order, kept on this Mac.
     var sort: ResultOrder = DevicePreferences.sort {
         didSet {
@@ -1099,6 +1104,16 @@ final class AppModel {
         }
     }
 
+    private func selectFirstResult() {
+        guard lockState == .unlocked else { return }
+        withoutAnimation { selection = resultIDs.first }
+    }
+
+    func copySelectedPassword() {
+        guard !isMultiSelection, let item = selectedSummary, item.category == .login else { return }
+        copyPassword(of: item.id)
+    }
+
     func moveSelection(by offset: Int) {
         let ids = resultIDs
         guard !ids.isEmpty else { return }
@@ -1356,15 +1371,20 @@ final class AppModel {
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyCode(of: itemID) }) { return }
         guard let code = totpCode(of: itemID) else { return }
         session.recordItemUse(id: itemID)
-        copy(code.code, label: String(localized: "Code"), secret: true)
+        copy(code.code, label: String(localized: "Code"), secret: true, item: title(of: itemID))
     }
 
-    func copy(_ value: String, label: String, secret: Bool) {
+    func copy(_ value: String, label: String, secret: Bool, item: String? = nil) {
         clipboard.copy(value, concealed: secret)
+        let detail = [item, secret ? String(localized: "Cleared from the clipboard in 90 s") : nil]
+            .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         withAnimation(.snappy) {
-            toast = Toast(message: String(localized: "\(label) copied"),
-                          detail: secret ? String(localized: "Cleared from the clipboard in 90 s") : nil)
+            toast = Toast(message: String(localized: "\(label) copied"), detail: detail.isEmpty ? nil : detail)
         }
+    }
+
+    func title(of itemID: String) -> String? {
+        summary(id: itemID)?.title
     }
 
     func copyField(_ field: FieldView, of itemID: String) {
@@ -1381,21 +1401,21 @@ final class AppModel {
         let copied = field.fieldType == .cardNumber ? value.replacingOccurrences(of: " ", with: "") : value
         // A revealed secret is already recorded by the core; a plain field, here.
         if !field.secret { session.recordItemUse(id: itemID) }
-        copy(copied, label: field.label, secret: field.secret)
+        copy(copied, label: field.label, secret: field.secret, item: title(of: itemID))
         if field.secret { revealed[field.id] = nil }
     }
 
     func copyUsername(of itemID: String) {
         guard let summary = summary(id: itemID), summary.category == .login, !summary.subtitle.isEmpty else { return }
         session.recordItemUse(id: itemID)
-        copy(summary.subtitle, label: String(localized: "Username"), secret: false)
+        copy(summary.subtitle, label: String(localized: "Username"), secret: false, item: summary.title)
     }
 
     /// The first website, in full (not only its host).
     func copyWebsite(of itemID: String) {
         guard let url = (try? session.detail(id: itemID))?.urls.first else { return }
         session.recordItemUse(id: itemID)
-        copy(url, label: String(localized: "Website"), secret: false)
+        copy(url, label: String(localized: "Website"), secret: false, item: title(of: itemID))
     }
 
     func copyPassword(of itemID: String) {
@@ -1406,7 +1426,7 @@ final class AppModel {
         }
         if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyPassword(of: itemID) }) { return }
         guard let value = try? session.reveal(id: itemID, fieldId: "password") else { return }
-        copy(value, label: String(localized: "Password"), secret: true)
+        copy(value, label: String(localized: "Password"), secret: true, item: title(of: itemID))
     }
 
     /// Main window in the foreground. Closed (launched at login), a "reopen"
