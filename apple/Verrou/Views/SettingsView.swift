@@ -246,19 +246,29 @@ private struct AccountSettings: View {
                 NoAccountSection()
             }
         }
-        .confirmationDialog("Log out of this Mac?", isPresented: $confirmLogout) {
-            Button("Log Out", role: .destructive) { model.logout() }
-        } message: {
-            if model.pendingChanges > 0 {
-                if model.pendingChanges == 1 {
-                    Text("1 unsynced change will be lost. You will need your master password and your second factor to log in again.")
+        .modifier(LogoutConfirmation(isPresented: $confirmLogout))
+    }
+}
+
+struct LogoutConfirmation: ViewModifier {
+    @Environment(AppModel.self) private var model
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("Log out of this Mac?", isPresented: $isPresented) {
+                Button("Log Out", role: .destructive) { model.logout() }
+            } message: {
+                if model.pendingChanges > 0 {
+                    if model.pendingChanges == 1 {
+                        Text("1 unsynced change will be lost. You will need your master password and your second factor to log in again.")
+                    } else {
+                        Text("\(model.pendingChanges) unsynced changes will be lost. You will need your master password and your second factor to log in again.")
+                    }
                 } else {
-                    Text("\(model.pendingChanges) unsynced changes will be lost. You will need your master password and your second factor to log in again.")
+                    Text("You will need your master password and your second factor to log in again.")
                 }
-            } else {
-                Text("You will need your master password and your second factor to log in again.")
             }
-        }
     }
 }
 
