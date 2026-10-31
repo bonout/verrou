@@ -28,7 +28,7 @@ struct MainView: View {
                     SendDetailView(send: send)
                         .id(send.id)
                 } else {
-                    EmptyPaneDetailView(title: String(localized: "No send selected"), symbol: "paperplane")
+                    EmptyPaneDetailView(title: String(localized: "No Send selected"), symbol: "paperplane")
                 }
             case .emergency:
                 if let selected = model.emergency.selected {

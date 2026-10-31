@@ -246,7 +246,7 @@ enum AttachmentFileError: Error {
     var message: String {
         switch self {
         case .notAFile: String(localized: "Only files can be attached or sent (not folders).")
-        case .tooLarge: String(localized: "The file exceeds 100 MB, the maximum size of an attachment or a send.")
+        case .tooLarge: String(localized: "The file exceeds 100 MB, the maximum size of an attachment or a Send.")
         }
     }
 }

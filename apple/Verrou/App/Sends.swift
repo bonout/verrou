@@ -193,7 +193,7 @@ extension AppModel {
                                                    origin: .attachment(itemID: itemID, attachmentID: entry.id)))
                 openSends()
             } catch {
-                toast = Toast(message: String(localized: "Couldn't create the send"), detail: Self.describe(error), failure: true)
+                toast = Toast(message: String(localized: "Couldn't create the Send"), detail: Self.describe(error), failure: true)
             }
         }
     }
@@ -224,7 +224,7 @@ extension AppModel {
             sends.composer = .init(sendID: nil, fields: fields, hasPassword: false, source: summary.title)
             openSends()
         } catch {
-            toast = Toast(message: String(localized: "Couldn't create the send"), detail: Self.describe(error), failure: true)
+            toast = Toast(message: String(localized: "Couldn't create the Send"), detail: Self.describe(error), failure: true)
         }
     }
 
