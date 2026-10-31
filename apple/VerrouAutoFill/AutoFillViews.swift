@@ -13,7 +13,11 @@ struct AutoFillRootView: View {
                 case .noAccount:
                     NoAccountView()
                 case .locked, .unlocking:
-                    AutoFillLockView()
+                    if case .alias = model.request {
+                        AliasInsertView()
+                    } else {
+                        AutoFillLockView()
+                    }
                 case .ready, .working:
                     content
                 }
@@ -44,6 +48,8 @@ struct AutoFillRootView: View {
             PasskeyRegistrationView()
         case .provide:
             WorkingView(label: "Filling…")
+        case .alias:
+            AliasInsertView()
         case .list, .oneTimeCodes:
             if model.phase == .working {
                 WorkingView(label: "Signing…")
@@ -85,6 +91,78 @@ private struct NoAccountView: View {
         }
         .padding(28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: Email alias
+
+private struct AliasInsertView: View {
+    @Environment(AutoFillModel.self) private var model
+
+    var body: some View {
+        @Bindable var model = model
+        List {
+            if model.aliasSettings?.domain == nil {
+                Section {
+                    VStack(spacing: 10) {
+                        TintedSymbol(symbol: "at", tint: Theme.accent, size: 64)
+                        Text("No alias domain")
+                            .font(.headline)
+                        Text("In the Verrou app, enter your catch-all domain in Settings → Vault and filling → Email aliases.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+            } else {
+                Section {
+                    VStack(spacing: 10) {
+                        TintedSymbol(symbol: "at", tint: Theme.accent, size: 64)
+                        Text(verbatim: model.alias)
+                            .font(.system(.body, design: .monospaced).weight(.semibold))
+                            .multilineTextAlignment(.center)
+                            .textSelection(.enabled)
+                            .contentTransition(.numericText())
+                            .animation(.snappy, value: model.alias)
+                            .accessibilityIdentifier("autofill-alias")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+                if model.aliasUsesSite {
+                    Section {
+                        TextField("Site", text: $model.aliasSite, prompt: Text(verbatim: "netflix.com"))
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+                            .accessibilityIdentifier("autofill-alias-site")
+                    } footer: {
+                        Text("The alias starts with the site's name. Without a site, it is random.")
+                    }
+                }
+                Section {
+                    Button {
+                        model.insertAlias()
+                    } label: {
+                        Label("Insert Alias", systemImage: "text.insert")
+                            .font(.body.weight(.semibold))
+                    }
+                    .disabled(model.alias.isEmpty)
+                    .accessibilityIdentifier("autofill-alias-insert")
+                    Button {
+                        model.generateAlias()
+                    } label: {
+                        Label("Another Alias", systemImage: "arrow.clockwise")
+                    }
+                } footer: {
+                    Text("Mail sent to it reaches you through your domain's catch-all. Save the login in Verrou once signed up: the alias is its username.")
+                }
+            }
+        }
+        .onChange(of: model.aliasSite) { model.generateAlias() }
     }
 }
 

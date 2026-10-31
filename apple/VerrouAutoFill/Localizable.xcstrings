@@ -5097,6 +5097,34 @@
         }
       }
     },
+    "Another Alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un autre alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anderer Alias"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Otro alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un altro alias"
+          }
+        }
+      }
+    },
     "Another phone scans it with the camera to join the network.": {
       "localizations": {
         "fr": {
@@ -11845,6 +11873,34 @@
         }
       }
     },
+    "In the Verrou app, enter your catch-all domain in Settings → Vault and filling → Email aliases.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dans l'app Verrou, saisissez votre domaine catch-all dans Réglages → Coffre et remplissage → Alias e-mail."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gib in der Verrou-App deine Catch-all-Domain unter Einstellungen → Tresor und Ausfüllen → E-Mail-Aliasse ein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la app Verrou, introduce tu dominio catch-all en Ajustes → Bóveda y relleno → Alias de correo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nell'app Verrou, inserisci il tuo dominio catch-all in Impostazioni → Cassaforte e compilazione → Alias email."
+          }
+        }
+      }
+    },
     "In the background, when iOS allows it, Verrou only looks at what the app has already downloaded if the vault is locked (no key, no network): news from the server arrives the next time you open it.": {
       "localizations": {
         "fr": {
@@ -11981,6 +12037,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Password principale errata."
+          }
+        }
+      }
+    },
+    "Insert Alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insérer l'alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias einfügen"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insertar el alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci l'alias"
           }
         }
       }
@@ -13577,6 +13661,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mac (app desktop)"
+          }
+        }
+      }
+    },
+    "Mail sent to it reaches you through your domain's catch-all. Save the login in Verrou once signed up: the alias is its username.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les e-mails envoyés à cette adresse vous parviennent grâce au catch-all de votre domaine. Une fois inscrit, enregistrez l'identifiant dans Verrou : l'alias en est le nom d'utilisateur."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-Mails an diese Adresse erreichen dich über das Catch-all deiner Domain. Speichere die Anmeldung nach der Registrierung in Verrou: Der Alias ist ihr Benutzername."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El correo enviado a esta dirección te llega gracias al catch-all de tu dominio. Una vez registrado, guarda el inicio de sesión en Verrou: el alias es su nombre de usuario."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La posta inviata a questo indirizzo ti arriva grazie al catch-all del tuo dominio. Dopo la registrazione, salva il login in Verrou: l'alias è il suo nome utente."
           }
         }
       }
@@ -15313,6 +15425,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nessun account configurato %@."
+          }
+        }
+      }
+    },
+    "No alias domain": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun domaine d'alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Alias-Domain"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ningún dominio de alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessun dominio per gli alias"
           }
         }
       }
@@ -22313,6 +22453,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "L'SDK di Bitwarden non è riuscito a decifrarli"
+          }
+        }
+      }
+    },
+    "The alias starts with the site's name. Without a site, it is random.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'alias commence par le nom du site. Sans site, il est aléatoire."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Alias beginnt mit dem Namen der Website. Ohne Website ist er zufällig."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El alias empieza por el nombre del sitio. Sin sitio, es aleatorio."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'alias inizia con il nome del sito. Senza sito, è casuale."
           }
         }
       }
