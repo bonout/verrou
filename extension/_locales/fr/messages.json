@@ -170,6 +170,14 @@
   "pillSuggestPassword": {
     "message": "Suggérer un mot de passe fort"
   },
+  "pillPasswordDescription": {
+    "message": "$COUNT$ caractères : lettres, chiffres et symboles",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "fieldButton": {
     "message": "Verrou : identifiants pour ce site"
   },

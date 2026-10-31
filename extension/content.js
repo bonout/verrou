@@ -504,7 +504,6 @@
     .capsule .title { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
     .title { font-weight: 600; font-size: 14.5px; }
     .sub { color: #a3a3ad; font-size: 12.5px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
     button:focus-visible { outline: 2px solid #a5a5ff; outline-offset: 2px; }
     .primary {
@@ -662,9 +661,9 @@
     return word[0].toUpperCase() + (word[1] ?? "").toLowerCase();
   }
 
-  function textBlock(title, subtitle, mono = false) {
+  function textBlock(title, subtitle) {
     const text = div("text");
-    text.append(div("title", title), div(`sub${mono ? " mono" : ""}`, subtitle ?? ""));
+    text.append(div("title", title), div("sub", subtitle ?? ""));
     return text;
   }
 
@@ -776,7 +775,7 @@
       area.setAttribute("aria-label", "Verrou");
       const { view } = this;
       const capsule = div("capsule");
-      capsule.append(icon(), textBlock(view.title, view.subtitle, view.mono));
+      capsule.append(icon(), textBlock(view.title, view.subtitle));
       if (view.primary) {
         const primary = trustedButton(view.primary.label, "primary", view.primary.run);
         primary.setAttribute("data-key", "primary");
@@ -808,7 +807,7 @@
             const line = trustedButton("", "row", row.run);
             line.setAttribute("data-key", `row-${index}`);
             line.setAttribute("aria-label", [row.title, row.subtitle].filter(Boolean).join(", "));
-            line.append(div("badge", row.badge), textBlock(row.title, row.subtitle, row.mono));
+            line.append(div("badge", row.badge), textBlock(row.title, row.subtitle));
             list.append(line);
           });
           shell.append(list);
@@ -982,7 +981,7 @@
   function generateRow(field) {
     const password = globalThis.verrouGenerator.password();
     return {
-      badge: "✦", title: t("pillGenerate"), subtitle: password, mono: true,
+      badge: "✦", title: t("pillGenerate"), subtitle: t("pillPasswordDescription", password.length),
       run: () => {
         pill.hide();
         applyGenerated(password, field);
@@ -1110,8 +1109,7 @@
     const password = globalThis.verrouGenerator.password();
     return {
       title: SITE,
-      subtitle: password,
-      mono: true,
+      subtitle: t("pillPasswordDescription", password.length),
       primary: {
         label: t("pillSuggestPassword"),
         run: () => {
