@@ -593,6 +593,11 @@ private struct FillingSettings: View {
                 Text("Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.")
                     .foregroundStyle(.secondary)
             }
+
+            EmailAliasSection(settings: model.aliasSettings) { domain, includeSite in
+                try model.setAliasSettings(domain: domain, includeSite: includeSite)
+            }
+            .onAppear { model.refreshAliasSettings() }
         }
     }
 

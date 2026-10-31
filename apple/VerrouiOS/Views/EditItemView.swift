@@ -25,6 +25,10 @@ struct EditItemView: View {
 
     private var isNew: Bool { editor.itemID == nil }
 
+    private var siteURL: String? {
+        draft.login?.urls.first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -89,6 +93,9 @@ struct EditItemView: View {
                     generated = bits.map { (value, $0) }
                     showPassword = true
                     showGenerator = false
+                }, uri: siteURL, useAlias: { alias in
+                    draft.login?.username = alias
+                    showGenerator = false
                 })
                 .presentationDetents([.medium, .large])
             }
@@ -119,10 +126,21 @@ struct EditItemView: View {
 
     @ViewBuilder private var loginSections: some View {
         Section {
-            TextField("Username", text: loginText(\.username), prompt: Text("email or user name"))
-                .textContentType(.username)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
+            HStack(spacing: 10) {
+                TextField("Username", text: loginText(\.username), prompt: Text("email or user name"))
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if model.aliasEnabled {
+                    Button {
+                        if let alias = model.emailAlias(for: siteURL) { draft.login?.username = alias }
+                    } label: {
+                        Image(systemName: "at")
+                            .accessibilityLabel("Generate email alias")
+                    }
+                    .buttonStyle(.borderless)
+                }
+            }
             HStack(spacing: 10) {
                 Group {
                     if showPassword {

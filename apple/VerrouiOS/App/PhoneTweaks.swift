@@ -71,6 +71,20 @@ extension PhoneModel {
         try? session.setFolderMatchRule(folderId: folderID, rule: rule)
         matchSettings = session.matchSettings()
     }
+
+    var aliasEnabled: Bool { aliasSettings?.domain != nil }
+
+    func refreshAliasSettings() {
+        aliasSettings = session.emailAliasSettings()
+    }
+
+    func setAliasSettings(domain: String?, includeSite: Bool) throws {
+        aliasSettings = try session.setEmailAliasSettings(domain: domain, includeSite: includeSite)
+    }
+
+    func emailAlias(for uri: String?) -> String? {
+        try? session.generateEmailAlias(uri: uri, includeSite: nil)
+    }
 }
 
 /// Confirmation of "Remove from sharing…", placed on the tabs.

@@ -7,11 +7,77 @@ import SwiftUI
 enum GeneratorMode: String, CaseIterable {
     case password
     case passphrase
+    case alias
 
     var label: String {
         switch self {
         case .password: String(localized: "Password")
         case .passphrase: String(localized: "Passphrase")
+        case .alias: String(localized: "Email alias")
+        }
+    }
+
+    static func available(alias: Bool) -> [GeneratorMode] {
+        alias ? allCases : allCases.filter { $0 != .alias }
+    }
+}
+
+struct EmailAliasSection: View {
+    let settings: EmailAliasSettings?
+    let save: (String?, Bool) throws -> Void
+    @State private var domain = ""
+    @State private var error: String?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Section {
+            TextField("Alias domain", text: $domain, prompt: Text(verbatim: "alias.example.com"))
+                .autocorrectionDisabled()
+                #if os(iOS)
+                .textInputAutocapitalization(.never)
+                .keyboardType(.URL)
+                #endif
+                .focused($focused)
+                .onSubmit(commit)
+            if settings?.domain != nil {
+                Toggle("Start with the site's name", isOn: includeSite)
+            }
+            if let error {
+                Text(error)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            #if os(iOS)
+            SectionHeader("Email aliases")
+            #else
+            Text("Email aliases")
+            #endif
+        } footer: {
+            Text("A domain whose mail provider forwards every address to you (catch-all). The generator then makes one address per site, such as netflix.k3x9a@alias.example.com, saved as the login's username. Kept on this device.")
+                .foregroundStyle(.secondary)
+        }
+        .onAppear { domain = settings?.domain ?? "" }
+        .onChange(of: settings?.domain) { domain = settings?.domain ?? "" }
+        .onChange(of: focused) { if !focused { commit() } }
+    }
+
+    private var includeSite: Binding<Bool> {
+        Binding(get: { settings?.includeSite ?? true },
+                set: { try? save(settings?.domain, $0) })
+    }
+
+    private func commit() {
+        let trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != (settings?.domain ?? "") else {
+            error = nil
+            return
+        }
+        do {
+            try save(trimmed.isEmpty ? nil : trimmed, settings?.includeSite ?? true)
+            error = nil
+        } catch {
+            self.error = String(localized: "“\(trimmed)” is not a domain name.")
         }
     }
 }
