@@ -125,6 +125,13 @@ export function createDom({ origin = "https://connect.exemple.fr", title = "" } 
       }
     }
 
+    replaceChildren(...nodes) {
+      for (const child of this.children) child.parent = null;
+      this.children = [];
+      this.text = "";
+      this.append(...nodes);
+    }
+
     replaceWith(node) {
       const parent = this.parent;
       if (!parent) return;
@@ -408,6 +415,7 @@ export function createDom({ origin = "https://connect.exemple.fr", title = "" } 
   document.createElementNS = (_ns, tag) => new FakeElement(tag);
   document.querySelectorAll = (selector) => document.documentElement.querySelectorAll(selector);
   document.querySelector = (selector) => document.documentElement.querySelector(selector);
+  document.getElementById = (id) => [...document.documentElement.walk()].find((node) => node.id === id) ?? null;
   document.addEventListener = (type, listener, capture = false) => {
     (document.listeners[type] ??= []).push({ listener, capture: Boolean(capture) });
   };
