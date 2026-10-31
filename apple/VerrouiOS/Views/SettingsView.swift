@@ -163,15 +163,7 @@ struct SettingsTab: View {
                 case .filling: FillingSettingsView()
                 }
             }
-            .confirmationDialog("Sign out of this iPhone?", isPresented: $confirmLogout, titleVisibility: .visible) {
-                Button("Sign out", role: .destructive) { model.logout() }
-            } message: {
-                if let pending = model.pendingLabel {
-                    Text("\(pending): they will be lost.")
-                } else {
-                    Text("You will need the master password and the second factor to come back.")
-                }
-            }
+            .modifier(SignOutConfirmation(isPresented: $confirmLogout))
         }
     }
 
@@ -190,6 +182,37 @@ struct SettingsTab: View {
         guard let synced = account.syncedAt else { return String(localized: "never") }
         let date = Date(timeIntervalSince1970: TimeInterval(synced))
         return date.formatted(.relative(presentation: .named))
+    }
+}
+
+struct SignOutConfirmation: ViewModifier {
+    @Environment(PhoneModel.self) private var model
+    @Binding var isPresented: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog("Sign out of this iPhone?", isPresented: $isPresented, titleVisibility: .visible) {
+                Button("Sign out", role: .destructive) { model.logout() }
+            } message: {
+                if let pending = model.pendingLabel {
+                    Text("\(pending): they will be lost.")
+                } else {
+                    Text("You will need the master password and the second factor to come back.")
+                }
+            }
+    }
+}
+
+struct PendingLabel: View {
+    let text: String
+
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .foregroundStyle(.orange)
+        }
     }
 }
 

@@ -29,6 +29,8 @@ struct LockView: View {
     /// Appearance of the screen: a vault opened almost at once (under
     /// 0.3 s) shows with a simple fade, without the full animation.
     @State private var shownAt = Date()
+    @State private var confirmLogout = false
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 36
 
     /// Duration of the fade: the screen then leaves the hierarchy.
     static func departure(reduceMotion: Bool) -> Duration {
@@ -73,6 +75,10 @@ struct LockView: View {
         }
         .animation(.snappy, value: model.unlockError)
         .sensoryFeedback(.error, trigger: model.unlockError) { _, new in new != nil }
+        .onChange(of: model.unlockError) { _, error in
+            if let error, !error.isEmpty { AccessibilityNotification.Announcement(error).post() }
+        }
+        .modifier(SignOutConfirmation(isPresented: $confirmLogout))
         #if DEBUG
         .onAppear { PhoneBenchDriver.lockShown = true }
         .onDisappear { PhoneBenchDriver.lockShown = false }
@@ -124,7 +130,7 @@ struct LockView: View {
                     // The title leaves quickly: the logo alone flies to the vault.
                     VStack(spacing: 14) {
                         Text("Verrou")
-                            .font(.system(size: 36, weight: .bold, design: .rounded))
+                            .font(.system(size: titleSize, weight: .bold, design: .rounded))
                             .accessibilityAddTraits(.isHeader)
                         Text(subtitle)
                             .font(.callout)
@@ -149,6 +155,21 @@ struct LockView: View {
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
+                if model.mode == .vaultwarden, model.account != nil {
+                    Button {
+                        confirmLogout = true
+                    } label: {
+                        Text("Sign out of this iPhone")
+                            .font(.footnote)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .disabled(model.lockState == .unlocking)
+                    .opacity(departing ? 0 : 1)
+                    .accessibilityIdentifier("lock-sign-out")
                 }
             }
             .padding(.horizontal, 24)
@@ -214,11 +235,18 @@ private struct LockControls: View {
                         Task { await model.unlockWithBiometrics() }
                     }
                     .glassMorphID("primary", in: glass, morph: morph)
-                    Button("Use master password") { usePassword = true }
-                        .font(.callout.weight(.medium))
-                        .disabled(model.lockState == .unlocking)
-                        .accessibilityIdentifier("lock-use-password")
-                        .transition(.opacity)
+                    Button {
+                        usePassword = true
+                    } label: {
+                        Text("Use master password")
+                            .frame(minHeight: 44)
+                            .padding(.horizontal, 12)
+                            .contentShape(Rectangle())
+                    }
+                    .font(.callout.weight(.medium))
+                    .disabled(model.lockState == .unlocking)
+                    .accessibilityIdentifier("lock-use-password")
+                    .transition(.opacity)
                 } else {
                     HStack(spacing: 10) {
                         MasterPasswordField(password: $password, busy: model.lockState == .unlocking,
