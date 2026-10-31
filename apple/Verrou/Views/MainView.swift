@@ -706,7 +706,7 @@ private struct ListRow: View, Equatable {
     var body: some View {
         ItemRow(summary: row.summary, highlights: row.highlights, selected: selected, showsPasskey: showsPasskey)
             .padding(.horizontal, 8)
-            .background(selected ? ContrastStyle(Theme.accent) : hovered ? Theme.wash(0.07) : ContrastStyle(Color.clear),
+            .background(selected ? ContrastStyle(Theme.selection) : hovered ? Theme.wash(0.07) : ContrastStyle(Color.clear),
                         in: RoundedRectangle(cornerRadius: 7, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }

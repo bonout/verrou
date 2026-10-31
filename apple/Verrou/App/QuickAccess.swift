@@ -328,7 +328,7 @@ struct QuickAccessView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
                 .foregroundStyle(index == selected ? Color.white : Color.primary)
-                .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .background(index == selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) {
                     selected = index
