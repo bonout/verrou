@@ -10,6 +10,52 @@ tagging (docs/RELEASING.md).
 - ⌘\ in a terminal (Terminal, iTerm2, Ghostty, Warp, kitty, Alacritty,
   WezTerm, Hyper) types the password alone, as `sudo`, `ssh` and `git`
   prompts expect, instead of the username, Tab and the password.
+- Searching selects the first result, Return copies its password, and the
+  "copied" message names the item: the copy shortcuts can no longer act on
+  an item the search hides.
+- An open editor or Send survives auto-lock and comes back after unlock;
+  Cancel and Esc ask before discarding changes. Typing and menus now count
+  as activity for auto-lock.
+- Generate Password… (⌥⌘G, also in the menu bar and Quick Access) opens a
+  generator with a protected Copy. New logins use your generator settings
+  and start with a website field.
+- Folders: New, Rename and Delete, and Move to Folder… for a single item.
+- The Item menu has Edit, Favorite, Archive, Share, Open Website and Move to
+  Trash (⌘⌫), with Undo after trashing; Edit › Find (⌘F).
+- Quick Access confirms each copy and gives the focus back to your app.
+- Revealed secrets hide again after a minute and stay out of screenshots
+  and screen sharing. The clipboard delay is a setting (Security).
+- VoiceOver: named login fields, list rows that say when they're selected,
+  every message and error spoken; error messages stay 6 seconds. Better
+  contrast in dark mode and for revealed passwords.
+- Log out from the lock screen; clearer wording (shared vaults, Trash,
+  Sends, registration).
+
+**iPhone**
+- An open editor survives auto-lock; Cancel and swipe-down ask before
+  discarding changes. With auto-lock "Immediately", a password copied for
+  another app is no longer erased on the way there.
+- AutoFill (iPhone and Mac) asks before replacing a login's passkey, and
+  says which logins already have one.
+- Copy button for the password in the editor; Undo after moving to the
+  Trash or the Archive; sign out from the lock screen.
+- Passwords, codes and buttons follow the text size and VoiceOver reads
+  passwords character by character; every message is spoken; larger tap
+  targets; readable orange and yellow text.
+- Plainer wording: "setup key" for one-time codes, "Regenerate", a read-only
+  note in the demo, durations like "1 min 30 s".
+
+**Brave and Firefox**
+- The popup always shows a state ("Connecting to Verrou…", then offline)
+  and its logins work with the keyboard.
+- The pill sits beside its field when there's room, never cuts the site's
+  name, describes the suggested password instead of showing it, offers
+  "Open Verrou" when Verrou can't be reached, and is announced to screen
+  readers.
+
+**French**
+- "Nom d'utilisateur" for a login's username ("Identifiant" stays for the
+  login itself), "Sélectionner", "Coffre de démonstration".
 
 ## 0.5.1
 
