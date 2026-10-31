@@ -477,7 +477,7 @@ struct ItemListView: View {
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
-            SearchField(text: $model.query, focused: searchFocused)
+            SearchField(text: $model.query, focused: searchFocused, submit: model.copySelectedPassword)
                 .padding(.horizontal, 12)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
@@ -515,7 +515,8 @@ struct ItemListView: View {
             Divider()
 
             if model.rows.isEmpty {
-                NoResultsView(query: model.query)
+                NoResultsView(query: model.query,
+                              emptyVault: model.query.isEmpty && model.filter == .all && model.counts?.all == 0)
             } else {
                 // Lazy stack rather than `List`: the macOS list computes the
                 // height of all its rows, so builds them all (and requests all
@@ -578,10 +579,15 @@ struct ItemListView: View {
 
     private var resultCaption: String {
         let n = model.results.count
+        let count = n > 1 ? String(localized: "\(n) items") : String(localized: "\(n) item")
+        #if DEBUG
         let micro = Double(model.lastSearchDuration.components.attoseconds) / 1e12
             + Double(model.lastSearchDuration.components.seconds) * 1e6
         let time = micro < 1000 ? String(format: "%.0f µs", micro) : String(format: "%.1f ms", micro / 1000)
-        return n > 1 ? String(localized: "\(n) items · \(time)") : String(localized: "\(n) item · \(time)")
+        return "\(count) · \(time)"
+        #else
+        return count
+        #endif
     }
 }
 
@@ -652,13 +658,17 @@ private struct ListRow: View, Equatable {
 struct SearchField: View {
     @Binding var text: String
     var focused: FocusState<Bool>.Binding
+    var submit: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             TextField("Search Verrou", text: $text)
                 .textFieldStyle(.plain)
                 .focused(focused)
+                .onSubmit(submit)
+                .accessibilityHint("Return copies the selected login's password")
                 .layoutMark("search")
             if !text.isEmpty {
                 Button { text = "" } label: {
@@ -717,10 +727,7 @@ struct RowMenu: View {
 
     @ViewBuilder private var single: some View {
         if summary.category == .login {
-            Button("Copy Username") {
-                model.session.recordItemUse(id: summary.id)
-                model.copy(summary.subtitle, label: String(localized: "Username"), secret: false)
-            }
+            Button("Copy Username") { model.copyUsername(of: summary.id) }
             Button("Copy Password") { model.copyPassword(of: summary.id) }
         }
         if summary.category == .sshKey {
@@ -770,17 +777,38 @@ struct RowMenu: View {
 }
 
 struct NoResultsView: View {
+    @Environment(AppModel.self) private var model
     let query: String
+    var emptyVault = false
 
     var body: some View {
-        ContentUnavailableView {
-            Label(query.isEmpty ? "No items" : "No results", systemImage: "magnifyingglass")
-        } description: {
-            if !query.isEmpty {
-                Text("Nothing matches “\(query)”.\nTry `tag:bank`, `type:carte` or `!word` to exclude.")
+        if emptyVault {
+            ContentUnavailableView {
+                Label("Your vault is empty", systemImage: "key.horizontal")
+            } description: {
+                Text("Add your first login, or import the ones of another password manager.")
+            } actions: {
+                if model.canEdit {
+                    Button("New Login") { model.newItem(login: true) }
+                        .buttonStyle(.borderedProminent)
+                    Button("Import…") { model.startImport() }
+                }
             }
+            .frame(maxHeight: .infinity)
+        } else {
+            ContentUnavailableView {
+                Label(query.isEmpty ? "No items" : "No results", systemImage: "magnifyingglass")
+            } description: {
+                if !query.isEmpty {
+                    if model.mode == .demo {
+                        Text("Nothing matches “\(query)”.\nTry `tag:bank`, `type:card` or `!word` to exclude.")
+                    } else {
+                        Text("Nothing matches “\(query)”.\nTry `type:card` or `!word` to exclude.")
+                    }
+                }
+            }
+            .frame(maxHeight: .infinity)
         }
-        .frame(maxHeight: .infinity)
     }
 }
 
@@ -792,6 +820,7 @@ struct EmptyDetailView: View {
             HStack(spacing: 16) {
                 KeyHint(keys: "⌘F", label: "Search")
                 KeyHint(keys: "↑↓", label: "Browse")
+                KeyHint(keys: "↩", label: "Copy Password")
                 KeyHint(keys: String(localized: "⌘⇧Space"), label: "Quick Access")
             }
         }
