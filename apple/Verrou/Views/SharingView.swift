@@ -35,7 +35,7 @@ struct SharedVaultsSection: View {
                     Button {
                         model.openNewOrganization()
                     } label: {
-                        Label("New Organization…", systemImage: "plus")
+                        Label("New Shared Vault…", systemImage: "plus")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -43,7 +43,7 @@ struct SharedVaultsSection: View {
                     Button {
                         model.openJoin()
                     } label: {
-                        Label("Join with a Link…", systemImage: "envelope.open")
+                        Label("Join a Shared Vault…", systemImage: "envelope.open")
                             .foregroundStyle(.secondary)
                     }
                     .buttonStyle(.plain)
@@ -55,8 +55,8 @@ struct SharedVaultsSection: View {
                     Spacer()
                     if model.canEdit || admin.preview {
                         Menu {
-                            Button("New Organization…") { model.openNewOrganization() }
-                            Button("Join an Organization…") { model.openJoin() }
+                            Button("New Shared Vault…") { model.openNewOrganization() }
+                            Button("Join a Shared Vault…") { model.openJoin() }
                             if model.organizations.contains(where: { $0.manageUrl != nil }) {
                                 Divider()
                                 Button("Open the Web Vault") { model.openWebVault(organizationID: currentOrganization) }
@@ -68,7 +68,7 @@ struct SharedVaultsSection: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         .fixedSize()
-                        .help("New organization, or join an organization with an invitation link")
+                        .help("New shared vault, or join one with an invitation link")
                     }
                 }
             }
@@ -91,7 +91,7 @@ struct SharedVaultsSection: View {
                 Button("Rename…") { model.openRename(org) }
             }
             Divider()
-            Button("Leave Organization…", role: .destructive) { model.organizationAdmin.confirmLeave = org }
+            Button("Leave Shared Vault…", role: .destructive) { model.organizationAdmin.confirmLeave = org }
         }
         if org.manageUrl != nil {
             Divider()
