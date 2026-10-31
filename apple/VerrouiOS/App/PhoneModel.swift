@@ -1268,25 +1268,7 @@ final class PhoneModel {
     }
 
     static func generatedWithSavedSettings() -> String {
-        let defaults = UserDefaults.standard
-        let mode = defaults.string(forKey: "generatorMode").flatMap(GeneratorMode.init(rawValue:)) ?? .password
-        switch mode {
-        case .password:
-            let length = defaults.object(forKey: "generatorLength") as? Double ?? 20
-            return generatePassword(length: UInt32(length), digits: defaults.object(forKey: "generatorDigits") as? Bool ?? true,
-                                    symbols: defaults.object(forKey: "generatorSymbols") as? Bool ?? true)
-        case .passphrase:
-            let words = defaults.object(forKey: "generatorWords") as? Double ?? 5
-            let separator = defaults.string(forKey: "generatorSeparator").flatMap(PassphraseSeparatorChoice.init(rawValue:))
-                ?? .hyphen
-            let language = defaults.string(forKey: "generatorLanguage").flatMap(PassphraseLanguageChoice.init(rawValue:))
-                ?? .preferred
-            return generatePassphrase(settings: PassphraseSettings(
-                words: UInt32(words), separator: separator.ffi,
-                capitalize: defaults.object(forKey: "generatorCapitalize") as? Bool ?? false,
-                includeNumber: defaults.object(forKey: "generatorNumber") as? Bool ?? false,
-                language: language.ffi)).value
-        }
+        GeneratorSettings.saved().generate().value
     }
 
     func edit(_ itemID: String) async {
