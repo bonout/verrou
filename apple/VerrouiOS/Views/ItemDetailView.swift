@@ -76,7 +76,7 @@ struct ItemDetailView: View {
                     }
                     .accessibilityIdentifier("pin-code")
                 } footer: {
-                    Text("The code then shows without Face ID, on this iPhone only: its seed stays in this iPhone's keychain until you turn this off.")
+                    Text("The code then shows without \(Biometrics.name), on this iPhone only: its setup key stays in this iPhone's keychain until you turn this off.")
                 }
             }
 

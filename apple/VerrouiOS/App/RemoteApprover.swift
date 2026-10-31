@@ -129,7 +129,7 @@ final class RemoteApprover {
 
         var errorDescription: String? {
             switch self {
-            case .noBiometrics: String(localized: "Face ID must be set up on this iPhone: it approves each request.")
+            case .noBiometrics: String(localized: "\(Biometrics.name) must be set up on this iPhone: it approves each request.")
             case .noAccount: String(localized: "Sign in to iCloud on this iPhone (the same account as the Mac).")
             }
         }
@@ -379,7 +379,7 @@ final class RemoteApprover {
         case RemoteApproval.Failure.expired: String(localized: "This request has expired.")
         case RemoteApproval.Failure.wrongVersion: String(localized: "Update Verrou on the iPhone and on the Mac.")
         case RemoteApproval.Failure.unreadable:
-            String(localized: "Unreadable request: Face ID changed since pairing? Pair this iPhone again.")
+            String(localized: "Unreadable request: \(Biometrics.name) changed since pairing? Pair this iPhone again.")
         case RemoteApproval.Failure.malformed: String(localized: "This is not a Verrou pairing code.")
         default: error.localizedDescription
         }
@@ -391,7 +391,53 @@ extension RemoteApproval.Request {
     /// changes ("modify “GitHub”: password, url").
     var action: String {
         guard let changes, !changes.isEmpty, purpose == "create" || purpose == "edit" else { return asked }
-        return "\(asked): \(changes)"
+        return "\(asked): \(Self.localizedFields(changes))"
+    }
+
+    private static func localizedFields(_ changes: String) -> String {
+        changes.components(separatedBy: ", ").map { name in
+            let removed = name.hasPrefix("−")
+            let bare = removed ? String(name.dropFirst()) : name
+            let label = fieldLabel(bare) ?? bare
+            return removed ? "−\(label)" : label
+        }
+        .joined(separator: ", ")
+    }
+
+    private static func fieldLabel(_ name: String) -> String? {
+        let key = name.trimmingCharacters(in: .whitespaces).lowercased()
+            .replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "-", with: "_")
+        return switch key {
+        case "title": String(localized: "Title")
+        case "url": String(localized: "Sites")
+        case "favorite": String(localized: "Favorite")
+        case "notes": String(localized: "Notes")
+        case "username": String(localized: "Username")
+        case "password": String(localized: "Password")
+        case "totp", "otp", "one_time_code": String(localized: "One-time code")
+        case "cardholder", "cardholder_name": String(localized: "Cardholder")
+        case "brand": String(localized: "Network")
+        case "number": String(localized: "Number")
+        case "expiry", "expiration": String(localized: "Expiration")
+        case "code", "cvv", "security_code": String(localized: "Security code")
+        case "first_name": String(localized: "First name")
+        case "middle_name": String(localized: "Middle name")
+        case "last_name": String(localized: "Last name")
+        case "company": String(localized: "Company")
+        case "email": String(localized: "Email")
+        case "phone": String(localized: "Phone")
+        case "ssn": String(localized: "Social security number")
+        case "passport": String(localized: "Passport number")
+        case "license": String(localized: "Driver's license number")
+        case "address1": String(localized: "Address")
+        case "address2": String(localized: "Address line 2")
+        case "address3": String(localized: "Address line 3")
+        case "postal_code": String(localized: "Postal code")
+        case "city": String(localized: "City")
+        case "state": String(localized: "State")
+        case "country": String(localized: "Country")
+        default: nil
+        }
     }
 
     private var asked: String {

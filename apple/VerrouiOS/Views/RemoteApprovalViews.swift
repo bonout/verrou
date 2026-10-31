@@ -40,12 +40,12 @@ struct ApprovalScreen: View {
     private func content(_ pending: RemoteApprover.Pending) -> some View {
         switch pending.state {
         case .sealed:
-            Text("Face ID shows what is asked.")
+            Text("\(Biometrics.name) shows what is asked.")
                 .foregroundStyle(.secondary)
             Button {
                 Task { await approver.open() }
             } label: {
-                Label("Show with Face ID", systemImage: "faceid")
+                Label("Show with \(Biometrics.name)", systemImage: Biometrics.symbolName)
                     .frame(maxWidth: .infinity, minHeight: 34)
             }
             .glassButton(prominent: true)
@@ -80,20 +80,32 @@ struct ApprovalScreen: View {
                     .multilineTextAlignment(.center)
             }
             ExpiryText(expires: request.expires)
-            HStack(spacing: 12) {
-                Button(role: .destructive) {
-                    Task { await approver.answer(approved: false) }
-                } label: {
-                    Text("Deny").frame(maxWidth: .infinity, minHeight: 34)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                if request.expires > context.date {
+                    HStack(spacing: 12) {
+                        Button(role: .destructive) {
+                            Task { await approver.answer(approved: false) }
+                        } label: {
+                            Text("Deny").frame(maxWidth: .infinity, minHeight: 34)
+                        }
+                        .glassButton(prominent: false)
+                        Button {
+                            Task { await approver.answer(approved: true) }
+                        } label: {
+                            Text("Approve").frame(maxWidth: .infinity, minHeight: 34)
+                        }
+                        .glassButton(prominent: true)
+                        .accessibilityIdentifier("remote-approve")
+                    }
+                } else {
+                    Button {
+                        approver.dismiss()
+                    } label: {
+                        Text("Close").frame(maxWidth: .infinity, minHeight: 34)
+                    }
+                    .glassButton(prominent: false)
+                    .accessibilityIdentifier("remote-close-expired")
                 }
-                .glassButton(prominent: false)
-                Button {
-                    Task { await approver.answer(approved: true) }
-                } label: {
-                    Text("Approve").frame(maxWidth: .infinity, minHeight: 34)
-                }
-                .glassButton(prominent: true)
-                .accessibilityIdentifier("remote-approve")
             }
             .controlSize(.large)
         case .sending:
@@ -163,7 +175,7 @@ struct RemoteApprovalSettingsView: View {
                 }
                 .disabled(approver.pairingBusy)
             } footer: {
-                Text("On the Mac: Verrou › Settings › Security › Pair an iPhone, then scan the code. When you are away from the Mac, the terminal's requests (a secret, an SSH signature, the unlock) come here: Face ID opens them, you approve or deny. Through your iCloud account, sealed end to end; the vault of this iPhone is not involved.")
+                Text("On the Mac: Verrou › Settings › Security › Pair an iPhone, then scan the code. When you are away from the Mac, the terminal's requests come here: \(Biometrics.name) opens them, you approve or deny. Sent through iCloud, sealed end to end.")
             }
             if let message {
                 Section { Text(message) }
@@ -216,10 +228,29 @@ private struct PairingScanner: View {
                         .frame(width: 230, height: 230)
                         .allowsHitTesting(false)
                 } else if allowed == false {
-                    Text("Allow the camera in Settings to scan the Mac's code.")
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding()
+                    VStack(spacing: 12) {
+                        Image(systemName: "video.slash.fill")
+                            .font(.system(size: 38, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .accessibilityHidden(true)
+                        Text("Camera access denied")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                        Text("Allow the camera in Settings to scan the Mac's code.")
+                            .font(.callout)
+                            .foregroundStyle(.white.opacity(0.75))
+                            .multilineTextAlignment(.center)
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            Link(destination: url) {
+                                Label("Open Settings", systemImage: "gear")
+                                    .font(.callout.weight(.semibold))
+                            }
+                            .controlSize(.regular)
+                            .glassButton(prominent: true)
+                            .padding(.top, 4)
+                        }
+                    }
+                    .padding(28)
                 }
             }
             .navigationTitle("Scan the Mac's code")
