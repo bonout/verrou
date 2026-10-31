@@ -26,6 +26,7 @@ use verrou_cli::inject::{self, Piece};
 use verrou_cli::items as item_args;
 use verrou_cli::remote::{self, Endpoint, Error, Remote};
 use verrou_cli::run::{self, Reference};
+use verrou_core::alias::{AliasError, AliasSettings};
 use verrou_core::generator::{self, PasswordOptions};
 use verrou_core::passphrase::{self, Language, PassphraseOptions, Separator};
 use verrou_core::{FieldKind, Filter, ItemKind, Sort, Vault, mock};
@@ -151,9 +152,12 @@ enum Command {
         )]
         command: Vec<String>,
     },
-    /// Generate a password, or a passphrase with `--words` (locally,
-    /// without the app).
+    /// Generate a password, a passphrase with `--words` (locally, without
+    /// the app), or an email alias with `generate alias`.
+    #[command(args_conflicts_with_subcommands = true)]
     Generate {
+        #[command(subcommand)]
+        kind: Option<GenerateKind>,
         #[arg(short, long, default_value_t = 20, conflicts_with = "words")]
         length: usize,
         #[arg(long, conflicts_with = "words")]
@@ -212,6 +216,24 @@ enum Command {
     Bench {
         #[arg(long, default_value_t = 10_000)]
         items: usize,
+    },
+}
+
+#[derive(Subcommand)]
+enum GenerateKind {
+    /// An email alias on your catch-all domain, `<site>.<random>@<domain>`,
+    /// to use as a site's username.
+    Alias {
+        /// The site the alias is for: its name starts the address
+        /// (`https://www.netflix.com` → `netflix.…`).
+        #[arg(long)]
+        uri: Option<String>,
+        /// Random characters only, without the site's name.
+        #[arg(long)]
+        no_site: bool,
+        /// The alias domain (default: the one set in Verrou's settings).
+        #[arg(long, env = "VERROU_ALIAS_DOMAIN")]
+        domain: Option<String>,
     },
 }
 
@@ -527,6 +549,23 @@ impl Source {
         }
     }
 
+    fn alias(&mut self, url: Option<&str>, site: Option<bool>) -> Result<String, String> {
+        match self {
+            Self::Mock(_) => Err(AliasError::NoDomain.to_string()),
+            Self::App(remote) => match Self::ask(
+                remote,
+                &Ask::Alias {
+                    url: url.map(str::to_owned),
+                    site,
+                },
+            )? {
+                ReplyResult::Alias { address } => Ok(address),
+                ReplyResult::Denied { reason } => Err(reason),
+                other => Err(unexpected(&other)),
+            },
+        }
+    }
+
     /// The vault's SSH keys: public keys only, no approval needed.
     fn ssh_keys(&mut self) -> Result<Vec<git_signing::SigningKey>, String> {
         let identities = match self {
@@ -631,7 +670,7 @@ fn run(cli: &Cli) -> Result<(), String> {
             *file_mode,
             *force,
         )?,
-        Command::Generate { .. } => generate(cli, &mut out),
+        Command::Generate { .. } => generate(cli, &mut out)?,
         Command::SshAgent { socket } => ssh_agent(socket.as_deref())?,
         Command::GitSigning { .. } => git_signing_setup(cli, &mut out)?,
         Command::Bench { items } => bench(&mut out, *items),
@@ -640,8 +679,9 @@ fn run(cli: &Cli) -> Result<(), String> {
 }
 
 /// `verrou generate`: password, or passphrase with `--words`.
-fn generate(cli: &Cli, out: &mut impl std::io::Write) {
+fn generate(cli: &Cli, out: &mut impl std::io::Write) -> Result<(), String> {
     let Command::Generate {
+        kind,
         length,
         no_symbols,
         no_digits,
@@ -652,8 +692,22 @@ fn generate(cli: &Cli, out: &mut impl std::io::Write) {
         lang,
     } = &cli.command
     else {
-        return;
+        return Ok(());
     };
+    if let Some(GenerateKind::Alias {
+        uri,
+        no_site,
+        domain,
+    }) = kind
+    {
+        let address = email_alias(cli, uri.as_deref(), *no_site, domain.as_deref())?;
+        if cli.json {
+            writeln!(out, "{}", serde_json::json!({ "value": address })).ok();
+        } else {
+            writeln!(out, "{address}").ok();
+        }
+        return Ok(());
+    }
     let (value, bits) = if let Some(words) = words {
         let options = PassphraseOptions {
             words: usize::from(*words),
@@ -689,6 +743,26 @@ fn generate(cli: &Cli, out: &mut impl std::io::Write) {
     } else {
         writeln!(out, "{value}").ok();
     }
+    Ok(())
+}
+
+fn email_alias(
+    cli: &Cli,
+    uri: Option<&str>,
+    no_site: bool,
+    domain: Option<&str>,
+) -> Result<String, String> {
+    let uri = uri.filter(|u| !u.trim().is_empty());
+    if let Some(domain) = domain.filter(|d| !d.trim().is_empty()) {
+        return AliasSettings::catch_all(domain, !no_site)
+            .and_then(|settings| settings.generate(uri, None))
+            .map_err(|e| e.to_string());
+    }
+    let hint = "set it in Verrou's settings, or pass --domain (or VERROU_ALIAS_DOMAIN)";
+    Source::open(cli)
+        .map_err(|e| format!("no alias domain: {hint} ({e})"))?
+        .alias(uri, no_site.then_some(false))
+        .map_err(|e| format!("{e}: {hint}"))
 }
 
 /// `verrou git-signing`: prints (or, with `--apply`, writes) the git

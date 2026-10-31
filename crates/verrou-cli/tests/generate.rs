@@ -8,6 +8,7 @@ fn verrou(args: &[&str]) -> Output {
         .args(args)
         // Nothing may depend on the link: `generate` does not contact the app.
         .env("VERROU_CLI_CONFIG", "/nonexistent/verrou-cli.json")
+        .env_remove("VERROU_ALIAS_DOMAIN")
         .output()
         .expect("verrou")
 }
@@ -101,8 +102,82 @@ fn invalid_combinations_are_refused() {
         &["--capitalize"],
         &["--number"],
         &["--separator", "."],
+        &["-l", "30", "alias", "--domain", "example.com"],
+        &["--words", "5", "alias", "--domain", "example.com"],
+        &["alias", "--domain", "example.com", "--words", "5"],
+        &["alias", "--domain", "not a domain"],
+        &["alias", "--domain", "localhost"],
+        &["alias"],
     ] {
         let output = verrou(args);
         assert!(!output.status.success(), "{args:?} should have failed");
     }
+}
+
+fn alias_parts(alias: &str) -> (&str, &str) {
+    alias.split_once('@').unwrap_or_else(|| panic!("{alias}"))
+}
+
+fn random(text: &str) -> bool {
+    text.bytes()
+        .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+}
+
+#[test]
+fn alias_starts_with_the_site() {
+    let alias = stdout(&[
+        "alias",
+        "--domain",
+        "Alias.Example.com",
+        "--uri",
+        "https://www.netflix.com/signup",
+    ]);
+    let (local, domain) = alias_parts(&alias);
+    assert_eq!(domain, "alias.example.com");
+    let (site, suffix) = local.split_once('.').unwrap();
+    assert_eq!(site, "netflix");
+    assert_eq!(suffix.len(), 5);
+    assert!(random(suffix), "{alias}");
+
+    let alias = stdout(&["alias", "--domain", "example.com"]);
+    assert!(alias.starts_with("alias."), "{alias}");
+}
+
+#[test]
+fn alias_without_the_site() {
+    let alias = stdout(&[
+        "alias",
+        "--domain",
+        "example.com",
+        "--uri",
+        "netflix.com",
+        "--no-site",
+    ]);
+    let (local, domain) = alias_parts(&alias);
+    assert_eq!(domain, "example.com");
+    assert_eq!(local.len(), 10);
+    assert!(random(local), "{alias}");
+}
+
+#[test]
+fn alias_domain_from_the_environment() {
+    let output = Command::new(env!("CARGO_BIN_EXE_verrou"))
+        .args(["--json", "generate", "alias", "--uri", "github.com"])
+        .env("VERROU_CLI_CONFIG", "/nonexistent/verrou-cli.json")
+        .env("VERROU_ALIAS_DOMAIN", "mail.example.org")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let alias = json["value"].as_str().unwrap();
+    assert!(alias.starts_with("github."), "{alias}");
+    assert!(alias.ends_with("@mail.example.org"), "{alias}");
+}
+
+#[test]
+fn alias_without_a_domain_says_where_to_set_it() {
+    let output = verrou(&["alias"]);
+    assert!(!output.status.success());
+    let message = String::from_utf8_lossy(&output.stderr);
+    assert!(message.contains("--domain"), "{message}");
 }
