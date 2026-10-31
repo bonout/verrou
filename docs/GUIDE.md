@@ -349,18 +349,25 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
 - **Unlock** with Face ID (or Touch ID) or the master password. Face ID uses
   the same Secure Enclave sealing as Touch ID on the Mac; changing enrolled
   faces sends you back to the master password. The lock screen asks for
-  Face ID by itself when the app comes back.
+  Face ID by itself when the app comes back. A forgotten password or a
+  server that moved: *Sign out of this iPhone*, under the unlock controls,
+  asks first like the one in Settings.
 - **Auto-lock** when the app goes to the background, after a delay chosen in
   Settings (immediately, 1 min by default, 5 min, 15 min, 1 h, never). Out
   of the foreground the screen is blurred and covered, so the app switcher
-  shows nothing.
-- **Vault tab**: a search field that is always visible (instant, fuzzy,
-  accent-insensitive search in the Rust core), then all items, favorites,
-  one-time codes, item types and templates, folders, shared vaults and
-  their collections, tags, the security audit, archives and trash, with
+  shows nothing. An edit screen open at that moment comes back after the
+  unlock, with what you had typed.
+- **Vault tab**: all items, favorites, one-time codes, item types and
+  templates, folders, shared vaults and their collections, tags, then
+  *Tools* (security audit, Sends) and *Storage* (archives and trash), with
   counts. Pull to refresh syncs. Lists have their own search, a sort order,
   swipe actions (favorite, archive, trash, restore) and a context menu
-  (copy username, password, code).
+  (copy username, password, code). Moving to the trash or archiving offers
+  *Undo* on the notification.
+- **Search tab**: the whole vault, its field ready as soon as the tab opens
+  (instant, fuzzy, accent-insensitive search in the Rust core); with no
+  query, the favorites. On iOS 18 and later it is the separate search tab
+  of the tab bar; on iOS 17, the last tab.
 - **Select several items** (*Select*): favorite, move to a folder (existing
   or new), archive, trash (with confirmation), restore from the trash or
   unarchive, in one go through Vaultwarden's bulk routes.
@@ -374,16 +381,19 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   password, valid 5 minutes per item, like on the Mac.
 - **Clipboard**: secrets are copied local-only (never to your other devices
   through Universal Clipboard) with an expiry date, so iOS itself clears
-  them after 90 s (30 s to 10 min in Settings); locking clears them too if
-  they are still Verrou's.
-- **Create and edit** logins (generator, strength meter, one-time code seed,
-  websites), secure notes, **cards** and **identities** (new in this version,
+  them after 90 s (30 s to 10 min in Settings); locking by hand clears them
+  too if they are still Verrou's. An automatic lock (auto-lock delay) leaves
+  them to that expiry, so a secret copied for another app still pastes.
+- **Create and edit** logins (a first password drawn with the generator's
+  saved settings, strength meter, copy, one-time code setup key, websites:
+  a new login starts with one empty site), secure notes, **cards** and **identities** (new in this version,
   also for the Rust core), and every template; custom fields (text, hidden,
   checkbox; rename, reorder, delete), folder, favorite, notes, and the shared
   vault for a new item. Offline, edits wait in the encrypted outbox and are
   sent on the next sync (when the app comes back to the foreground, every
   5 minutes while it is open, every 30 s while changes are waiting, or by
-  pulling down).
+  pulling down). *Cancel*, or swiping the sheet down, asks before
+  discarding changes.
 - **Shared vaults** (home → *Shared vaults*, **+** to create or join):
   each organization opens a screen with its items, its collections (swipe
   to edit or delete the ones you manage; *New collection…*), its
@@ -402,7 +412,7 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   Read-only items can't be edited, hidden passwords can't be shown or
   copied, and management actions only appear where Vaultwarden would allow
   them. Everything here needs the server; offline, it says so.
-- **Sends** (home → *Storage* → *Sends*): Bitwarden Send for a text or a
+- **Sends** (home → *Tools* → *Sends*): Bitwarden Send for a text or a
   file, with a lifetime, an access limit and an optional password; the link
   (which carries the key) is copied with the clipboard rules and can be
   shared.
@@ -415,9 +425,9 @@ interface is in French, with the system's look (Liquid Glass on iOS 26).
   licenses; sign out of this iPhone (erases the account, cache and Face ID
   sealing; asks first, and says how many offline changes would be lost).
 
-Not on iPhone yet: Send, emergency access, sharing an item into a shared
-vault after creation, import, duplicates, the browser extension, the CLI and
-SSH agent, YubiKey unlock. System AutoFill is described [below](#autofill-passwords-codes-and-passkeys).
+Not on iPhone yet: emergency access, import, duplicates, the browser
+extension, the CLI and SSH agent, YubiKey unlock, creating an account (do it
+in the web vault or in Verrou on the Mac). System AutoFill is described [below](#autofill-passwords-codes-and-passkeys).
 
 ### Install on your iPhone
 
