@@ -43,6 +43,17 @@
   "cancel": {
     "message": "Annulla"
   },
+  "announce": {
+    "message": "Verrou: $TITLE$, $DETAIL$",
+    "placeholders": {
+      "title": {
+        "content": "$1"
+      },
+      "detail": {
+        "content": "$2"
+      }
+    }
+  },
   "ok": {
     "message": "OK"
   },
