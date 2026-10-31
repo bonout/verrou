@@ -166,5 +166,26 @@ async fn bulk_actions_through_the_app_interface() {
     assert_eq!(get(&ids[1]).folder.as_deref(), Some("Papiers"));
     assert!(get(&ids[2]).favorite);
     assert_eq!(session.pending_changes(), 0);
+
+    let folder = session
+        .folders()
+        .into_iter()
+        .find(|f| f.name == "Papiers")
+        .unwrap()
+        .id;
+    session
+        .rename_folder(folder.clone(), "Factures".to_owned())
+        .await
+        .unwrap();
+    let summaries = session.summaries().unwrap();
+    let get = |id: &str| summaries.iter().find(|s| s.id == id).unwrap();
+    assert_eq!(get(&ids[1]).folder.as_deref(), Some("Factures"));
+    session.delete_folder(folder.clone()).await.unwrap();
+    assert!(session.folders().iter().all(|f| f.id != folder));
+    let summaries = session.summaries().unwrap();
+    assert_eq!(
+        summaries.iter().find(|s| s.id == ids[1]).unwrap().folder,
+        None
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }

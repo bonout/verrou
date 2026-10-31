@@ -176,6 +176,25 @@ async fn sent(connection: &mut Connection) -> Decrypted {
     vault
 }
 
+/// The folder renamed, then deleted: its item `id` stays, without a folder.
+async fn rename_then_delete(connection: &mut Connection, folder: &str, id: &str) {
+    assert!(matches!(
+        connection.rename_folder(folder, "  ").await,
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        connection
+            .rename_folder(&uuid::Uuid::new_v4().to_string(), "Autre")
+            .await,
+        Err(Error::NotFound)
+    ));
+    let vault = connection.rename_folder(folder, " Papiers ").await.unwrap();
+    assert_eq!(item(&vault, id).folder.as_deref(), Some("Papiers"));
+    let vault = connection.delete_folder(folder).await.unwrap();
+    assert_eq!(item(&vault, id).folder, None);
+    assert!(vault.folders.iter().all(|(f, _)| f != folder));
+}
+
 #[tokio::test]
 async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
     let Some(server) = server() else { return };
@@ -278,6 +297,8 @@ async fn bulk_actions_use_the_grouped_routes_and_skip_what_does_not_apply() {
     assert_eq!(state(&seen, &c), ItemState::Archived);
     assert!(item(&seen, &d).favorite);
     assert_eq!(item(&seen, &a).folder.as_deref(), Some("Administratif"));
+
+    rename_then_delete(&mut connection, &folder, &b).await;
     std::fs::remove_dir_all(store.dir()).unwrap();
     std::fs::remove_dir_all(other.dir()).unwrap();
 }

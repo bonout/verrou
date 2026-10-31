@@ -194,6 +194,20 @@ impl VaultSession {
         self.install_if_current(&connection, vault)?;
         Ok(id)
     }
+
+    /// Renames a folder (network needed).
+    pub async fn rename_folder(&self, id: String, name: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let vault = connection.lock().await.rename_folder(&id, &name).await?;
+        self.install_if_current(&connection, vault)
+    }
+
+    /// Deletes a folder (network needed): its items stay, without a folder.
+    pub async fn delete_folder(&self, id: String) -> Result<(), VerrouError> {
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let vault = connection.lock().await.delete_folder(&id).await?;
+        self.install_if_current(&connection, vault)
+    }
 }
 
 #[cfg(test)]
@@ -264,5 +278,21 @@ mod tests {
             Box::new(Ignore),
         ));
         assert!(matches!(demo, Err(VerrouError::Invalid { .. })));
+    }
+
+    #[tokio::test]
+    async fn the_demo_vault_neither_renames_nor_deletes_folders() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
+        assert!(matches!(
+            session
+                .rename_folder("f".to_owned(), "Work".to_owned())
+                .await,
+            Err(VerrouError::Locked)
+        ));
+        assert!(matches!(
+            session.delete_folder("f".to_owned()).await,
+            Err(VerrouError::Locked)
+        ));
     }
 }

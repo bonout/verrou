@@ -149,6 +149,37 @@ impl Connection {
         Ok((id, self.sync_with(&access).await?))
     }
 
+    /// Renames a folder (network needed); returns the resynced vault.
+    pub async fn rename_folder(&mut self, id: &str, name: &str) -> Result<Decrypted, Error> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::Invalid("the folder name is required".to_owned()));
+        }
+        self.known_folder(id)?;
+        let access = self.require_online("Renaming a folder").await?;
+        let encrypted = self.encrypt_folder_name(name)?;
+        self.api.rename_folder(&access, id, &encrypted).await?;
+        self.sync_with(&access).await
+    }
+
+    /// Deletes a folder (network needed): its items stay, without a folder.
+    /// Returns the resynced vault.
+    pub async fn delete_folder(&mut self, id: &str) -> Result<Decrypted, Error> {
+        self.known_folder(id)?;
+        let access = self.require_online("Deleting a folder").await?;
+        self.api.delete_folder(&access, id).await?;
+        self.sync_with(&access).await
+    }
+
+    /// The folder exists in the account.
+    fn known_folder(&self, id: &str) -> Result<(), Error> {
+        if self.cached_folders()?.contains_key(id) {
+            Ok(())
+        } else {
+            Err(Error::NotFound)
+        }
+    }
+
     /// The items to write (decrypted, from the displayed vault), the number
     /// of those already in the wanted state, and the set-aside ones.
     #[allow(clippy::type_complexity)]
