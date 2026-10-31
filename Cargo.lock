@@ -5086,6 +5086,7 @@ dependencies = [
  "csv",
  "data-encoding",
  "hmac 0.12.1",
+ "idna",
  "nucleo-matcher",
  "p256 0.13.2",
  "psl",

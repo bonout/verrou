@@ -5,6 +5,7 @@
 //! with Vaultwarden live in `verrou-vaultwarden`, built on Bitwarden's
 //! Rust SDK.
 
+pub mod alias;
 pub mod apps;
 pub mod audit;
 pub mod change_password;
