@@ -483,7 +483,7 @@
     .stack {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
       margin: 0 auto; max-width: calc(100vw - 32px);
-      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f4f6;
+      font: .8125em/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #f4f4f6;
       -webkit-font-smoothing: antialiased;
     }
     /* The host covers the whole width of the top of the page without
@@ -493,7 +493,7 @@
     .shell, .tab, .banner { background: #1b1b20; border: 1.5px solid #6c6cf0; }
     /* The capsule, then, open, a rounded card: header, rule, accounts. */
     .shell {
-      display: flex; flex-direction: column; min-width: 360px; max-width: min(560px, calc(100vw - 32px));
+      display: flex; flex-direction: column; min-width: 27.5em; max-width: min(43em, calc(100vw - 32px));
       border-radius: 999px; overflow: hidden;
       box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(108,108,240,.18);
     }
@@ -505,21 +505,21 @@
     .text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
     .title, .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .capsule .title { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
-    .title { font-weight: 600; font-size: 14.5px; }
-    .sub { color: #a3a3ad; font-size: 12.5px; }
+    .title { font-weight: 600; font-size: 1.115em; }
+    .sub { color: #a3a3ad; font-size: .962em; }
     button { font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0; cursor: pointer; }
     button:focus-visible { outline: 2px solid #a5a5ff; outline-offset: 2px; }
     .primary {
-      flex: none; max-width: 280px; padding: 9px 18px; border-radius: 999px; font-size: 14px;
+      flex: none; max-width: 20em; padding: 9px 18px; border-radius: 999px; font-size: 1.077em;
       background: #5b5bd6; color: #fff; font-weight: 600;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .primary:hover { background: #6b6be6; }
-    .close { flex: none; width: 32px; height: 32px; border-radius: 50%; color: #a3a3ad; font-size: 15px; }
+    .close { flex: none; width: 32px; height: 32px; border-radius: 50%; color: #a3a3ad; font-size: 1.154em; }
     .close:hover { background: rgba(255,255,255,.1); color: #fff; }
     .tab {
       display: flex; align-items: center; gap: 6px; padding: 5px 16px 7px;
-      border-top: 0; border-radius: 0 0 12px 12px; font-size: 12.5px; color: #d4d4da;
+      border-top: 0; border-radius: 0 0 12px 12px; font-size: .962em; color: #d4d4da;
     }
     .chev { display: inline-block; transition: transform .15s ease; }
     .tab[aria-expanded="true"] .chev { transform: rotate(180deg); }
@@ -531,10 +531,10 @@
     .row:hover, .row:focus-visible { background: rgba(108,108,240,.28); outline: none; }
     .badge {
       flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-      font-weight: 700; font-size: 13px; color: #2b2b6e; background: #b9b9f6;
+      font-weight: 700; font-size: 1em; color: #2b2b6e; background: #b9b9f6;
     }
     .banner {
-      width: 400px; max-width: 100%; padding: 12px 14px; border-radius: 16px;
+      width: 30.75em; max-width: 100%; padding: 12px 14px; border-radius: 16px;
       box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 0 0 3px rgba(108,108,240,.2); animation: drop .18s ease-out;
     }
     .banner .title { white-space: normal; }
@@ -579,7 +579,7 @@
 
   const HOST_STYLES = {
     display: "block", visibility: "visible", opacity: "1", transform: "none", filter: "none",
-    "pointer-events": "auto", margin: "0", padding: "0", "z-index": "2147483647",
+    "pointer-events": "auto", margin: "0", padding: "0", "z-index": "2147483647", "font-size": "medium",
   };
 
   function div(className, text) {
