@@ -881,7 +881,7 @@ struct MemberEditorSheet: View {
                     SectionHeader("Collections")
                 } footer: {
                     if draft.isNew {
-                        Text("Without an account, the person creates one with the link received (Verrou: “Create an account” at sign-in). With an account, they paste the link into “Join an organization”. You will then confirm them by verifying their fingerprint.")
+                        Text("Without an account, the person creates one with the link received, in the web vault or in Verrou on a Mac (“Create an account” at sign-in). With an account, they paste the link into “Join an organization”. You will then confirm them by verifying their fingerprint.")
                     }
                 }
                 ErrorRow(error: model.sharing.error)
