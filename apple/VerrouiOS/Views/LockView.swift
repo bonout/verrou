@@ -189,7 +189,7 @@ struct LockView: View {
 
     private var subtitle: String {
         guard model.mode == .vaultwarden, let account = model.account else {
-            return String(localized: "Demo vault · demonstration data")
+            return String(localized: "Demo vault · read-only sample data")
         }
         let host = URL(string: account.server)?.host() ?? account.server
         return "\(account.email)\n\(host)"
