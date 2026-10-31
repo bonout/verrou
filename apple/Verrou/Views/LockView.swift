@@ -3,6 +3,7 @@ import SwiftUI
 struct LockView: View {
     @Environment(AppModel.self) private var model
     @State private var password = ""
+    @State private var confirmLogout = false
     @FocusState private var passwordFocused: Bool
 
     var body: some View {
@@ -51,6 +52,20 @@ struct LockView: View {
             }
             .padding(48)
         }
+        .overlay(alignment: .bottom) {
+            if model.mode == .vaultwarden, model.account != nil, model.keyExchange == nil {
+                Button("Log Out of This Mac…") {
+                    model.refreshPending()
+                    confirmLogout = true
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+                .disabled(model.lockState == .unlocking)
+                .help("Forgot your master password, or moved to another server? Log out, then log in again.")
+                .padding(.bottom, 20)
+            }
+        }
+        .modifier(LogoutConfirmation(isPresented: $confirmLogout))
         .frame(minWidth: 520, minHeight: 460)
         .announcing(model.unlockError)
         .onAppear {
@@ -78,7 +93,8 @@ struct LockView: View {
             } label: {
                 Label("Unlock with Touch ID", systemImage: Biometrics.symbolName)
                     .font(.body.weight(.semibold))
-                    .frame(width: 280, height: 30)
+                    .frame(minWidth: 280, minHeight: 30)
+                    .fixedSize()
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
@@ -123,9 +139,10 @@ struct LockView: View {
         let button = Button {
             Task { await model.unlockWithSecurityKey() }
         } label: {
-            Label("Unlock with the Security Key", systemImage: "key.horizontal.fill")
+            Label("Unlock with Security Key", systemImage: "key.horizontal.fill")
                 .font(.body.weight(.semibold))
-                .frame(width: 280, height: 30)
+                .frame(minWidth: 280, minHeight: 30)
+                .fixedSize()
         }
         .controlSize(.large)
         .disabled(model.lockState == .unlocking)
