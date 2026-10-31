@@ -134,9 +134,21 @@ private struct SecuritySettings: View {
     @Environment(AppModel.self) private var model
     @AppStorage(AutoLock.minutesKey) private var autoLockMinutes = 10
     @AppStorage(AutoLock.sleepKey) private var lockOnSleep = true
+    @AppStorage(Clipboard.delayKey) private var clipboardSeconds = 90
 
     var body: some View {
         SettingsPane {
+            Section {
+                Picker("Clear clipboard", selection: $clipboardSeconds) {
+                    Text("After 30 seconds").tag(30)
+                    Text("After 90 seconds").tag(90)
+                    Text("After 3 minutes").tag(180)
+                    Text("After 10 minutes").tag(600)
+                }
+            } footer: {
+                Text("Copied secrets are hidden from clipboard managers and cleared after this delay, if the clipboard still holds them.")
+                    .foregroundStyle(.secondary)
+            }
             if model.account == nil || model.mode == .demo {
                 NoAccountSection()
             } else {

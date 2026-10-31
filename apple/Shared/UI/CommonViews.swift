@@ -370,6 +370,12 @@ struct Toast: Equatable, Identifiable {
     }
 }
 
+enum DurationLabel {
+    static func short(_ seconds: Int) -> String {
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated))
+    }
+}
+
 extension View {
     func announcing(_ message: String?) -> some View {
         onChange(of: message) { _, new in
