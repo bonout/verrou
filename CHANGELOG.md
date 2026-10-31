@@ -4,6 +4,14 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**iPhone**
+- Email aliases from the keyboard, like iCloud's Hide My Email: in any
+  field, touch the field again → *AutoFill* → *Passwords* → *Verrou*, type
+  the site and insert a fresh alias (iOS 18 and later). No Face ID needed:
+  the alias reveals nothing from the vault.
+
 ## 0.6.0
 
 **Email aliases**
