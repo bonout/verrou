@@ -175,8 +175,17 @@ final class AppModel {
     var bulkProgress: (done: Int, total: Int)?
     /// "Move to folder…" open, for these items.
     var moveRequest: MoveRequest?
-    /// Fields revealed for the selected item, cleared as soon as it changes.
-    var revealed: [String: String] = [:]
+    /// Fields revealed for the selected item, cleared as soon as it changes,
+    /// after a minute, or when Verrou goes to the background.
+    var revealed: [String: String] = [:] {
+        didSet {
+            if revealed.count > oldValue.count { scheduleRehide() }
+            if revealed.isEmpty != oldValue.isEmpty { setSecretShown("revealed", !revealed.isEmpty) }
+        }
+    }
+    @ObservationIgnored private var rehideTask: Task<Void, Never>?
+    @ObservationIgnored private var secretsOnScreen: Set<String> = []
+    @ObservationIgnored private var resignObserver: NSObjectProtocol?
     var toast: Toast?
     /// Query of the quick access window, independent of the main window.
     var quickQuery = "" { didSet { refreshQuick() } }
@@ -336,6 +345,11 @@ final class AppModel {
         // Warms up LocalAuthentication's answer before the first render.
         Biometrics.refresh()
         remote?.escrowNeeded = { [weak self] in Task { await self?.prepareRemoteEscrow(local: true) } }
+        resignObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.hideSecrets() }
+        }
         Perf.log.notice("model ready at +\(Perf.msSinceLaunch) ms after launch")
     }
 
@@ -1398,6 +1412,36 @@ final class AppModel {
         guard let value = try? session.reveal(id: itemID, fieldId: fieldID) else { return nil }
         revealed[fieldID] = value
         return value
+    }
+
+    static let revealDuration: Duration = .seconds(60)
+
+    private func scheduleRehide() {
+        rehideTask?.cancel()
+        rehideTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.revealDuration)
+            guard !Task.isCancelled else { return }
+            self?.hideSecrets()
+        }
+    }
+
+    func hideSecrets() {
+        rehideTask?.cancel()
+        rehideTask = nil
+        guard !revealed.isEmpty else { return }
+        withAnimation(.snappy(duration: 0.18)) { revealed.removeAll() }
+    }
+
+    func setSecretShown(_ reason: String, _ shown: Bool) {
+        if shown {
+            secretsOnScreen.insert(reason)
+        } else {
+            secretsOnScreen.remove(reason)
+        }
+        let sharing: NSWindow.SharingType = secretsOnScreen.isEmpty ? .readOnly : .none
+        for window in NSApp.windows where window.identifier?.rawValue != GeneratorWindow.identifier {
+            window.sharingType = sharing
+        }
     }
 
     func toggleReveal(_ fieldID: String, of itemID: String) {

@@ -196,7 +196,7 @@ struct ItemDetailView: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(.secondary)
         .padding(.top, 6)
     }
 }
@@ -273,8 +273,10 @@ struct FieldRow: View {
     let field: FieldView
     @State private var hovering = false
     @State private var now = Date()
+    @FocusState private var focused: Bool
 
     var body: some View {
+        let active = hovering || focused
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(field.label)
@@ -288,23 +290,39 @@ struct FieldRow: View {
             if field.secret && field.fieldType != .totp {
                 IconButton(symbol: model.revealed[field.id] == nil ? "eye" : "eye.slash",
                            help: model.revealed[field.id] == nil ? "Show" : "Hide") {
-                    withAnimation(.snappy(duration: 0.18)) { model.toggleReveal(field.id, of: itemID) }
+                    toggle()
                 }
-                .opacity(hovering || model.revealed[field.id] != nil ? 1 : 0)
+                .opacity(active || model.revealed[field.id] != nil ? 1 : 0.4)
             }
             IconButton(symbol: "doc.on.doc", help: "Copy") {
                 model.copyField(field, of: itemID)
             }
-            .opacity(hovering ? 1 : 0)
+            .opacity(active ? 1 : 0.4)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))
+        .background(active ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
         .onTapGesture { model.copyField(field, of: itemID) }
+        .focusable()
+        .focused($focused)
+        .onKeyPress(.space) {
+            model.copyField(field, of: itemID)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            guard field.secret, field.fieldType != .totp else { return .ignored }
+            toggle()
+            return .handled
+        }
         .accessibilityElement(children: .combine)
+        .accessibilityHint("Space copies")
         .accessibilityAction(named: "Copy") { model.copyField(field, of: itemID) }
+    }
+
+    private func toggle() {
+        withAnimation(.snappy(duration: 0.18)) { model.toggleReveal(field.id, of: itemID) }
     }
 }
 
@@ -388,7 +406,7 @@ struct WebsiteRow: View {
             if let link = URL(string: url) {
                 Button("Open") { NSWorkspace.shared.open(link) }
                     .controlSize(.small)
-                    .opacity(hovering ? 1 : 0.0001)
+                    .opacity(hovering ? 1 : 0.4)
             }
         }
         .padding(.horizontal, 14)
@@ -413,7 +431,8 @@ struct NotesRow: View {
                 }
                 Spacer()
             }
-            IconButton(symbol: model.revealed["notes"] == nil ? "eye" : "eye.slash", help: "Show the note") {
+            IconButton(symbol: model.revealed["notes"] == nil ? "eye" : "eye.slash",
+                       help: model.revealed["notes"] == nil ? "Show the note" : "Hide the note") {
                 withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
             }
         }
