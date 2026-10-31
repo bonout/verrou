@@ -22625,86 +22625,86 @@
         }
       }
     },
-    "The person accepts with this link: “Join an organization” if they have an account, otherwise “Create an account”.": {
+    "The person accepts with this link, in Verrou on a Mac or in the web vault: “Join a Shared Vault…” if they have an account, otherwise “Create an Account”.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La personne accepte avec ce lien : « Rejoindre une organisation » si elle a un compte, sinon « Créer un compte »."
+            "value": "La personne accepte avec ce lien, dans Verrou sur Mac ou dans le coffre web : « Rejoindre un coffre partagé… » si elle a un compte, sinon « Créer un compte »."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Person nimmt mit diesem Link an: „Einer Organisation beitreten“, wenn sie einen Account hat, sonst „Account erstellen“."
+            "value": "Die Person nimmt mit diesem Link an, in Verrou auf dem Mac oder im Web-Tresor: „Einem geteilten Tresor beitreten …“, wenn sie einen Account hat, sonst „Account erstellen“."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona acepta con este enlace: “Unirse a una organización” si tiene cuenta y, si no, “Crear una cuenta”."
+            "value": "La persona acepta con este enlace, en Verrou en un Mac o en la bóveda web: “Unirse a una bóveda compartida…” si tiene cuenta y, si no, “Crear una cuenta”."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona accetta con questo link: “Unisciti a un'organizzazione” se ha un account, altrimenti “Crea un account”."
+            "value": "La persona accetta con questo link, in Verrou su Mac o nella cassaforte web: “Unisciti a una cassaforte condivisa…” se ha un account, altrimenti “Crea un account”."
           }
         }
       }
     },
-    "The person accepts: in Verrou, “Join an organization” by pasting the link, or in the web vault.": {
+    "The person accepts with this link: in Verrou on a Mac, “Join a Shared Vault…”, or in the web vault.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La personne accepte : dans Verrou, « Rejoindre une organisation » en collant le lien, ou dans le coffre web."
+            "value": "La personne accepte avec ce lien : dans Verrou sur Mac, « Rejoindre un coffre partagé… », ou dans le coffre web."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Person nimmt an: in Verrou über „Einer Organisation beitreten“ durch Einfügen des Links oder im Web-Tresor."
+            "value": "Die Person nimmt mit diesem Link an: in Verrou auf dem Mac über „Einem geteilten Tresor beitreten …“ oder im Web-Tresor."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona acepta: en Verrou, con “Unirse a una organización” pegando el enlace, o en la bóveda web."
+            "value": "La persona acepta con este enlace: en Verrou en un Mac, con “Unirse a una bóveda compartida…”, o en la bóveda web."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona accetta: in Verrou, “Unisciti a un'organizzazione” incollando il link, oppure nella cassaforte web."
+            "value": "La persona accetta con questo link: in Verrou su Mac, con “Unisciti a una cassaforte condivisa…”, oppure nella cassaforte web."
           }
         }
       }
     },
-    "The person creates their account with this link (in Verrou: “Create an account”), which accepts the invitation.": {
+    "The person creates their account with this link, which accepts the invitation: in Verrou on a Mac, “Create an Account”, or in the web vault.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "La personne crée son compte avec ce lien (dans Verrou : « Créer un compte »), ce qui accepte l'invitation."
+            "value": "La personne crée son compte avec ce lien, ce qui accepte l'invitation : dans Verrou sur Mac, « Créer un compte », ou dans le coffre web."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Person erstellt ihren Account mit diesem Link (in Verrou: „Account erstellen“), wodurch die Einladung angenommen wird."
+            "value": "Die Person erstellt ihren Account mit diesem Link, wodurch die Einladung angenommen wird: in Verrou auf dem Mac über „Account erstellen“ oder im Web-Tresor."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona crea su cuenta con este enlace (en Verrou: “Crear una cuenta”), lo que acepta la invitación."
+            "value": "La persona crea su cuenta con este enlace, lo que acepta la invitación: en Verrou en un Mac, con “Crear una cuenta”, o en la bóveda web."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "La persona crea il proprio account con questo link (in Verrou: “Crea un account”), che accetta l'invito."
+            "value": "La persona crea il proprio account con questo link, che accetta l'invito: in Verrou su Mac, con “Crea un account”, oppure nella cassaforte web."
           }
         }
       }
