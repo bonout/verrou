@@ -104,6 +104,9 @@
   "pillOpenApp": {
     "message": "Öffne die Verrou-App"
   },
+  "pillCreateAlias": {
+    "message": "E-Mail-Alias erstellen"
+  },
   "pillGenerate": {
     "message": "Passwort erzeugen"
   },

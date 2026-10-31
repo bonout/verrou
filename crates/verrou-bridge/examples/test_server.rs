@@ -25,6 +25,7 @@ use verrou_bridge::protocol::{Credentials, SaveAction, Suggestion};
 use verrou_bridge::{
     Backend, BoxFuture, Bridge, Confirmation, PairingRequest, Purpose, WritePlan, access,
 };
+use verrou_core::alias::AliasSettings;
 use verrou_core::{Field, FieldKind, Item, ItemKind, Vault};
 
 static BRIDGE: OnceLock<Mutex<Option<Bridge>>> = OnceLock::new();
@@ -117,6 +118,10 @@ impl Backend for Fake {
         println!("CONFIRM {purpose} {}", request.title);
         let _ = std::io::stdout().flush();
         Box::pin(async { true })
+    }
+
+    fn alias_settings(&self) -> AliasSettings {
+        AliasSettings::catch_all("alias.example.com", true).unwrap()
     }
 
     fn pairing_requested(&self, request: PairingRequest) {

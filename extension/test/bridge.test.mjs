@@ -112,6 +112,16 @@ test("pairing, suggestions and filling from the extension", async () => {
   assert.equal(known.action, "known");
   assert.equal(known.item.id, saved.item);
 
+  const alias = await channel.request({ cmd: "alias", url: page });
+  assert.equal(alias.result, "alias");
+  assert.match(alias.address, /^localhost\.[a-z0-9]{5}@alias\.example\.com$/);
+  const random = await channel.request({ cmd: "alias", url: page, site: false });
+  assert.match(random.address, /^[a-z0-9]{10}@alias\.example\.com$/);
+  const withAlias = await channel.request({ cmd: "save", url: page, username: alias.address, password: "Alias-42!" });
+  assert.equal(withAlias.result, "saved");
+  const aliasKnown = await channel.request({ cmd: "check", url: page, username: alias.address, password: "Alias-42!" });
+  assert.equal(aliasKnown.action, "known");
+
   // Two-factor QR code added to the site's login.
   const totp = await channel.request({ cmd: "set_totp", url: page, item: saved.item,
     totp: "otpauth://totp/Local:dominique?secret=JBSWY3DPEHPK3PXP&issuer=Local" });

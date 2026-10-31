@@ -363,6 +363,16 @@ async function fillForm(url, item) {
   }
 }
 
+async function alias(url) {
+  try {
+    const reply = await call({ cmd: "alias", url });
+    if (reply.result === "alias") return { ok: true, address: reply.address };
+    return { ok: false, reason: reply.reason };
+  } catch (error) {
+    return { ok: false, state: stateOf(error) };
+  }
+}
+
 // MARK: Passkeys
 //
 // Requests from passkeys.js (main frame only), for the tab's address (see
@@ -429,7 +439,7 @@ const originOf = (url) => {
 };
 
 const fromPage = new Set([
-  "suggest", "fill", "unlock", "forms", "fillForm", "openLinkSite",
+  "suggest", "fill", "unlock", "forms", "fillForm", "openLinkSite", "alias",
   "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
   "passkeyList", "passkeyGet", "passkeyTargets", "passkeyCreate",
 ]);
@@ -456,6 +466,8 @@ async function handle(message, sender) {
       return forms(sender.url);
     case "fillForm":
       return fillForm(sender.url, message.item);
+    case "alias":
+      return alias(sender.url);
     case "unlock":
       await call({ cmd: "unlock" }).catch(() => {});
       return { ok: true };

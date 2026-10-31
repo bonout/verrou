@@ -33,10 +33,12 @@ export const SECRETS = {
 
 // The service worker: `state` changes during the test (locked, then
 // open…). `messages` keeps everything the script asked for.
-export function fakeBackground({ state = "unlocked", items = LOGINS, cards = [], identities = [] } = {}) {
+export function fakeBackground({ state = "unlocked", items = LOGINS, cards = [], identities = [], aliasDomain = null } = {}) {
+  let aliases = 0;
   const background = {
     state,
     items,
+    aliasDomain,
     messages: [],
     async handle(message) {
       background.messages.push(message);
@@ -51,6 +53,11 @@ export function fakeBackground({ state = "unlocked", items = LOGINS, cards = [],
           return { ok: true, data: { kind: "card", cardholder: "Camille Martin", number: "4000000000000005", exp_month: "9", exp_year: "2029", code: "321" } };
         case "pendingSave":
           return {};
+        case "alias":
+          aliases += 1;
+          return background.aliasDomain
+            ? { ok: true, address: `maif.a${aliases}x${aliases}z@${background.aliasDomain}` }
+            : { ok: false, reason: "no email alias domain is set" };
         default:
           return { ok: true };
       }
