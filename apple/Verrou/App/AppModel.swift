@@ -1490,6 +1490,15 @@ final class AppModel {
     func noteActivity() {
         autoLock?.touch()
     }
+
+    private(set) var searchRequests = 0
+
+    func focusSearch() {
+        guard lockState == .unlocked else { return }
+        showMainWindow()
+        pane = nil
+        searchRequests += 1
+    }
 }
 
 /// Steps of the exchange with the security key, reported from the
