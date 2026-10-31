@@ -29,6 +29,10 @@ struct DecryptRenderer: TextRenderer {
         set { elapsed = newValue }
     }
 
+    private static func glyph(_ text: GraphicsContext.ResolvedText) -> GraphicsContext.ResolvedText? { text }
+
+    private static func glyph(_ text: GraphicsContext.ResolvedText?) -> GraphicsContext.ResolvedText? { text }
+
     /// Scrambling glyphs: readable letters, digits and symbols.
     private static let pool = Array("ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789#$%&*+=?@")
 
@@ -56,15 +60,16 @@ struct DecryptRenderer: TextRenderer {
                             settled.draw(slice)
                         }
                         let character = Self.pool[Self.scramble(index, tick) % Self.pool.count]
-                        let glyph = resolved[character] ?? context.resolve(
+                        if let glyph = resolved[character] ?? Self.glyph(context.resolve(
                             Text(String(character))
                                 .font(.system(size: fontSize, design: .monospaced))
-                                .foregroundStyle(Theme.accent.opacity(0.75)))
-                        resolved[character] = glyph
-                        let bounds = slice.typographicBounds.rect
-                        var scrambled = context
-                        scrambled.opacity = 1 - max(0, progress)
-                        scrambled.draw(glyph, at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center)
+                                .foregroundStyle(Theme.accent.opacity(0.75)))) {
+                            resolved[character] = glyph
+                            let bounds = slice.typographicBounds.rect
+                            var scrambled = context
+                            scrambled.opacity = 1 - max(0, progress)
+                            scrambled.draw(glyph, at: CGPoint(x: bounds.midX, y: bounds.midY), anchor: .center)
+                        }
                     }
                     index += 1
                 }
