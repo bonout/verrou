@@ -116,12 +116,15 @@ struct Chip: View {
     let tint: Color
 
     var body: some View {
-        Label(text, systemImage: symbol)
+        Label {
+            Text(text).foregroundStyle(tint == .secondary ? Color.secondary : Color.primary)
+        } icon: {
+            Image(systemName: symbol).foregroundStyle(tint == .secondary ? Color.secondary : tint)
+        }
             .labelStyle(.titleAndIcon)
             .lineLimit(1)
             .truncationMode(.tail)
             .font(.caption.weight(.medium))
-            .foregroundStyle(tint == .secondary ? Color.secondary : tint)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
             .background((tint == .secondary ? Color.secondary : tint).opacity(0.12), in: Capsule())

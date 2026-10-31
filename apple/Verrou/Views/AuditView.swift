@@ -158,7 +158,7 @@ struct AuditView: View {
             }
         }
         .padding(.horizontal, 8)
-        .background(selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { model.selection = summary.id }
         .contextMenu { RowMenu(summary: summary) }
