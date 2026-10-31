@@ -115,8 +115,8 @@
   "pillUnpairedHint": {
     "message": "Reliez-la depuis son icône dans la barre d'outils"
   },
-  "pillOpenApp": {
-    "message": "Ouvrez l'app Verrou"
+  "pillOpenVerrou": {
+    "message": "Ouvrir Verrou"
   },
   "pillCreateAlias": {
     "message": "Créer un alias e-mail"
