@@ -263,7 +263,6 @@ struct MainTabs: View {
         }
         .sheet(item: $model.editor) { editor in
             EditItemView(editor: editor)
-                .interactiveDismissDisabled(model.editorBusy)
         }
         .sheet(item: $model.qrSheet) { sheet in
             WifiQRSheet(sheet: sheet)
