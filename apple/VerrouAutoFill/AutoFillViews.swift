@@ -156,6 +156,9 @@ private struct AutoFillLockView: View {
             .padding(.bottom, 24)
         }
         .sensoryFeedback(.error, trigger: model.unlockError) { _, new in new != nil }
+        .onChange(of: model.unlockError) { _, error in
+            if let error, !error.isEmpty { AccessibilityNotification.Announcement(error).post() }
+        }
         .task { await model.autoUnlock() }
     }
 
@@ -171,6 +174,8 @@ private struct AutoFillLockView: View {
 
 private struct CredentialListView: View {
     @Environment(AutoFillModel.self) private var model
+    private static let listLimit = 100
+    private static let searchLimit = 50
 
     var body: some View {
         @Bindable var model = model
@@ -197,17 +202,27 @@ private struct CredentialListView: View {
                     SectionHeader(model.site.map { String(localized: "For \($0)") } ?? String(localized: "Suggestions"))
                 }
                 Section {
-                    ForEach(model.everything.prefix(100), id: \.id) { item in itemButton(item) }
+                    ForEach(model.everything.prefix(Self.listLimit), id: \.id) { item in itemButton(item) }
                 } header: {
                     SectionHeader("Entire vault")
+                } footer: {
+                    if model.everything.count > Self.listLimit {
+                        Text("Showing \(Self.listLimit) of \(model.everything.count) items: search to find the others.")
+                    }
                 }
             } else {
-                Section(header: SectionHeader("Results")) {
-                    let results = model.searchResults
+                let results = model.allSearchResults
+                Section {
                     if results.isEmpty {
                         Text("No results").foregroundStyle(.secondary)
                     }
-                    ForEach(results, id: \.id) { item in itemButton(item) }
+                    ForEach(results.prefix(Self.searchLimit), id: \.id) { item in itemButton(item) }
+                } header: {
+                    SectionHeader("Results")
+                } footer: {
+                    if results.count > Self.searchLimit {
+                        Text("Showing the first \(Self.searchLimit) of \(results.count) results: refine the search.")
+                    }
                 }
             }
         }
@@ -240,6 +255,7 @@ private struct Row: View {
                     Text(title).foregroundStyle(.primary)
                     if protected {
                         Image(systemName: "lock.shield").font(.caption).foregroundStyle(.secondary)
+                            .accessibilityLabel("Protected")
                     }
                 }
                 Text(subtitle).font(.footnote).foregroundStyle(.secondary)
@@ -369,6 +385,7 @@ private struct PasskeySymbol: View {
 private struct ConfirmationSheet: View {
     @Environment(AutoFillModel.self) private var model
     @State private var password = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         VStack(spacing: 18) {
@@ -393,17 +410,37 @@ private struct ConfirmationSheet: View {
             }
             SecureField("Master password", text: $password)
                 .textContentType(.password)
+                .submitLabel(.done)
+                .focused($focused)
                 .padding(.horizontal, 16)
                 .frame(minHeight: 48)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Theme.cardBorder))
-                .onSubmit {
-                    let typed = password
-                    password = ""
-                    Task { await model.confirm(masterPassword: typed) }
+                .onSubmit(submit)
+            HStack(spacing: 12) {
+                Button(role: .cancel) {
+                    model.confirmation = nil
+                } label: {
+                    Text("Cancel").frame(maxWidth: .infinity, minHeight: 34)
                 }
-            Button("Cancel", role: .cancel) { model.confirmation = nil }
+                .glassButton(prominent: false)
+                Button(action: submit) {
+                    Text("Confirm").frame(maxWidth: .infinity, minHeight: 34)
+                }
+                .glassButton(prominent: !Biometrics.isAvailable)
+                .disabled(password.isEmpty)
+                .accessibilityIdentifier("autofill-confirm-password")
+            }
+            .controlSize(.large)
         }
         .padding(24)
+        .onAppear { if !Biometrics.isAvailable { focused = true } }
+    }
+
+    private func submit() {
+        guard !password.isEmpty else { return }
+        let typed = password
+        password = ""
+        Task { await model.confirm(masterPassword: typed) }
     }
 }

@@ -355,11 +355,15 @@ final class AutoFillModel {
 
     /// Search results across the whole vault (Rust core).
     var searchResults: [ItemSummary] {
+        Array(allSearchResults.prefix(50))
+    }
+
+    var allSearchResults: [ItemSummary] {
         guard let session = vault?.session, !query.isEmpty else { return [] }
         let filter: SidebarFilter = .category(category: .login)
         let hits = (try? session.search(query: query, filter: filter, order: .relevance)) ?? []
         let byID = Dictionary(everything.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return hits.prefix(50).compactMap { byID[$0.id] }
+        return hits.compactMap { byID[$0.id] }
     }
 
     // MARK: Responses
