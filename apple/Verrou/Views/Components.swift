@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Theme {
+    static let selection = Color(light: Theme.accent, dark: Color(red: 0.31, green: 0.35, blue: 0.92))
+}
+
 // MARK: Item icon
 
 struct ItemIcon: View {
