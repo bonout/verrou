@@ -654,7 +654,7 @@ final class PhoneModel {
         }
     }
 
-    func lock() {
+    func lock(clearsClipboard: Bool = true) {
         // AutoFill without Face ID ends with the app's lock.
         AutofillSession.forget()
         syncLoop?.cancel()
@@ -686,16 +686,18 @@ final class PhoneModel {
         reprompt?.answer(false)
         reprompt = nil
         toast = nil
+        undo = nil
         vaultPath = []
         searchPath = []
         searchQuery = ""
         Attachments.purge()
-        clipboard.clearIfOurs()
+        if clearsClipboard { clipboard.clearIfOurs() }
         lockState = .locked
         revision += 1
         if let signInVault {
             vault = signInVault
             self.signInVault = nil
+            suspendedEditor = nil
             mode = .vaultwarden
             tab = .vault
         }
@@ -716,7 +718,7 @@ final class PhoneModel {
             syncLoop?.cancel()
             syncLoop = nil
             live.stop(session: session)
-            if lockState == .unlocked, autoLockSeconds == 0 { lock() }
+            if lockState == .unlocked, autoLockSeconds == 0 { lock(clearsClipboard: false) }
             scheduleBackgroundCheck()
         case .active:
             // Back from the background (not from a mere inactive state): the
@@ -726,7 +728,7 @@ final class PhoneModel {
             }
             if let since = backgroundedAt, lockState == .unlocked, autoLockSeconds > 0,
                Date().timeIntervalSince(since) >= TimeInterval(autoLockSeconds) {
-                lock()
+                lock(clearsClipboard: false)
             }
             backgroundedAt = nil
             Biometrics.refresh()
@@ -801,7 +803,7 @@ final class PhoneModel {
         guard mode == .vaultwarden, account != nil, ActivityNotifier.enabled else { return }
         if lockState == .unlocked, let since = backgroundedAt, autoLockSeconds > 0,
            Date().timeIntervalSince(since) >= TimeInterval(autoLockSeconds) {
-            lock()
+            lock(clearsClipboard: false)
         }
         if lockState == .unlocked {
             await syncNow(awaitActivity: true)
@@ -1222,12 +1224,7 @@ final class PhoneModel {
     }
 
     static func durationLabel(_ seconds: Int) -> String {
-        switch seconds {
-        case ..<60: "\(seconds) s"
-        case 60: "1 min"
-        case ..<3600: "\(seconds / 60) min"
-        default: "\(seconds / 3600) h"
-        }
+        Duration.seconds(seconds).formatted(.units(allowed: [.hours, .minutes, .seconds], width: .abbreviated))
     }
 
     // MARK: Editing
