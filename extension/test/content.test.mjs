@@ -341,6 +341,7 @@ test("Verrou locked: \"Unlock\", then the logins", async () => {
   const background = fakeBackground({ state: "locked" });
   const page = openPage(loginForm, background);
   await eventually(() => page.pillText().includes("Verrou is locked"), "locked pill");
+  assert.equal(page.pillNode().querySelector(".title").textContent, "connect.maif.fr", "the site first, never cut");
   assert.match(page.pillText(), /Unlock/);
   page.press("Unlock");
   await eventually(() => page.pillText().includes("Unlock Verrou"), "waiting for the unlock");
