@@ -13,15 +13,22 @@ touches one of these points says so in its description.
    on explicit request (`reveal`), at the moment it is shown or copied.
    Known limit: a Swift `String` cannot be zeroed; its lifetime is therefore
    kept short (forgotten as soon as another item is selected or the vault
-   locks).
+   locks; on the Mac, a revealed field also hides again after 60 s and when
+   Verrou leaves the foreground). While a secret is shown, the Mac window
+   (main window, Quick Access, generator) is excluded from screenshots and
+   screen sharing (`sharingType = .none`).
 3. **Nothing secret is indexed.** Search covers the title, the displayed
    username, the sites, the folder and the tags. A note's subtitle is never
    taken from its content (a test checks this).
 4. **Clipboard**: types `org.nspasteboard.ConcealedType` and
-   `TransientType`, cleared after 90 s, and only if the content is still
-   ours.
-5. **Locking**: inactivity (10 min), sleep, screen locked, end of session.
-   Locking releases the vault.
+   `TransientType`, cleared after the chosen delay (30 s to 10 min, 90 s by
+   default, Settings → Security), and only if the content is still ours.
+5. **Locking**: inactivity (10 min: keys, clicks, menus and Quick Access
+   count as activity), sleep, screen locked, end of session. Locking
+   releases the vault. Known trade-off: an edit screen or a Send composer
+   open at that moment is kept in memory through the lock and reopens after
+   unlock (on the iPhone too), so the user doesn't lose a password just set
+   on a site; its draft can hold that password. Logging out drops it.
 6. **Careful writes**: encrypted by the SDK, sent with the known revision
    date (the server refuses to overwrite a newer version), touching only the
    fields the edit screen shows. They go through an encrypted queue, sent in
@@ -810,8 +817,12 @@ page ──postMessage──▶ passkeys.js ──▶ background ──encrypted
   settings. The editor's gauge only uses this value while the field holds
   the generated phrase; elsewhere (audit, phrase typed by hand), the
   character-based estimate remains, and overestimates a passphrase.
+- **Mac**: besides the editor, a standalone generator window (⌥⌘G, menu
+  bar, Quick Access); its Copy goes through the concealed clipboard.
 - **Extension**: the strong password suggestion in pages remains a random
-  password (sites often refuse spaces).
+  password (sites often refuse spaces). The pill describes it ("20
+  characters: letters, digits and symbols") instead of drawing it on the
+  page; the value reaches the page only when filled.
 
 ## Filling in apps (⌘\)
 
@@ -843,7 +854,8 @@ page ──postMessage──▶ passkeys.js ──▶ background ──encrypted
 - **Known limits**: an app that reads key codes rather than characters
   (games, remote desktops) receives wrong keystrokes; a malicious frontmost
   app receives what is typed into it, as with copy-paste. The one-time code
-  is copied (concealed clipboard, cleared after 90 s), not typed.
+  is copied (concealed clipboard, cleared after the clipboard delay), not
+  typed.
 
 ## Terminal and SSH agent
 
@@ -1094,14 +1106,18 @@ above; what changes:
 - **Clipboard** (`UIPasteboard`): `localOnly` (never sent to other devices
   by Universal Clipboard) and `expirationDate` (iOS itself clears the
   secret after 90 s by default, adjustable from 30 s to 10 min, even if
-  Verrou was closed). On lock, Verrou clears it if it still contains what it
-  put there (`changeCount` counter, without reading the content).
+  Verrou was closed). On a lock by hand, Verrou clears it if it still
+  contains what it put there (`changeCount` counter, without reading the
+  content). An automatic lock (going to the background, delay passed)
+  leaves it to iOS's expiry, so that a password copied for another app
+  survives the switch with "Immediately".
   Non-secret values (username, site) don't expire.
 - **Auto-lock**: when the app goes to the background, after an adjustable
   delay (immediately, 1 min by default, 5 min, 15 min, 1 h, never); the
   system can also terminate the app, which frees the vault. Out of the
   foreground, the screen is blurred and covered: the app switcher's preview
-  shows no item.
+  shows no item. An open edit screen's draft survives the lock in memory
+  (see "Locking" in the principles) and is dropped on sign-out.
 - **Attachments**: decrypted in Rust, written for the time of the preview
   or the share into a temporary file protected by the iPhone's encryption
   (`completeFileProtection`), erased on close, on lock and at the next
