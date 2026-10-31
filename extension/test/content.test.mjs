@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { eventually, fakeBackground, openPage, sleep } from "./page.mjs";
+import { eventually, fakeBackground, openPage, sleep, source } from "./page.mjs";
 
 const loginForm = (h) => h("form", { id: "login", action: "/connexion" },
   h("input", { id: "email", type: "email", name: "email", autocomplete: "username" }),
@@ -40,6 +40,8 @@ test("the pill comes once with a login for the site, without a menu under the fi
   assert.equal(host.style.getPropertyValue("pointer-events"), "none");
   assert.equal(host.style.getPropertyValue("z-index"), "2147483647");
   assert.equal(host.style.getPropertyPriority("position"), "important");
+  assert.equal(host.style.getPropertyValue("font-size"), "medium", "text sized from the browser's default, not the page's");
+  assert.equal(host.style.getPropertyPriority("font-size"), "important");
   assert.equal(host.shadowRoot, null, "closed shadow DOM");
   assert.equal(page.pillNode().getAttribute("role"), "dialog");
 
@@ -60,6 +62,12 @@ test("the pill comes once with a login for the site, without a menu under the fi
   const icon = [...badge.shadow.walk()].find((n) => n.tagName === "BUTTON");
   assert.match(icon.getAttribute("aria-label"), /logins for this site.*↓/, "the keyboard shortcut is named");
   assert.equal(icon.getAttribute("title"), icon.getAttribute("aria-label"));
+});
+
+test("the pill's text follows the browser's font size: no size in pixels", () => {
+  const style = /const STYLE = `([^`]*)`/.exec(source("content.js"))[1];
+  assert.match(style, /font: \.8125em/);
+  assert.deepEqual(style.match(/font(-size)?:\s*[^;]*\d(\.\d+)?px/g), null);
 });
 
 test("no login for this site: nothing by itself; the field icon offers another login", async () => {

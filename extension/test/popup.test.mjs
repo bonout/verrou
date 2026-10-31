@@ -57,6 +57,12 @@ function openPopup(handle, { timeout = 100 } = {}) {
   };
 }
 
+test("the popup's text follows the browser's font size: no size in pixels", () => {
+  const css = source("popup.css");
+  assert.match(css, /body \{[^}]*font: \.8125rem/);
+  assert.deepEqual(css.match(/font(-size)?:\s*[^;]*\d(\.\d+)?px/g), null);
+});
+
 test("a state at once; Verrou silent: \"can't be reached\", then its answer", async () => {
   let answer;
   const popup = openPopup((message) => (message.kind === "status"
