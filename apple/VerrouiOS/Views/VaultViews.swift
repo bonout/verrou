@@ -91,8 +91,7 @@ struct VaultHomeView: View {
         let counts = model.counts
         if let pending = model.pendingLabel {
             Section {
-                Label(pending, systemImage: "arrow.triangle.2.circlepath")
-                    .foregroundStyle(.orange)
+                PendingLabel(text: pending)
                     .font(.callout)
             } footer: {
                 Text("Changed offline: sent as soon as the server responds.")
@@ -907,4 +906,8 @@ struct ItemIcon: View {
         guard summary.category == .login, summary.template == nil, let host = summary.host else { return nil }
         return model.siteIcons.image(for: host)
     }
+}
+
+extension Color {
+    static let warningText = Color(light: Color(red: 0.66, green: 0.30, blue: 0.0), dark: .orange)
 }
