@@ -350,13 +350,14 @@ private struct ToastHost: View {
     var body: some View {
         ZStack {
             if let toast = model.toast {
-                PhoneToast(toast: toast)
+                PhoneToast(toast: toast, undo: model.undo?.toastID == toast.id ? { model.performUndo() } : nil)
                     .padding(.horizontal, 20)
                     .padding(.bottom, model.lockState == .unlocked ? 92 : 0)
                     .padding(.top, model.lockState == .unlocked ? 0 : 8)
                     .transition(.move(edge: model.lockState == .unlocked ? .bottom : .top).combined(with: .opacity))
                     .onTapGesture { model.toast = nil }
                     .task(id: toast.id) {
+                        toast.announce()
                         try? await Task.sleep(for: .seconds(toast.seconds))
                         if model.toast?.id == toast.id { model.toast = nil }
                     }
@@ -369,26 +370,40 @@ private struct ToastHost: View {
 /// The notification, in glass on iOS 26 (blurred material before).
 private struct PhoneToast: View {
     let toast: Toast
+    var undo: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: toast.failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
-                .foregroundStyle(toast.failure ? .orange : .green)
-                .font(.title2)
-                .symbolEffect(.bounce, value: toast.id)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(toast.message).font(.callout.weight(.semibold))
-                if let detail = toast.detail {
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+            HStack(spacing: 12) {
+                Image(systemName: toast.failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(toast.failure ? .orange : .green)
+                    .font(.title2)
+                    .symbolEffect(.bounce, value: toast.id)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(toast.message).font(.callout.weight(.semibold))
+                    if let detail = toast.detail {
+                        Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    }
                 }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("toast")
+            if let undo {
+                Button(action: undo) {
+                    Text("Undo")
+                        .font(.callout.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("toast-undo")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .glassSurface(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: LiquidGlass.isAvailable ? .clear : .black.opacity(0.15), radius: 12, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("toast")
+        .accessibilityElement(children: .contain)
     }
 }

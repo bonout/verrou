@@ -173,7 +173,7 @@ struct ItemDetailView: View {
                             titleVisibility: .visible) {
             Button("Move to Trash", role: .destructive) { Task { await model.trash(itemID) } }
         } message: {
-            Text("The item can be restored from the trash for 30 days.")
+            Text("Can be restored from the trash")
         }
         .confirmationDialog("Delete “\(deletingAttachment?.fileName ?? "")”?",
                             isPresented: Binding(get: { deletingAttachment != nil }, set: { if !$0 { deletingAttachment = nil } }),
@@ -303,7 +303,7 @@ struct ItemDetailView: View {
             banner("Archived: out of the list, search and filling.", symbol: "archivebox",
                    action: "Unarchive", summary: summary) { await model.setArchived(itemID, false) }
         case .trashed:
-            banner("In the trash: permanently deleted by the server after 30 days.", symbol: "trash",
+            banner("In the trash until you restore it, or until the server deletes it for good.", symbol: "trash",
                    action: "Restore", summary: summary) { await model.restore(itemID) }
         }
     }

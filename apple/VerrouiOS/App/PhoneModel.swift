@@ -1335,7 +1335,8 @@ final class PhoneModel {
     }
 
     func trash(_ itemID: String) async {
-        await perform(String(localized: "Moved to the trash"), detail: String(localized: "Can be restored from the trash")) {
+        await perform(String(localized: "Moved to the trash"), detail: String(localized: "Can be restored from the trash"),
+                      undoing: { [weak self] in await self?.restore(itemID) }) {
             try await self.session.trashItem(id: itemID)
         }
         editor = nil
@@ -1353,7 +1354,10 @@ final class PhoneModel {
     }
 
     func setArchived(_ itemID: String, _ archived: Bool) async {
-        await perform(archived ? String(localized: "Archived") : String(localized: "Unarchived"), detail: archived ? String(localized: "Find it in Archived items") : nil) {
+        var undoing: (@MainActor () async -> Void)?
+        if archived { undoing = { [weak self] in await self?.setArchived(itemID, false) } }
+        await perform(archived ? String(localized: "Archived") : String(localized: "Unarchived"), detail: archived ? String(localized: "Find it in Archived items") : nil,
+                      undoing: undoing) {
             try await self.session.setArchived(id: itemID, archived: archived)
         }
     }
@@ -1364,18 +1368,37 @@ final class PhoneModel {
         }
     }
 
-    private func perform(_ done: String, detail: String? = nil, _ action: @escaping () async throws -> Void) async {
+    private func perform(_ done: String, detail: String? = nil, undoing: (@MainActor () async -> Void)? = nil,
+                         _ action: @escaping () async throws -> Void) async {
         guard canEdit, !editorBusy else { return }
         editorBusy = true
         defer { editorBusy = false }
         do {
             try await action()
             afterWrite()
-            toast = writeToast(done, detail: detail)
+            showWithUndo(writeToast(done, detail: detail), undoing)
             pushChanges()
         } catch {
             toast = Toast(message: String(localized: "Action failed"), detail: ErrorText.describe(error), failure: true)
         }
+    }
+
+    private func showWithUndo(_ shown: Toast, _ undoing: (@MainActor () async -> Void)?) {
+        guard let undoing, !shown.failure else {
+            toast = shown
+            return
+        }
+        var shown = shown
+        shown.seconds = max(shown.seconds, 8)
+        undo = UndoAction(toastID: shown.id, perform: undoing)
+        toast = shown
+    }
+
+    func performUndo() {
+        guard let action = undo, action.toastID == toast?.id else { return }
+        undo = nil
+        toast = nil
+        Task { await action.perform() }
     }
 
     /// Write applied to the local vault (sending follows, `pushChanges`):
@@ -1393,10 +1416,19 @@ final class PhoneModel {
         guard canEdit, !editorBusy, !ids.isEmpty else { return }
         editorBusy = true
         defer { editorBusy = false }
+        let reversible = ids.filter { summary(id: $0)?.state == .active && canModify(summary(id: $0)) }
         do {
             let result = try await session.bulkAction(ids: ids, action: action, progress: NoBulkProgress())
             afterWrite()
-            toast = bulkToast(result, action: action, folderName: folderName)
+            var undoing: (@MainActor () async -> Void)?
+            if result.done > 0, result.failures.isEmpty, !reversible.isEmpty {
+                switch action {
+                case .trash: undoing = { [weak self] in await self?.performBulk(.restore, on: reversible) }
+                case .archive: undoing = { [weak self] in await self?.performBulk(.unarchive, on: reversible) }
+                default: break
+                }
+            }
+            showWithUndo(bulkToast(result, action: action, folderName: folderName), undoing)
             pushChanges()
         } catch {
             toast = Toast(message: String(localized: "Action failed"), detail: ErrorText.describe(error), failure: true)
