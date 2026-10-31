@@ -24,10 +24,10 @@ struct GeneratorView: View {
     @AppStorage("generatorSeparator") private var separator = PassphraseSeparatorChoice.hyphen
     @AppStorage("generatorCapitalize") private var capitalize = false
     @AppStorage("generatorNumber") private var number = false
-    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
+    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.preferred
     @State private var value = ""
     @State private var bits: Double?
-    /// Draws made: the "Another" arrow turns one full turn at each.
+    /// Draws made: the "Regenerate" arrow turns one full turn at each.
     @State private var draws = 0
     /// "Copy" just copied: checkmark for 1.5 s.
     @State private var copied = false
@@ -48,7 +48,7 @@ struct GeneratorView: View {
                         .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel("Generated value")
-                        .accessibilityValue(value)
+                        .accessibilityValue(Text(value).speechSpellsOutCharacters())
                         if shownMode.wrappedValue != .alias {
                             StrengthMeter(password: value, bits: bits)
                         }
@@ -59,7 +59,7 @@ struct GeneratorView: View {
                                     draws += 1
                                 } label: {
                                     Label {
-                                        Text("Another")
+                                        Text("Regenerate")
                                     } icon: {
                                         Image(systemName: "arrow.clockwise")
                                             .rotatesOnChange(of: draws)
@@ -198,6 +198,8 @@ struct GeneratorView: View {
                         .animation(.snappy, value: length)
                 }
                 Slider(value: $length, in: 8...64, step: 1)
+                    .accessibilityLabel("Length")
+                    .accessibilityValue("\(Int(length)) characters")
             }
             Toggle("Digits", isOn: $digits)
             Toggle("Symbols", isOn: $symbols)
