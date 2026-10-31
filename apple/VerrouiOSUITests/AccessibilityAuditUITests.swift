@@ -5,20 +5,16 @@ final class AccessibilityAuditUITests: XCTestCase {
     private var app: XCUIApplication!
     private var issues: [String] = []
 
-    override nonisolated func setUp() {
-        MainActor.assumeIsolated {
-            continueAfterFailure = true
-            app = XCUIApplication()
-            app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "60", "VERROU_SHOWCASE": "1",
-                                     "VERROU_MOCK_LANG": "en"]
-            app.launch()
-        }
+    override func setUp() async throws {
+        continueAfterFailure = true
+        app = XCUIApplication()
+        app.launchEnvironment = ["VERROU_MOCK": "1", "VERROU_MOCK_SIZE": "60", "VERROU_SHOWCASE": "1",
+                                 "VERROU_MOCK_LANG": "en"]
+        app.launch()
     }
 
-    override nonisolated func tearDown() {
-        MainActor.assumeIsolated {
-            app.terminate()
-        }
+    override func tearDown() async throws {
+        app.terminate()
     }
 
     func testMainScreensPassTheAudit() throws {
