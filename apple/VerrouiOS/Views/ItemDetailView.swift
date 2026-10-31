@@ -704,7 +704,7 @@ private struct WebsiteRow: View {
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
                             .background((rule == .never ? Color.orange : Color.secondary).opacity(0.15), in: Capsule())
-                            .foregroundStyle(rule == .never ? Color.orange : Color.secondary)
+                            .foregroundStyle(rule == .never ? Color.warningText : Color.secondary)
                             .accessibilityLabel("Match: \(rule.label)")
                     }
                 }
