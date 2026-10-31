@@ -16,6 +16,9 @@ struct LoginView: View {
             }
             .animation(.smooth, value: model.twoFactorOptions)
         }
+        .onChange(of: model.loginError) { _, error in
+            if let error, !error.isEmpty { AccessibilityNotification.Announcement(error).post() }
+        }
     }
 }
 
