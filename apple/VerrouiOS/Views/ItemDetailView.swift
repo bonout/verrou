@@ -542,7 +542,7 @@ struct FieldRow: View {
                     .foregroundStyle(field.fieldType == .password || field.fieldType == .totp ? Theme.accent : Color.secondary)
                 FieldValue(itemID: itemID, field: field)
             }
-            Spacer(minLength: 8)
+            Spacer(minLength: 4)
             if field.secret && field.fieldType != .totp && !field.hidden {
                 let shown = model.revealedValue(field.id, of: itemID) != nil
                 RowIconButton(symbol: shown ? "eye.slash" : "eye", label: shown ? "Hide" : "Show") {
@@ -599,7 +599,8 @@ private struct RowIconButton: View {
                 .symbolReplaceTransition()
                 .frame(width: 36, height: 36)
                 .background(tint.opacity(0.12), in: Circle())
-                .contentShape(Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
@@ -611,6 +612,8 @@ private struct FieldValue: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
     let field: FieldView
+    @ScaledMetric(relativeTo: .body) private var valueSize: CGFloat = 17
+    @ScaledMetric(relativeTo: .footnote) private var multilineSize: CGFloat = 13
 
     var body: some View {
         switch field.fieldType {
@@ -621,16 +624,21 @@ private struct FieldValue: View {
                 Text("Hidden by the organization").foregroundStyle(.secondary)
             } else {
                 // Revealed: scrambled then decrypted character by character.
-                DecryptReveal(value: model.revealedValue(field.id, of: itemID), fontSize: 17) { revealed in
+                DecryptReveal(value: model.revealedValue(field.id, of: itemID), fontSize: valueSize) { revealed in
                     if field.fieldType == .password || field.fieldType == .pin {
                         // Copied with a tap on the row: no selection.
                         PasswordText(value: revealed, size: 17, selectable: false)
                     } else {
-                        Text(revealed).font(.system(size: 17, design: .monospaced))
+                        Text(revealed)
+                            .speechSpellsOutCharacters()
+                            .font(.system(size: valueSize, design: .monospaced))
                     }
                 } masked: {
                     if field.fieldType == .cardNumber {
-                        Text("•••• •••• •••• ••••").font(.system(size: 17, design: .monospaced)).foregroundStyle(.secondary)
+                        Text("•••• •••• •••• ••••")
+                            .font(.system(size: valueSize, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Hidden value")
                     } else {
                         MaskedText(count: field.fieldType == .pin ? 4 : 12)
                     }
@@ -638,7 +646,7 @@ private struct FieldValue: View {
             }
         case .address, .multiline:
             Text(field.value ?? "")
-                .font(field.fieldType == .multiline ? .system(size: 13, design: .monospaced) : .body)
+                .font(field.fieldType == .multiline ? .system(size: multilineSize, design: .monospaced) : .body)
                 .lineLimit(field.fieldType == .multiline ? 4 : nil)
         case .email, .phone, .url:
             Text(field.value ?? "").foregroundStyle(Theme.accent)
@@ -703,12 +711,31 @@ private struct WebsiteRow: View {
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
             }
             Spacer()
-            if let link = URL(string: url), link.scheme == "https" || link.scheme == "http" {
+            if let link = webLink {
                 RowIconButton(symbol: "safari", label: "Open in Safari") { openURL(link) }
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.copy(url, label: String(localized: "Site"), secret: false) }
+        .onTapGesture(perform: copy)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Double-tap to copy")
+        .accessibilityAction(.default, copy)
+        .accessibilityAction(named: "Copy", copy)
+        .accessibilityActions {
+            if let link = webLink {
+                Button("Open in Safari") { openURL(link) }
+            }
+        }
+    }
+
+    private var webLink: URL? {
+        guard let link = URL(string: url), link.scheme == "https" || link.scheme == "http" else { return nil }
+        return link
+    }
+
+    private func copy() {
+        model.copy(url, label: String(localized: "Site"), secret: false)
     }
 }
 
@@ -752,7 +779,7 @@ private struct NotesRow: View {
                 Spacer()
             }
             RowIconButton(symbol: notes == nil ? "eye" : "eye.slash",
-                          label: "Show note") {
+                          label: notes == nil ? "Show note" : "Hide note") {
                 model.toggleReveal("notes", of: itemID)
             }
         }

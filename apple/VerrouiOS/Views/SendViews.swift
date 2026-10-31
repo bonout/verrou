@@ -156,7 +156,9 @@ private struct SendRow: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
-            if send.hasPassword { Image(systemName: "key.fill").foregroundStyle(.secondary) }
+            if send.hasPassword {
+                Image(systemName: "key.fill").foregroundStyle(.secondary).accessibilityLabel("Password protected")
+            }
             if !send.available { Badge(text: String(localized: "Inactive"), tint: nil) }
         }
     }
