@@ -174,6 +174,9 @@ struct SettingsTab: View {
         if !Biometrics.isAvailable {
             parts.insert(String(localized: "\(Biometrics.name) is not set up on this iPhone."), at: 0)
         }
+        if model.autoLockSeconds < 0 {
+            parts.append(String(localized: "With “Never”, the vault stays open in the background until you lock it or close Verrou."))
+        }
         return parts.joined(separator: " ")
     }
 
@@ -319,7 +322,7 @@ struct AuditView: View {
                 if !audit.weak.isEmpty {
                     Section {
                         ForEach(audit.weak, id: \.item.id) { weak in
-                            AuditRow(summary: weak.item, detail: String(localized: "\(Int(weak.bits)) bits of estimated entropy"), tint: .orange)
+                            AuditRow(summary: weak.item, detail: String(localized: "Estimated strength: \(StrengthMeter.grade(weak.bits).0)"), tint: .orange)
                                 .staggered(4, shown: appeared)
                         }
                     } header: {
@@ -422,7 +425,7 @@ struct AuditView: View {
     }
 
     private func passkeyFooter(_ report: PasskeyReport) -> String {
-        var text = String(localized: "These sites accept passkeys: nothing to remember, nothing to phish. “Create” opens the site's page in Safari; choose Verrou to save the passkey. The item leaves the list at the next sync; keep the password as a fallback, or remove it at the site if it allows signing in without a password. According to passkeys.2fa.directory")
+        var text = String(localized: "These sites accept passkeys. “Create” opens the site in Safari: choose Verrou to save the passkey. According to passkeys.2fa.directory")
         if report.stale {
             let date = Date(timeIntervalSince1970: TimeInterval(report.fetchedAt))
             text += " " + String(localized: "(directory of \(date.formatted(.dateTime.day().month(.wide))), offline)")
@@ -688,7 +691,13 @@ private struct AccountHeader: View {
 
     private var detail: String {
         guard model.mode == .vaultwarden, let account = model.account else { return String(localized: "Demonstration data") }
-        return URL(string: account.server)?.host() ?? account.server
+        let host = URL(string: account.server)?.host() ?? account.server
+        switch model.syncState {
+        case .syncing: return String(localized: "\(host) · syncing…")
+        case .offline: return String(localized: "\(host) · offline")
+        case .failed: return String(localized: "\(host) · sync failed")
+        case .idle: return host
+        }
     }
 
     private var dot: Color {
@@ -772,14 +781,19 @@ private struct AutoFillSection: View {
         } header: {
             SectionHeader("AutoFill")
         } footer: {
-            Text("The system only receives the sites and user names, for its suggestions. Passwords, codes and passkeys only leave the vault after \(Biometrics.name) or your master password. After that, the next fills skip \(Biometrics.name) for 5 minutes while the iPhone stays unlocked, until Verrou locks; protected items and passkeys always ask.")
+            Text("The system only receives sites and user names: passwords, codes and passkeys need \(Biometrics.name) or your master password.")
         }
         .task { await model.refreshAutofillStatus() }
 
         Section {
-            SettingsLabel(String(localized: "Sign in after filling"), symbol: "safari", tint: .blue)
-        } footer: {
-            Text("In Safari, Verrou can also submit the sign-in form once AutoFill has filled it, both steps of a two-step form included. Turn it on in **Settings → Apps → Safari → Extensions → Verrou**, and allow it on all websites. Other browsers don't run extensions.")
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Sign in after filling")
+                Text("In Safari, Verrou can also submit the sign-in form after filling it. Turn it on in **Settings → Apps → Safari → Extensions → Verrou** and allow it on all websites.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+            .accessibilityElement(children: .combine)
         }
     }
 }

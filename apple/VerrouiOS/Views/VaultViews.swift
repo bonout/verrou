@@ -175,6 +175,10 @@ struct VaultHomeView: View {
                 }
                 .accessibilityIdentifier("home-sends")
             }
+        } header: {
+            SectionHeader("Tools")
+        }
+        Section {
             FilterLink(title: String(localized: "Archived items"), symbol: "archivebox.fill", tint: .brown, count: counts?.archived, filter: .archived)
             FilterLink(title: String(localized: "Trash"), symbol: "trash.fill", tint: .gray, count: counts?.trashed, filter: .trash)
         } header: {
