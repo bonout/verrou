@@ -252,6 +252,7 @@ private struct Row: View {
 
 private struct PasskeyRegistrationView: View {
     @Environment(AutoFillModel.self) private var model
+    @State private var replacing: ItemSummary?
 
     var body: some View {
         List {
@@ -282,21 +283,29 @@ private struct PasskeyRegistrationView: View {
             if !model.targets.isEmpty {
                 Section {
                     ForEach(model.targets, id: \.id) { item in
-                        Button { model.register(into: item) } label: {
+                        Button {
+                            if item.passkeyRpId != nil { replacing = item } else { model.register(into: item) }
+                        } label: {
                             HStack(spacing: 12) {
                                 ItemIconContent(summary: item, image: nil, size: 38, initialShadow: false)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.title).foregroundStyle(.primary)
                                     Text(item.displaySubtitle).font(.footnote).foregroundStyle(.secondary)
+                                    if let passkey = item.passkeyLine {
+                                        Label("Has a passkey: \(passkey)", systemImage: "person.badge.key.fill")
+                                            .font(.footnote)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
                             }
                         }
                         .disabled(model.phase == .working)
+                        .accessibilityIdentifier("autofill-passkey-target-\(item.title)")
                     }
                 } header: {
                     SectionHeader("Add to a login")
                 } footer: {
-                    Text("A login holds one passkey: the one it had is replaced.")
+                    Text("A login holds one passkey: choosing one that already has a passkey replaces it, after confirmation.")
                 }
             }
             if model.phase == .working, !model.passkeyCreated {
@@ -309,6 +318,13 @@ private struct PasskeyRegistrationView: View {
             }
         }
         .sensoryFeedback(.success, trigger: model.passkeyCreated) { _, created in created }
+        .confirmationDialog("Replace the passkey of “\(replacing?.title ?? "")”?",
+                            isPresented: Binding(get: { replacing != nil }, set: { if !$0 { replacing = nil } }),
+                            titleVisibility: .visible, presenting: replacing) { item in
+            Button("Replace Passkey", role: .destructive) { model.register(into: item) }
+        } message: { item in
+            Text("Its current passkey (\(item.passkeyLine ?? "")) is deleted: the site will no longer accept it. To keep it, choose “New login”.")
+        }
     }
 }
 
