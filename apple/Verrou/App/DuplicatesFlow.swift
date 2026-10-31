@@ -168,7 +168,8 @@ extension AppModel {
             flow.selected.subtract(ids)
             toast = writeToast(ids.count > 1 ? String(localized: "\(ids.count) items moved to the trash")
                                              : String(localized: "\(ids.count) item moved to the trash"),
-                               detail: String(localized: "They can be restored from the web vault"))
+                               detail: String(localized: "You can restore them from the Trash."),
+                               action: undoAction { [weak self] in await self?.performBulk(.restore, on: ids) })
             await loadDuplicates(flow)
         } catch {
             flow.error = Self.describe(error)

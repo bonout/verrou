@@ -310,6 +310,12 @@ struct ToastView: View {
                     Text(detail).font(.caption).foregroundStyle(.secondary)
                 }
             }
+            if let action = toast.action {
+                Button(action.title, action: action.perform)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .padding(.leading, 4)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -336,12 +342,23 @@ struct Toast: Equatable, Identifiable {
     let detail: String?
     var failure = false
     var seconds: Double
+    var action: Action?
 
-    init(message: String, detail: String?, failure: Bool = false, seconds: Double? = nil) {
+    struct Action: Sendable {
+        let title: String
+        let perform: @MainActor @Sendable () -> Void
+    }
+
+    init(message: String, detail: String?, failure: Bool = false, seconds: Double? = nil, action: Action? = nil) {
         self.message = message
         self.detail = detail
         self.failure = failure
-        self.seconds = seconds ?? (failure ? 6 : 2.2)
+        self.action = action
+        self.seconds = seconds ?? (failure ? 6 : action != nil ? 8 : 2.2)
+    }
+
+    static func == (lhs: Toast, rhs: Toast) -> Bool {
+        lhs.id == rhs.id
     }
 
     var spoken: String {
