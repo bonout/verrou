@@ -652,6 +652,15 @@ private struct ListRow: View, Equatable {
                 return ItemDrag.provider(model.dragIDs(from: row.id))
             }
             .contextMenu { RowMenu(summary: row.summary) }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction { model.click(row.id, modifiers: []) }
+            .accessibilityActions {
+                if row.summary.category == .login {
+                    Button("Copy Password") { model.copyPassword(of: row.summary.id) }
+                    Button("Copy Username") { model.copyUsername(of: row.summary.id) }
+                }
+            }
     }
 }
 
@@ -688,6 +697,7 @@ struct SearchField: View {
             Button("") { focused.wrappedValue = true }
                 .keyboardShortcut("f", modifiers: .command)
                 .opacity(0)
+                .accessibilityHidden(true)
         )
     }
 }

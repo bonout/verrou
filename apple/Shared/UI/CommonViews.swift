@@ -352,3 +352,11 @@ struct Toast: Equatable, Identifiable {
         AccessibilityNotification.Announcement(spoken).post()
     }
 }
+
+extension View {
+    func announcing(_ message: String?) -> some View {
+        onChange(of: message) { _, new in
+            if let new, !new.isEmpty { AccessibilityNotification.Announcement(new).post() }
+        }
+    }
+}

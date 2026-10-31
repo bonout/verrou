@@ -46,6 +46,7 @@ struct LoginView: View {
         .animation(.smooth, value: model.twoFactorOptions)
         .animation(.smooth, value: model.loginError)
         .animation(.smooth, value: registration == nil)
+        .announcing(model.loginError)
     }
 }
 
@@ -293,7 +294,9 @@ struct LabeledField<Content: View>: View {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             content
+                .accessibilityLabel(Text(label))
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .frame(height: 36)
