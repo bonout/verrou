@@ -163,7 +163,8 @@ struct ItemDetailView: View {
             banner("Archived: out of the list, the search and autofill.", symbol: "archivebox",
                    action: "Unarchive") { await model.setArchived(detail.summary.id, false) }
         case .trashed:
-            banner("In the trash: permanently deleted by the server after 30 days.", symbol: "trash",
+            banner("In the Trash: restore it to use it again. The server may delete it permanently after a while.",
+                   symbol: "trash",
                    action: "Restore") { await model.restore(detail.summary.id) }
         }
     }

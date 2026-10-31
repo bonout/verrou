@@ -147,7 +147,7 @@ struct EditItemView: View {
                 if let id = editor.itemID { Task { await model.trash(id) } }
             }
         } message: {
-            Text("The item stays restorable from the web vault for 30 days.")
+            Text("You can restore it from the Trash.")
         }
     }
 

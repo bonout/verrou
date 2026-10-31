@@ -831,9 +831,17 @@ final class AppModel {
 
     /// Toast of an item write, written right away (sending follows in the
     /// background); offline, it waits for the server.
-    func writeToast(_ message: String, detail: String? = nil) -> Toast {
-        guard syncState == .offline else { return Toast(message: message, detail: detail) }
-        return Toast(message: message, detail: String(localized: "Offline: synced as soon as the server responds"))
+    func writeToast(_ message: String, detail: String? = nil, action: Toast.Action? = nil) -> Toast {
+        guard syncState == .offline else { return Toast(message: message, detail: detail, action: action) }
+        return Toast(message: message, detail: String(localized: "Offline: synced as soon as the server responds"),
+                     action: action)
+    }
+
+    func undoAction(_ perform: @escaping @MainActor @Sendable () async -> Void) -> Toast.Action {
+        Toast.Action(title: String(localized: "Undo")) { [weak self] in
+            self?.toast = nil
+            Task { await perform() }
+        }
     }
 
     /// Report of sending the offline changes: conflicts and rejections first
@@ -1203,7 +1211,7 @@ final class AppModel {
         }
     }
 
-    /// The server's trash: restorable from the web vault.
+    /// The server's trash: restorable from the Trash, or with Undo.
     func trash(_ itemID: String) async {
         guard canEdit else { return }
         editorBusy = true
@@ -1212,7 +1220,8 @@ final class AppModel {
             try await session.trashItem(id: itemID)
             editor = nil
             afterWrite(select: nil)
-            toast = writeToast(String(localized: "Moved to trash"), detail: String(localized: "Restorable from the web vault"))
+            toast = writeToast(String(localized: "Moved to trash"), detail: String(localized: "Restore it from the Trash"),
+                               action: undoAction { [weak self] in await self?.restore(itemID) })
             pushChanges()
         } catch {
             editorError = Self.describe(error)
