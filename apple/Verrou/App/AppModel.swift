@@ -1148,8 +1148,7 @@ final class AppModel {
         }
         editorError = nil
         let fields = login
-            ? LoginFields(username: nil, password: generatePassword(length: 20, digits: true, symbols: true),
-                          totp: nil, urls: [])
+            ? LoginFields(username: nil, password: GeneratorSettings.saved().generate().value, totp: nil, urls: [""])
             : nil
         editor = Editor(itemID: nil, draft: ItemDraft(name: "", folderId: folderID, favorite: false,
                                                      notes: nil, login: fields, fields: [], template: nil),

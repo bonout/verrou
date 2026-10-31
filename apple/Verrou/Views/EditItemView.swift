@@ -272,7 +272,9 @@ struct EditItemView: View {
 /// strength. `use` receives the value and, for a passphrase, its exact
 /// entropy.
 struct GeneratorView: View {
-    let use: (String, Double?) -> Void
+    var use: ((String, Double?) -> Void)?
+    var copy: ((String) -> Void)?
+    var showsTitle = true
     @AppStorage("generatorMode") private var mode = GeneratorMode.password
     @AppStorage("generatorLength") private var length = 20.0
     @AppStorage("generatorDigits") private var digits = true
@@ -281,13 +283,15 @@ struct GeneratorView: View {
     @AppStorage("generatorSeparator") private var separator = PassphraseSeparatorChoice.hyphen
     @AppStorage("generatorCapitalize") private var capitalize = false
     @AppStorage("generatorNumber") private var number = false
-    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.french
+    @AppStorage("generatorLanguage") private var language = PassphraseLanguageChoice.preferred
     @State private var password = ""
     @State private var bits: Double?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Generator").font(.headline)
+            if showsTitle {
+                Text("Generator").font(.headline)
+            }
             Picker("Type", selection: $mode) {
                 ForEach(GeneratorMode.allCases, id: \.self) { Text($0.label).tag($0) }
             }
@@ -307,12 +311,23 @@ struct GeneratorView: View {
                 Button {
                     regenerate()
                 } label: {
-                    Label("Another", systemImage: "arrow.clockwise")
+                    Label("Regenerate", systemImage: "arrow.clockwise")
                 }
                 Spacer()
-                Button("Use") { use(password, bits) }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
+                if let copy {
+                    if use == nil {
+                        Button("Copy") { copy(password) }
+                            .keyboardShortcut(.defaultAction)
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Copy") { copy(password) }
+                    }
+                }
+                if let use {
+                    Button("Use") { use(password, bits) }
+                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.borderedProminent)
+                }
             }
         }
         .padding(16)
@@ -356,16 +371,9 @@ struct GeneratorView: View {
     }
 
     private func regenerate() {
-        switch mode {
-        case .password:
-            password = generatePassword(length: UInt32(length), digits: digits, symbols: symbols)
-            bits = nil
-        case .passphrase:
-            let phrase = generatePassphrase(settings: PassphraseSettings(
-                words: UInt32(words), separator: separator.ffi, capitalize: capitalize,
-                includeNumber: number, language: language.ffi))
-            password = phrase.value
-            bits = phrase.entropyBits
-        }
+        let settings = GeneratorSettings(mode: mode, length: length, digits: digits, symbols: symbols, words: words,
+                                         separator: separator, capitalize: capitalize, number: number,
+                                         language: language)
+        (password, bits) = settings.generate()
     }
 }

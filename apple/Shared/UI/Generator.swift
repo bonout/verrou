@@ -66,6 +66,48 @@ enum PassphraseLanguageChoice: String, CaseIterable {
     }
 }
 
+struct GeneratorSettings {
+    var mode = GeneratorMode.password
+    var length = 20.0
+    var digits = true
+    var symbols = true
+    var words = 5.0
+    var separator = PassphraseSeparatorChoice.hyphen
+    var capitalize = false
+    var number = false
+    var language = PassphraseLanguageChoice.preferred
+
+    static func saved(in defaults: UserDefaults = .standard) -> GeneratorSettings {
+        var settings = GeneratorSettings()
+        if let mode = defaults.string(forKey: "generatorMode").flatMap(GeneratorMode.init) { settings.mode = mode }
+        if let length = defaults.object(forKey: "generatorLength") as? Double { settings.length = length }
+        if let digits = defaults.object(forKey: "generatorDigits") as? Bool { settings.digits = digits }
+        if let symbols = defaults.object(forKey: "generatorSymbols") as? Bool { settings.symbols = symbols }
+        if let words = defaults.object(forKey: "generatorWords") as? Double { settings.words = words }
+        if let separator = defaults.string(forKey: "generatorSeparator").flatMap(PassphraseSeparatorChoice.init) {
+            settings.separator = separator
+        }
+        if let capitalize = defaults.object(forKey: "generatorCapitalize") as? Bool { settings.capitalize = capitalize }
+        if let number = defaults.object(forKey: "generatorNumber") as? Bool { settings.number = number }
+        if let language = defaults.string(forKey: "generatorLanguage").flatMap(PassphraseLanguageChoice.init) {
+            settings.language = language
+        }
+        return settings
+    }
+
+    func generate() -> (value: String, bits: Double?) {
+        switch mode {
+        case .password:
+            return (generatePassword(length: UInt32(length), digits: digits, symbols: symbols), nil)
+        case .passphrase:
+            let phrase = generatePassphrase(settings: PassphraseSettings(
+                words: UInt32(words), separator: separator.ffi, capitalize: capitalize,
+                includeNumber: number, language: language.ffi))
+            return (phrase.value, phrase.entropyBits)
+        }
+    }
+}
+
 /// Estimated strength (entropy): bar and word.
 struct StrengthMeter: View {
     let password: String

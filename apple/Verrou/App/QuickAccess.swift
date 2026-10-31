@@ -15,6 +15,7 @@ final class QuickAccessController {
     /// Filling in apps (⌘\): the window also serves to choose the login to
     /// type in the frontmost app.
     var autofill: UniversalAutofill?
+    var generator: GeneratorWindow?
 
     init(model: AppModel) {
         self.model = model
@@ -80,7 +81,11 @@ final class QuickAccessController {
             guard let self, !self.staysOpen else { return }
             self.close()
         }
-        let root = QuickAccessView(autofill: autofill, close: { [weak self] in self?.close() })
+        let root = QuickAccessView(autofill: autofill, close: { [weak self] in self?.close() },
+                                   generate: { [weak self] in
+                                       self?.close()
+                                       self?.generator?.show()
+                                   })
             .environment(model)
         panel.contentView = NSHostingView(rootView: root)
         return panel
@@ -143,6 +148,7 @@ struct QuickAccessView: View {
     @Environment(AppModel.self) private var model
     var autofill: UniversalAutofill?
     let close: () -> Void
+    var generate: () -> Void = {}
     @FocusState private var focused: Bool
     @State private var selected = 0
 
@@ -177,11 +183,16 @@ struct QuickAccessView: View {
             } else if autofill?.target != nil, !AccessibilityPermission.isGranted {
                 AccessibilityRequestView()
             } else if hits.isEmpty {
-                Text(emptyMessage)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 14) {
+                    Text(emptyMessage)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if autofill?.target == nil {
+                        Button("Generate Password…", systemImage: "wand.and.stars", action: generate)
+                    }
+                }
+                .padding(.horizontal, 40)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 HStack(spacing: 0) {
                     resultsList
@@ -210,6 +221,9 @@ struct QuickAccessView: View {
                 }
                 KeyHint(keys: "⌘C", label: "Username")
                 KeyHint(keys: "⌥⌘C", label: "Code")
+                if autofill?.target == nil {
+                    KeyHint(keys: "⌥⌘G", label: "Generate")
+                }
                 Spacer()
                 KeyHint(keys: "esc", label: "Close")
             }
@@ -238,8 +252,10 @@ struct QuickAccessView: View {
                 Button("") { copyUsername() }.keyboardShortcut("c", modifiers: .command)
                 Button("") { copyCode() }.keyboardShortcut("c", modifiers: [.command, .option])
                 Button("") { fillAndLink() }.keyboardShortcut(.return, modifiers: .command)
+                Button("") { generate() }.keyboardShortcut("g", modifiers: [.command, .option])
             }
             .opacity(0)
+            .accessibilityHidden(true)
         }
     }
 
