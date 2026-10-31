@@ -255,12 +255,13 @@ private struct AccountSettings: View {
 struct SecurityKeysSection: View {
     @Environment(AppModel.self) private var model
     @State private var adding = false
+    @State private var removing: UnlockKey?
 
     var body: some View {
         Section {
             ForEach(model.unlockKeys, id: \.id) { key in
                 LabeledContent {
-                    Button("Remove", role: .destructive) { model.removeUnlockKey(key) }
+                    Button("Remove…", role: .destructive) { removing = key }
                 } label: {
                     Text(key.label)
                     Text("Added on \(Date(timeIntervalSince1970: TimeInterval(key.created)).formatted(date: .abbreviated, time: .shortened))")
@@ -281,6 +282,15 @@ struct SecurityKeysSection: View {
         }
         .sheet(isPresented: $adding) {
             AddSecurityKeySheet()
+        }
+        .confirmationDialog("Remove the security key “\(removing?.label ?? "")”?",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove Key", role: .destructive) {
+                if let key = removing { model.removeUnlockKey(key) }
+                removing = nil
+            }
+        } message: {
+            Text("It will no longer unlock the vault on this Mac. To use it again, you will have to add it again.")
         }
     }
 }
@@ -336,6 +346,7 @@ private struct AddSecurityKeySheet: View {
 /// Brave, Firefox and the terminal: activation, extensions to load, linked clients.
 struct BrowserSection: View {
     @Bindable var bridge: BrowserBridge
+    @State private var unlinking: BridgeClient?
 
     var body: some View {
         Section {
@@ -352,7 +363,7 @@ struct BrowserSection: View {
             }
             ForEach(bridge.clients, id: \.id) { client in
                 LabeledContent {
-                    Button("Unlink", role: .destructive) { bridge.revoke(client) }
+                    Button("Unlink…", role: .destructive) { unlinking = client }
                 } label: {
                     Label(client.name, systemImage: client.kind == .cli ? "terminal" : "globe")
                     let linked = Date(timeIntervalSince1970: TimeInterval(client.created)).formatted(date: .abbreviated, time: .shortened)
@@ -370,6 +381,17 @@ struct BrowserSection: View {
                 .foregroundStyle(bridge.error == nil ? Color.secondary : Color.red)
         }
         .onAppear { bridge.refreshClients() }
+        .confirmationDialog("Unlink “\(unlinking?.name ?? "")”?",
+                            isPresented: Binding(get: { unlinking != nil }, set: { if !$0 { unlinking = nil } })) {
+            Button("Unlink", role: .destructive) {
+                if let client = unlinking { bridge.revoke(client) }
+                unlinking = nil
+            }
+        } message: {
+            Text(unlinking?.kind == .cli
+                 ? "The terminal will need “verrou link” and a new approval to read the vault again."
+                 : "The browser will need to be linked again, with a new code, to fill your logins.")
+        }
     }
 
     /// A shipped extension: copy its path (`copying`, by default the folder)

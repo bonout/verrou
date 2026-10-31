@@ -299,6 +299,7 @@ struct GroupsView: View {
     @Environment(AppModel.self) private var model
     let draft: GroupsDraft
     @State private var editing: GroupDraft?
+    @State private var deleting: OrganizationGroup?
 
     init(draft: GroupsDraft, editing: GroupDraft? = nil) {
         self.draft = draft
@@ -353,7 +354,7 @@ struct GroupsView: View {
                                 Spacer()
                                 Button("Edit…") { editing = GroupDraft(group) }
                                 Button(role: .destructive) {
-                                    Task { await model.deleteGroup(group, in: draft.organizationID) }
+                                    deleting = group
                                 } label: {
                                     Image(systemName: "trash")
                                         .accessibilityLabel("Delete the group")
@@ -383,6 +384,17 @@ struct GroupsView: View {
         .frame(width: 560)
         .frame(minHeight: 400, maxHeight: 660)
         .background(Color(nsColor: .windowBackgroundColor))
+        .confirmationDialog("Delete the group “\(deleting?.name ?? "")”?",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("Delete Group", role: .destructive) {
+                if let group = deleting {
+                    Task { await model.deleteGroup(group, in: draft.organizationID) }
+                }
+                deleting = nil
+            }
+        } message: {
+            Text("Its members keep their direct access to the collections. This can't be undone.")
+        }
     }
 
     private func memberCount(_ count: Int) -> String {
