@@ -365,6 +365,27 @@ test("Verrou locked: \"Unlock\", then the logins", async () => {
   assert.match(page.pillText(), /camille@exemple\.fr/);
 });
 
+test("Verrou unreachable, pill opened by hand: \"Open Verrou\", then the logins", async () => {
+  const background = fakeBackground({ state: "offline" });
+  const page = openPage(loginForm, background);
+  await eventually(() => background.sent("suggest").length === 1, "search");
+  await sleep(30);
+  assert.equal(page.pillNode(), null, "nothing by itself");
+  page.byId("email").focus();
+  page.fire([...page.host("verrou-field").shadow.walk()].find((n) => n.tagName === "BUTTON"), "click");
+  await eventually(() => page.pillText().includes("Verrou can't be reached"), "unreachable pill");
+  assert.equal(page.pillNode().querySelector(".title").textContent, "connect.maif.fr");
+  page.press("Open Verrou", false);
+  assert.equal(background.sent("unlock").length, 0, "made-up click: nothing");
+  page.press("Open Verrou");
+  await eventually(() => page.pillText().includes("Unlock Verrou"), "waiting for Verrou");
+  assert.equal(background.sent("unlock").length, 1, "the host brings Verrou forward");
+  await sleep(1100);
+  assert.ok(page.pillText().includes("Unlock Verrou"), "still offline: still waiting");
+  background.state = "unlocked";
+  await eventually(() => page.pillText().includes("Sign in"), "logins once Verrou answers", 3000);
+});
+
 // MARK: Close
 
 test("✕ closes the pill for the page; Escape too, but not a key from the page", async () => {
