@@ -167,6 +167,14 @@
   "pillSuggestPassword": {
     "message": "Suggerisci una password complessa"
   },
+  "pillPasswordDescription": {
+    "message": "$COUNT$ caratteri: lettere, numeri e simboli",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
   "fieldButton": {
     "message": "Verrou: login per questo sito"
   },

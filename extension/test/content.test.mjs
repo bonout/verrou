@@ -490,9 +490,12 @@ test("sign-up: \"Suggest a strong password\" fills the password and its confirma
   assert.equal(page.pillNode(), null, "nothing by itself before the field");
   page.byId("new-password").focus();
   await eventually(() => page.pillText().includes("Suggest a strong password"), "suggestion");
+  const shown = page.pillText();
+  assert.match(shown, /20 characters: letters, digits and symbols/);
   page.press("Suggest a strong password");
   const value = page.byId("new-password").value;
   assert.equal(value.length, 20);
+  assert.ok(!shown.includes(value), "the password is never drawn on the page");
   assert.equal(page.byId("confirm").value, value);
   // Once per page.
   page.byId("new-email").focus();
@@ -533,8 +536,10 @@ test("sign-in on a sign-up page: \"Generate a password\" in the list", async () 
     h("button", { type: "submit" }, "Valider")), fakeBackground());
   await eventually(() => page.pillNode(), "pill");
   page.press("Other logins");
+  const shown = page.pillText();
   page.press("Generate a password");
   assert.equal(page.byId("fresh").value.length, 20);
+  assert.ok(!shown.includes(page.byId("fresh").value), "described, not shown");
   assert.equal(page.byId("current").value, "");
 });
 
