@@ -54,6 +54,7 @@ use verrou_vaultwarden::{
 uniffi::setup_scaffolding!();
 
 mod activity;
+mod alias;
 mod attachments;
 mod autofill;
 mod bulk;
@@ -73,6 +74,7 @@ mod templates;
 mod terminal;
 mod watchtower;
 
+pub use alias::{EmailAliasSettings, normalize_alias_domain};
 pub use bulk::{
     BulkItemAction, BulkProgress, BulkResult, ItemSelection, SelectionGesture, select_items,
 };
@@ -981,6 +983,7 @@ pub struct VaultSession {
     match_settings: RwLock<verrou_core::matching::DeviceMatchSettings>,
     /// Account's equivalent domains, from the last sync.
     equivalent_domains: RwLock<Vec<Vec<String>>>,
+    alias: RwLock<verrou_core::alias::AliasSettings>,
 }
 
 /// Pending approval requests: the app answers with
@@ -1048,6 +1051,7 @@ impl VaultSession {
             usage: Mutex::new(verrou_core::usage::UsageLog::default()),
             match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
             equivalent_domains: RwLock::new(Vec::new()),
+            alias: RwLock::new(verrou_core::alias::AliasSettings::default()),
         })
     }
 
@@ -1863,6 +1867,7 @@ impl VaultSession {
             usage: Mutex::new(verrou_core::usage::UsageLog::default()),
             match_settings: RwLock::new(verrou_core::matching::DeviceMatchSettings::default()),
             equivalent_domains: RwLock::new(Vec::new()),
+            alias: RwLock::new(verrou_core::alias::AliasSettings::default()),
         })
     }
 
@@ -2572,6 +2577,13 @@ struct SessionBackend {
 impl Backend for SessionBackend {
     fn is_unlocked(&self) -> bool {
         self.session.upgrade().is_some_and(|s| s.is_unlocked())
+    }
+
+    fn alias_settings(&self) -> verrou_core::alias::AliasSettings {
+        self.session
+            .upgrade()
+            .map(|s| s.alias_settings())
+            .unwrap_or_default()
     }
 
     fn suggestions(&self, page_url: &str) -> Option<Vec<Suggestion>> {
