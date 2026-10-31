@@ -29,9 +29,9 @@ enum InvitationHelp {
     static func nextSteps(email: String?, server: String?, hasAccount: Bool?) -> [String] {
         let where_ = host(server).map { " (\($0))" } ?? ""
         let accept = switch hasAccount {
-        case true?: String(localized: "The person accepts: in Verrou, “Join an organization” by pasting the link, or in the web vault.")
-        case false?: String(localized: "The person creates their account with this link (in Verrou: “Create an account”), which accepts the invitation.")
-        case nil: String(localized: "The person accepts with this link: “Join an organization” if they have an account, otherwise “Create an account”.")
+        case true?: String(localized: "The person accepts with this link: in Verrou on a Mac, “Join a Shared Vault…”, or in the web vault.")
+        case false?: String(localized: "The person creates their account with this link, which accepts the invitation: in Verrou on a Mac, “Create an Account”, or in the web vault.")
+        case nil: String(localized: "The person accepts with this link, in Verrou on a Mac or in the web vault: “Join a Shared Vault…” if they have an account, otherwise “Create an Account”.")
         }
         return [
             String(localized: "The server\(where_) sends an email to \(email ?? String(localized: "each address")), subject “Join …”. If it doesn't arrive: spam, then “Resend invitation”."),
