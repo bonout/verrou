@@ -189,6 +189,7 @@ final class AppModel {
 
     func quickAccessOpened() {
         quickAccessOpenings += 1
+        noteActivity()
     }
 
     // Editing
@@ -204,7 +205,15 @@ final class AppModel {
         let draft: ItemDraft
         /// Direct creation in a shared vault (suggested from the sidebar).
         var destination: SharedDestination?
+        var original: ItemDraft?
+
+        var baseline: ItemDraft { original ?? draft }
     }
+
+    @ObservationIgnored var editorDraft: ItemDraft?
+    @ObservationIgnored var editorDestination: SharedDestination?
+    @ObservationIgnored private var parkedEditor: Editor?
+    @ObservationIgnored private var parkedComposer: SendsModel.Composer?
 
     /// Import from another manager in progress (see `ImportFlow.swift`).
     var importFlow: ImportFlow?
@@ -493,6 +502,8 @@ final class AppModel {
 
     func logout() {
         lock()
+        parkedEditor = nil
+        parkedComposer = nil
         endRemoteSession(lock: true)
         remote?.clearEscrow()
         try? session.logout()
@@ -608,6 +619,7 @@ final class AppModel {
             pendingActivityRoute = nil
             openActivity(route)
         }
+        reopenParkedEditors()
         guard mode == .vaultwarden else { return }
         syncLoop?.cancel()
         syncLoop = Task { [weak self] in
@@ -745,7 +757,9 @@ final class AppModel {
         changingPassword = nil
         watchtower.reset()
         // The vault window stays mounted behind the lock screen: nothing
-        // open must survive there.
+        // open must survive there. An open editor or send is set aside and
+        // comes back after unlocking.
+        parkEditors()
         editor = nil
         editorError = nil
         // An enrollment in progress needs the vault open.
@@ -762,6 +776,31 @@ final class AppModel {
         lockState = .locked
         endRemoteSession(lock: false)
         updateSiteIcons()
+    }
+
+    private func parkEditors() {
+        if let editor {
+            parkedEditor = Editor(itemID: editor.itemID, draft: editorDraft ?? editor.draft,
+                                  destination: editorDraft == nil ? editor.destination : editorDestination,
+                                  original: editor.baseline)
+        }
+        editorDraft = nil
+        editorDestination = nil
+        if let composer = sends.composer {
+            parkedComposer = sends.parked(composer)
+        }
+    }
+
+    private func reopenParkedEditors() {
+        if let parked = parkedEditor, mode == .vaultwarden {
+            editorError = nil
+            editor = parked
+        }
+        if let parked = parkedComposer, sendsAvailable {
+            sends.composer = parked
+        }
+        parkedEditor = nil
+        parkedComposer = nil
     }
 
     // MARK: Sync
@@ -1494,6 +1533,7 @@ final class AutoLock {
     // Set on the main actor, released in deinit (nonisolated).
     nonisolated(unsafe) private var timer: Timer?
     nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var eventMonitor: Any?
     private let onLock: @MainActor () -> Void
 
     init(onLock: @escaping @MainActor () -> Void) {
@@ -1501,6 +1541,17 @@ final class AutoLock {
         timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.check() }
         }
+        eventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]
+        ) { [weak self] event in
+            MainActor.assumeIsolated { self?.touch() }
+            return event
+        }
+        observers.append(NotificationCenter.default.addObserver(
+            forName: NSMenu.didBeginTrackingNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.touch() }
+        })
         let center = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification, NSWorkspace.sessionDidResignActiveNotification] {
             observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -1524,9 +1575,11 @@ final class AutoLock {
 
     deinit {
         timer?.invalidate()
+        if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
         observers.forEach {
             NSWorkspace.shared.notificationCenter.removeObserver($0)
             DistributedNotificationCenter.default().removeObserver($0)
+            NotificationCenter.default.removeObserver($0)
         }
     }
 }
