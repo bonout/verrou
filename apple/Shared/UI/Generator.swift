@@ -47,6 +47,10 @@ enum PassphraseSeparatorChoice: String, CaseIterable {
 enum PassphraseLanguageChoice: String, CaseIterable {
     case french, english
 
+    static var preferred: PassphraseLanguageChoice {
+        Locale.current.language.languageCode == .french ? .french : .english
+    }
+
     var label: String {
         switch self {
         case .french: "Français"
