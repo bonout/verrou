@@ -15,6 +15,7 @@ struct EditItemView: View {
     /// Exact entropy of the last generated passphrase.
     @State private var generated: (value: String, bits: Double)?
     @State private var confirmTrash = false
+    @State private var confirmDiscard = false
     @FocusState private var titleFocused: Bool
 
     init(editor: PhoneModel.Editor) {
@@ -24,6 +25,10 @@ struct EditItemView: View {
     }
 
     private var isNew: Bool { editor.itemID == nil }
+
+    private var hasChanges: Bool {
+        draft != editor.original || destination != editor.originalDestination
+    }
 
     var body: some View {
         NavigationStack {
@@ -71,7 +76,9 @@ struct EditItemView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { model.editor = nil }
+                    Button("Cancel") {
+                        if hasChanges { confirmDiscard = true } else { model.editor = nil }
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if model.editorBusy {
@@ -98,8 +105,15 @@ struct EditItemView: View {
                     if let id = editor.itemID { Task { await model.trash(id) } }
                 }
             } message: {
-                Text("The item can be restored from the trash for 30 days.")
+                Text("Can be restored from the trash")
             }
+            .confirmationDialog("Discard changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Discard Changes", role: .destructive) { model.editor = nil }
+                Button("Keep Editing", role: .cancel) {}
+            }
+            .interactiveDismissDisabled(model.editorBusy || hasChanges)
+            .onChange(of: draft, initial: true) { keepProgress() }
+            .onChange(of: destination) { keepProgress() }
             .sheet(item: scanBinding) { flow in
                 OTPScanSheet(flow: flow)
             }
@@ -119,44 +133,49 @@ struct EditItemView: View {
 
     @ViewBuilder private var loginSections: some View {
         Section {
-            TextField("Username", text: loginText(\.username), prompt: Text("email or user name"))
-                .textContentType(.username)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            HStack(spacing: 10) {
-                Group {
-                    if showPassword {
-                        TextField("Password", text: loginText(\.password))
-                            .font(.system(.body, design: .monospaced))
-                    } else {
-                        SecureField("Password", text: loginText(\.password))
+            CaptionedField("Username") {
+                TextField("Username", text: loginText(\.username), prompt: Text("email or user name"))
+                    .textContentType(.username)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
+            CaptionedField("Password") {
+                HStack(spacing: 2) {
+                    Group {
+                        if showPassword {
+                            TextField("Password", text: loginText(\.password))
+                                .font(.system(.body, design: .monospaced))
+                        } else {
+                            SecureField("Password", text: loginText(\.password))
+                        }
+                    }
+                    .textContentType(.newPassword)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    FieldIconButton(symbol: showPassword ? "eye.slash" : "eye", label: showPassword ? "Hide" : "Show") {
+                        showPassword.toggle()
+                    }
+                    FieldIconButton(symbol: "doc.on.doc", label: "Copy password") {
+                        if let password = draft.login?.password, !password.isEmpty {
+                            model.copy(password, label: String(localized: "Password"), secret: true)
+                        }
+                    }
+                    .disabled((draft.login?.password ?? "").isEmpty)
+                    .accessibilityIdentifier("edit-copy-password")
+                    FieldIconButton(symbol: "wand.and.stars", label: "Generate a password") {
+                        showGenerator = true
                     }
                 }
-                .textContentType(.newPassword)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                Button {
-                    showPassword.toggle()
-                } label: {
-                    Image(systemName: showPassword ? "eye.slash" : "eye")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(showPassword ? "Hide" : "Show")
-                Button {
-                    showGenerator = true
-                } label: {
-                    Image(systemName: "wand.and.stars")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Generate a password")
             }
             if let password = draft.login?.password, !password.isEmpty {
                 StrengthMeter(password: password, bits: generated?.value == password ? generated?.bits : nil)
             }
-            TextField("One-time code", text: loginText(\.totp), prompt: Text("seed or otpauth:// link"))
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("edit-totp")
+            CaptionedField("One-time code") {
+                TextField("One-time code", text: loginText(\.totp), prompt: Text("setup key or otpauth:// link"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("edit-totp")
+            }
             // Code preview: the entered or scanned seed is readable.
             if let value = draft.login?.totp, !value.isEmpty {
                 if (try? totpPreview(value: value, unixTime: 0)) != nil {
@@ -165,9 +184,14 @@ struct EditItemView: View {
                     }
                     .font(.callout)
                 } else {
-                    Label("Unreadable seed (Base32 or otpauth:// link expected)", systemImage: "exclamationmark.triangle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
+                    Label {
+                        Text("Unreadable setup key (Base32 or otpauth:// link expected)")
+                            .foregroundStyle(.secondary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    .font(.footnote)
                 }
             }
             Button("Scan a QR code", systemImage: "qrcode.viewfinder") {
@@ -356,6 +380,10 @@ struct EditItemView: View {
         }
     }
 
+    private func keepProgress() {
+        model.editorProgress = PhoneModel.EditorProgress(editorID: editor.id, draft: draft, destination: destination)
+    }
+
     private func save() {
         // Sites left empty don't go, nor fields with neither name nor value.
         draft.login?.dropEmptyURLs()
@@ -478,12 +506,10 @@ private struct PhoneCustomFieldsSection: View {
                 } else {
                     SecureField("Value", text: valueBinding(index))
                 }
-                Button {
+                FieldIconButton(symbol: shown.contains(index) ? "eye.slash" : "eye",
+                                label: shown.contains(index) ? "Hide" : "Show") {
                     if shown.contains(index) { shown.remove(index) } else { shown.insert(index) }
-                } label: {
-                    Image(systemName: shown.contains(index) ? "eye.slash" : "eye")
                 }
-                .buttonStyle(.borderless)
             }
         case .boolean:
             Toggle("Checked", isOn: Binding(
@@ -522,5 +548,41 @@ private struct PhoneCustomFieldsSection: View {
     private func valueBinding(_ index: Int) -> Binding<String> {
         Binding(get: { fields.indices.contains(index) ? fields[index].value ?? "" : "" },
                 set: { if fields.indices.contains(index) { fields[index].value = $0.isEmpty ? nil : $0 } })
+    }
+}
+
+private struct CaptionedField<Field: View>: View {
+    let title: LocalizedStringKey
+    let field: Field
+
+    init(_ title: LocalizedStringKey, @ViewBuilder field: () -> Field) {
+        self.title = title
+        self.field = field()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            field
+        }
+    }
+}
+
+private struct FieldIconButton: View {
+    let symbol: String
+    let label: LocalizedStringKey
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(label)
     }
 }
