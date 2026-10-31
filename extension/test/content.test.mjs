@@ -21,6 +21,9 @@ test("the pill comes once with a login for the site, without a menu under the fi
   const background = fakeBackground();
   const page = openPage(loginForm, background);
   await eventually(() => page.pillText().includes("Sign in"), "pill");
+  const live = page.host("verrou-pill").shadow.querySelector("[role=status]");
+  assert.equal(live.getAttribute("aria-live"), "polite");
+  await eventually(() => live.textContent === "Verrou: connect.maif.fr, camille@exemple.fr", "announced");
   const text = page.pillText();
   assert.match(text, /connect\.maif\.fr/);
   assert.match(text, /camille@exemple\.fr/);
@@ -678,6 +681,27 @@ test("the save banner in the same corner as the pill", async () => {
   assert.equal(background.sent("confirmSave").length, 0, "made-up click: nothing");
   page.press("Not now");
   await eventually(() => !banner(), "banner closed");
+});
+
+test("the save banner is announced, and \"Saved in Verrou\" stays until read or closed", async () => {
+  const background = fakeBackground({ items: [] });
+  const handle = background.handle;
+  background.handle = async (message) => (message.kind === "pendingSave"
+    ? { action: "save", username: "camille@exemple.fr", site: "connect.maif.fr" }
+    : handle(message));
+  const page = openPage(loginForm, background);
+  const banner = () => page.host("verrou-pill")?.shadow?.querySelector(".banner");
+  const live = () => page.host("verrou-pill")?.shadow?.querySelector("[role=status]");
+  await eventually(banner, "banner");
+  await eventually(() => live()?.textContent === "Verrou: Save in Verrou?, camille@exemple.fr · connect.maif.fr", "offer announced");
+  await sleep(350);
+  page.press("Save");
+  await eventually(() => banner()?.textContent.includes("Saved in Verrou"), "saved");
+  await eventually(() => live()?.textContent === "Verrou: Saved in Verrou, Verrou", "confirmation announced");
+  await sleep(2700);
+  assert.match(banner()?.textContent ?? "", /Saved in Verrou/, "still there after 2.5 s");
+  page.press("✕");
+  await eventually(() => !banner(), "closed by hand");
 });
 
 // MARK: Firefox

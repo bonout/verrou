@@ -469,6 +469,8 @@
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const SITE = location.hostname.replace(/^www\./, "");
+  const ANNOUNCE_DELAY_MS = 150;
+  const NOTICE_MS = 6000;
 
   // MARK: Shared style
 
@@ -543,6 +545,10 @@
     .field { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 6px; }
     .field .icon { width: 26px; height: 26px; border-radius: 8px; transform: scale(var(--scale, .75)); }
     .field .icon svg { width: 16px; height: 16px; }
+    .announce {
+      position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+      overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+    }
     @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
     @media (prefers-reduced-motion: reduce) {
       .pill, .banner { animation: none; }
@@ -696,12 +702,19 @@
     host: null,
     root: null,
     stack: null,
+    live: null,
+    said: null,
+    saying: null,
 
     ensure() {
       if (this.host) return;
       ({ host: this.host, root: this.root } = shadowHost("verrou-pill"));
       this.stack = div("stack");
-      this.root.append(this.stack);
+      this.live = div("announce");
+      this.live.setAttribute("role", "status");
+      this.live.setAttribute("aria-live", "polite");
+      this.live.setAttribute("aria-atomic", "true");
+      this.root.append(this.stack, this.live);
       // A click in the pill doesn't take the focus from the page.
       this.root.addEventListener("mousedown", (event) => event.preventDefault());
       this.root.addEventListener("keydown", (event) => pillKey(event));
@@ -721,7 +734,19 @@
 
     // Nothing left to show: the host leaves the page.
     sync() {
-      if (this.host && !this.stack.children.length) this.host.remove();
+      if (!this.host || this.stack.children.length) return;
+      this.host.remove();
+      clearTimeout(this.saying);
+      this.live.textContent = "";
+      this.said = null;
+    },
+
+    announce(text) {
+      if (text === this.said) return;
+      this.said = text;
+      clearTimeout(this.saying);
+      this.live.textContent = "";
+      this.saying = setTimeout(() => { this.live.textContent = text; }, ANNOUNCE_DELAY_MS);
     },
   };
 
@@ -819,6 +844,7 @@
       this.node = area;
       // Rendered from the keyboard: the focus stays on the same button.
       if (focused) this.buttons().find((b) => b.getAttribute("data-key") === focused)?.focus();
+      ui.announce(t("announce", view.title, view.subtitle ?? ""));
     },
 
     buttons() {
@@ -1366,16 +1392,25 @@
     node: null,
     timer: null,
 
-    show(...nodes) {
+    show({ title, subtitle, closable = false }, ...nodes) {
       ui.attach();
       clearTimeout(this.timer);
       const box = div("banner");
       box.setAttribute("role", "dialog");
       box.setAttribute("aria-label", t("bannerLabel"));
-      box.append(...nodes);
+      const head = div("head");
+      head.append(icon(), textBlock(title, subtitle));
+      if (closable) {
+        const close = trustedButton("✕", "close", () => this.hide());
+        close.setAttribute("aria-label", t("close"));
+        close.setAttribute("title", t("close"));
+        head.append(close);
+      }
+      box.append(head, ...nodes);
       if (this.node?.isConnected) this.node.replaceWith(box);
       else ui.stack.append(box);
       this.node = box;
+      ui.announce(t("announce", title, subtitle));
     },
 
     hide(after = 0) {
@@ -1388,12 +1423,6 @@
     },
   };
 
-  function bannerHead(title, subtitle) {
-    const head = div("head");
-    head.append(icon(), textBlock(title, subtitle));
-    return head;
-  }
-
   function actions(...buttons) {
     const row = div("actions");
     row.append(...buttons);
@@ -1401,8 +1430,8 @@
   }
 
   function notify(message, detail = "Verrou") {
-    banner.show(bannerHead(message, detail));
-    banner.hide(2500);
+    banner.show({ title: message, subtitle: detail, closable: true });
+    banner.hide(NOTICE_MS);
   }
 
   async function dismissSave() {
@@ -1417,12 +1446,12 @@
     const who = `${offer.username || t("bannerNoUsername")} · ${offer.site}`;
     if (offer.action === "locked") {
       banner.show(
-        bannerHead(t("bannerSaveTitle"), who),
+        { title: t("bannerSaveTitle"), subtitle: who },
         actions(
           trustedButton(t("bannerNotNow"), "", dismissSave),
           trustedButton(t("unlock"), "primary", async () => {
             await send({ kind: "unlock" });
-            banner.show(bannerHead(t("unlockWait"), t("unlockHint")));
+            banner.show({ title: t("unlockWait"), subtitle: t("unlockHint") });
             waitThenOffer();
           }),
         ),
@@ -1431,7 +1460,7 @@
     }
     const update = offer.action === "update";
     banner.show(
-      bannerHead(update ? t("bannerUpdateTitle", offer.title) : t("bannerSaveTitle"), who),
+      { title: update ? t("bannerUpdateTitle", offer.title) : t("bannerSaveTitle"), subtitle: who },
       actions(
         trustedButton(t("bannerNever"), "quiet", async () => {
           await send({ kind: "neverSave" });
@@ -1439,7 +1468,7 @@
         }),
         trustedButton(t("bannerNotNow"), "", dismissSave),
         trustedButton(update ? t("bannerUpdate") : t("save"), "primary", async () => {
-          banner.show(bannerHead(t("saving"), offer.site));
+          banner.show({ title: t("saving"), subtitle: offer.site });
           const result = await send({ kind: "confirmSave" });
           if (result?.ok) notify(update ? t("bannerPasswordUpdated") : t("bannerSaved"));
           else notify(t("saveFailed"), result?.reason ?? t("verrouNotResponding"));
