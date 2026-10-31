@@ -44,6 +44,7 @@ final class AutoFillSetupDriver {
     static let username = "camille@verrou.test"
     static let sitePassword = "Verrou-AutoFill-42"
     static let codeSeed = "JBSWY3DPEHPK3PXP"
+    static let aliasDomain = "alias.example.com"
 
     private let model: PhoneModel
     private let config: Config
@@ -103,6 +104,7 @@ final class AutoFillSetupDriver {
                                   fields: [], template: nil)
             _ = try await model.session.createItem(draft: draft)
         }
+        try model.setAliasSettings(domain: Self.aliasDomain, includeSite: true)
         await model.syncNow()
         try await wait(30, "upload to the server") { model.pendingChanges == 0 }
         try await wait(30, "Face ID seal") { model.biometricEnrolled }
