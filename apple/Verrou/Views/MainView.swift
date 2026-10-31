@@ -94,15 +94,6 @@ struct MainView: View {
                     .help(model.canEdit ? "New login (⌘N)" : "Mock vault: read-only")
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    model.lock()
-                } label: {
-                    Label("Lock", systemImage: "lock")
-                }
-                .help("Lock the vault (⌃⌘L)")
-                .keyboardShortcut("l", modifiers: [.command, .control])
-            }
             // Actions of the selected item: always the same buttons, dimmed
             // when they don't apply. Here rather than in the detail, rebuilt
             // on each selection: the toolbar no longer flickers. Absent from
@@ -112,6 +103,14 @@ struct MainView: View {
                 if model.pane != .sends && model.pane != .emergency && model.pane != .members {
                     ItemToolbarActions()
                 }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.lock()
+                } label: {
+                    Label("Lock", systemImage: "lock")
+                }
+                .help("Lock the vault (⌃⌘L)")
             }
         }
         .overlay(alignment: .bottom) {
@@ -175,6 +174,9 @@ struct MainView: View {
             if !model.query.isEmpty { model.query = ""; return .handled }
             return .ignored
         }
+        .onChange(of: model.searchRequests) {
+            DispatchQueue.main.async { searchFocused = true }
+        }
     }
 }
 
@@ -207,7 +209,6 @@ private struct ItemToolbarActions: View {
             Label("Edit", systemImage: "pencil")
         }
         .help(item?.sharing?.readOnly == true ? "Shared read-only" : "Edit (⌘E)")
-        .keyboardShortcut("e", modifiers: .command)
         .disabled(!model.canModify(item) || item == nil || item?.state == .trashed)
         Button {
             if let item { model.openSharing(item.id) }
@@ -693,12 +694,6 @@ struct SearchField: View {
         .frame(height: 32)
         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused.wrappedValue ? Theme.focusRing(0.7) : Theme.border(0.2), lineWidth: focused.wrappedValue ? 1.5 : 1))
-        .background(
-            Button("") { focused.wrappedValue = true }
-                .keyboardShortcut("f", modifiers: .command)
-                .opacity(0)
-                .accessibilityHidden(true)
-        )
     }
 }
 
