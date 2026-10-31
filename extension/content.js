@@ -1046,7 +1046,7 @@
       title: SITE,
       subtitle: top ? top.username || "—" : kind === "otp" ? t("pillNoCode") : t("pillNoLogin"),
       primary: top ? { label: top.action, run: top.run } : null,
-      tab: t("pillOtherLogins"),
+      tab: rest.length ? t("pillOtherLogins") : t("pillMoreOptions"),
       others: [...rest, ...extras],
     };
   }

@@ -98,6 +98,9 @@
   "pillOtherLogins": {
     "message": "Autres identifiants"
   },
+  "pillMoreOptions": {
+    "message": "Plus d'options"
+  },
   "pillProtected": {
     "message": "« $TITLE$ » est protégé",
     "placeholders": {

@@ -73,6 +73,8 @@ test("no login for this site: nothing by itself; the field icon offers another l
   page.fire(icon, "click");
   await eventually(() => page.pillText().includes("Fill with another login"), "list open");
   assert.match(page.pillText(), /No login for this site/);
+  assert.match(page.pillText(), /More options/);
+  assert.doesNotMatch(page.pillText(), /Other logins/, "no other login to promise");
   page.press("Fill with another login");
   assert.equal(background.sent("openLinkSite").length, 1, "the extension's popup opens on the choice");
   assert.equal(page.pillNode(), null);
@@ -267,6 +269,15 @@ test("other logins: the list under the tab, and the choice of another one", asyn
   await eventually(() => page.byId("password").value, "fill");
   assert.equal(page.byId("email").value, "dominique@exemple.fr");
   assert.equal(page.byId("password").value, "mot-de-passe-dominique");
+});
+
+test("a single login: the tab offers \"More options\", not other logins", async () => {
+  const page = openPage(loginForm, fakeBackground({ items: [{ id: "camille", title: "MAIF", username: "camille@exemple.fr", has_totp: false }] }));
+  await eventually(() => page.pillText().includes("Sign in"), "pill");
+  assert.doesNotMatch(page.pillText(), /Other logins/);
+  page.press("More options");
+  assert.equal(page.button("More options").getAttribute("aria-expanded"), "true");
+  assert.match(page.pillText(), /Fill with another login…/);
 });
 
 test("protected item: the pill waits for the confirmation in Verrou", async () => {
