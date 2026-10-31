@@ -65,10 +65,10 @@
     "message": "aucun onglet"
   },
   "pairRefused": {
-    "message": "Appairage refusé dans Verrou."
+    "message": "Liaison refusée dans Verrou."
   },
   "pairBusy": {
-    "message": "Un appairage est déjà en cours : réessayez dans un instant."
+    "message": "Une liaison est déjà en cours : réessayez dans un instant."
   },
   "pairNoAnswer": {
     "message": "Verrou ne répond pas. Est-il installé, et « $SETTING$ » activé dans ses réglages ? ($DETAIL$)",
@@ -274,7 +274,7 @@
     "message": "Passkey enregistrée dans Verrou"
   },
   "popupPairing": {
-    "message": "Appairage…"
+    "message": "Liaison…"
   },
   "popupCheckCode": {
     "message": "Vérifiez que Verrou affiche le même code, puis acceptez :"
