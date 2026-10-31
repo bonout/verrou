@@ -16,6 +16,7 @@ final class QuickAccessController {
     /// type in the frontmost app.
     var autofill: UniversalAutofill?
     var generator: GeneratorWindow?
+    private var previousApp: NSRunningApplication?
 
     init(model: AppModel) {
         self.model = model
@@ -38,6 +39,8 @@ final class QuickAccessController {
     /// `anchor`: center on this rectangle rather than on the screen (the demo
     /// uses it so the window fits in the capture).
     func show(query: String = "", anchor: NSRect? = nil) {
+        let front = NSWorkspace.shared.frontmostApplication
+        previousApp = front == .current ? nil : front
         let panel = self.panel ?? makePanel()
         self.panel = panel
         model.quickQuery = query
@@ -62,6 +65,14 @@ final class QuickAccessController {
         autofill?.target = nil
     }
 
+    func closeAndReturn() {
+        close()
+        guard let app = previousApp, !app.isTerminated else { return }
+        previousApp = nil
+        NSApp.yieldActivation(to: app)
+        app.activate()
+    }
+
     private func makePanel() -> QuickAccessPanel {
         let panel = QuickAccessPanel(
             contentRect: NSRect(x: 0, y: 0, width: 680, height: 440),
@@ -83,6 +94,7 @@ final class QuickAccessController {
             self.close()
         }
         let root = QuickAccessView(autofill: autofill, close: { [weak self] in self?.close() },
+                                   closeAndReturn: { [weak self] in self?.closeAndReturn() },
                                    generate: { [weak self] in
                                        self?.close()
                                        self?.generator?.show()
@@ -149,6 +161,7 @@ struct QuickAccessView: View {
     @Environment(AppModel.self) private var model
     var autofill: UniversalAutofill?
     let close: () -> Void
+    var closeAndReturn: () -> Void = {}
     var generate: () -> Void = {}
     @FocusState private var focused: Bool
     @State private var selected = 0
@@ -200,7 +213,9 @@ struct QuickAccessView: View {
                     Divider()
                     if let current {
                         VStack(spacing: 0) {
-                            QuickDetail(summary: current)
+                            QuickDetail(summary: current, copyUsername: copyUsername, copyPassword: {
+                                if current.category == .login { copyThenReturn(current) { model.copyPassword(of: current.id) } }
+                            }, copyCode: copyCode)
                             if let autofill, let target = autofill.target {
                                 AutofillLinkRow(autofill: autofill, target: target, item: current)
                             }
@@ -283,33 +298,53 @@ struct QuickAccessView: View {
     }
 
     private var resultsList: some View {
-        ScrollView {
-            VStack(spacing: 2) {
-                ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
-                    let summary = hit.summary
-                    HStack(spacing: 11) {
-                        ItemIcon(summary: summary, size: 30)
-                        VStack(alignment: .leading, spacing: 1) {
-                            HighlightedText(text: summary.title, highlights: hit.highlights,
-                                            tint: index == selected ? nil : Theme.accent).lineLimit(1)
-                            Text(summary.displaySubtitle).font(.caption).foregroundStyle(index == selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.secondary)).lineLimit(1)
-                        }
-                        Spacer()
-                        if summary.hasTotp {
-                            Image(systemName: "clock.badge.checkmark").font(.caption)
-                                .accessibilityLabel("One-time code")
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                resultRows
+            }
+            .onChange(of: selected) { _, index in
+                if hits.indices.contains(index) { proxy.scrollTo(hits[index].id) }
+            }
+        }
+    }
+
+    private var resultRows: some View {
+        VStack(spacing: 2) {
+            ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
+                let summary = hit.summary
+                HStack(spacing: 11) {
+                    ItemIcon(summary: summary, size: 30)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HighlightedText(text: summary.title, highlights: hit.highlights,
+                                        tint: index == selected ? nil : Theme.accent).lineLimit(1)
+                        Text(summary.displaySubtitle).font(.caption).foregroundStyle(index == selected ? AnyShapeStyle(Theme.onAccentSecondary()) : AnyShapeStyle(.secondary)).lineLimit(1)
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .foregroundStyle(index == selected ? Color.white : Color.primary)
-                    .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
-                    .contentShape(Rectangle())
-                    .onTapGesture { selected = index }
+                    Spacer()
+                    if summary.hasTotp {
+                        Image(systemName: "clock.badge.checkmark").font(.caption)
+                            .accessibilityLabel("One-time code")
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .foregroundStyle(index == selected ? Color.white : Color.primary)
+                .background(index == selected ? Theme.accent : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    selected = index
+                    primaryAction()
+                }
+                .simultaneousGesture(TapGesture().onEnded { selected = index })
+                .id(hit.id)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(index == selected ? [.isButton, .isSelected] : .isButton)
+                .accessibilityAction {
+                    selected = index
+                    primaryAction()
                 }
             }
-            .padding(8)
         }
+        .padding(8)
     }
 
     private var lockedState: some View {
@@ -328,8 +363,7 @@ struct QuickAccessView: View {
                 // Without Touch ID, the password is entered in the main window.
                 Button("Open Verrou") {
                     close()
-                    NSApp.activate()
-                    NSApp.windows.first { !($0 is NSPanel) && $0.canBecomeMain }?.makeKeyAndOrderFront(nil)
+                    model.showMainWindow()
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -348,12 +382,12 @@ struct QuickAccessView: View {
             return
         }
         if item.category == .login {
-            model.copyPassword(of: item.id)
+            copyThenReturn(item) { model.copyPassword(of: item.id) }
         } else {
+            close()
             model.selection = item.id
-            NSApp.windows.first { $0.identifier?.rawValue == "main" }?.makeKeyAndOrderFront(nil)
+            model.showMainWindow()
         }
-        close()
     }
 
     private func fillAndLink() {
@@ -363,19 +397,35 @@ struct QuickAccessView: View {
 
     private func copyUsername() {
         guard let item = current, item.category == .login else { return }
-        model.copy(item.subtitle, label: String(localized: "Username"), secret: false)
+        copyThenReturn(item) { model.copyUsername(of: item.id) }
     }
 
     private func copyCode() {
         guard let item = current, item.hasTotp else { return }
-        model.copyCode(of: item.id)
-        close()
+        copyThenReturn(item) { model.copyCode(of: item.id) }
+    }
+
+    private func copyThenReturn(_ item: ItemSummary, copy: () -> Void) {
+        let before = model.toast?.id
+        let protected = model.session.needsConfirmation(id: item.id)
+        copy()
+        if let toast = model.toast, toast.id != before {
+            AutofillHUD.show(toast.message, detail: toast.detail, failure: toast.failure)
+        }
+        if protected {
+            close()
+        } else {
+            closeAndReturn()
+        }
     }
 }
 
 struct QuickDetail: View {
     @Environment(AppModel.self) private var model
     let summary: ItemSummary
+    var copyUsername: () -> Void = {}
+    var copyPassword: () -> Void = {}
+    var copyCode: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -387,11 +437,13 @@ struct QuickDetail: View {
                 }
             }
             if summary.category == .login {
-                labeled("Username") { Text(summary.subtitle).lineLimit(1) }
-                labeled("Password") { MaskedText() }
+                labeled("Username", copy: summary.subtitle.isEmpty ? nil : copyUsername, help: "Copy Username") {
+                    Text(summary.subtitle).lineLimit(1)
+                }
+                labeled("Password", copy: copyPassword, help: "Copy Password") { MaskedText() }
             }
             if summary.hasTotp {
-                labeled("One-time code") {
+                labeled("One-time code", copy: copyCode, help: "Copy One-Time Code") {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         if let code = model.totpCode(of: summary.id, at: context.date) {
                             TotpCodeView(code: code, size: 18)
@@ -407,10 +459,17 @@ struct QuickDetail: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
-    private func labeled(_ label: LocalizedStringKey, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
-            content()
+    private func labeled(_ label: LocalizedStringKey, copy: (() -> Void)?, help: LocalizedStringKey,
+                         @ViewBuilder content: () -> some View) -> some View {
+        HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label).font(.caption).foregroundStyle(.secondary)
+                content()
+            }
+            Spacer(minLength: 6)
+            if let copy {
+                IconButton(symbol: "doc.on.doc", help: help, action: copy)
+            }
         }
     }
 }
