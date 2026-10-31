@@ -64,6 +64,42 @@ final class PhoneModel {
         let draft: ItemDraft
         /// Direct creation in a shared collection.
         var destination: SharedDestination?
+        let original: ItemDraft
+        let originalDestination: SharedDestination?
+
+        init(itemID: String?, draft: ItemDraft, destination: SharedDestination? = nil) {
+            self.init(itemID: itemID, draft: draft, destination: destination, original: draft,
+                      originalDestination: destination)
+        }
+
+        private init(itemID: String?, draft: ItemDraft, destination: SharedDestination?, original: ItemDraft,
+                     originalDestination: SharedDestination?) {
+            self.itemID = itemID
+            self.draft = draft
+            self.destination = destination
+            self.original = original
+            self.originalDestination = originalDestination
+        }
+
+        func resumed(_ progress: EditorProgress?) -> Editor {
+            guard let progress, progress.editorID == id else {
+                return Editor(itemID: itemID, draft: draft, destination: destination, original: original,
+                              originalDestination: originalDestination)
+            }
+            return Editor(itemID: itemID, draft: progress.draft, destination: progress.destination, original: original,
+                          originalDestination: originalDestination)
+        }
+    }
+
+    struct EditorProgress {
+        let editorID: UUID
+        var draft: ItemDraft
+        var destination: SharedDestination?
+    }
+
+    struct UndoAction {
+        let toastID: UUID
+        let perform: @MainActor () async -> Void
     }
 
     /// Master password prompt for a protected item, when Face ID is not
@@ -161,7 +197,10 @@ final class PhoneModel {
     var editor: Editor?
     var editorBusy = false
     var editorError: String?
+    @ObservationIgnored var editorProgress: EditorProgress?
+    @ObservationIgnored private var suspendedEditor: Editor?
     var toast: Toast?
+    var undo: UndoAction?
     var reprompt: RepromptRequest?
     var qrSheet: QRSheet?
     /// Reading a two-factor authentication QR code (sheet open).
@@ -436,7 +475,9 @@ final class PhoneModel {
         case .unlocked(let failures):
             twoFactorOptions = nil
             reloginRequired = false
+            let previous = account
             account = session.account()
+            if previous?.email != account?.email || previous?.server != account?.server { suspendedEditor = nil }
             // Signing in again changes the vault key: the old Face ID is no longer valid.
             vault.removeBiometrics()
             biometricEnrolled = false
@@ -454,6 +495,7 @@ final class PhoneModel {
     /// Forgets the account: cache, offline queue, Face ID. The server keeps everything.
     func logout() {
         lock()
+        suspendedEditor = nil
         identitiesTask?.cancel()
         Task { await CredentialIdentities.clear() }
         // The codes pinned for the widgets leave with the account.
@@ -589,6 +631,10 @@ final class PhoneModel {
         }
         lockState = .unlocked
         updateSiteIcons()
+        if let suspended = suspendedEditor {
+            suspendedEditor = nil
+            if canEdit { editor = suspended }
+        }
         if failures > 0 {
             toast = Toast(message: failures > 1 ? String(localized: "\(failures) unreadable items") : String(localized: "\(failures) unreadable item"),
                           detail: String(localized: "The Bitwarden SDK could not decrypt them"), failure: true)
@@ -627,7 +673,9 @@ final class PhoneModel {
         breaches = nil
         breachError = nil
         passkeyAudit.reset()
+        if let editor { suspendedEditor = editor.resumed(editorProgress) }
         editor = nil
+        editorProgress = nil
         editorError = nil
         qrSheet = nil
         otpScan = nil
@@ -1201,8 +1249,8 @@ final class PhoneModel {
         switch kind {
         case .login:
             draft = ItemDraft(name: "", folderId: nil, favorite: false, notes: nil,
-                              login: LoginFields(username: nil, password: generatePassword(length: 20, digits: true, symbols: true),
-                                                 totp: nil, urls: []),
+                              login: LoginFields(username: nil, password: Self.generatedWithSavedSettings(),
+                                                 totp: nil, urls: [""]),
                               fields: [], template: nil)
         case .note:
             draft = ItemDraft(name: "", folderId: nil, favorite: false, notes: nil, login: nil, fields: [], template: nil)
@@ -1220,6 +1268,28 @@ final class PhoneModel {
         }
         draft.folderId = folderID
         editor = Editor(itemID: nil, draft: draft, destination: destination)
+    }
+
+    static func generatedWithSavedSettings() -> String {
+        let defaults = UserDefaults.standard
+        let mode = defaults.string(forKey: "generatorMode").flatMap(GeneratorMode.init(rawValue:)) ?? .password
+        switch mode {
+        case .password:
+            let length = defaults.object(forKey: "generatorLength") as? Double ?? 20
+            return generatePassword(length: UInt32(length), digits: defaults.object(forKey: "generatorDigits") as? Bool ?? true,
+                                    symbols: defaults.object(forKey: "generatorSymbols") as? Bool ?? true)
+        case .passphrase:
+            let words = defaults.object(forKey: "generatorWords") as? Double ?? 5
+            let separator = defaults.string(forKey: "generatorSeparator").flatMap(PassphraseSeparatorChoice.init(rawValue:))
+                ?? .hyphen
+            let language = defaults.string(forKey: "generatorLanguage").flatMap(PassphraseLanguageChoice.init(rawValue:))
+                ?? .preferred
+            return generatePassphrase(settings: PassphraseSettings(
+                words: UInt32(words), separator: separator.ffi,
+                capitalize: defaults.object(forKey: "generatorCapitalize") as? Bool ?? false,
+                includeNumber: defaults.object(forKey: "generatorNumber") as? Bool ?? false,
+                language: language.ffi)).value
+        }
     }
 
     func edit(_ itemID: String) async {

@@ -184,9 +184,17 @@ struct NewSendSheet: View {
     @State private var limitAccess = false
     @State private var maxAccess = 1
     @State private var password = ""
+    @State private var confirmDiscard = false
+    private let original: SendFields
 
     init(composer: SendComposer) {
         _composer = State(initialValue: composer)
+        original = composer.fields
+    }
+
+    private var hasChanges: Bool {
+        model.sharing.createdLink == nil
+            && (composer.fields != original || days != 7 || limitAccess || !password.isEmpty)
     }
 
     var body: some View {
@@ -242,7 +250,11 @@ struct NewSendSheet: View {
                 if model.sharing.createdLink != nil {
                     ToolbarItem(placement: .confirmationAction) { Button("OK") { dismiss() } }
                 } else {
-                    ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") {
+                            if hasChanges { confirmDiscard = true } else { dismiss() }
+                        }
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         if model.sharing.busy {
                             ProgressView()
@@ -255,7 +267,12 @@ struct NewSendSheet: View {
                     }
                 }
             }
+            .confirmationDialog("Discard changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
+                Button("Discard Changes", role: .destructive) { dismiss() }
+                Button("Keep Editing", role: .cancel) {}
+            }
         }
+        .interactiveDismissDisabled(hasChanges || model.sharing.busy)
         .onDisappear { model.sharing.createdLink = nil }
     }
 

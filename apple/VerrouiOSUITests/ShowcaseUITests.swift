@@ -259,6 +259,8 @@ final class ShowcaseUITests: XCTestCase {
         app.typeText(owner.email + "\n")
         shot("10-edit")
         app.buttons[L("Cancel")].firstMatch.tap()
+        let discard = app.buttons[L("Discard Changes")].firstMatch
+        if discard.waitForExistence(timeout: 3) { discard.tap() }
         // iOS offers to save the generated password: not this time.
         let later = app.buttons[L("Not Now")].firstMatch
         if later.waitForExistence(timeout: 3) { later.tap() }

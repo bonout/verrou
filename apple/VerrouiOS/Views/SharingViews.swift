@@ -451,7 +451,6 @@ struct SharingPresentations: ViewModifier {
             }
             .sheet(item: $sharing.sendComposer) { composer in
                 NewSendSheet(composer: composer)
-                    .interactiveDismissDisabled(model.sharing.busy)
             }
             .sheet(item: $sharing.sheet) { sheet in
                 Group {
