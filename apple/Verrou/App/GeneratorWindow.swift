@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 final class GeneratorWindow {
+    static let identifier = "generator"
     private let model: AppModel
     private var window: NSWindow?
 
@@ -25,6 +26,7 @@ final class GeneratorWindow {
         window.styleMask = [.titled, .closable]
         window.title = String(localized: "Generate Password")
         window.isReleasedWhenClosed = false
+        window.identifier = NSUserInterfaceItemIdentifier(Self.identifier)
         window.sharingType = .none
         window.center()
         return window

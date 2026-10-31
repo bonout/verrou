@@ -56,6 +56,7 @@ final class QuickAccessController {
     }
 
     func close() {
+        model.setSecretShown("quick", false)
         panel?.orderOut(nil)
         model.quickQuery = ""
         autofill?.target = nil
@@ -240,8 +241,10 @@ struct QuickAccessView: View {
             selected = 0
             focused = false
             Task { focused = true }
+            model.setSecretShown("quick", current?.hasTotp == true)
         }
         .onChange(of: model.quickQuery) { selected = 0 }
+        .onChange(of: current?.hasTotp == true, initial: true) { _, code in model.setSecretShown("quick", code) }
         // Unlocked from the window: the app's logins arrive.
         .onChange(of: model.lockState) { autofill?.refreshSuggestions() }
         .onKeyPress(.downArrow) { selected = min(selected + 1, max(hits.count - 1, 0)); return .handled }
