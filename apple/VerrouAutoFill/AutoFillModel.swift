@@ -35,6 +35,7 @@ final class AutoFillModel {
         case provide(ASCredentialRequest)
         /// Creation of a passkey.
         case register(ASPasskeyCredentialRequest)
+        case alias
         /// Nothing (configuration).
         case none
     }
@@ -54,6 +55,7 @@ final class AutoFillModel {
         case assertion(ASPasskeyAssertionCredential)
         case registration(ASPasskeyRegistrationCredential)
         case oneTimeCode(String)
+        case text(String)
         case cancel
         case failed(String)
     }
@@ -73,6 +75,9 @@ final class AutoFillModel {
     var actionError: String?
     var query = ""
     var confirmation: Confirmation?
+    var aliasSite = ""
+    private(set) var aliasSettings: EmailAliasSettings?
+    private(set) var alias = ""
 
     /// The site's logins (or codes), from most to least specific.
     private(set) var matches: [ItemSummary] = []
@@ -120,6 +125,7 @@ final class AutoFillModel {
         switch request {
         case .register: String(localized: "Save a passkey")
         case .oneTimeCodes: String(localized: "One-time codes")
+        case .alias: String(localized: "Email alias")
         default: "Verrou"
         }
     }
@@ -130,7 +136,7 @@ final class AutoFillModel {
         case .list(let services, let passkeys): passkeys?.rpID ?? services.first.map(Self.host)
         case .oneTimeCodes(let services): services.first.map(Self.host)
         case .register(let request): (request.credentialIdentity as? ASPasskeyCredentialIdentity)?.relyingPartyIdentifier
-        case .provide, .none: nil
+        case .provide, .alias, .none: nil
         }
     }
 
@@ -144,8 +150,25 @@ final class AutoFillModel {
     func start(_ request: Request) {
         Perf.mark("request at +\(Perf.msSinceLaunch) ms from launch")
         self.request = request
+        if case .alias = request {
+            aliasSettings = vault?.session.emailAliasSettings()
+            generateAlias()
+        }
         if phase == .ready { load() }
         offerRecentLogin()
+    }
+
+    var aliasUsesSite: Bool { aliasSettings?.includeSite ?? true }
+
+    func generateAlias() {
+        guard let session = vault?.session, aliasSettings?.domain != nil else { return }
+        let site = aliasUsesSite ? aliasSite.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        alias = (try? session.generateEmailAlias(uri: site, includeSite: site.isEmpty ? false : nil)) ?? ""
+    }
+
+    func insertAlias() {
+        guard !alias.isEmpty else { return }
+        finish(.text(alias))
     }
 
     /// The list of a site where a login was just filled (two-step form, the
@@ -253,7 +276,7 @@ final class AutoFillModel {
         case .list(_, let passkeys): passkeys != nil
         case .provide(let request): request.type != .password && !Self.isOneTimeCode(request)
         case .register: true
-        case .oneTimeCodes, .none: false
+        case .oneTimeCodes, .alias, .none: false
         }
     }
 
@@ -348,7 +371,7 @@ final class AutoFillModel {
             if let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity {
                 targets = (try? session.autofillPasskeyTargets(rpId: identity.relyingPartyIdentifier)) ?? []
             }
-        case .provide, .none:
+        case .provide, .alias, .none:
             break
         }
     }

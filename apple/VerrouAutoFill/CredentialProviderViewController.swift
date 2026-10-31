@@ -120,6 +120,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.start(.register(request))
     }
 
+    #if os(iOS)
+    @available(iOS 18.0, *)
+    override func prepareInterfaceForUserChoosingTextToInsert() {
+        model.start(.alias)
+    }
+    #endif
+
     override func prepareInterfaceForExtensionConfiguration() {
         model.start(.none)
     }
@@ -211,6 +218,16 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             } else {
                 cancel(.failed)
             }
+        case .text(let text):
+            #if os(iOS)
+            if #available(iOS 18.0, *) {
+                extensionContext.completeRequest(withTextToInsert: text)
+            } else {
+                cancel(.failed)
+            }
+            #else
+            cancel(.failed)
+            #endif
         case .cancel:
             cancel(.userCanceled)
         case .failed:
