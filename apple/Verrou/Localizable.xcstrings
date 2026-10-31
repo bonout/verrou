@@ -202,7 +202,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape l'identifiant, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour."
+            "value": "%@ dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape le nom d'utilisateur, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour."
           }
         },
         "de": {
@@ -11150,7 +11150,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Code affiché par « verrou link » : %@\n\nN'acceptez que si vous venez de lancer « verrou link » et qu'il affiche exactement ce code. Le terminal pourra ensuite chercher dans le coffre (titres, identifiants, sites), et demander un mot de passe, un code ou une signature SSH : chaque fois, Verrou vous demandera Touch ID."
+            "value": "Code affiché par « verrou link » : %@\n\nN'acceptez que si vous venez de lancer « verrou link » et qu'il affiche exactement ce code. Le terminal pourra ensuite chercher dans le coffre (titres, noms d'utilisateur, sites), et demander un mot de passe, un code ou une signature SSH : chaque fois, Verrou vous demandera Touch ID."
           }
         },
         "de": {
@@ -11878,7 +11878,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Identifiant de la console"
+            "value": "Nom d'utilisateur de la console"
           }
         },
         "de": {
@@ -12326,7 +12326,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copier l'identifiant"
+            "value": "Copier le nom d'utilisateur"
           }
         },
         "de": {
@@ -12578,7 +12578,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copier l'identifiant"
+            "value": "Copier le nom d'utilisateur"
           }
         },
         "de": {
@@ -14986,7 +14986,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif"
+            "value": "Coffre de démonstration"
           }
         },
         "de": {
@@ -15014,7 +15014,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif · données de démonstration"
+            "value": "Coffre de démonstration · données d'exemple"
           }
         },
         "de": {
@@ -19345,6 +19345,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Password nascosta"
+          }
+        }
+      }
+    },
+    "Hidden value": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valeur masquée"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verborgener Wert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valor oculto"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valore nascosto"
           }
         }
       }
@@ -24030,7 +24058,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ressemble à un élément existant (même site ou même titre, même identifiant). Remplacer garde l'ancien mot de passe dans l'historique de l'élément."
+            "value": "Ressemble à un élément existant (même site ou même titre, même nom d'utilisateur). Remplacer garde l'ancien mot de passe dans l'historique de l'élément."
           }
         },
         "de": {
@@ -25150,7 +25178,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif"
+            "value": "Coffre de démonstration"
           }
         },
         "de": {
@@ -25178,7 +25206,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif · données de démonstration"
+            "value": "Coffre de démonstration · données d'exemple"
           }
         },
         "de": {
@@ -25206,7 +25234,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif : aucun compte n'est relié en mode démonstration."
+            "value": "Coffre de démonstration : aucun compte n'est relié en mode démonstration."
           }
         },
         "de": {
@@ -25234,7 +25262,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif : lecture seule"
+            "value": "Coffre de démonstration : lecture seule"
           }
         },
         "de": {
@@ -27698,7 +27726,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun élément ne ressemble à un autre : ni site, ni titre, ni identifiant en commun."
+            "value": "Aucun élément ne ressemble à un autre : ni site, ni titre, ni nom d'utilisateur en commun."
           }
         },
         "de": {
@@ -28258,7 +28286,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun dans le coffre fictif."
+            "value": "Aucun dans le coffre de démonstration."
           }
         },
         "de": {
@@ -28286,7 +28314,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun dans le coffre fictif."
+            "value": "Aucun dans le coffre de démonstration."
           }
         },
         "de": {
@@ -34474,7 +34502,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Même site, même identifiant, même mot de passe : les copies sont cochées."
+            "value": "Même site, même nom d'utilisateur, même mot de passe : les copies sont cochées."
           }
         },
         "de": {
@@ -34704,7 +34732,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gesichert"
+            "value": "Gespeichert"
           }
         },
         "es": {
@@ -35594,7 +35622,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisir"
+            "value": "Sélectionner"
           }
         },
         "de": {
@@ -40410,7 +40438,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Le même compte, importé plusieurs fois : adresses, titres et identifiants comparés. Les copies certaines sont cochées."
+            "value": "Le même compte, importé plusieurs fois : adresses, titres et noms d'utilisateur comparés. Les copies certaines sont cochées."
           }
         },
         "de": {
@@ -41782,7 +41810,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Titres, identifiants, sites, étiquettes : sans majuscules ni accents."
+            "value": "Titres, noms d'utilisateur, sites, étiquettes : sans majuscules ni accents."
           }
         },
         "de": {
@@ -41978,7 +42006,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pour remplir l'identifiant et le mot de passe dans une autre app, autorisez Verrou dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis refaites le raccourci."
+            "value": "Pour remplir le nom d'utilisateur et le mot de passe dans une autre app, autorisez Verrou dans Réglages Système → Confidentialité et sécurité → Accessibilité, puis refaites le raccourci."
           }
         },
         "de": {
@@ -43714,7 +43742,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Identifiant"
+            "value": "Nom d'utilisateur"
           }
         },
         "de": {
@@ -44470,7 +44498,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Très ressemblants, mais une différence (mot de passe, identifiant manquant) : à confirmer."
+            "value": "Très ressemblants, mais une différence (mot de passe, nom d'utilisateur manquant) : à confirmer."
           }
         },
         "de": {
@@ -46934,7 +46962,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "autre identifiant"
+            "value": "autre nom d'utilisateur"
           }
         },
         "de": {
@@ -48418,7 +48446,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "sans identifiant"
+            "value": "sans nom d'utilisateur"
           }
         },
         "de": {
@@ -48586,7 +48614,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "un identifiant manquant"
+            "value": "un nom d'utilisateur manquant"
           }
         },
         "de": {
@@ -49062,7 +49090,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "même identifiant"
+            "value": "même nom d'utilisateur"
           }
         },
         "de": {
@@ -49510,7 +49538,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "l'identifiant"
+            "value": "le nom d'utilisateur"
           }
         },
         "de": {

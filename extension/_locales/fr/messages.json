@@ -174,7 +174,7 @@
     "message": "Verrou : enregistrement"
   },
   "bannerNoUsername": {
-    "message": "sans identifiant"
+    "message": "sans nom d'utilisateur"
   },
   "bannerSaveTitle": {
     "message": "Enregistrer dans Verrou ?"

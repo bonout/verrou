@@ -7062,7 +7062,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Identifiant de la console"
+            "value": "Nom d'utilisateur de la console"
           }
         },
         "de": {
@@ -7370,7 +7370,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copier l'identifiant"
+            "value": "Copier le nom d'utilisateur"
           }
         },
         "de": {
@@ -8574,7 +8574,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif"
+            "value": "Coffre de démonstration"
           }
         },
         "de": {
@@ -8602,7 +8602,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Coffre fictif · données de démonstration"
+            "value": "Coffre de démonstration · données d'exemple"
           }
         },
         "de": {
@@ -11197,6 +11197,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Password nascosta"
+          }
+        }
+      }
+    },
+    "Hidden value": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valeur masquée"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verborgener Wert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valor oculto"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valore nascosto"
           }
         }
       }
@@ -15462,7 +15490,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aucun dans le coffre fictif."
+            "value": "Aucun dans le coffre de démonstration."
           }
         },
         "de": {
@@ -19164,7 +19192,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gesichert"
+            "value": "Gespeichert"
           }
         },
         "es": {
@@ -19774,7 +19802,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choisir"
+            "value": "Sélectionner"
           }
         },
         "de": {
@@ -23134,7 +23162,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Titres, identifiants, sites, étiquettes : sans majuscules ni accents."
+            "value": "Titres, noms d'utilisateur, sites, étiquettes : sans majuscules ni accents."
           }
         },
         "de": {
@@ -24002,7 +24030,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Identifiant"
+            "value": "Nom d'utilisateur"
           }
         },
         "de": {
@@ -25654,7 +25682,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "autre identifiant"
+            "value": "autre nom d'utilisateur"
           }
         },
         "de": {
@@ -26550,7 +26578,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "sans identifiant"
+            "value": "sans nom d'utilisateur"
           }
         },
         "de": {
@@ -26662,7 +26690,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "un identifiant manquant"
+            "value": "un nom d'utilisateur manquant"
           }
         },
         "de": {
@@ -26998,7 +27026,7 @@
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "même identifiant"
+            "value": "même nom d'utilisateur"
           }
         },
         "de": {
