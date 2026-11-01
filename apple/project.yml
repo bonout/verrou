@@ -328,6 +328,8 @@ targets:
               # Signals from sites (iOS 26, ASCredentialUpdater).
               SupportsCredentialUpdate: true
               SupportsSavePasswordCredentials: true
+              SupportsGeneratePasswordCredentials: true
+              SupportsGeneratePasswordCredentialsWithUI: false
             ASCredentialProviderExtensionShowsConfigurationUI: false
     settings:
       base:
