@@ -81,7 +81,7 @@ targets:
         buildPhase: resources
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
-        embed: false
+        embed: true
       - package: Sparkle
       # System credential provider (Safari, Mac apps): removed from the
       # bundle of an ad hoc build (by scripts/install-macos.sh).
@@ -232,7 +232,7 @@ targets:
       - path: VerrouWidgets/Common
     dependencies:
       - framework: Frameworks/VerrouFFI.xcframework
-        embed: false
+        embed: true
       - target: VerrouAutoFill
       - target: VerrouSafari
       - target: VerrouWidgets
