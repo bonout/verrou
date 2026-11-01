@@ -203,6 +203,34 @@ final class AutoFillModel {
         alias = (try? session.generateEmailAlias(uri: site, includeSite: site.isEmpty ? false : nil)) ?? ""
     }
 
+    var canSignUpWithInsertedAlias: Bool {
+        !alias.isEmpty && !aliasSite.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (phase == .ready || canUseBiometrics)
+    }
+
+    func signUpWithInsertedAlias() {
+        let site = aliasSite.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard canSignUpWithInsertedAlias else { return }
+        Task {
+            if phase == .locked, await !unlockWithSession() { await unlockWithBiometrics() }
+            guard phase == .ready, let session = vault?.session else { return }
+            phase = .working
+            do {
+                let password = GeneratorSettings.forAutoFill.password(rules: "")
+                let id = try await session.autofillSave(service: site, username: alias, password: password, itemId: nil)
+                if let identities = try? session.autofillIdentities() {
+                    await CredentialIdentities.publish(identities)
+                }
+                RecentFill.remember(itemID: id, user: alias, password: password, sites: [site],
+                                    lifetime: RecentFill.signUpLifetime)
+                finish(.text(alias))
+            } catch {
+                phase = .ready
+                actionError = ErrorText.describe(error)
+            }
+        }
+    }
+
     func insertAlias() {
         guard !alias.isEmpty else { return }
         finish(.text(alias))

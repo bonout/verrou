@@ -133,24 +133,35 @@ private struct AliasInsertView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                 }
-                if model.aliasUsesSite {
-                    Section {
-                        TextField("Site", text: $model.aliasSite, prompt: Text(verbatim: "netflix.com"))
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .accessibilityIdentifier("autofill-alias-site")
-                    } footer: {
+                Section {
+                    TextField("Site", text: $model.aliasSite, prompt: Text(verbatim: "netflix.com"))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .accessibilityIdentifier("autofill-alias-site")
+                } footer: {
+                    if model.aliasUsesSite {
                         Text("The alias starts with the site's name. Without a site, it is random.")
                     }
+                }
+                Section {
+                    Button {
+                        model.signUpWithInsertedAlias()
+                    } label: {
+                        Label("Sign Up with This Alias", systemImage: "person.crop.circle.badge.plus")
+                            .font(.body.weight(.semibold))
+                    }
+                    .disabled(!model.canSignUpWithInsertedAlias || model.phase == .working)
+                    .accessibilityIdentifier("autofill-alias-signup")
+                } footer: {
+                    Text("Saves a login for the site with this alias and a strong password, then inserts the alias. In the password field, the strong password iOS suggests is that one.")
                 }
                 Section {
                     Button {
                         model.insertAlias()
                     } label: {
                         Label("Insert Alias", systemImage: "text.insert")
-                            .font(.body.weight(.semibold))
                     }
                     .disabled(model.alias.isEmpty)
                     .accessibilityIdentifier("autofill-alias-insert")
