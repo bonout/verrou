@@ -167,8 +167,9 @@ signature (Settings → General → Updates).
 
 Optional, from Verrou's Settings:
 
-- **Brave, Chrome or Firefox extension**: *Browsers and Terminal*, then follow
-  the steps shown there. The release also has `verrou-<version>-chromium.zip`
+- **Brave, Chrome or Firefox extension**: *AutoFill* → *Brave, Firefox and the
+  terminal*, then load the extension as described in docs/GUIDE.md (*Brave
+  extension*, *Firefox extension*). The release also has `verrou-<version>-chromium.zip`
   (load it unpacked) and `verrou-<version>-firefox.xpi`, signed by Mozilla:
   open it in Firefox 128+ to install it for good
   ([guide](docs/GUIDE.md#brave-extension)).
@@ -180,7 +181,7 @@ Optional, from Verrou's Settings:
 ### Command line and SSH agent
 
 The Mac app ships the `verrou` command and keeps it up to date with itself:
-in Verrou's Settings, *Browsers and Terminal* → *Command line* → *Copy
+in Verrou's Settings, *Advanced* → *Command line* → *Copy
 Command*, paste it in Terminal (it links `/usr/local/bin/verrou` to the app),
 then run `verrou link` once and compare the code shown in Verrou.
 

@@ -6,6 +6,14 @@ tagging (docs/RELEASING.md).
 
 ## Unreleased
 
+**Mac**
+- Settings are simpler: six tabs (General, AutoFill, Security, Vault,
+  Account, Advanced) with one-line explanations. Everything about filling
+  (Safari and apps, ⌘\ in apps, Brave and Firefox, email aliases) is in
+  *AutoFill*; per-folder rules and equivalent domains fold under *Site
+  matching*.
+- The Settings window never grows past the screen: a long tab scrolls.
+
 **iPhone**
 - Verrou saves the login after a sign-up (iOS 26.2 and later): when a form
   is sent with a login Verrou doesn't have, iOS hands it over, and Verrou's
