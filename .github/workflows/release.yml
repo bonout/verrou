@@ -86,7 +86,7 @@ jobs:
       - if: env.AMO_JWT_ISSUER != ''
         run: scripts/sign-firefox.sh && cp target/firefox-xpi/*.xpi "dist/verrou-${{ needs.version.outputs.version }}-firefox.xpi"
       - if: env.AMO_JWT_ISSUER == ''
-        run: scripts/sign-firefox.sh --unsigned && cp target/firefox-xpi/*-unsigned.xpi dist/
+        run: scripts/sign-firefox.sh --unsigned && cp target/firefox-xpi/*-unsigned.xpi "dist/verrou-${{ needs.version.outputs.version }}-unsigned.xpi"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: extension
