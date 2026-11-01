@@ -1,0 +1,14 @@
+{
+    "include": ["apple", "extension"],
+    "ignore": ["target/**", "extension/test/**", "apple/Shared/Generated/**", "apple/Verrou.xcodeproj/**"],
+    "rules": {
+        "sentence-case": "off"
+    },
+    "allow": {
+        "tap-target": ["apple/Verrou/**", "apple/VerrouAutoFillMac/**"],
+        "radius-scale": ["apple/Shared/UI/DesignSystem.swift"],
+        "locale-aware-case": ["extension/**"],
+        "no-sparkle-for-ai": ["apple/Verrou/Views/EditItemView.swift"],
+        "no-placeholder-data": ["apple/Verrou/Views/RegisterView.swift"]
+    }
+}
