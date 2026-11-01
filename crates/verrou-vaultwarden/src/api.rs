@@ -879,15 +879,12 @@ mod tests {
     #[tokio::test]
     async fn a_refused_connection_is_retried() {
         // The server is not listening yet on the first attempt (network coming up).
-        let port = TcpListener::bind("127.0.0.1:0")
-            .await
-            .unwrap()
-            .local_addr()
-            .unwrap()
-            .port();
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let port = socket.local_addr().unwrap().port();
         let server = tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(80)).await;
-            answer_once(TcpListener::bind(("127.0.0.1", port)).await.unwrap()).await;
+            answer_once(socket.listen(16).unwrap()).await;
         });
         let api = Api::new(&format!("http://127.0.0.1:{port}")).unwrap();
         assert_eq!(api.sync("jeton").await.unwrap(), "{}");
