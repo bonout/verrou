@@ -66,7 +66,7 @@ struct AutoFillRootView: View {
             } else {
                 MacCredentialListView()
             }
-        case .none, .alias:
+        case .none, .alias, .save:
             VStack(spacing: 12) {
                 AppMark(size: 56, glow: false)
                 Text("Verrou fills your logins, codes and passkeys in Safari and the Mac's apps.")

@@ -125,6 +125,32 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func prepareInterfaceForUserChoosingTextToInsert() {
         model.start(.alias)
     }
+
+    // MARK: Login to save (iOS 26.2)
+
+    @available(iOS 26.2, *)
+    override func performWithoutUserInteractionIfPossible(savePasswordRequest: ASSavePasswordRequest) {
+        guard savePasswordRequest.event != .generatedPasswordFilled else { return cancel(.failed) }
+        let login = Self.login(savePasswordRequest)
+        Task {
+            if let completion = await model.saveWithoutInteraction(login) {
+                complete(completion)
+            } else {
+                cancel(.userInteractionRequired)
+            }
+        }
+    }
+
+    @available(iOS 26.2, *)
+    override func prepareInterface(for savePasswordRequest: ASSavePasswordRequest) {
+        model.start(.save(Self.login(savePasswordRequest)))
+    }
+
+    @available(iOS 26.2, *)
+    private static func login(_ request: ASSavePasswordRequest) -> AutoFillModel.LoginToSave {
+        AutoFillModel.LoginToSave(site: AutoFillModel.host(of: request.serviceIdentifier),
+                                  user: request.credential.user, password: request.credential.password)
+    }
     #endif
 
     override func prepareInterfaceForExtensionConfiguration() {
@@ -222,6 +248,16 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             #if os(iOS)
             if #available(iOS 18.0, *) {
                 extensionContext.completeRequest(withTextToInsert: text)
+            } else {
+                cancel(.failed)
+            }
+            #else
+            cancel(.failed)
+            #endif
+        case .saved:
+            #if os(iOS)
+            if #available(iOS 26.2, *) {
+                extensionContext.completeSavePasswordRequest()
             } else {
                 cancel(.failed)
             }

@@ -50,6 +50,8 @@ struct AutoFillRootView: View {
             WorkingView(label: "Filling…")
         case .alias:
             AliasInsertView()
+        case .save:
+            SaveLoginView()
         case .list, .oneTimeCodes:
             if model.phase == .working {
                 WorkingView(label: "Signing…")
@@ -339,6 +341,72 @@ private struct Row: View {
                 Text(subtitle).font(.footnote).foregroundStyle(.secondary)
             }
         }
+    }
+}
+
+// MARK: Login to save
+
+private struct SaveLoginView: View {
+    @Environment(AutoFillModel.self) private var model
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 10) {
+                    TintedSymbol(symbol: model.loginSaved ? "checkmark" : "key.fill",
+                                 tint: model.loginSaved ? .green : Theme.accent, size: 64)
+                        .contentTransition(.symbolEffect(.replace))
+                    Text(headline)
+                        .font(.headline)
+                        .multilineTextAlignment(.center)
+                    Text("It is saved in your Vaultwarden vault: your other devices find it.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+            }
+            if case .save(let login) = model.request {
+                Section {
+                    LabeledContent("Site", value: login.site)
+                    if !login.user.isEmpty {
+                        LabeledContent("Username", value: login.user)
+                    }
+                    LabeledContent("Password", value: String(repeating: "•", count: min(login.password.count, 12)))
+                }
+            }
+            Section {
+                Button {
+                    model.saveLogin()
+                } label: {
+                    Label(model.saveCheck?.action == .update ? "Update Password" : "Save Login",
+                          systemImage: "square.and.arrow.down.fill")
+                        .font(.body.weight(.semibold))
+                }
+                .disabled(model.phase == .working || model.saveCheck == nil)
+                .accessibilityIdentifier("autofill-save-login")
+                Button("Not Now", role: .cancel) { model.cancel() }
+                    .disabled(model.phase == .working)
+            }
+            if model.phase == .working, !model.loginSaved {
+                Section {
+                    HStack {
+                        ProgressView()
+                        Text("Saving to the server…").foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .sensoryFeedback(.success, trigger: model.loginSaved) { _, saved in saved }
+    }
+
+    private var headline: String {
+        if model.loginSaved { return String(localized: "Login saved") }
+        if model.saveCheck?.action == .update, let title = model.saveCheck?.title {
+            return String(localized: "New password for “\(title)”")
+        }
+        return String(localized: "New login for \(model.site ?? String(localized: "this site"))")
     }
 }
 
