@@ -629,9 +629,16 @@ provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
   Signing in with it signs in the Rust core (ES256, `authenticatorData` built
   from the `rpId` and the system's `clientDataHash`). Saving a passkey, or its
   new counter, needs the server: offline, Verrou refuses instead of queuing.
+- **Saving logins** (iOS 26.2 and later): when a form is sent with a login
+  Verrou doesn't have (a sign-up, a password typed by hand, a new password),
+  iOS hands it to Verrou. After Face ID, the sheet offers *Save Login* (a new
+  login for the site) or *Update Password* (the site's login with the same
+  username), or *Not Now*. A login already in the vault, or the one Verrou
+  just filled, closes without a sheet. Like passkeys, it is written straight
+  to the server.
 - **Writes from the extension**: it opens the shared folder as a *guest*. It
-  reads the app's cache and offline queue, writes passkeys and counters
-  straight to the server, then saves the refreshed cache; it never sends or
+  reads the app's cache and offline queue, writes passkeys, counters and
+  saved logins straight to the server, then saves the refreshed cache; it never sends or
   rewrites the app's queue. File writes are atomic and serialized by a
   `flock` held only for the rename. Details in
   [SECURITY.md](../SECURITY.md#writes-from-the-extension).
@@ -784,7 +791,8 @@ the browser extension and the terminal use the Mac's.
   in a sign-up form's email field (or any field), touch the field again →
   *AutoFill* → *Passwords* → *Verrou*. The sheet shows a fresh alias: type
   the site to start it with its name, then *Insert Alias*. No Face ID: the
-  alias reveals nothing from the vault. Save the login once signed up
+  alias reveals nothing from the vault. Once you're signed up, iOS 26.2 and
+  later offer to save the login in Verrou; before that, save it yourself
   (Verrou keeps no list of aliases).
 - **Terminal**: `verrou generate alias`.
 
