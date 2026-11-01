@@ -375,7 +375,7 @@ private struct SaveLoginView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     TintedSymbol(symbol: model.loginSaved ? "checkmark" : "key.fill",
                                  tint: model.loginSaved ? .green : Theme.accent, size: 64)
                         .contentTransition(.symbolEffect(.replace))
