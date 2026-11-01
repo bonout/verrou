@@ -12,10 +12,10 @@ struct RegisterStep: View {
     enum Field { case link, server, email, name, password, confirmation, hint }
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
+        VStack(spacing: 16) {
+            VStack(spacing: 8) {
                 Text("Create an Account")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .layoutMark("login-title")
                 Text(subtitle)
                     .font(.callout)
@@ -24,7 +24,7 @@ struct RegisterStep: View {
                     .frame(maxWidth: 360)
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 LabeledField(label: "Invitation link (optional)") {
                     TextField("https://vault.example.com/#/accept-organization/?…", text: $flow.link)
                         .focused($focus, equals: .link)
@@ -102,7 +102,7 @@ struct RegisterStep: View {
             .font(.callout.weight(.medium))
             .padding(12)
             .frame(width: 340, alignment: .leading)
-            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
+            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.radiusMedium))
 
             Button(action: submit) {
                 HStack(spacing: 8) {
@@ -157,7 +157,7 @@ struct MasterPasswordStrengthMeter: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            HStack(spacing: 3) {
+            HStack(spacing: 4) {
                 ForEach(0..<4) { index in
                     Capsule()
                         .fill(index < filled ? ContrastStyle(tint) : Theme.border(0.2))

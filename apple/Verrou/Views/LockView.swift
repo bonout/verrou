@@ -9,11 +9,11 @@ struct LockView: View {
     var body: some View {
         ZStack {
             LockBackground()
-            VStack(spacing: 22) {
+            VStack(spacing: 24) {
                 AppMark(size: 84)
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Text("Verrou")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
                         .layoutMark("lock-title")
                     Text(subtitle)
                         .font(.callout)
@@ -129,8 +129,8 @@ struct LockView: View {
         }
         .padding(.horizontal, 12)
         .frame(width: 280, height: 38)
-        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(passwordFocused ? Theme.focusRing() : Theme.border(0.25)))
+        .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: Theme.radiusMedium))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).strokeBorder(passwordFocused ? Theme.focusRing() : Theme.border(0.25)))
     }
 
     /// Highlighted when Touch ID is not offered.

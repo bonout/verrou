@@ -48,7 +48,7 @@ struct LockView: View {
             // A brief jump of the shackle, played during the fade (never awaited).
             KeyframeTrack(\.shackle) {
                 SpringKeyframe(1.15, duration: 0.1, spring: .snappy)
-                SpringKeyframe(1, duration: 0.12, spring: .bouncy)
+                SpringKeyframe(1, duration: 0.12, spring: .snappy)
             }
             KeyframeTrack(\.ripple) {
                 LinearKeyframe(RippleEffect.duration, duration: RippleEffect.duration)
@@ -114,7 +114,7 @@ struct LockView: View {
                                frozen: departing)
             VStack(spacing: 28) {
                 Spacer()
-                VStack(spacing: 14) {
+                VStack(spacing: 16) {
                     // The logo follows the "home" anchor, then the one at
                     // the top of the screen on departure, shrinking.
                     ZStack {
@@ -126,9 +126,9 @@ struct LockView: View {
                                                    properties: .position, isSource: false)
                     }
                     .frame(width: 96, height: 96)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
                     // The title leaves quickly: the logo alone flies to the vault.
-                    VStack(spacing: 14) {
+                    VStack(spacing: 16) {
                         Text("Verrou")
                             .font(.system(size: titleSize, weight: .bold, design: .rounded))
                             .accessibilityAddTraits(.isHeader)
@@ -226,8 +226,8 @@ private struct LockControls: View {
     var body: some View {
         let biometrics = model.canUseBiometrics
         let morph = LiquidGlass.isAvailable && !reduceMotion
-        GlassGroup(spacing: 14) {
-            VStack(spacing: 14) {
+        GlassGroup(spacing: 16) {
+            VStack(spacing: 16) {
                 if biometrics && !usePassword {
                     BiometricUnlockButton(title: "Unlock with \(Biometrics.name)",
                                           symbol: Biometrics.symbolName,
@@ -248,7 +248,7 @@ private struct LockControls: View {
                     .accessibilityIdentifier("lock-use-password")
                     .transition(.opacity)
                 } else {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         MasterPasswordField(password: $password, busy: model.lockState == .unlocking,
                                             focused: focused, submit: submit)
                             .glassMorphID("primary", in: glass, morph: morph)
@@ -274,7 +274,7 @@ private struct LockControls: View {
                 }
             }
         }
-        .animation(morph ? .bouncy(duration: 0.45) : .easeInOut(duration: 0.25), value: usePassword)
+        .animation(morph ? .snappy(duration: 0.45) : .easeInOut(duration: 0.25), value: usePassword)
         .onChange(of: usePassword) { _, chosen in
             guard chosen else { return }
             // The keyboard arrives once the field is in place.

@@ -60,7 +60,7 @@ struct ImportView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             switch flow.stage {
             case .review:
                 Text("The export file contains your passwords in the clear: delete it after the import.")
@@ -126,7 +126,7 @@ private struct FailedImportView: View {
     @State private var format: ImportFormat = .applePasswords
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
                 .multilineTextAlignment(.center)
@@ -143,7 +143,7 @@ private struct FailedImportView: View {
                 }
             }
         }
-        .padding(30)
+        .padding(32)
         .onAppear { if let chosen = flow.format { format = chosen } }
     }
 }
@@ -161,7 +161,7 @@ private struct ImportDoneView: View {
                 Text("The export file contains your passwords in the clear. Delete it, then empty the Finder's trash.")
                     .foregroundStyle(.secondary)
                 if !outcome.failures.isEmpty {
-                    Text("Not imported").font(.headline).padding(.top, 6)
+                    Text("Not imported").font(.headline).padding(.top, 8)
                     ForEach(Array(outcome.failures.enumerated()), id: \.offset) { _, failure in
                         SkippedRow(skipped: failure)
                     }
@@ -210,8 +210,8 @@ private struct ReviewList: View {
         let present = indices([.alreadyPresent, .repeatedInFile])
         let conflicts = indices([.newPassword, .conflictInFile, .addsCode, .similar])
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 10) {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 8) {
                     CountTile(count: fresh.count, label: "new", tint: .green)
                     CountTile(count: present.count, label: "already present", tint: .secondary)
                     CountTile(count: indices([.newPassword, .conflictInFile]).count,
@@ -268,7 +268,7 @@ private struct ReviewList: View {
     }
 
     private var destination: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Put the created items").font(.headline)
             Picker("Put the created items", selection: $flow.placement) {
                 Text("In the folder").tag(ImportFlow.Placement.folder)
@@ -340,7 +340,7 @@ private struct ConflictRow: View {
     @Binding var choice: ImportChoice
 
     var body: some View {
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 EntryLabel(entry: entry)
                 Text(explanation).font(.caption).foregroundStyle(.secondary)
@@ -353,7 +353,7 @@ private struct ConflictRow: View {
             .labelsHidden()
             .fixedSize()
         }
-        .padding(10)
+        .padding(8)
         .background(Theme.faintFill(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 

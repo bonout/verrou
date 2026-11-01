@@ -578,7 +578,7 @@ private struct PermissionPicker: View {
                 Text(level.label).tag(Optional(level))
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if let symbol {
                     Image(systemName: symbol).foregroundStyle(.secondary).frame(width: 22)
                 }
@@ -987,7 +987,7 @@ struct JoinOrganizationSheet: View {
                     }
                     .labelStyle(.titleAndIcon)
                 } footer: {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text(InvitationHelp.join(server: model.account?.server))
                         if info == nil { Text(InvitationHelp.notListed) }
                     }

@@ -11,8 +11,12 @@ extension Theme {
     /// Logo gradient (top, bottom), the app icon's.
     static let brandTop = Color(red: 0.36, green: 0.42, blue: 1.0)
     static let brandBottom = Color(red: 0.20, green: 0.17, blue: 0.62)
+    static let radiusSmall: CGFloat = 4
+    static let radiusMedium: CGFloat = 8
+    static let radiusLarge: CGFloat = 12
     /// Radius of the iPhone's cards (item page fields, generator).
     static let cardRadius: CGFloat = 16
+    static let panelRadius: CGFloat = 24
     /// Green of the "online" state (foot of the Mac sidebar).
     static let online = Color.green
 }
@@ -126,7 +130,7 @@ struct Chip: View {
             .truncationMode(.tail)
             .font(.caption.weight(.medium))
             .padding(.horizontal, 8)
-            .padding(.vertical, 3)
+            .padding(.vertical, 4)
             .background((tint == .secondary ? Color.secondary : tint).opacity(0.12), in: Capsule())
     }
 }
@@ -144,7 +148,7 @@ struct CountCapsule: View {
                 .monospacedDigit()
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
         .background(Theme.faintFill(0.6), in: Capsule())
     }
 }
@@ -160,7 +164,7 @@ struct Badge: View {
             .font(.caption2.weight(.semibold))
             // Dark text on yellow: white wouldn't be readable on it.
             .foregroundStyle(tint == nil ? Color.primary : tint == .yellow ? Color.black : Color.white)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, 8)
             .padding(.vertical, 2)
             .background(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.quaternary), in: Capsule())
     }
@@ -171,12 +175,12 @@ struct TagsRow: View {
     let tags: [String]
 
     var body: some View {
-        FlowLayout(spacing: 6, lineSpacing: 6) {
+        FlowLayout(spacing: 8, lineSpacing: 6) {
             ForEach(tags, id: \.self) { tag in
                 Text("#\(tag)")
                     .font(.caption.weight(.medium))
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
+                    .padding(.vertical, 4)
                     .background(Theme.faintFill(0.7), in: Capsule())
             }
         }
@@ -270,7 +274,7 @@ struct ItemRowContent<Icon: View>: View {
         HStack(spacing: spacing) {
             icon
             VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     HighlightedText(text: summary.title, highlights: highlights,
                                     tint: selected ? nil : Theme.accent)
                         .lineLimit(1)

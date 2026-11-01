@@ -28,10 +28,10 @@ struct KeyHint: View {
     let label: LocalizedStringKey
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Text(keys)
-                .font(.system(size: 10, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 5)
+                .font(.system(.caption2, design: .rounded, weight: .semibold))
+                .padding(.horizontal, 4)
                 .padding(.vertical, 2)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
             Text(label).font(.caption).foregroundStyle(.secondary)

@@ -23,7 +23,7 @@ struct SharedVaultsSection: View {
                         row(.collection(id: collection.id), collection.name,
                             collection.readOnly ? "eye" : "square.stack",
                             count: collection.count, tint: .secondary)
-                            .padding(.leading, 14)
+                            .padding(.leading, 16)
                             .help(help(for: collection))
                             .contextMenu { collectionMenu(org, collection) }
                     }
@@ -213,7 +213,7 @@ struct SharingView: View {
             .formStyle(.grouped)
 
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if organization?.manageUrl != nil {
                     Button("Manage in the Web Vault") { model.openWebVault(organizationID: flow.organizationID) }
                         .buttonStyle(.link)
@@ -264,10 +264,10 @@ struct HiddenFieldRow: View {
     let field: FieldView
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(field.label).font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     MaskedText(count: 8)
                     Text("hidden by the organization").font(.caption).foregroundStyle(.tertiary)
                 }
@@ -277,7 +277,7 @@ struct HiddenFieldRow: View {
                 .accessibilityLabel("Hidden by the organization")
                 .help("The organization hides this field for your account. Filling in the browser is still possible.")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }

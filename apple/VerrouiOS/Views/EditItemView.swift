@@ -38,7 +38,7 @@ struct EditItemView: View {
         NavigationStack {
             Form {
                 Section {
-                    HStack(spacing: 14) {
+                    HStack(spacing: 16) {
                         TintedSymbol(symbol: kindSymbol.symbol, tint: kindSymbol.tint, size: 44)
                         TextField("Title", text: $draft.name, prompt: Text(titlePrompt))
                             .font(.title3.weight(.semibold))
@@ -217,7 +217,7 @@ struct EditItemView: View {
         }
         Section {
             ForEach(Array((draft.login?.urls ?? []).indices), id: \.self) { index in
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     TextField("https://example.com", text: urlBinding(index))
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
@@ -265,7 +265,7 @@ struct EditItemView: View {
                 .textContentType(.creditCardNumber)
                 .font(.system(.body, design: .monospaced))
             LabeledContent("Expiration") {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Picker("Month", selection: cardText(\.expMonth)) {
                         Text("Month").tag("")
                         ForEach(1...12, id: \.self) { month in Text(String(format: "%02d", month)).tag("\(month)") }
@@ -485,7 +485,7 @@ private struct PhoneCustomFieldsSection: View {
     }
 
     @ViewBuilder private func row(_ index: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 TextField("Field name", text: nameBinding(index))
                     .font(.caption.weight(.semibold))

@@ -41,7 +41,7 @@ struct FolderDropTarget: ViewModifier {
                 }
                 return true
             }
-            .listRowBackground(targeted ? RoundedRectangle(cornerRadius: 6).fill(Theme.accent.opacity(0.3)) : nil)
+            .listRowBackground(targeted ? RoundedRectangle(cornerRadius: Theme.radiusMedium).fill(Theme.accent.opacity(0.3)) : nil)
     }
 }
 
