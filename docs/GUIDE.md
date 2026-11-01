@@ -759,7 +759,8 @@ rather than `example.com`) where your provider allows it: the catch-all
 then never collects typos sent to your real addresses, and the aliases stay
 apart from them.
 
-**In Verrou**: Settings → *Vault and Filling* → *Email aliases*, enter the
+**In Verrou**: Settings → *AutoFill* → *Email aliases* on the Mac (*Vault
+and filling* → *Email aliases* on the iPhone), enter the
 domain (checked: a real domain name, no `https://`, no `@` before it).
 Leave it empty to turn the feature off: nothing about aliases shows then.
 *Start with the site's name* is on by default; off, the address is 10
@@ -1075,7 +1076,7 @@ opens it in the background; if the vault is locked, Verrou asks for Touch ID
 and the CLI waits up to a minute.
 
 The Mac app from the website ships `verrou` (`Contents/Helpers/verrou`):
-Settings → *Browsers and Terminal* → *Command line* → *Copy Command* gives
+Settings → *Advanced* → *Command line* → *Copy Command* gives
 the line to paste in Terminal, which links `/usr/local/bin/verrou` to it.
 Linked this way, the command updates with the app. From the sources:
 

@@ -4,6 +4,16 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**Mac**
+- Settings are simpler: six tabs (General, AutoFill, Security, Vault,
+  Account, Advanced) with one-line explanations. Everything about filling
+  (Safari and apps, ⌘\ in apps, Brave and Firefox, email aliases) is in
+  *AutoFill*; per-folder rules and equivalent domains fold under *Site
+  matching*.
+- The Settings window never grows past the screen: a long tab scrolls.
+
 ## 0.6.1
 
 **iPhone**
