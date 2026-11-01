@@ -41,7 +41,7 @@ struct SystemAutofillSection: View {
 
     private var footer: LocalizedStringKey {
         if SystemAutofill.isBundled || AppModel.isReview {
-            return "Chosen in System Settings → General → AutoFill & Passwords, Verrou offers its logins, codes and passkeys in Safari, in apps, and in Chrome or Brave when they ask the system for a passkey. Touch ID opens the vault each time. Verrou's extension for Brave and Firefox is still useful: it also fills cards and addresses."
+            return "Choose Verrou in System Settings → General → AutoFill & Passwords: Safari and apps then offer its logins, codes and passkeys."
         }
         return "To offer your passwords and passkeys in Safari and Mac apps, Verrou must be signed by an Apple developer team (macOS requires it of the credential provider and the shared app group): see the guide, “Mac credential provider”."
     }
