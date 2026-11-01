@@ -13,7 +13,8 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use verrou_bridge::access::Write;
+use verrou_bridge::access::{Write, check_save, plan_save};
+use verrou_bridge::protocol::SaveAction;
 use verrou_core::matching::host_of;
 use verrou_core::passkey::{self, Passkey, SystemRegistrationRequest};
 use verrou_core::{FieldKind, Item, ItemKind, Vault};
@@ -84,6 +85,20 @@ pub struct PasskeyRegistrationResult {
     pub item_id: String,
     pub credential_id: Vec<u8>,
     pub attestation_object: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum AutofillSaveAction {
+    Known,
+    New,
+    Update,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct AutofillSaveCheck {
+    pub action: AutofillSaveAction,
+    pub item_id: Option<String>,
+    pub title: Option<String>,
 }
 
 /// What the system asks to create (`ASPasskeyCredentialRequest`).
@@ -350,6 +365,53 @@ impl VaultSession {
         })
     }
 
+    pub fn autofill_save_check(
+        &self,
+        service: String,
+        username: String,
+        password: String,
+    ) -> Result<AutofillSaveCheck, VerrouError> {
+        self.with_vault(|v| {
+            let (action, found) = check_save(v, &page_of(&service), &username, &password, None)
+                .map_err(|message| VerrouError::Invalid { message })?;
+            Ok(AutofillSaveCheck {
+                action: match action {
+                    SaveAction::Known => AutofillSaveAction::Known,
+                    SaveAction::New => AutofillSaveAction::New,
+                    SaveAction::Update => AutofillSaveAction::Update,
+                },
+                item_id: found.as_ref().map(|s| s.id.clone()),
+                title: found.map(|s| s.title),
+            })
+        })
+    }
+
+    pub async fn autofill_save(
+        &self,
+        service: String,
+        username: String,
+        password: String,
+        item_id: Option<String>,
+    ) -> Result<String, VerrouError> {
+        let write = self.with_vault(|v| {
+            if let Some(id) = &item_id {
+                self.require_authorized(Self::item(v, id)?)?;
+            }
+            plan_save(
+                v,
+                &page_of(&service),
+                &username,
+                &password,
+                item_id.as_deref(),
+            )
+            .map_err(|message| VerrouError::Invalid { message })
+        })?;
+        let connection = self.current_connection().ok_or(VerrouError::Locked)?;
+        let id = self.perform_write(&connection, write).await?;
+        self.record_use(&id);
+        Ok(id)
+    }
+
     /// Signs for the system: `authenticatorData ‖ clientDataHash` with
     /// passkey `credential_id` of site `rp_id`. The new counter is saved
     /// on the server **before** returning the signature (as in the
@@ -585,6 +647,51 @@ mod tests {
             .unwrap();
         assert!(!amazon.is_empty());
         assert!(amazon.iter().all(|t| t.passkey_rp_id.is_none()));
+    }
+
+    #[test]
+    fn a_login_to_save_is_new_an_update_or_known() {
+        let session = VaultSession::new();
+        session.unlock_mock(0, 42, crate::MockLanguage::English);
+        let github = session
+            .autofill_passkey_targets("github.com".to_owned())
+            .unwrap()
+            .into_iter()
+            .find(|t| t.title == "GitHub")
+            .unwrap();
+        let current = session.autofill_password(github.id.clone()).unwrap();
+        let check = |user: &str, password: &str| {
+            session
+                .autofill_save_check(
+                    "github.com".to_owned(),
+                    user.to_owned(),
+                    password.to_owned(),
+                )
+                .unwrap()
+        };
+        let known = check(&current.username, &current.password);
+        assert_eq!(known.action, AutofillSaveAction::Known);
+        assert_eq!(known.item_id.as_deref(), Some(github.id.as_str()));
+        let update = check(&current.username.to_uppercase(), "another-password");
+        assert_eq!(update.action, AutofillSaveAction::Update);
+        assert_eq!(update.title.as_deref(), Some("GitHub"));
+        let new = check("someone-else@example.com", "another-password");
+        assert_eq!(new.action, AutofillSaveAction::New);
+        assert_eq!(new.item_id, None);
+        assert!(
+            session
+                .autofill_save_check(
+                    "http://github.com".to_owned(),
+                    "x".to_owned(),
+                    "y".to_owned()
+                )
+                .is_err()
+        );
+        assert!(
+            session
+                .autofill_save_check("github.com".to_owned(), "x".to_owned(), String::new())
+                .is_err()
+        );
     }
 
     #[test]
