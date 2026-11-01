@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.6.1
 
 **iPhone**
 - Email aliases from the keyboard, like iCloud's Hide My Email: in any
