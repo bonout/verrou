@@ -636,6 +636,14 @@ provider: it fills logins, one-time codes (iOS 18 and later) and passkeys
   username), or *Not Now*. A login already in the vault, or the one Verrou
   just filled, closes without a sheet. Like passkeys, it is written straight
   to the server.
+- **Signing up with an email alias**: when the list finds no login for the
+  site and an alias domain is set, it offers *Sign Up with an Email Alias*.
+  One tap creates an alias for the site and a password with the generator's
+  settings, saves the login on the server, and fills both.
+- **Suggested passwords** (iOS 26.2 and later): in a new-password field, the
+  strong password iOS suggests comes from Verrou's generator, with the
+  app's settings (shared with the extension when the app goes to the
+  background), shortened or simplified to fit the site's password rules.
 - **Writes from the extension**: it opens the shared folder as a *guest*. It
   reads the app's cache and offline queue, writes passkeys, counters and
   saved logins straight to the server, then saves the refreshed cache; it never sends or
@@ -793,7 +801,9 @@ the browser extension and the terminal use the Mac's.
   the site to start it with its name, then *Insert Alias*. No Face ID: the
   alias reveals nothing from the vault. Once you're signed up, iOS 26.2 and
   later offer to save the login in Verrou; before that, save it yourself
-  (Verrou keeps no list of aliases).
+  (Verrou keeps no list of aliases). Quicker: on a site with no login, the
+  keyboard's key button → *Sign Up with an Email Alias* creates the alias,
+  a password and the login in one tap.
 - **Terminal**: `verrou generate alias`.
 
 ```sh

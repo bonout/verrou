@@ -11,6 +11,12 @@ tagging (docs/RELEASING.md).
   is sent with a login Verrou doesn't have, iOS hands it over, and Verrou's
   sheet offers *Save Login*, or *Update Password* for the site's login with
   the same username. A login already in the vault closes without a sheet.
+- *Sign Up with an Email Alias* in the AutoFill list, on a site with no
+  login: one tap creates an alias for the site and a strong password,
+  saves the login and fills both.
+- The strong passwords iOS suggests in new-password fields come from
+  Verrou's generator, with your settings and the site's password rules
+  (iOS 26.2 and later).
 
 ## 0.6.1
 
