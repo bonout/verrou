@@ -68,7 +68,7 @@ struct FillingSettingsView: View {
             } header: {
                 SectionHeader("By folder")
             } footer: {
-                Text("Bitwarden has no per-folder rule: this one stays on this iPhone and only applies to sites without their own rule (for example “Host” for the Work folder).")
+                Text("Kept on this iPhone: Bitwarden has no per-folder rule.")
             }
 
             Section {
@@ -88,7 +88,7 @@ struct FillingSettingsView: View {
             } header: {
                 SectionHeader("Equivalent domains")
             } footer: {
-                Text("Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.")
+                Text("From your account (web vault → Settings → Domains), for the “Base domain” rule.")
             }
 
             EmailAliasSection(settings: model.aliasSettings) { domain, includeSite in

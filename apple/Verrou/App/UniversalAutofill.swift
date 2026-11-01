@@ -524,7 +524,7 @@ struct AppAutofillSection: View {
         if enabled, UniversalAutofill.current?.shortcutUnavailable == true {
             return "\(shortcut.label) is already taken by another app: choose another combination."
         }
-        return "\(shortcut.label) in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return."
+        return "\(shortcut.label) in any app offers its logins and types them; ⌘↩ links the chosen login to the app."
     }
 }
 

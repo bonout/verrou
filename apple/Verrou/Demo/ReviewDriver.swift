@@ -227,9 +227,9 @@ final class ReviewDriver: NSObject, NSApplicationDelegate {
         // Per-folder rule (Work: host), for the filling tab.
         model.setFolderMatchRule(workFolder ?? "", .host)
         let tabs: [(String, SettingsTab)] = [
-            ("33-settings-general", .general), ("34-settings-security", .security),
-            ("35-settings-account", .account), ("36-settings-browsers", .integrations),
-            ("36b-settings-filling", .filling),
+            ("33-settings-general", .general), ("33b-settings-autofill", .autofill),
+            ("34-settings-security", .security), ("35-settings-account", .account),
+            ("36-settings-vault", .vault), ("36b-settings-advanced", .advanced),
         ]
         for (name, tab) in tabs {
             defaults.set(tab.rawValue, forKey: "settingsTab")

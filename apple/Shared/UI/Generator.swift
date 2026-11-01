@@ -54,7 +54,7 @@ struct EmailAliasSection: View {
             Text("Email aliases")
             #endif
         } footer: {
-            Text("A domain whose mail provider forwards every address to you (catch-all). The generator then makes one address per site, such as netflix.k3x9a@alias.example.com, saved as the login's username. Kept on this device.")
+            Text("A catch-all domain: Verrou makes one address per site, such as netflix.k3x9a@alias.example.com.")
                 .foregroundStyle(.secondary)
         }
         .onAppear { domain = settings?.domain ?? "" }

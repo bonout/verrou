@@ -3445,30 +3445,30 @@
         }
       }
     },
-    "A domain whose mail provider forwards every address to you (catch-all). The generator then makes one address per site, such as netflix.k3x9a@alias.example.com, saved as the login's username. Kept on this device.": {
+    "A catch-all domain: Verrou makes one address per site, such as netflix.k3x9a@alias.example.com.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un domaine dont le fournisseur de messagerie vous transfère toutes les adresses (catch-all). Le générateur crée alors une adresse par site, comme netflix.k3x9a@alias.example.com, enregistrée comme identifiant de la connexion. Gardé sur cet appareil."
+            "value": "Un domaine catch-all : Verrou crée une adresse par site, comme netflix.k3x9a@alias.example.com."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eine Domain, deren E-Mail-Anbieter dir jede Adresse weiterleitet (Catch-all). Der Generator erzeugt dann eine Adresse pro Website, etwa netflix.k3x9a@alias.example.com, die als Benutzername des Logins gespeichert wird. Bleibt auf diesem Gerät."
+            "value": "Eine Catch-all-Domain: Verrou erstellt eine Adresse pro Website, etwa netflix.k3x9a@alias.example.com."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un dominio cuyo proveedor de correo te reenvía todas las direcciones (catch-all). El generador crea entonces una dirección por sitio, como netflix.k3x9a@alias.example.com, que se guarda como nombre de usuario del inicio de sesión. Se guarda en este dispositivo."
+            "value": "Un dominio catch-all: Verrou crea una dirección por sitio, como netflix.k3x9a@alias.example.com."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un dominio il cui provider di posta ti inoltra ogni indirizzo (catch-all). Il generatore crea quindi un indirizzo per sito, come netflix.k3x9a@alias.example.com, salvato come nome utente del login. Resta su questo dispositivo."
+            "value": "Un dominio catch-all: Verrou crea un indirizzo per sito, come netflix.k3x9a@alias.example.com."
           }
         }
       }
@@ -5765,34 +5765,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bitwarden Rust SDK"
-          }
-        }
-      }
-    },
-    "Bitwarden has no per-folder rule: this one stays on this iPhone and only applies to sites without their own rule (for example “Host” for the Work folder).": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden n'a pas de règle par dossier : celle-ci reste sur cet iPhone et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail)."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden kennt keine Regel pro Ordner: Diese bleibt auf diesem iPhone und gilt nur für Websites ohne eigene Regel (zum Beispiel „Host“ für den Ordner „Arbeit“)."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden no tiene reglas por carpeta: esta se queda en este iPhone y solo se aplica a los sitios sin regla propia (por ejemplo, “Host” para la carpeta Trabajo)."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden non prevede regole per cartella: questa resta su questo iPhone e si applica solo ai siti senza una regola propria (ad esempio “Host” per la cartella Lavoro)."
           }
         }
       }
@@ -12265,6 +12237,34 @@
         }
       }
     },
+    "Invitations, members to confirm and new shared items, computed on this device after each sync.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitations, membres à confirmer et nouveaux éléments partagés, calculés sur cet appareil après chaque synchronisation."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladungen, zu bestätigende Mitglieder und neue geteilte Einträge, nach jeder Synchronisierung auf diesem Gerät ermittelt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitaciones, miembros por confirmar y nuevos elementos compartidos, calculados en este dispositivo tras cada sincronización."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviti, membri da confermare e nuovi elementi condivisi, calcolati su questo dispositivo dopo ogni sincronizzazione."
+          }
+        }
+      }
+    },
     "Invite": {
       "localizations": {
         "fr": {
@@ -17501,34 +17501,6 @@
         }
       }
     },
-    "Pending invitation, access confirmed, members to confirm, new shared items: the organization name and numbers, never a password or a login. Computed by Verrou on this device after each sync, without an outside notification service.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitation en attente, accès confirmé, membres à confirmer, nouveaux éléments partagés : le nom de l'organisation et des nombres, jamais un mot de passe ni un identifiant. Calculées par Verrou sur cet appareil après chaque synchronisation, sans service de notification extérieur."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ausstehende Einladung, bestätigter Zugriff, zu bestätigende Mitglieder, neue geteilte Einträge: der Name der Organisation und Zahlen, nie ein Passwort oder Login. Von Verrou nach jeder Synchronisierung auf diesem Gerät berechnet, ohne externen Mitteilungsdienst."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitación pendiente, acceso confirmado, miembros por confirmar, nuevos elementos compartidos: el nombre de la organización y cifras, nunca una contraseña ni un inicio de sesión. Verrou lo calcula en este dispositivo después de cada sincronización, sin ningún servicio de notificaciones externo."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invito in sospeso, accesso confermato, membri da confermare, nuovi elementi condivisi: il nome dell'organizzazione e i numeri, mai una password o un login. Calcolati da Verrou su questo dispositivo dopo ogni sincronizzazione, senza servizi di notifica esterni."
-          }
-        }
-      }
-    },
     "Pending invitations": {
       "localizations": {
         "fr": {
@@ -20577,34 +20549,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Impostazioni"
-          }
-        }
-      }
-    },
-    "Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réglages de votre compte, lus sur le serveur (coffre web → Paramètres → Domaines) : la règle « Domaine de base » propose aussi l'identifiant sur les domaines du même groupe."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Einstellungen deines Accounts, vom Server gelesen (Web-Tresor → Einstellungen → Domains): Die Regel „Basisdomain“ bietet das Login auch auf den Domains derselben Gruppe an."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ajustes de tu cuenta, leídos del servidor (bóveda web → Settings → Domains): la regla “Dominio base” también ofrece el inicio de sesión en los dominios del mismo grupo."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Impostazioni del tuo account, lette dal server (cassaforte web → Impostazioni → Domini): la regola “Dominio di base” propone il login anche sui domini dello stesso gruppo."
           }
         }
       }
