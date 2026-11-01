@@ -4,6 +4,14 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**iPhone**
+- Verrou saves the login after a sign-up (iOS 26.2 and later): when a form
+  is sent with a login Verrou doesn't have, iOS hands it over, and Verrou's
+  sheet offers *Save Login*, or *Update Password* for the site's login with
+  the same username. A login already in the vault closes without a sheet.
+
 ## 0.6.1
 
 **iPhone**
