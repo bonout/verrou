@@ -2865,6 +2865,24 @@ pub fn generate_password(length: u32, digits: bool, symbols: bool) -> String {
     })
 }
 
+#[uniffi::export]
+pub fn generate_password_for_rules(
+    length: u32,
+    digits: bool,
+    symbols: bool,
+    rules: String,
+) -> String {
+    generator::password(
+        &PasswordOptions {
+            length: length as usize,
+            digits,
+            symbols,
+            avoid_ambiguous: true,
+        }
+        .following_rules(&rules),
+    )
+}
+
 /// Estimated entropy, in bits.
 #[uniffi::export]
 pub fn password_strength(password: String) -> f64 {
