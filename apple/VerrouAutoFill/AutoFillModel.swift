@@ -500,7 +500,7 @@ final class AutoFillModel {
     private func fillPassword(_ id: String) async {
         guard let session = vault?.session else { return }
         do {
-            let credential = try await Perf.measure("password read") { try session.autofillPassword(id: id) }
+            let credential = try Perf.measure("password read") { try session.autofillPassword(id: id) }
             // The next step of the form fills without Face ID; a protected
             // item asks again each time.
             if protectedItems.contains(id) {
