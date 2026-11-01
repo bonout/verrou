@@ -111,7 +111,11 @@ codesign --sign "Developer ID Application" --timestamp "$DMG"
 
 xcrun notarytool submit "$DMG" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" \
   --issuer "$ASC_ISSUER_ID" --wait
-xcrun stapler staple "$DMG"
+for attempt in 1 2 3 4 5; do
+  xcrun stapler staple "$DMG" && break
+  (( attempt < 5 )) || exit 1
+  sleep $((attempt * 20))
+done
 spctl --assess --type open --context context:primary-signature --verbose "$DMG"
 echo "notarized: $DMG"
 
