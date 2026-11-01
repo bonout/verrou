@@ -172,6 +172,31 @@ final class AutoFillModel {
 
     var aliasUsesSite: Bool { aliasSettings?.includeSite ?? true }
 
+    var canSignUpWithAlias: Bool {
+        guard case .list = request else { return false }
+        return aliasSettings?.domain != nil && site != nil
+    }
+
+    func signUpWithAlias() {
+        guard let session = vault?.session, let site, canSignUpWithAlias else { return }
+        phase = .working
+        Task {
+            do {
+                let alias = try session.generateEmailAlias(uri: site, includeSite: nil)
+                let password = GeneratorSettings.forAutoFill.password(rules: "")
+                let id = try await session.autofillSave(service: site, username: alias, password: password, itemId: nil)
+                if let identities = try? session.autofillIdentities() {
+                    await CredentialIdentities.publish(identities)
+                }
+                RecentFill.remember(itemID: id, user: alias, password: password, sites: [site])
+                finish(.password(user: alias, password: password))
+            } catch {
+                phase = .ready
+                actionError = ErrorText.describe(error)
+            }
+        }
+    }
+
     func generateAlias() {
         guard let session = vault?.session, aliasSettings?.domain != nil else { return }
         let site = aliasUsesSite ? aliasSite.trimmingCharacters(in: .whitespacesAndNewlines) : ""
@@ -376,6 +401,7 @@ final class AutoFillModel {
             if let query {
                 passkeys = (try? session.autofillPasskeys(rpId: query.rpID, allowed: query.allowed)) ?? []
             }
+            if matches.isEmpty { aliasSettings = session.emailAliasSettings() }
         case .oneTimeCodes(let services):
             matches = ((try? session.autofillMatches(services: services.map(\.identifier))) ?? []).filter(\.hasTotp)
             everything = everything.filter(\.hasTotp)
