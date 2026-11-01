@@ -15,7 +15,7 @@ struct LoginView: View {
         ZStack {
             LockBackground()
             ScrollView {
-                VStack(spacing: 22) {
+                VStack(spacing: 24) {
                     if registration == nil || model.twoFactorOptions != nil {
                         AppMark(size: 72)
                     }
@@ -61,10 +61,10 @@ private struct CredentialsStep: View {
 
     var body: some View {
         @Bindable var model = model
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
+        VStack(spacing: 16) {
+            VStack(spacing: 8) {
                 Text(model.reloginRequired ? "Session expired" : "Log in to Vaultwarden")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .layoutMark("login-title")
                 Text(model.reloginRequired
                      ? "Log in again to resume syncing."
@@ -74,7 +74,7 @@ private struct CredentialsStep: View {
                     .multilineTextAlignment(.center)
             }
 
-            VStack(spacing: 10) {
+            VStack(spacing: 8) {
                 LabeledField(label: "Server") {
                     TextField("https://vault.example.com", text: $model.loginServer)
                         .textContentType(.URL)
@@ -145,10 +145,10 @@ private struct TwoFactorStep: View {
     @FocusState private var codeFocused: Bool
 
     var body: some View {
-        VStack(spacing: 18) {
-            VStack(spacing: 6) {
+        VStack(spacing: 16) {
+            VStack(spacing: 8) {
                 Text("Second factor")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     .layoutMark("login-title")
                 Text(model.loginEmail)
                     .font(.callout)
@@ -175,7 +175,7 @@ private struct TwoFactorStep: View {
                 case .yubiKeyOtp:
                     codeEntry(prompt: "Touch your YubiKey", option: .yubiKeyOtp)
                 case .email:
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         Button("Send the Code by Email") { Task { await model.sendEmailCode() } }
                         codeEntry(prompt: "Code received by email", option: .email)
                     }
@@ -197,7 +197,7 @@ private struct TwoFactorStep: View {
     /// The key signs over USB, without a browser; the wait starts as soon as
     /// the screen shows. The server's page in Safari stays as a fallback.
     private func securityKey(challenge: String) -> some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             ZStack {
                 Image(systemName: "key.horizontal.fill")
                     .accessibilityHidden(true)
@@ -239,7 +239,7 @@ private struct TwoFactorStep: View {
     }
 
     private func codeEntry(prompt: LocalizedStringKey, option: TwoFactorOption) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             LabeledField(label: prompt) {
                 TextField("", text: $code)
                     .font(.system(.title3, design: .monospaced))
@@ -300,8 +300,8 @@ struct LabeledField<Content: View>: View {
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 12)
                 .frame(height: 36)
-                .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Theme.border(0.25)))
+                .background(.background.opacity(0.7), in: RoundedRectangle(cornerRadius: Theme.radiusMedium))
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusMedium).strokeBorder(Theme.border(0.25)))
         }
     }
 }

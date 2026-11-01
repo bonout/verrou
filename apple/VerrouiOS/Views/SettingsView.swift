@@ -223,13 +223,13 @@ struct AboutView: View {
     var body: some View {
         Form {
             Section {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     AppMark(size: 72)
                     Text("Verrou").font(.system(.title2, design: .rounded, weight: .bold))
                     Text("Version \(version)").foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+                .padding(.vertical, 8)
             }
             .listRowBackground(Color.clear)
 
@@ -262,7 +262,7 @@ struct AboutView: View {
     }
 
     private func credit(_ title: LocalizedStringKey, _ detail: LocalizedStringKey) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(title)
             Text(detail).font(.caption).foregroundStyle(.secondary)
         }
@@ -386,7 +386,7 @@ struct AuditView: View {
             .id("passkeys")
         } else if passkeys.loading && passkeys.report == nil {
             Section {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     ProgressView()
                     Text("Looking for sites that accept passkeys…")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -468,7 +468,7 @@ private struct AuditSummary: View {
         let issues = (breaches?.count ?? 0) + audit.reused.count + audit.weak.count + audit.insecure.count
         let tint: Color = (breaches?.isEmpty == false) ? .red : issues > 0 ? .orange : .green
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
+            HStack(spacing: 16) {
                 AuditScoreGauge(score: score, tint: tint)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(issues == 0 ? "Nothing to report" : issues > 1 ? "\(issues) points to review" : "\(issues) point to review")
@@ -480,7 +480,7 @@ private struct AuditSummary: View {
                 }
             }
             if issues > 0 || passkeys > 0 {
-                FlowLayout(spacing: 6, lineSpacing: 6) {
+                FlowLayout(spacing: 8, lineSpacing: 6) {
                     if let count = breaches?.count, count > 0 { CountCapsule(text: String(localized: "\(count) compromised"), tint: .red) }
                     if !audit.reused.isEmpty {
                         CountCapsule(text: audit.reused.count > 1 ? String(localized: "\(audit.reused.count) reused groups") : String(localized: "\(audit.reused.count) reused group"), tint: .orange)
@@ -496,7 +496,7 @@ private struct AuditSummary: View {
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
     }
 
@@ -560,7 +560,7 @@ private struct ScoreRingGaugeStyle: GaugeStyle {
                 .font(.system(.headline, design: .rounded, weight: .bold))
                 .monospacedDigit()
         }
-        .padding(3)
+        .padding(4)
     }
 }
 
@@ -602,7 +602,7 @@ private struct TintedDetail: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: 4) {
             Circle().fill(tint).frame(width: 7, height: 7).accessibilityHidden(true)
             Text(text).font(.caption.weight(.medium)).foregroundStyle(.secondary)
         }
@@ -670,17 +670,17 @@ private struct AccountHeader: View {
     @Environment(PhoneModel.self) private var model
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 16) {
             AppMark(size: 56, glow: false)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.headline).lineLimit(1)
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Circle().fill(dot).frame(width: 7, height: 7)
                     Text(detail).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
     }
 
@@ -759,7 +759,7 @@ private struct AutoFillSection: View {
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("autofill-status")
             if model.autofillEnabled != true {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("To fill your logins, codes and passkeys in Safari and apps:")
                     Text("1. Open **Settings → General → AutoFill & Passwords**.")
                     Text("2. Turn on **Verrou** in the list of apps.")

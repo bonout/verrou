@@ -74,7 +74,7 @@ struct GeneratorView: View {
                             .font(.body.weight(.semibold))
                         }
                     }
-                    .padding(18)
+                    .padding(16)
                     .background(Color(.secondarySystemGroupedBackground),
                                 in: RoundedRectangle(cornerRadius: Theme.cardRadius + 6, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.cardRadius + 6, style: .continuous)

@@ -180,7 +180,7 @@ private struct SmallCode: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Image(systemName: "clock.badge.checkmark")
                     .foregroundStyle(Color.accentColor)
                     .accessibilityHidden(true)
@@ -196,12 +196,12 @@ private struct SmallCode: View {
             }
             Spacer(minLength: 0)
             Text(code.grouped)
-                .font(.system(size: 30, weight: .semibold, design: .monospaced))
+                .font(.system(.title, design: .monospaced, weight: .semibold))
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
                 .privacySensitive()
                 .accessibilityLabel(Text("Code \(code.value)"))
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ProgressView(timerInterval: code.start...code.end, countsDown: true) {
                     EmptyView()
                 } currentValueLabel: {
@@ -232,7 +232,7 @@ private struct RectangularCode: View {
                 .widgetAccentable()
                 .lineLimit(1)
             Text(code.grouped)
-                .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                .font(.system(.title2, design: .monospaced, weight: .semibold))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
                 .privacySensitive()
@@ -259,7 +259,7 @@ private struct CircularCode: View {
                     Text(half)
                 }
             }
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .font(.system(.caption, design: .monospaced, weight: .semibold))
             .privacySensitive()
         }
         .progressViewStyle(.circular)

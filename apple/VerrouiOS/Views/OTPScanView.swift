@@ -88,7 +88,7 @@ private struct OTPScannerPane: View {
     }
 
     private var sources: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             if let error = flow.error {
                 ErrorLabel(text: error)
                     .accessibilityIdentifier("otp-scan-error")
@@ -169,14 +169,14 @@ private struct CameraArea: View {
 
     /// Rounded-corner frame and instruction.
     private var viewfinder: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 24) {
             ViewfinderFrame()
                 .frame(width: 230, height: 230)
             Text("Place the site's QR code in the frame")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 9)
+                .padding(.vertical, 8)
                 .glassSurface(Capsule())
         }
         .allowsHitTesting(false)
@@ -193,7 +193,7 @@ private struct CameraArea: View {
                     .font(.system(size: 38, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
             }
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
             Text(title)
                 .font(.headline)
                 .foregroundStyle(.white)
@@ -545,9 +545,9 @@ private struct OTPAccountCard: View {
     let account: ScannedOtp
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             TintedSymbol(symbol: "qrcode", tint: Theme.accent, size: 52)
-            VStack(spacing: 3) {
+            VStack(spacing: 4) {
                 Text(account.displayTitle)
                     .font(.title2.weight(.bold))
                     .multilineTextAlignment(.center)
@@ -561,7 +561,7 @@ private struct OTPAccountCard: View {
             LiveCode(account: account, size: 34)
                 .padding(.top, 4)
                 .accessibilityIdentifier("otp-preview-code")
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: "checkmark.seal.fill")
                 Text("Valid seed · \(account.code.code.count) digits · \(account.code.period) s")
             }
@@ -569,7 +569,7 @@ private struct OTPAccountCard: View {
             .foregroundStyle(.green)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
     }
 }
 

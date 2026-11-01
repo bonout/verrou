@@ -96,7 +96,7 @@ private struct CodeDetail: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let code = pinned.code(at: context.date)
             let seconds = Int(code.end.timeIntervalSince(context.date).rounded(.up))
-            VStack(spacing: 6) {
+            VStack(spacing: 8) {
                 Text(pinned.title)
                     .font(.headline)
                     .lineLimit(1)
@@ -108,12 +108,12 @@ private struct CodeDetail: View {
                 }
                 Spacer(minLength: 0)
                 Text(code.grouped)
-                    .font(.system(size: 38, weight: .semibold, design: .monospaced))
+                    .font(.system(.largeTitle, design: .monospaced, weight: .semibold))
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
                     .privacySensitive()
                 Spacer(minLength: 0)
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     CountdownRing(code: code, date: context.date, lineWidth: 2.5)
                         .frame(width: 16, height: 16)
                     Text("\(seconds) s")

@@ -20,21 +20,21 @@ struct AttachmentsSection: View {
                 SectionTitle(String(localized: "Attachments"))
                 FieldCard {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                        if index > 0 { Divider().padding(.leading, 14) }
+                        if index > 0 { Divider().padding(.leading, 16) }
                         AttachmentRow(itemID: summary.id, entry: entry, editable: editable)
                     }
                     if let activity = store.activity {
-                        if !entries.isEmpty { Divider().padding(.leading, 14) }
-                        HStack(spacing: 10) {
+                        if !entries.isEmpty { Divider().padding(.leading, 16) }
+                        HStack(spacing: 8) {
                             ProgressView().controlSize(.small)
                             Text(activity).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                             Spacer()
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
                     if model.canEdit && summary.state == .active {
-                        if !entries.isEmpty || store.activity != nil { Divider().padding(.leading, 14) }
+                        if !entries.isEmpty || store.activity != nil { Divider().padding(.leading, 16) }
                         HStack {
                             Button {
                                 model.chooseAttachments(for: summary.id)
@@ -48,8 +48,8 @@ struct AttachmentsSection: View {
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
                     }
                 }
             }
@@ -66,7 +66,7 @@ private struct AttachmentRow: View {
     @State private var confirmDelete = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(nsImage: NSWorkspace.shared.icon(for: .init(filenameExtension: (entry.fileName as NSString).pathExtension) ?? .data))
                 .resizable()
                 .frame(width: 28, height: 28)
@@ -93,7 +93,7 @@ private struct AttachmentRow: View {
                     .opacity(hovering ? 1 : 0)
             }
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
         .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))

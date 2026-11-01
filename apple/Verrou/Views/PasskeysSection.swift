@@ -11,7 +11,7 @@ struct PasskeysSection: View {
             SectionTitle(String(localized: "Passkeys"))
             FieldCard {
                 ForEach(Array(passkeys.enumerated()), id: \.element.credentialId) { index, passkey in
-                    if index > 0 { Divider().padding(.leading, 14) }
+                    if index > 0 { Divider().padding(.leading, 16) }
                     PasskeyRow(itemID: itemID, passkey: passkey)
                 }
             }
@@ -57,8 +57,8 @@ private struct PasskeyRow: View {
                     .disabled(model.editorBusy)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
         .background(hovering ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }

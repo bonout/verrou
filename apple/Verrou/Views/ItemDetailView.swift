@@ -6,7 +6,7 @@ struct ItemDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
                 stateBanner
                 if detail.summary.category == .sshKey, fields.contains(where: { $0.id == "public_key" }) {
@@ -22,7 +22,7 @@ struct ItemDetailView: View {
                 if !detail.urls.isEmpty || !fields.isEmpty {
                     FieldCard {
                         ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
-                            if index > 0 { Divider().padding(.leading, 14) }
+                            if index > 0 { Divider().padding(.leading, 16) }
                             if field.hidden && field.fieldType != .totp {
                                 HiddenFieldRow(field: field)
                             } else {
@@ -44,7 +44,7 @@ struct ItemDetailView: View {
                     SectionTitle(String(localized: "Websites"))
                     FieldCard {
                         ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
-                            if index > 0 { Divider().padding(.leading, 14) }
+                            if index > 0 { Divider().padding(.leading, 16) }
                             WebsiteRow(url: url, primary: index == 0,
                                        rule: detail.urlMatches.indices.contains(index) ? detail.urlMatches[index] : nil)
                         }
@@ -59,7 +59,7 @@ struct ItemDetailView: View {
                     SectionTitle(String(localized: "Old passwords"))
                     FieldCard {
                         ForEach(Array(history.enumerated()), id: \.element.id) { index, field in
-                            if index > 0 { Divider().padding(.leading, 14) }
+                            if index > 0 { Divider().padding(.leading, 16) }
                             if field.hidden {
                                 HiddenFieldRow(field: field)
                             } else {
@@ -94,9 +94,9 @@ struct ItemDetailView: View {
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
             ItemIcon(summary: detail.summary, size: 64)
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(detail.summary.title)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.title.bold())
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 // The chips wrap to the next line when the column is narrow,
@@ -171,7 +171,7 @@ struct ItemDetailView: View {
 
     private func banner(_ text: LocalizedStringKey, symbol: String, action: LocalizedStringKey,
                         perform: @escaping () async -> Void) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: symbol).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text(text).font(.callout).foregroundStyle(.secondary)
@@ -182,12 +182,12 @@ struct ItemDetailView: View {
             }
         }
         .padding(12)
-        .background(Theme.wash(0.05), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(Theme.wash(0.05), in: RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous))
     }
 
     private var metadata: some View {
         let format = Date.FormatStyle(date: .long, time: .shortened)
-        return VStack(alignment: .leading, spacing: 3) {
+        return VStack(alignment: .leading, spacing: 4) {
             Text("Modified on \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
             Text("Created on \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
             if let used = detail.summary.lastUsedLabel {
@@ -197,7 +197,7 @@ struct ItemDetailView: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .padding(.top, 6)
+        .padding(.top, 8)
     }
 }
 
@@ -214,7 +214,7 @@ private struct SshApprovalSection: View {
     @State private var scope = SshApprovalScope.fiveMinutes
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             if protected {
                 Label("Protected keys ask for approval at least every 5 minutes.", systemImage: "lock.shield")
                     .font(.footnote)
@@ -277,7 +277,7 @@ struct FieldRow: View {
 
     var body: some View {
         let active = hovering || focused
-        HStack(alignment: .center, spacing: 10) {
+        HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(field.label)
                     .font(.caption)
@@ -299,8 +299,8 @@ struct FieldRow: View {
             }
             .opacity(active ? 1 : 0.4)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
         .background(active ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
@@ -348,10 +348,10 @@ private struct FieldValue: View {
                 if field.fieldType == .password || field.fieldType == .pin {
                     PasswordText(value: revealed)
                 } else {
-                    Text(revealed).font(.system(size: 15, design: .monospaced)).textSelection(.enabled)
+                    Text(revealed).font(.system(.title3, design: .monospaced)).textSelection(.enabled)
                 }
             } else if field.fieldType == .cardNumber {
-                Text("•••• •••• •••• ••••").font(.system(size: 15, design: .monospaced)).foregroundStyle(.secondary)
+                Text("•••• •••• •••• ••••").font(.system(.title3, design: .monospaced)).foregroundStyle(.secondary)
             } else {
                 MaskedText(count: field.fieldType == .pin ? 4 : 12)
             }
@@ -377,7 +377,7 @@ struct IconButton: View {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .medium))
                 .frame(width: 26, height: 24)
-                .background(Theme.faintFill(0.6), in: RoundedRectangle(cornerRadius: 6))
+                .background(Theme.faintFill(0.6), in: RoundedRectangle(cornerRadius: Theme.radiusMedium))
         }
         .buttonStyle(.plain)
         .help(help)
@@ -409,8 +409,8 @@ struct WebsiteRow: View {
                     .opacity(hovering ? 1 : 0.4)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
     }
@@ -425,7 +425,7 @@ struct NotesRow: View {
             if let notes = model.revealed["notes"] {
                 Text(notes).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Content hidden").foregroundStyle(.secondary)
                     Text("Click the eye to show the note.").font(.caption).foregroundStyle(.tertiary)
                 }
@@ -436,7 +436,7 @@ struct NotesRow: View {
                 withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
             }
         }
-        .padding(14)
+        .padding(16)
     }
 }
 

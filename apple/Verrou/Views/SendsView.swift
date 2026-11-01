@@ -118,9 +118,9 @@ struct SendDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Button("Copy Link", systemImage: "link") { Task { await model.copySendLink(send) } }
                         .buttonStyle(.borderedProminent)
                     Button("Edit…", systemImage: "pencil") { Task { await model.editSend(send) } }
@@ -141,13 +141,13 @@ struct SendDetailView: View {
                     line("Opens", send.maxAccessCount.map { String(localized: "\(Int(send.accessCount)) of \(Int($0)) at most") }
                         ?? "\(send.accessCount)")
                     if let expiry = send.expirationDate {
-                        Divider().padding(.leading, 14)
+                        Divider().padding(.leading, 16)
                         line(date(expiry) < Date() ? "Expired" : "Expiration", formatted(expiry))
                     }
-                    Divider().padding(.leading, 14)
+                    Divider().padding(.leading, 16)
                     line("Deletion", formatted(send.deletionDate))
                     if let file = send.fileName {
-                        Divider().padding(.leading, 14)
+                        Divider().padding(.leading, 16)
                         line("File", send.fileSize.map { "\(file) · \(SendFileSize.text($0))" } ?? file)
                     }
                 }
@@ -170,10 +170,10 @@ struct SendDetailView: View {
                 .font(.system(size: 28))
                 .foregroundStyle(send.available ? Theme.accent : .secondary)
                 .frame(width: 64, height: 64)
-                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 5) {
+                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
                 Text(send.name)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.title.bold())
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 HStack(spacing: 8) {
@@ -205,8 +205,8 @@ struct SendDetailView: View {
             Text(value).monospacedDigit().textSelection(.enabled)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private func formatted(_ timestamp: Int64) -> String {
@@ -253,14 +253,14 @@ struct SendRow: View {
     let send: SendSummary
 
     var body: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 12) {
             Image(systemName: send.content == .file ? "doc" : "text.alignleft")
                 .accessibilityLabel(send.content == .file ? "File" : "Text")
                 .font(.system(size: 18))
                 .foregroundStyle(send.available ? Theme.accent : .secondary)
                 .frame(width: 28)
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
                     Text(send.name).lineLimit(1)
                     if send.hasPassword {
                         Image(systemName: "key.fill").font(.caption).foregroundStyle(.secondary)
@@ -415,7 +415,7 @@ struct SendEditorView: View {
             .formStyle(.grouped)
 
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if model.sends.busy {
                     ProgressView().controlSize(.small)
                     if let activity = model.sends.activity {
@@ -485,8 +485,8 @@ struct SendEditorView: View {
     }
 
     private func fileRow(_ file: SendsModel.SendFile) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
                 Image(nsImage: NSWorkspace.shared.icon(
                     for: .init(filenameExtension: (file.name as NSString).pathExtension) ?? .data))
                     .resizable()
