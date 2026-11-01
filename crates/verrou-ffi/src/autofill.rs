@@ -672,18 +672,19 @@ mod tests {
         let known = check(&current.username, &current.password);
         assert_eq!(known.action, AutofillSaveAction::Known);
         assert_eq!(known.item_id.as_deref(), Some(github.id.as_str()));
-        let update = check(&current.username.to_uppercase(), "another-password");
+        let changed = current.password.chars().rev().collect::<String>();
+        let update = check(&current.username.to_uppercase(), &changed);
         assert_eq!(update.action, AutofillSaveAction::Update);
         assert_eq!(update.title.as_deref(), Some("GitHub"));
-        let new = check("someone-else@example.com", "another-password");
+        let new = check("someone-else@example.com", &changed);
         assert_eq!(new.action, AutofillSaveAction::New);
         assert_eq!(new.item_id, None);
         assert!(
             session
                 .autofill_save_check(
                     "http://github.com".to_owned(),
-                    "x".to_owned(),
-                    "y".to_owned()
+                    current.username.clone(),
+                    current.password.clone()
                 )
                 .is_err()
         );
