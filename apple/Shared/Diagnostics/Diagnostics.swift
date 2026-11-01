@@ -89,7 +89,7 @@ struct DiagnosticsSection: View {
         } header: {
             Text("Diagnostics")
         } footer: {
-            Text("When Verrou crashes or hangs, the system writes a report: its call stacks and versions, nothing from your vault. The reports stay on this device; Verrou never sends them. Share them with the developers if something went wrong.")
+            Text("Nothing from your vault: they stay on this device until you share them.")
         }
     }
 }

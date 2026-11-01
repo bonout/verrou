@@ -225,30 +225,30 @@
         }
       }
     },
-    "%@ in any app: Verrou offers the logins linked to that app, then types the username, Tab and the password. ⌘↩ links the chosen login to the app (synced with the vault). The key is the one left of Return.": {
+    "%@ in any app offers its logins and types them; ⌘↩ links the chosen login to the app.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ dans n'importe quelle app : Verrou propose les identifiants associés à cette app, puis tape le nom d'utilisateur, Tab et le mot de passe. ⌘↩ associe l'identifiant choisi à l'app (synchronisé avec le coffre). La touche est celle à gauche de Retour."
+            "value": "%@ dans n'importe quelle app propose ses identifiants et les tape ; ⌘↩ associe l'identifiant choisi à l'app."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ in jeder App: Verrou bietet die mit dieser App verknüpften Logins an und tippt dann Benutzername, Tab und Passwort. ⌘↩ verknüpft das gewählte Login mit der App (mit dem Tresor synchronisiert). Die Taste ist die links neben dem Zeilenschalter."
+            "value": "%@ in jeder App bietet ihre Logins an und tippt sie ein; ⌘↩ verknüpft das gewählte Login mit der App."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ en cualquier app: Verrou te ofrece los inicios de sesión vinculados a esa app y luego escribe el nombre de usuario, Tab y la contraseña. ⌘↩ vincula el inicio de sesión elegido a la app (sincronizado con la bóveda). La tecla es la que está a la izquierda de Retorno."
+            "value": "%@ en cualquier app ofrece sus inicios de sesión y los escribe; ⌘↩ vincula el elegido a la app."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ in qualsiasi app: Verrou propone i login collegati a quell'app, poi digita il nome utente, Tab e la password. ⌘↩ collega il login scelto all'app (sincronizzato con la cassaforte). Il tasto è quello a sinistra di A capo."
+            "value": "%@ in qualsiasi app propone i suoi login e li digita; ⌘↩ collega il login scelto all'app."
           }
         }
       }
@@ -5657,30 +5657,30 @@
         }
       }
     },
-    "A domain whose mail provider forwards every address to you (catch-all). The generator then makes one address per site, such as netflix.k3x9a@alias.example.com, saved as the login's username. Kept on this device.": {
+    "A catch-all domain: Verrou makes one address per site, such as netflix.k3x9a@alias.example.com.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un domaine dont le fournisseur de messagerie vous transfère toutes les adresses (catch-all). Le générateur crée alors une adresse par site, comme netflix.k3x9a@alias.example.com, enregistrée comme identifiant de la connexion. Gardé sur cet appareil."
+            "value": "Un domaine catch-all : Verrou crée une adresse par site, comme netflix.k3x9a@alias.example.com."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eine Domain, deren E-Mail-Anbieter dir jede Adresse weiterleitet (Catch-all). Der Generator erzeugt dann eine Adresse pro Website, etwa netflix.k3x9a@alias.example.com, die als Benutzername des Logins gespeichert wird. Bleibt auf diesem Gerät."
+            "value": "Eine Catch-all-Domain: Verrou erstellt eine Adresse pro Website, etwa netflix.k3x9a@alias.example.com."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un dominio cuyo proveedor de correo te reenvía todas las direcciones (catch-all). El generador crea entonces una dirección por sitio, como netflix.k3x9a@alias.example.com, que se guarda como nombre de usuario del inicio de sesión. Se guarda en este dispositivo."
+            "value": "Un dominio catch-all: Verrou crea una dirección por sitio, como netflix.k3x9a@alias.example.com."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un dominio il cui provider di posta ti inoltra ogni indirizzo (catch-all). Il generatore crea quindi un indirizzo per sito, come netflix.k3x9a@alias.example.com, salvato come nome utente del login. Resta su questo dispositivo."
+            "value": "Un dominio catch-all: Verrou crea un indirizzo per sito, come netflix.k3x9a@alias.example.com."
           }
         }
       }
@@ -7281,6 +7281,34 @@
         }
       }
     },
+    "Adding or removing a fingerprint turns Touch ID off.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter ou retirer une empreinte désactive Touch ID."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wenn du einen Fingerabdruck hinzufügst oder entfernst, wird Touch ID deaktiviert."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añadir o quitar una huella desactiva Touch ID."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungere o rimuovere un'impronta disattiva Touch ID."
+          }
+        }
+      }
+    },
     "Address": {
       "localizations": {
         "fr": {
@@ -8261,34 +8289,6 @@
         }
       }
     },
-    "An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Une mise à jour s'installe quand vous quittez Verrou, jamais pendant qu'il fonctionne. Verrou vérifie d'abord sa signature : seule une mise à jour publiée par les développeurs de Verrou s'installe."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein Update wird installiert, wenn du Verrou beendest, nie während der Ausführung. Verrou prüft zuerst die Signatur: Nur ein von den Entwickler:innen von Verrou veröffentlichtes Update wird installiert."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las actualizaciones se instalan al salir de Verrou, nunca mientras está en ejecución. Verrou comprueba antes su firma: solo se instalan las actualizaciones publicadas por los desarrolladores de Verrou."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un aggiornamento viene installato quando esci da Verrou, mai mentre è in esecuzione. Verrou ne verifica prima la firma: si installa solo un aggiornamento pubblicato dagli sviluppatori di Verrou."
-          }
-        }
-      }
-    },
     "Another": {
       "localizations": {
         "fr": {
@@ -8681,6 +8681,34 @@
         }
       }
     },
+    "Asks Have I Been Pwned with only the first 5 characters of the password's SHA-1 hash.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interroge Have I Been Pwned avec seulement les 5 premiers caractères de l'empreinte SHA-1 du mot de passe."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fragt Have I Been Pwned nur mit den ersten 5 Zeichen des SHA-1-Hashs des Passworts."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consulta Have I Been Pwned solo con los 5 primeros caracteres del hash SHA-1 de la contraseña."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interroga Have I Been Pwned solo con i primi 5 caratteri dell'hash SHA-1 della password."
+          }
+        }
+      }
+    },
     "At least %lld characters.": {
       "localizations": {
         "fr": {
@@ -8733,62 +8761,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bisogna conservare almeno un elemento del gruppo"
-          }
-        }
-      }
-    },
-    "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. For 12 hours after an unlock on this Mac, the iPhone can also unlock the vault for the terminal: the window stays locked, the vault locks again 5 minutes after the last approval.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Devant le Mac, Touch ID comme avant ; l’iPhone est sollicité après 15 s, ou tout de suite si l’écran est verrouillé ou inactif. Pendant 12 heures après un déverrouillage sur ce Mac, l’iPhone peut aussi déverrouiller le coffre pour le terminal : la fenêtre reste verrouillée, le coffre se reverrouille 5 minutes après la dernière approbation."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Am Mac wie bisher Touch ID; das iPhone wird nach 15 s gefragt oder sofort, wenn der Bildschirm gesperrt oder inaktiv ist. Bis 12 Stunden nach einer Entsperrung auf diesem Mac kann das iPhone den Tresor auch für das Terminal entsperren: Das Fenster bleibt gesperrt, der Tresor sperrt sich 5 Minuten nach der letzten Genehmigung wieder."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En el Mac, Touch ID como antes; se pregunta al iPhone pasados 15 s, o de inmediato si la pantalla está bloqueada o inactiva. Durante las 12 horas siguientes a un desbloqueo en este Mac, el iPhone también puede desbloquear la bóveda para el terminal: la ventana sigue bloqueada y la bóveda se vuelve a bloquear 5 minutos después de la última aprobación."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Al Mac, Touch ID come prima; l'iPhone viene interpellato dopo 15 s, o subito se lo schermo è bloccato o inattivo. Per 12 ore dopo uno sblocco su questo Mac, l'iPhone può anche sbloccare la cassaforte per il Terminale: la finestra resta bloccata e la cassaforte si blocca di nuovo 5 minuti dopo l'ultima approvazione."
-          }
-        }
-      }
-    },
-    "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. The vault must be unlocked on the Mac.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Devant le Mac, Touch ID comme avant ; l’iPhone est sollicité après 15 s, ou tout de suite si l’écran est verrouillé ou inactif. Le coffre doit être déverrouillé sur le Mac."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Am Mac wie bisher Touch ID; das iPhone wird nach 15 s gefragt oder sofort, wenn der Bildschirm gesperrt oder inaktiv ist. Der Tresor muss auf dem Mac entsperrt sein."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En el Mac, Touch ID como antes; se pregunta al iPhone pasados 15 s, o de inmediato si la pantalla está bloqueada o inactiva. La bóveda debe estar desbloqueada en el Mac."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Al Mac, Touch ID come prima; l'iPhone viene interpellato dopo 15 s, o subito se lo schermo è bloccato o inattivo. La cassaforte deve essere sbloccata sul Mac."
           }
         }
       }
@@ -9045,30 +9017,30 @@
         }
       }
     },
-    "Away from the Mac, the terminal's requests (a secret, an SSH signature) go to Verrou on the iPhone: Face ID approves them. Through your iCloud account, sealed end to end.": {
+    "Away from the Mac, approve the terminal's requests with Face ID on the iPhone, sealed end to end through iCloud.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Loin du Mac, les demandes du terminal (un secret, une signature SSH) arrivent dans Verrou sur l’iPhone : Face ID les approuve. Par votre compte iCloud, chiffrées de bout en bout."
+            "value": "Loin du Mac, approuvez les demandes du terminal avec Face ID sur l'iPhone, scellées de bout en bout via iCloud."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abseits des Mac gehen die Anfragen des Terminals (ein Geheimnis, eine SSH-Signatur) an Verrou auf dem iPhone: Face ID genehmigt sie. Über deinen iCloud-Account, Ende-zu-Ende versiegelt."
+            "value": "Fern vom Mac genehmigst du die Anfragen des Terminals mit Face ID auf dem iPhone, Ende-zu-Ende versiegelt über iCloud."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lejos del Mac, las solicitudes del terminal (un secreto, una firma SSH) van a Verrou en el iPhone: Face ID las aprueba. A través de tu cuenta de iCloud, cifradas de extremo a extremo."
+            "value": "Lejos del Mac, aprueba las solicitudes del terminal con Face ID en el iPhone, selladas de extremo a extremo por iCloud."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lontano dal Mac, le richieste del Terminale (un segreto, una firma SSH) arrivano a Verrou sull'iPhone: Face ID le approva. Tramite il tuo account iCloud, sigillate end-to-end."
+            "value": "Lontano dal Mac, approva le richieste del terminale con Face ID sull'iPhone, sigillate end-to-end tramite iCloud."
           }
         }
       }
@@ -9325,62 +9297,6 @@
         }
       }
     },
-    "Bitwarden has no per-folder rule: this one stays on this Mac, and only applies to sites without their own rule (for example “Host” for the Work folder).": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden n'a pas de règle par dossier : celle-ci reste sur ce Mac, et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail)."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden kennt keine Regel pro Ordner: Diese bleibt auf diesem Mac und gilt nur für Websites ohne eigene Regel (zum Beispiel „Host“ für den Ordner „Arbeit“)."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden no tiene reglas por carpeta: esta se queda en este Mac y solo se aplica a los sitios sin regla propia (por ejemplo, “Host” para la carpeta Trabajo)."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden non prevede regole per cartella: questa resta su questo Mac e si applica solo ai siti senza una regola propria (ad esempio “Host” per la cartella Lavoro)."
-          }
-        }
-      }
-    },
-    "Bitwarden has no per-folder rule: this one stays on this iPhone and only applies to sites without their own rule (for example “Host” for the Work folder).": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden n'a pas de règle par dossier : celle-ci reste sur cet iPhone et ne vaut que pour les sites sans règle propre (par exemple « Hôte » pour le dossier Travail)."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden kennt keine Regel pro Ordner: Diese bleibt auf diesem iPhone und gilt nur für Websites ohne eigene Regel (zum Beispiel „Host“ für den Ordner „Arbeit“)."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden no tiene reglas por carpeta: esta se queda en este iPhone y solo se aplica a los sitios sin regla propia (por ejemplo, “Host” para la carpeta Trabajo)."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bitwarden non prevede regole per cartella: questa resta su questo iPhone e si applica solo ai siti senza una regola propria (ad esempio “Host” per la cartella Lavoro)."
-          }
-        }
-      }
-    },
     "Both the PIN and the key are needed. Logging in again or logging out removes these keys.": {
       "localizations": {
         "fr": {
@@ -9545,34 +9461,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Browser, collegato il %@"
-          }
-        }
-      }
-    },
-    "Browsers and Terminal": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Navigateurs et terminal"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Browser und Terminal"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Navegadores y Terminal"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Browser e Terminale"
           }
         }
       }
@@ -10697,6 +10585,34 @@
         }
       }
     },
+    "Choose Verrou in System Settings → General → AutoFill & Passwords: Safari and apps then offer its logins, codes and passkeys.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choisissez Verrou dans Réglages Système → Général → Remplissage automatique et mots de passe : Safari et les apps proposent alors ses identifiants, codes et passkeys."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wähle Verrou in Systemeinstellungen → Allgemein → Automatisch ausfüllen und Passwörter: Safari und Apps bieten dann seine Logins, Codes und Passkeys an."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige Verrou en Ajustes del Sistema → General → Autorrelleno y contraseñas: Safari y las apps ofrecerán sus inicios de sesión, códigos y llaves de acceso."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scegli Verrou in Impostazioni di Sistema → Generali → Riempimento automatico e password: Safari e le app offriranno i suoi login, codici e passkey."
+          }
+        }
+      }
+    },
     "Choose Verrou…": {
       "localizations": {
         "fr": {
@@ -10861,34 +10777,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ha scelto me"
-          }
-        }
-      }
-    },
-    "Chosen in System Settings → General → AutoFill & Passwords, Verrou offers its logins, codes and passkeys in Safari, in apps, and in Chrome or Brave when they ask the system for a passkey. Touch ID opens the vault each time. Verrou's extension for Brave and Firefox is still useful: it also fills cards and addresses.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choisi dans Réglages Système → Général → Remplissage automatique et mots de passe, Verrou propose ses identifiants, codes et passkeys dans Safari, dans les apps, et dans Chrome ou Brave quand ils demandent une passkey au système. Touch ID ouvre le coffre à chaque fois. L'extension de Verrou pour Brave et Firefox reste utile : elle remplit aussi les cartes et les adresses."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unter „Systemeinstellungen → Allgemein → Automatisch ausfüllen & Passwörter“ ausgewählt, bietet Verrou seine Logins, Codes und Passkeys in Safari, in Apps sowie in Chrome oder Brave an, wenn diese das System nach einem Passkey fragen. Touch ID öffnet jedes Mal den Tresor. Die Verrou-Erweiterung für Brave und Firefox bleibt nützlich: Sie füllt auch Karten und Adressen aus."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Si lo eliges en Ajustes del Sistema → General → Autorrelleno y contraseñas, Verrou ofrece sus inicios de sesión, códigos y llaves de acceso en Safari, en las apps y en Chrome o Brave cuando piden al sistema una llave de acceso. Touch ID abre la bóveda cada vez. La extensión de Verrou para Brave y Firefox sigue siendo útil: también rellena tarjetas y direcciones."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scelto in Impostazioni di Sistema → Generali → Riempimento automatico e password, Verrou propone i suoi login, codici e passkey in Safari, nelle app e in Chrome o Brave quando chiedono una passkey al sistema. Touch ID apre la cassaforte ogni volta. L'estensione di Verrou per Brave e Firefox resta utile: compila anche carte e indirizzi."
           }
         }
       }
@@ -12317,34 +12205,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Copiato"
-          }
-        }
-      }
-    },
-    "Copied secrets are hidden from clipboard managers and cleared after this delay, if the clipboard still holds them.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les secrets copiés échappent aux gestionnaires de presse-papiers et sont effacés au bout de ce délai, si le presse-papiers les contient encore."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kopierte Geheimnisse bleiben vor Zwischenablage-Managern verborgen und werden nach dieser Frist gelöscht, wenn die Zwischenablage sie noch enthält."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los secretos copiados no aparecen en los gestores de portapapeles y se borran tras este tiempo, si el portapapeles aún los contiene."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "I segreti copiati restano nascosti ai gestori degli appunti e vengono cancellati dopo questo tempo, se gli appunti li contengono ancora."
           }
         }
       }
@@ -17641,30 +17501,30 @@
         }
       }
     },
-    "Erases the cache, the tokens and the changes not yet synced from this Mac. The vault stays intact on the server.": {
+    "Erases this Mac's copy and unsynced changes. The vault stays on the server.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Efface le cache, les jetons et les modifications pas encore synchronisées de ce Mac. Le coffre reste intact sur le serveur."
+            "value": "Efface la copie de ce Mac et les modifications non synchronisées. Le coffre reste sur le serveur."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Löscht den Cache, die Tokens und die noch nicht synchronisierten Änderungen von diesem Mac. Der Tresor bleibt auf dem Server unverändert."
+            "value": "Löscht die Kopie auf diesem Mac und nicht synchronisierte Änderungen. Der Tresor bleibt auf dem Server."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Borra de este Mac la caché, los tokens y los cambios aún no sincronizados. La bóveda se queda intacta en el servidor."
+            "value": "Borra la copia de este Mac y los cambios sin sincronizar. La bóveda sigue en el servidor."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cancella da questo Mac la cache, i token e le modifiche non ancora sincronizzate. La cassaforte resta intatta sul server."
+            "value": "Cancella la copia su questo Mac e le modifiche non sincronizzate. La cassaforte resta sul server."
           }
         }
       }
@@ -17945,34 +17805,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Data di scadenza"
-          }
-        }
-      }
-    },
-    "Exports from Apple Passwords (CSV), 1Password (1PUX or CSV) or Proton Pass (unencrypted ZIP or CSV). Duplicates are spotted before the import; Vault → Clean Up Duplicates… handles those of the vault.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Exports des Mots de passe d'Apple (CSV), de 1Password (1PUX ou CSV) ou de Proton Pass (ZIP non chiffré ou CSV). Les doublons sont repérés avant l'import ; Coffre → Nettoyer les doublons… traite ceux du coffre."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Exporte aus Apple Passwörter (CSV), 1Password (1PUX oder CSV) oder Proton Pass (unverschlüsselte ZIP oder CSV). Duplikate werden vor dem Import erkannt; „Tresor → Duplikate bereinigen …“ kümmert sich um die im Tresor."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Exportaciones de Contraseñas de Apple (CSV), 1Password (1PUX o CSV) o Proton Pass (ZIP sin cifrar o CSV). Los duplicados se detectan antes de importar; Bóveda → Limpiar duplicados… se encarga de los de la bóveda."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Esportazioni da Password di Apple (CSV), 1Password (1PUX o CSV) o Proton Pass (ZIP non cifrato o CSV). I duplicati vengono individuati prima dell'importazione; Cassaforte → Pulisci duplicati… gestisce quelli della cassaforte."
           }
         }
       }
@@ -19041,34 +18873,6 @@
         }
       }
     },
-    "For each password created or changed in Verrou (editor, Brave, import), Have I Been Pwned is queried in the background. Only the first 5 characters of its SHA-1 hash leave this Mac.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "À chaque mot de passe créé ou modifié dans Verrou (éditeur, Brave, import), Have I Been Pwned est interrogé en arrière-plan. Seuls les 5 premiers caractères de son empreinte SHA-1 quittent ce Mac."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Für jedes in Verrou erstellte oder geänderte Passwort (Editor, Brave, Import) wird im Hintergrund Have I Been Pwned abgefragt. Nur die ersten 5 Zeichen seines SHA-1-Hashs verlassen diesen Mac."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Por cada contraseña creada o modificada en Verrou (editor, Brave, importación), se consulta Have I Been Pwned en segundo plano. Solo salen de este Mac los 5 primeros caracteres de su hash SHA-1."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Per ogni password creata o modificata in Verrou (editor, Brave, importazione), Have I Been Pwned viene interrogato in background. Solo i primi 5 caratteri del suo hash SHA-1 lasciano questo Mac."
-          }
-        }
-      }
-    },
     "For old servers that only accept RSA. Generation takes a few seconds.": {
       "localizations": {
         "fr": {
@@ -19097,34 +18901,6 @@
         }
       }
     },
-    "For sites that don't have their own rule (chosen when editing a login). %@": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pour les sites qui n'ont pas leur propre règle (à choisir dans la modification d'un identifiant). %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Für Websites ohne eigene Regel (beim Bearbeiten eines Logins gewählt). %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Para los sitios que no tienen regla propia (se elige al editar un inicio de sesión). %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Per i siti che non hanno una regola propria (scelta durante la modifica di un login). %@"
-          }
-        }
-      }
-    },
     "For sites without their own rule (chosen when editing a login). %@": {
       "localizations": {
         "fr": {
@@ -19149,6 +18925,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Per i siti senza una regola propria (scelta durante la modifica di un login). %@"
+          }
+        }
+      }
+    },
+    "For sites without their own rule. %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pour les sites sans règle propre. %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für Websites ohne eigene Regel. %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Para los sitios sin regla propia. %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per i siti senza una regola propria. %@"
           }
         }
       }
@@ -19261,6 +19065,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Elenco diceware francese"
+          }
+        }
+      }
+    },
+    "From Apple Passwords, 1Password or Proton Pass. Duplicates are spotted before importing.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depuis Apple Mots de passe, 1Password ou Proton Pass. Les doublons sont repérés avant l'import."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus Apple Passwörter, 1Password oder Proton Pass. Duplikate werden vor dem Import erkannt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desde Apple Contraseñas, 1Password o Proton Pass. Los duplicados se detectan antes de importar."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Da Apple Password, 1Password o Proton Pass. I duplicati vengono individuati prima dell'importazione."
+          }
+        }
+      }
+    },
+    "From your account (web vault → Settings → Domains), for the “Base domain” rule.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depuis votre compte (coffre web → Paramètres → Domaines), pour la règle « Domaine de base »."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus deinem Account (Web-Tresor → Einstellungen → Domains), für die Regel „Basisdomain“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De tu cuenta (bóveda web → Configuración → Dominios), para la regla “Dominio base”."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dal tuo account (cassaforte web → Impostazioni → Domini), per la regola “Dominio di base”."
           }
         }
       }
@@ -20357,6 +20217,34 @@
         }
       }
     },
+    "Hidden from clipboard managers, then cleared after this delay.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masqués aux gestionnaires de presse-papiers, puis effacés après ce délai."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vor Zwischenablage-Managern verborgen, dann nach dieser Zeit gelöscht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultos a los gestores del portapapeles y borrados tras este tiempo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascosti ai gestori degli appunti, poi cancellati dopo questo tempo."
+          }
+        }
+      }
+    },
     "Hidden password": {
       "localizations": {
         "fr": {
@@ -20945,34 +20833,6 @@
         }
       }
     },
-    "Icons come from your Vaultwarden server, which only receives the names of the sites; they are not kept on disk.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Les icônes viennent de votre serveur Vaultwarden, qui ne reçoit que le nom des sites ; elles ne sont pas gardées sur le disque."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Symbole kommen von deinem Vaultwarden-Server, der nur die Namen der Websites erhält; sie werden nicht auf dem Datenträger gespeichert."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los iconos proceden de tu servidor Vaultwarden, que solo recibe los nombres de los sitios; no se guardan en el disco."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Le icone provengono dal tuo server Vaultwarden, che riceve solo i nomi dei siti; non vengono conservate sul disco."
-          }
-        }
-      }
-    },
     "Identities": {
       "localizations": {
         "fr": {
@@ -21333,34 +21193,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Importa…"
-          }
-        }
-      }
-    },
-    "In Brave: brave://extensions, “Developer mode”, “Load unpacked”, then ⌘⇧G and paste the path. In Firefox: about:debugging, “This Firefox”, “Load Temporary Add-on…”, then ⌘⇧G and paste the manifest path (to redo at each Firefox start, see the guide). Then click the browser's Verrou icon to link the extension. %@": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dans Brave : brave://extensions, « Mode développeur », « Charger l'extension non empaquetée », puis ⌘⇧G et collez le chemin. Dans Firefox : about:debugging, « Ce Firefox », « Charger un module complémentaire temporaire… », puis ⌘⇧G et collez le chemin du manifeste (à refaire à chaque démarrage de Firefox, voir le guide). Cliquez ensuite sur l'icône Verrou du navigateur pour relier l'extension. %@"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In Brave: brave://extensions, „Entwicklermodus“, „Entpackte Erweiterung laden“, dann ⌘⇧G und den Pfad einfügen. In Firefox: about:debugging, „Dieser Firefox“, „Temporäres Add-on laden …“, dann ⌘⇧G und den Pfad des Manifests einfügen (bei jedem Start von Firefox zu wiederholen, siehe Anleitung). Klicke dann auf das Verrou-Symbol des Browsers, um die Erweiterung zu verknüpfen. %@"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En Brave: brave://extensions, “Modo de desarrollador”, “Cargar descomprimida”, luego ⌘⇧G y pega la ruta. En Firefox: about:debugging, “Este Firefox”, “Cargar complemento temporal…”, luego ⌘⇧G y pega la ruta del manifiesto (hay que repetirlo cada vez que se inicia Firefox, consulta la guía). Después haz clic en el icono de Verrou del navegador para vincular la extensión. %@"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In Brave: brave://extensions, “Modalità sviluppatore”, “Carica estensione non pacchettizzata”, poi ⌘⇧G e incolla il percorso. In Firefox: about:debugging, “Questo Firefox”, “Carica componente aggiuntivo temporaneo…”, poi ⌘⇧G e incolla il percorso del manifest (da ripetere a ogni avvio di Firefox, vedi la guida). Poi fai clic sull'icona Verrou del browser per collegare l'estensione. %@"
           }
         }
       }
@@ -21753,6 +21585,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Installata in %@"
+          }
+        }
+      }
+    },
+    "Installed when you quit Verrou, once its signature is checked.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installée quand vous quittez Verrou, une fois sa signature vérifiée."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird beim Beenden von Verrou installiert, nachdem die Signatur geprüft wurde."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se instala al salir de Verrou, una vez comprobada su firma."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Installato quando esci da Verrou, dopo averne verificato la firma."
           }
         }
       }
@@ -22257,6 +22117,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Invito al server per %@"
+          }
+        }
+      }
+    },
+    "Invitations, members to confirm and new shared items, computed on this device after each sync.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitations, membres à confirmer et nouveaux éléments partagés, calculés sur cet appareil après chaque synchronisation."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einladungen, zu bestätigende Mitglieder und neue geteilte Einträge, nach jeder Synchronisierung auf diesem Gerät ermittelt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitaciones, miembros por confirmar y nuevos elementos compartidos, calculados en este dispositivo tras cada sincronización."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inviti, membri da confermare e nuovi elementi condivisi, calcolati su questo dispositivo dopo ogni sincronizzazione."
           }
         }
       }
@@ -23689,30 +23577,58 @@
         }
       }
     },
-    "Kept on this Mac. “Last used” follows what you fill, copy or show here: only item IDs and dates, never sent to the server.": {
+    "Kept on this Mac, never sent to the server.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gardés sur ce Mac. « Dernière utilisation » suit ce que vous remplissez, copiez ou affichez ici : seulement des identifiants d'éléments et des dates, jamais envoyés au serveur."
+            "value": "Gardé sur ce Mac, jamais envoyé au serveur."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Auf diesem Mac gespeichert. „Zuletzt verwendet“ folgt dem, was du hier ausfüllst, kopierst oder anzeigst: nur Eintrags-IDs und Daten, nie an den Server gesendet."
+            "value": "Bleibt auf diesem Mac und wird nie an den Server gesendet."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se guarda en este Mac. “Último uso” sigue lo que rellenas, copias o muestras aquí: solo identificadores de elementos y fechas, nunca se envían al servidor."
+            "value": "Se guarda en este Mac y nunca se envía al servidor."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conservato su questo Mac. “Ultimo utilizzo” segue ciò che compili, copi o mostri qui: solo ID degli elementi e date, mai inviati al server."
+            "value": "Resta su questo Mac, mai inviato al server."
+          }
+        }
+      }
+    },
+    "Kept on this Mac: Bitwarden has no per-folder rule.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gardé sur ce Mac : Bitwarden n'a pas de règle par dossier."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bleibt auf diesem Mac: Bitwarden kennt keine Regel pro Ordner."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se guarda en este Mac: Bitwarden no tiene reglas por carpeta."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resta su questo Mac: Bitwarden non ha regole per cartella."
           }
         }
       }
@@ -24665,6 +24581,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Linux (app desktop)"
+          }
+        }
+      }
+    },
+    "Load the extension in your browser (see the guide), then click its Verrou icon to link it. Terminal: “verrou link”.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chargez l'extension dans votre navigateur (voir le guide), puis cliquez sur son icône Verrou pour la lier. Terminal : « verrou link »."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lade die Erweiterung in deinen Browser (siehe Anleitung) und klicke dann auf ihr Verrou-Symbol, um sie zu verknüpfen. Terminal: „verrou link“."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carga la extensión en tu navegador (consulta la guía) y haz clic en su icono de Verrou para vincularla. Terminal: “verrou link”."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Carica l'estensione nel browser (vedi la guida), poi fai clic sulla sua icona Verrou per collegarla. Terminale: “verrou link”."
           }
         }
       }
@@ -30101,6 +30045,34 @@
         }
       }
     },
+    "Nothing from your vault: they stay on this device until you share them.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rien de votre coffre : ils restent sur cet appareil jusqu'à ce que vous les partagiez."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nichts aus deinem Tresor: Sie bleiben auf diesem Gerät, bis du sie teilst."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nada de tu bóveda: se quedan en este dispositivo hasta que los compartas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nulla della tua cassaforte: restano su questo dispositivo finché non li condividi."
+          }
+        }
+      }
+    },
     "Nothing matches “%@”.\nTry `tag:bank`, `type:card` or `!word` to exclude.": {
       "localizations": {
         "fr": {
@@ -32789,30 +32761,30 @@
         }
       }
     },
-    "Paste the command in Terminal (it asks for your Mac password): it links “verrou” to the app, so the command updates with Verrou.": {
+    "Paste it in Terminal: “verrou” then updates with the app.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Collez la commande dans Terminal (elle demande le mot de passe du Mac) : elle relie « verrou » à l'app, et la commande se met à jour avec Verrou."
+            "value": "Collez-la dans Terminal : « verrou » se met alors à jour avec l'app."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Füge den Befehl im Terminal ein (er fragt nach deinem Mac-Passwort): Er verknüpft „verrou“ mit der App, sodass der Befehl mit Verrou aktualisiert wird."
+            "value": "Füge ihn im Terminal ein: „verrou“ wird dann mit der App aktualisiert."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Pega el comando en Terminal (te pide la contraseña del Mac): vincula “verrou” a la app, de modo que el comando se actualiza con Verrou."
+            "value": "Pégalo en Terminal: “verrou” se actualizará con la app."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Incolla il comando nel Terminale (chiede la password del Mac): collega “verrou” all'app, così il comando si aggiorna con Verrou."
+            "value": "Incollalo in Terminale: “verrou” si aggiornerà con l'app."
           }
         }
       }
@@ -32841,34 +32813,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Carte di pagamento"
-          }
-        }
-      }
-    },
-    "Pending invitation, access confirmed, members to confirm, new shared items: the organization name and numbers, never a password or a login. Computed by Verrou on this device after each sync, without an outside notification service.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitation en attente, accès confirmé, membres à confirmer, nouveaux éléments partagés : le nom de l'organisation et des nombres, jamais un mot de passe ni un identifiant. Calculées par Verrou sur cet appareil après chaque synchronisation, sans service de notification extérieur."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ausstehende Einladung, bestätigter Zugriff, zu bestätigende Mitglieder, neue geteilte Einträge: der Name der Organisation und Zahlen, nie ein Passwort oder Login. Von Verrou nach jeder Synchronisierung auf diesem Gerät berechnet, ohne externen Mitteilungsdienst."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitación pendiente, acceso confirmado, miembros por confirmar, nuevos elementos compartidos: el nombre de la organización y cifras, nunca una contraseña ni un inicio de sesión. Verrou lo calcula en este dispositivo después de cada sincronización, sin ningún servicio de notificaciones externo."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invito in sospeso, accesso confermato, membri da confermare, nuovi elementi condivisi: il nome dell'organizzazione e i numeri, mai una password o un login. Calcolati da Verrou su questo dispositivo dopo ogni sincronizzazione, senza servizi di notifica esterni."
           }
         }
       }
@@ -38053,34 +37997,6 @@
         }
       }
     },
-    "Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Réglages de votre compte, lus sur le serveur (coffre web → Paramètres → Domaines) : la règle « Domaine de base » propose aussi l'identifiant sur les domaines du même groupe."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Einstellungen deines Accounts, vom Server gelesen (Web-Tresor → Einstellungen → Domains): Die Regel „Basisdomain“ bietet das Login auch auf den Domains derselben Gruppe an."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ajustes de tu cuenta, leídos del servidor (bóveda web → Settings → Domains): la regla “Dominio base” también ofrece el inicio de sesión en los dominios del mismo grupo."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Impostazioni del tuo account, lette dal server (cassaforte web → Impostazioni → Domini): la regola “Dominio di base” propone il login anche sui domini dello stesso gruppo."
-          }
-        }
-      }
-    },
     "Settings…": {
       "localizations": {
         "fr": {
@@ -39449,6 +39365,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Icone dei siti"
+          }
+        }
+      }
+    },
+    "Site icons come from your Vaultwarden server, which only sees the site names.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les icônes viennent de votre serveur Vaultwarden, qui ne voit que le nom des sites."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Symbole kommen von deinem Vaultwarden-Server, der nur die Namen der Websites sieht."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los iconos vienen de tu servidor Vaultwarden, que solo ve los nombres de los sitios."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le icone arrivano dal tuo server Vaultwarden, che vede solo i nomi dei siti."
           }
         }
       }
@@ -41049,34 +40993,6 @@
         }
       }
     },
-    "Terminal: “verrou link”, then each secret or SSH signature asks for Touch ID.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Terminal : « verrou link », puis chaque secret ou signature SSH demande Touch ID."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Terminal: „verrou link“, danach fragt jedes Geheimnis und jede SSH-Signatur nach Touch ID."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Terminal: “verrou link”; después, cada secreto o firma SSH pide Touch ID."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Terminale: “verrou link”, poi ogni segreto o firma SSH chiede Touch ID."
-          }
-        }
-      }
-    },
     "Text": {
       "localizations": {
         "fr": {
@@ -41157,34 +41073,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "L'SDK di Bitwarden non è riuscito a decifrarli"
-          }
-        }
-      }
-    },
-    "The Verrou extension fills your logins in Brave or Firefox, site by site; the “verrou” command and its SSH agent read the vault from the terminal, with your approval. Nothing leaves the Mac.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "L'extension Verrou remplit vos identifiants dans Brave ou Firefox, site par site ; la commande « verrou » et son agent SSH lisent le coffre depuis le terminal, avec votre accord. Rien ne sort du Mac."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Die Verrou-Erweiterung füllt deine Logins in Brave oder Firefox Website für Website aus; der Befehl „verrou“ und sein SSH-Agent lesen den Tresor mit deiner Genehmigung aus dem Terminal. Nichts verlässt den Mac."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La extensión de Verrou rellena tus inicios de sesión en Brave o Firefox, sitio por sitio; el comando “verrou” y su agente SSH leen la bóveda desde el terminal, con tu aprobación. Nada sale del Mac."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "L'estensione Verrou compila i tuoi login in Brave o Firefox, sito per sito; il comando “verrou” e il suo agente SSH leggono la cassaforte dal Terminale, con la tua approvazione. Nulla lascia il Mac."
           }
         }
       }
@@ -41469,30 +41357,30 @@
         }
       }
     },
-    "The extension only receives the logins of the open site, over HTTPS, with the vault unlocked. The terminal searches without seeing the secrets; each one asks for Touch ID.": {
+    "The extension only gets the open site's logins; each terminal secret asks for Touch ID.": {
       "localizations": {
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'extension ne reçoit que les identifiants du site ouvert, en HTTPS, coffre déverrouillé. Le terminal cherche sans voir les secrets ; chacun demande Touch ID."
+            "value": "L'extension ne reçoit que les identifiants du site ouvert ; chaque secret demandé par le terminal passe par Touch ID."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Die Erweiterung erhält nur die Logins der geöffneten Website, über HTTPS, bei entsperrtem Tresor. Das Terminal sucht, ohne die Geheimnisse zu sehen; jedes fragt nach Touch ID."
+            "value": "Die Erweiterung erhält nur die Logins der geöffneten Website; jedes Geheimnis für das Terminal fragt nach Touch ID."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "La extensión solo recibe los inicios de sesión del sitio abierto, por HTTPS, con la bóveda desbloqueada. El terminal busca sin ver los secretos; cada uno pide Touch ID."
+            "value": "La extensión solo recibe los inicios de sesión del sitio abierto; cada secreto del terminal pide Touch ID."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "L'estensione riceve solo i login del sito aperto, tramite HTTPS, con la cassaforte sbloccata. Il Terminale cerca senza vedere i segreti; ognuno chiede Touch ID."
+            "value": "L'estensione riceve solo i login del sito aperto; ogni segreto per il terminale chiede Touch ID."
           }
         }
       }
@@ -41745,6 +41633,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Il suggerimento non deve essere la password."
+          }
+        }
+      }
+    },
+    "The iPhone is asked after 15 s, or right away when the Mac is locked or idle. The vault must be unlocked on the Mac.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'iPhone est sollicité après 15 s, ou tout de suite si le Mac est verrouillé ou inactif. Le coffre doit être déverrouillé sur le Mac."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das iPhone wird nach 15 s gefragt, oder sofort, wenn der Mac gesperrt oder inaktiv ist. Der Tresor muss auf dem Mac entsperrt sein."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se pregunta al iPhone tras 15 s, o enseguida si el Mac está bloqueado o inactivo. La bóveda debe estar desbloqueada en el Mac."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'iPhone viene interpellato dopo 15 s, o subito se il Mac è bloccato o inattivo. La cassaforte deve essere sbloccata sul Mac."
+          }
+        }
+      }
+    },
+    "The iPhone is asked after 15 s, or right away when the Mac is locked or idle; for 12 hours it can also unlock the vault for the terminal.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'iPhone est sollicité après 15 s, ou tout de suite si le Mac est verrouillé ou inactif ; pendant 12 heures, il peut aussi déverrouiller le coffre pour le terminal."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Das iPhone wird nach 15 s gefragt, oder sofort, wenn der Mac gesperrt oder inaktiv ist; 12 Stunden lang kann es den Tresor auch für das Terminal entsperren."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se pregunta al iPhone tras 15 s, o enseguida si el Mac está bloqueado o inactivo; durante 12 horas también puede desbloquear la bóveda para el terminal."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'iPhone viene interpellato dopo 15 s, o subito se il Mac è bloccato o inattivo; per 12 ore può anche sbloccare la cassaforte per il terminale."
           }
         }
       }
@@ -43089,34 +43033,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "La cassaforte è bloccata."
-          }
-        }
-      }
-    },
-    "The vault key is sealed by the Secure Enclave: adding or removing a fingerprint turns off Touch ID.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La clé du coffre est scellée par le Secure Enclave : ajouter ou retirer une empreinte désactive Touch ID."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Der Tresorschlüssel ist durch die Secure Enclave versiegelt: Das Hinzufügen oder Entfernen eines Fingerabdrucks deaktiviert Touch ID."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La clave de la bóveda está sellada por el Secure Enclave: añadir o eliminar una huella digital desactiva Touch ID."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La chiave della cassaforte è sigillata dalla Secure Enclave: aggiungere o rimuovere un'impronta disattiva Touch ID."
           }
         }
       }
@@ -45025,34 +44941,6 @@
         }
       }
     },
-    "Unavailable in this mode.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Indisponible dans ce mode."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "In diesem Modus nicht verfügbar."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No disponible en este modo."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non disponibile in questa modalità."
-          }
-        }
-      }
-    },
     "Underscore ( _ )": {
       "localizations": {
         "fr": {
@@ -46341,34 +46229,6 @@
         }
       }
     },
-    "Vault and Filling": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Coffre et remplissage"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tresor und Ausfüllen"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bóveda y relleno"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cassaforte e compilazione"
-          }
-        }
-      }
-    },
     "Vault and filling": {
       "localizations": {
         "fr": {
@@ -46841,6 +46701,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Verrou suggerirà una password complessa e di salvarla"
+          }
+        }
+      }
+    },
+    "Verrou's extension fills Brave and Firefox; the “verrou” command reads the vault from the terminal, with your approval.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'extension de Verrou remplit Brave et Firefox ; la commande « verrou » lit le coffre depuis le terminal, avec votre accord."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Verrou-Erweiterung füllt Brave und Firefox aus; der Befehl „verrou“ liest den Tresor im Terminal, mit deiner Zustimmung."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La extensión de Verrou rellena Brave y Firefox; el comando “verrou” lee la bóveda desde el terminal, con tu aprobación."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L'estensione di Verrou compila Brave e Firefox; il comando “verrou” legge la cassaforte dal terminale, con la tua approvazione."
           }
         }
       }
@@ -47569,34 +47457,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Quando Safari propone di salvare la passkey, scegli Verrou."
-          }
-        }
-      }
-    },
-    "When Verrou crashes or hangs, the system writes a report: its call stacks and versions, nothing from your vault. The reports stay on this device; Verrou never sends them. Share them with the developers if something went wrong.": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quand Verrou plante ou se bloque, le système écrit un rapport : ses piles d'appels et ses versions, rien de votre coffre. Les rapports restent sur cet appareil ; Verrou ne les envoie jamais. Partagez-les avec les développeurs si quelque chose s'est mal passé."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wenn Verrou abstürzt oder hängt, schreibt das System einen Bericht: Aufrufstapel und Versionen, nichts aus deinem Tresor. Die Berichte bleiben auf diesem Gerät; Verrou sendet sie nie. Teile sie mit den Entwickler:innen, wenn etwas schiefgelaufen ist."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cuando Verrou falla o se bloquea, el sistema escribe un informe: sus pilas de llamadas y versiones, nada de tu bóveda. Los informes se quedan en este dispositivo; Verrou nunca los envía. Compártelos con los desarrolladores si algo ha ido mal."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quando Verrou si arresta in modo anomalo o si blocca, il sistema scrive un rapporto: i suoi stack di chiamate e le versioni, nulla della tua cassaforte. I rapporti restano su questo dispositivo; Verrou non li invia mai. Condividili con gli sviluppatori se qualcosa è andato storto."
           }
         }
       }
