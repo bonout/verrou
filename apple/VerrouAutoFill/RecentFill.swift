@@ -14,6 +14,7 @@ import Security
 /// readable while it is unlocked, never synced.
 enum RecentFill {
     static let lifetime: TimeInterval = 90
+    static let signUpLifetime: TimeInterval = 600
 
     private struct Entry: Codable {
         let itemID: String
@@ -34,7 +35,8 @@ enum RecentFill {
         ]
     }
 
-    static func remember(itemID: String, user: String, password: String, sites: [String]) {
+    static func remember(itemID: String, user: String, password: String, sites: [String],
+                         lifetime: TimeInterval = lifetime) {
         let entry = Entry(itemID: itemID, user: user, password: password, expires: Date().addingTimeInterval(lifetime),
                           sites: sites.map { $0.lowercased() })
         guard let data = try? JSONEncoder().encode(entry) else { return }
@@ -50,6 +52,11 @@ enum RecentFill {
     static func credential(for itemID: String) -> (user: String, password: String)? {
         guard let entry = current(), entry.itemID == itemID else { return nil }
         return (entry.user, entry.password)
+    }
+
+    static func password(forSite site: String) -> String? {
+        guard let entry = current(), let sites = entry.sites, sites.contains(where: { sameSite(site, $0) }) else { return nil }
+        return entry.password
     }
 
     static func isLogin(user: String, password: String, site: String) -> Bool {

@@ -150,6 +150,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func performWithoutUserInteraction(generatePasswordsRequest: ASGeneratePasswordsRequest) {
         let rules = [generatePasswordsRequest.passwordFieldPasswordRules, generatePasswordsRequest.passwordRulesFromQuirks]
             .compactMap { $0 }.joined(separator: ";")
+        let site = AutoFillModel.host(of: generatePasswordsRequest.serviceIdentifier)
+        if let signUp = RecentFill.password(forSite: site) {
+            return extensionContext.completeGeneratePasswordRequest(results: [ASGeneratedPassword(kind: .strong, value: signUp)])
+        }
         let settings = GeneratorSettings.forAutoFill
         let kind: ASGeneratedPassword.Kind = settings.mode == .passphrase && rules.isEmpty ? .passphrase : .strong
         extensionContext.completeGeneratePasswordRequest(results: [ASGeneratedPassword(kind: kind, value: settings.password(rules: rules))])

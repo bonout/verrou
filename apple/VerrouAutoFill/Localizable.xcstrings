@@ -19825,6 +19825,34 @@
         }
       }
     },
+    "Saves a login for the site with this alias and a strong password, then inserts the alias. In the password field, the strong password iOS suggests is that one.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistre un identifiant pour le site avec cet alias et un mot de passe robuste, puis insère l'alias. Dans le champ du mot de passe, le mot de passe robuste proposé par iOS est celui-là."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sichert ein Login für die Website mit diesem Alias und einem starken Passwort und fügt dann den Alias ein. Im Passwortfeld schlägt iOS genau dieses starke Passwort vor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda un inicio de sesión para el sitio con este alias y una contraseña segura, y luego inserta el alias. En el campo de la contraseña, la contraseña segura que sugiere iOS es esa."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva un login per il sito con questo alias e una password robusta, poi inserisce l'alias. Nel campo della password, la password robusta suggerita da iOS è proprio quella."
+          }
+        }
+      }
+    },
     "Saving to the server…": {
       "localizations": {
         "fr": {
@@ -21277,6 +21305,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostrati i primi %1$lld risultati su %2$lld: affina la ricerca."
+          }
+        }
+      }
+    },
+    "Sign Up with This Alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S'inscrire avec cet alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit diesem Alias registrieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrarse con este alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrati con questo alias"
           }
         }
       }
