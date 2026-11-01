@@ -36,11 +36,11 @@ struct MembersSidebarRow: View {
             .padding(.vertical, 2)
             .padding(.horizontal, 4)
             .background(active ? Theme.wash(0.08) : ContrastStyle(Color.clear),
-                        in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Theme.radiusSmall, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.leading, 14)
+        .padding(.leading, 16)
         .help(organization.canManageMembers
               ? "Invite, confirm and manage the members of \(organization.name)"
               : "Members of \(organization.name)")
@@ -108,13 +108,13 @@ private struct MemberRow: View {
     let member: OrganizationMember
 
     var body: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 12) {
             Image(systemName: member.role.symbol)
                 .accessibilityHidden(true)
                 .font(.system(size: 15))
                 .foregroundStyle(member.status == .revoked ? Color.secondary : Theme.accent)
                 .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(member.displayName).lineLimit(1)
                 Text(subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -171,7 +171,7 @@ struct MemberDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
                 Text(statusText)
                     .foregroundStyle(.secondary)
@@ -179,12 +179,12 @@ struct MemberDetailView: View {
                 if member.status == .invited, canManage {
                     InvitationNextSteps(email: member.email, server: model.account?.server,
                                         hasAccount: member.hasAccount)
-                        .padding(14)
-                        .background(Theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .padding(16)
+                        .background(Theme.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous))
                         .layoutMark("invitation-next-steps")
                 }
                 if canManage {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         primaryAction
                         Button("Edit…", systemImage: "pencil") { model.editMember(member) }
                         Spacer()
@@ -206,14 +206,14 @@ struct MemberDetailView: View {
                 SectionTitle(String(localized: "Access"))
                 FieldCard {
                     line(String(localized: "Role"), member.role.label)
-                    Divider().padding(.leading, 14)
+                    Divider().padding(.leading, 16)
                     if member.accessAll {
                         line(String(localized: "Collections"), String(localized: "All"))
                     } else if member.collections.isEmpty {
                         line(String(localized: "Collections"), String(localized: "None"))
                     } else {
                         ForEach(Array(member.collections.enumerated()), id: \.element.collectionId) { index, access in
-                            if index > 0 { Divider().padding(.leading, 14) }
+                            if index > 0 { Divider().padding(.leading, 16) }
                             line(collectionName(access.collectionId), CollectionPermission(access).label)
                         }
                     }
@@ -225,10 +225,10 @@ struct MemberDetailView: View {
                 SectionTitle(String(localized: "Account"))
                 FieldCard {
                     line(String(localized: "Email"), member.email)
-                    Divider().padding(.leading, 14)
+                    Divider().padding(.leading, 16)
                     line(String(localized: "Account on the server"),
                          member.hasAccount ? String(localized: "Created") : String(localized: "Not created yet"))
-                    Divider().padding(.leading, 14)
+                    Divider().padding(.leading, 16)
                     line(String(localized: "Two-factor authentication"),
                          member.twoFactorEnabled ? String(localized: "On") : String(localized: "Off"))
                 }
@@ -261,10 +261,10 @@ struct MemberDetailView: View {
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 64, height: 64)
-                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 5) {
+                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
                 Text(member.displayName)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.title.bold())
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 HStack(spacing: 8) {
@@ -307,8 +307,8 @@ struct MemberDetailView: View {
             Text(value).textSelection(.enabled)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 

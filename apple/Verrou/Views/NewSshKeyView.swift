@@ -59,7 +59,7 @@ struct NewSshKeyView: View {
             .formStyle(.grouped)
 
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Spacer()
                 if busy {
                     ProgressView().controlSize(.small)

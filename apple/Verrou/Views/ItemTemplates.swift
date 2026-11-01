@@ -71,7 +71,7 @@ struct CustomFieldsSection: View {
         case .text:
             TextField("Value", text: valueBinding(index)).labelsHidden()
         case .hidden:
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 if shown.contains(index) {
                     TextField("Value", text: valueBinding(index))
                         .labelsHidden()
@@ -165,7 +165,7 @@ struct WifiQRButton: View {
                         .interpolation(.none)
                         .resizable()
                         .frame(width: 220, height: 220)
-                        .padding(10)
+                        .padding(8)
                         .background(.white, in: RoundedRectangle(cornerRadius: 8))
                         .accessibilityLabel("QR code of the “\(title)” network")
                     Text("Scan with the camera to join “\(title)”.")
@@ -174,7 +174,7 @@ struct WifiQRButton: View {
                         .multilineTextAlignment(.center)
                         .frame(width: 240)
                 }
-                .padding(18)
+                .padding(16)
             }
         }
     }

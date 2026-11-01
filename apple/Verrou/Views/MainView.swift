@@ -116,7 +116,7 @@ struct MainView: View {
         .overlay(alignment: .bottom) {
             if let toast = model.toast {
                 ToastView(toast: toast)
-                    .padding(.bottom, 22)
+                    .padding(.bottom, 24)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .task(id: toast.id) {
                         try? await Task.sleep(for: .seconds(toast.seconds))
@@ -314,7 +314,7 @@ struct SidebarView: View {
             // buttons and the footer.
             VStack(spacing: 0) {
                 Divider()
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 8)
                 AuditSidebarButton()
                 DuplicatesSidebarButton()
                 if model.showsAccountPanes { EmergencySidebarButton() }
@@ -400,15 +400,15 @@ struct SidebarPaneButton: View {
             } icon: {
                 Image(systemName: symbol).foregroundStyle(tint)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
             .background(active ? Theme.wash(0.08) : ContrastStyle(Color.clear),
-                        in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMedium, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 8)
         .help(help ?? "")
     }
 }
@@ -424,7 +424,7 @@ struct PaneHeader<Action: View>: View {
     @ViewBuilder var action: Action
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title).font(.title3.weight(.semibold))
                     .layoutMark("pane-title")
@@ -451,7 +451,7 @@ struct PaneHeader<Action: View>: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .padding(.bottom, 10)
+        .padding(.bottom, 8)
     }
 }
 
@@ -501,12 +501,12 @@ struct VaultFooter: View {
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(width: 300, alignment: .leading)
-                        .padding(14)
+                        .padding(16)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private var failure: String? {
@@ -568,7 +568,7 @@ struct ItemListView: View {
         VStack(spacing: 0) {
             SearchField(text: $model.query, focused: searchFocused, submit: model.copySelectedPassword)
                 .padding(.horizontal, 12)
-                .padding(.top, 10)
+                .padding(.top, 8)
                 .padding(.bottom, 8)
             HStack {
                 Text(resultCaption)
@@ -600,7 +600,7 @@ struct ItemListView: View {
                 .layoutMark("sort-menu")
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
             Divider()
 
             if model.rows.isEmpty {
@@ -623,7 +623,7 @@ struct ItemListView: View {
                             }
                         }
                         .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 8)
                     }
                     .focusable()
                     .focusEffectDisabled()
@@ -707,7 +707,7 @@ private struct ListRow: View, Equatable {
         ItemRow(summary: row.summary, highlights: row.highlights, selected: selected, showsPasskey: showsPasskey)
             .padding(.horizontal, 8)
             .background(selected ? ContrastStyle(Theme.selection) : hovered ? Theme.wash(0.07) : ContrastStyle(Color.clear),
-                        in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                        in: RoundedRectangle(cornerRadius: Theme.radiusMedium, style: .continuous))
             .contentShape(Rectangle())
             .onHover { hovered = $0 }
             // On press, not on release: the highlight follows the click
@@ -759,7 +759,7 @@ struct SearchField: View {
     var submit: () -> Void = {}
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             TextField("Search Verrou", text: $text)
@@ -778,7 +778,7 @@ struct SearchField: View {
                 Text("⌘F").font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 8)
         .frame(height: 32)
         .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(focused.wrappedValue ? Theme.focusRing(0.7) : Theme.border(0.2), lineWidth: focused.wrappedValue ? 1.5 : 1))
@@ -799,7 +799,7 @@ struct ItemRow: View {
         ItemRowContent(summary: summary, highlights: highlights, selected: selected, showsPasskey: showsPasskey) {
             ItemIcon(summary: summary, size: 34)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
     }
 }
@@ -964,7 +964,7 @@ struct UnshareView: View {
                 Section("Items") {
                     ForEach(request.itemIDs.prefix(6), id: \.self) { id in
                         if let summary = model.summary(id: id) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 8) {
                                 ItemIcon(summary: summary, size: 22)
                                 Text(summary.title).lineLimit(1)
                                 Spacer()
@@ -993,7 +993,7 @@ struct UnshareView: View {
             }
             .formStyle(.grouped)
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Spacer()
                 if let progress = model.bulkProgress, model.unshareBusy {
                     ProgressView(value: Double(progress.done), total: Double(max(progress.total, 1)))

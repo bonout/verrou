@@ -115,7 +115,7 @@ struct DuplicatesView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if flow.loaded, !flow.visible.isEmpty {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         ForEach([DuplicateConfidence.certain, .probable, .review], id: \.self) { level in
                             ConfidenceCount(level: level, count: flow.count(level))
                         }
@@ -129,7 +129,7 @@ struct DuplicatesView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(status)
                 .font(.caption)
                 .foregroundStyle(flow.error == nil ? Color.secondary : Color.orange)
@@ -248,7 +248,7 @@ private struct GroupView: View {
             .padding(.top, 2)
         }
         .padding(12)
-        .background(Theme.faintFill(0.35), in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.faintFill(0.35), in: RoundedRectangle(cornerRadius: Theme.radiusLarge))
     }
 
     private var mergeHelp: String {
@@ -281,12 +281,12 @@ private struct MemberRow: View {
             .padding(.top, 4)
             ItemIcon(summary: member.item, size: 26)
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(member.item.title).lineLimit(1)
                     if kept {
                         Text("To keep")
                             .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 5)
+                            .padding(.horizontal, 4)
                             .padding(.vertical, 1)
                             .background(Theme.accent.opacity(0.18), in: Capsule())
                     } else if let level = member.confidence, level != group.confidence || level == .probable {
@@ -315,7 +315,7 @@ private struct MemberRow: View {
                     .buttonStyle(.borderless)
                     .font(.caption)
                     .help("Keep this item rather than the suggested one")
-                    .padding(.top, 3)
+                    .padding(.top, 4)
             }
         }
     }

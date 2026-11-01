@@ -38,7 +38,7 @@ struct AutoFillRootView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             AppMark(size: 28, glow: false)
             VStack(alignment: .leading, spacing: 1) {
                 Text(model.title).font(.headline)
@@ -91,7 +91,7 @@ private struct MacWorkingView: View {
 
 private struct MacNoAccountView: View {
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             AppMark(size: 56)
             Text("No shared vault on this Mac")
                 .font(.title3.weight(.semibold))
@@ -114,7 +114,7 @@ private struct MacLockView: View {
     var body: some View {
         ZStack {
             LockBackground()
-            VStack(spacing: 18) {
+            VStack(spacing: 16) {
                 AppMark(size: 64)
                 VStack(spacing: 4) {
                     Text("Unlock Verrou")
@@ -181,7 +181,7 @@ private struct MacCredentialListView: View {
                 .textFieldStyle(.roundedBorder)
                 .focused($searching)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.vertical, 8)
             List {
                 if model.query.isEmpty {
                     if !model.passkeys.isEmpty {
@@ -221,7 +221,7 @@ private struct MacCredentialListView: View {
 
     private func itemButton(_ item: ItemSummary) -> some View {
         Button { model.choose(item) } label: {
-            ItemRowContent(summary: item, highlights: [], spacing: 10, subtitleFont: .caption,
+            ItemRowContent(summary: item, highlights: [], spacing: 8, subtitleFont: .caption,
                            showsProtection: true) {
                 ItemIconContent(summary: item, image: nil, size: 28)
             }
@@ -238,12 +238,12 @@ private struct MacSymbolRow: View {
     var protected = false
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: symbol)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 28, height: 28)
-                .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .background(Theme.accent.gradient, in: RoundedRectangle(cornerRadius: Theme.radiusMedium, style: .continuous))
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
                     Text(title)
@@ -274,7 +274,7 @@ private struct MacPasskeyRegistrationView: View {
                     .contentTransition(.symbolEffect(.replace))
                     .frame(width: 56, height: 56)
                     .background((model.passkeyCreated ? Color.green : Theme.accent).gradient,
-                                in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                                in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
                     .animation(.snappy(duration: 0.3), value: model.passkeyCreated)
                 Text(model.passkeyCreated ? "Passkey saved" : "New passkey for \(model.site ?? String(localized: "this site"))")
                     .font(.headline)
@@ -301,14 +301,14 @@ private struct MacPasskeyRegistrationView: View {
                                 if item.passkeyRpId != nil { replacing = item } else { model.register(into: item) }
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    ItemRowContent(summary: item, highlights: [], spacing: 10, subtitleFont: .caption) {
+                                    ItemRowContent(summary: item, highlights: [], spacing: 8, subtitleFont: .caption) {
                                         ItemIconContent(summary: item, image: nil, size: 28)
                                     }
                                     if let passkey = item.passkeyLine {
                                         Label("Has a passkey: \(passkey)", systemImage: "person.badge.key.fill")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
-                                            .padding(.leading, 38)
+                                            .padding(.leading, 40)
                                     }
                                 }
                                 .contentShape(Rectangle())
@@ -349,7 +349,7 @@ private struct MacConfirmationSheet: View {
     @State private var password = ""
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Image(systemName: "lock.shield.fill")
                 .font(.system(size: 30))
                 .foregroundStyle(.orange)

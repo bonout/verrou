@@ -71,7 +71,7 @@ private struct WorkingView: View {
     let label: LocalizedStringKey
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             ProgressView()
             Text(label).foregroundStyle(.secondary)
         }
@@ -104,7 +104,7 @@ private struct AliasInsertView: View {
         List {
             if model.aliasSettings?.domain == nil {
                 Section {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         TintedSymbol(symbol: "at", tint: Theme.accent, size: 64)
                         Text("No alias domain")
                             .font(.headline)
@@ -118,7 +118,7 @@ private struct AliasInsertView: View {
                 }
             } else {
                 Section {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         TintedSymbol(symbol: "at", tint: Theme.accent, size: 64)
                         Text(verbatim: model.alias)
                             .font(.system(.body, design: .monospaced).weight(.semibold))
@@ -176,10 +176,10 @@ private struct AutoFillLockView: View {
     var body: some View {
         ZStack {
             LockBackground()
-            VStack(spacing: 22) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 12)
                 AppMark(size: 76)
-                VStack(spacing: 6) {
+                VStack(spacing: 8) {
                     Text("Unlock Verrou")
                         .font(.system(.title2, design: .rounded, weight: .bold))
                     if let site = model.site {
@@ -191,8 +191,8 @@ private struct AutoFillLockView: View {
                 }
                 .multilineTextAlignment(.center)
                 Spacer(minLength: 12)
-                GlassGroup(spacing: 14) {
-                    VStack(spacing: 14) {
+                GlassGroup(spacing: 16) {
+                    VStack(spacing: 16) {
                         // The login just filled on this site (the form's
                         // second page): one tap, no Face ID, which stays
                         // offered below to choose another one.
@@ -351,7 +351,7 @@ private struct PasskeyRegistrationView: View {
     var body: some View {
         List {
             Section {
-                VStack(spacing: 10) {
+                VStack(spacing: 8) {
                     PasskeySymbol(created: model.passkeyCreated)
                     Text(model.passkeyCreated ? "Passkey saved" : "New passkey for \(model.site ?? String(localized: "this site"))")
                         .font(.headline)
@@ -466,7 +466,7 @@ private struct ConfirmationSheet: View {
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             TintedSymbol(symbol: "lock.shield.fill", tint: .orange, size: 60)
             Text("“\(model.confirmation?.title ?? "")” is protected")
                 .font(.headline)

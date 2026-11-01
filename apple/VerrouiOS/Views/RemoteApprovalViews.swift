@@ -20,7 +20,7 @@ struct ApprovalScreen: View {
     }
 
     private func card(_ pending: RemoteApprover.Pending) -> some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Image(systemName: "laptopcomputer.and.iphone")
                 .font(.system(size: 40, weight: .semibold))
                 .foregroundStyle(Theme.accent)

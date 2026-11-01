@@ -235,7 +235,7 @@ struct TotpCodeView: View {
 
     var body: some View {
         let size = size * scale
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Text(grouped)
                 .speechSpellsOutCharacters()
                 .font(.system(size: size, weight: .semibold, design: .monospaced))
@@ -300,7 +300,7 @@ struct ToastView: View {
     let toast: Toast
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: toast.failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .foregroundStyle(toast.failure ? .orange : .green)
                 .font(.title3)
@@ -318,10 +318,10 @@ struct ToastView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
         .background(.regularMaterial, in: Capsule())
         .overlay(Capsule().strokeBorder(.separator, lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
         .task(id: toast.id) { toast.announce() }
     }
 }

@@ -187,7 +187,7 @@ private struct TwoFactorStep: View {
                     } label: {
                         HStack {
                             Spacer()
-                            if model.loginBusy { ProgressView().padding(.trailing, 6) }
+                            if model.loginBusy { ProgressView().padding(.trailing, 8) }
                             Label("Use my security key", systemImage: "key.horizontal.fill")
                                 .fontWeight(.semibold)
                             Spacer()
@@ -195,7 +195,7 @@ private struct TwoFactorStep: View {
                     }
                     .accessibilityIdentifier("security-key")
                 } footer: {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 8) {
                         Text("Your server's sign-in page opens: hold the YubiKey near the top of the iPhone, or plug it in, then touch it.")
                         if let error = model.loginError {
                             ErrorLabel(text: error)
@@ -246,7 +246,7 @@ private struct TwoFactorStep: View {
             } label: {
                 HStack {
                     Spacer()
-                    if model.loginBusy { ProgressView().padding(.trailing, 6) }
+                    if model.loginBusy { ProgressView().padding(.trailing, 8) }
                     Text("Submit").fontWeight(.semibold)
                     Spacer()
                 }
