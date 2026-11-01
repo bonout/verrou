@@ -57,13 +57,13 @@ struct VerrouPhoneApp: App {
                 }
                 .task {
                     if model.mode != .vaultwarden { ActivityNotifier.shared.silent = true }
-                    ActivityNotifier.shared.setHandler { [weak model] route in model?.openActivity(route) }
+                    ActivityNotifier.shared.setHandler { [weak model = model] route in model?.openActivity(route) }
                     // Shortcuts (App Intents).
-                    VerrouLinkCenter.setHandler { [weak model] link in model?.open(link) }
+                    VerrouLinkCenter.setHandler { [weak model = model] link in model?.open(link) }
                     // A request from the Mac (iCloud notification): fetched
                     // and shown above everything.
-                    PhoneAppDelegate.pushRegistered = { [weak model] error in model?.remote.pushRegistered(error) }
-                    ActivityNotifier.shared.setApprovalHandler { [weak model] in
+                    PhoneAppDelegate.pushRegistered = { [weak model = model] error in model?.remote.pushRegistered(error) }
+                    ActivityNotifier.shared.setApprovalHandler { [weak model = model] in
                         Task { await model?.remote.refresh() }
                     }
                     #if DEBUG
