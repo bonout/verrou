@@ -40,11 +40,11 @@ struct RemoteApprovalSection: View {
 
     private var footer: LocalizedStringKey {
         if remote.phones.isEmpty {
-            return "Away from the Mac, the terminal's requests (a secret, an SSH signature) go to Verrou on the iPhone: Face ID approves them. Through your iCloud account, sealed end to end."
+            return "Away from the Mac, approve the terminal's requests with Face ID on the iPhone, sealed end to end through iCloud."
         }
         return remote.unlockEnabled
-            ? "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. For 12 hours after an unlock on this Mac, the iPhone can also unlock the vault for the terminal: the window stays locked, the vault locks again 5 minutes after the last approval."
-            : "At the Mac, Touch ID as before; the iPhone is asked after 15 s, or right away when the screen is locked or idle. The vault must be unlocked on the Mac."
+            ? "The iPhone is asked after 15 s, or right away when the Mac is locked or idle; for 12 hours it can also unlock the vault for the terminal."
+            : "The iPhone is asked after 15 s, or right away when the Mac is locked or idle. The vault must be unlocked on the Mac."
     }
 
     private var pairingShown: Binding<Bool> {

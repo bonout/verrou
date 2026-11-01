@@ -267,5 +267,5 @@ enum ActivityNotificationsText {
     static let background = String(localized: "In the background, when iOS allows it, Verrou only looks at what the app has already downloaded if the vault is locked (no key, no network): news from the server arrives the next time you open it.")
 
     /// What the notifications say, and what they never say.
-    static let explanation = String(localized: "Pending invitation, access confirmed, members to confirm, new shared items: the organization name and numbers, never a password or a login. Computed by Verrou on this device after each sync, without an outside notification service.")
+    static let explanation = String(localized: "Invitations, members to confirm and new shared items, computed on this device after each sync.")
 }

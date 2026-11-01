@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Settings (⌘,), in tabs: General, Security (locking, Touch ID, security
-/// keys), Account (sync, import, logout), Browsers and terminal.
+/// Settings (⌘,), in tabs: General, AutoFill, Security, Vault, Account,
+/// Advanced.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("settingsTab") private var tab = SettingsTab.general
@@ -11,39 +11,31 @@ struct SettingsView: View {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
+            AutoFillSettings()
+                .tabItem { Label("AutoFill", systemImage: "key.viewfinder") }
+                .tag(SettingsTab.autofill)
             SecuritySettings()
                 .tabItem { Label("Security", systemImage: "lock.shield") }
                 .tag(SettingsTab.security)
+            VaultSettings()
+                .tabItem { Label("Vault", systemImage: "list.bullet.rectangle") }
+                .tag(SettingsTab.vault)
             AccountSettings()
                 .tabItem { Label("Account", systemImage: "person.crop.circle") }
                 .tag(SettingsTab.account)
-            FillingSettings()
-                .tabItem { Label("Vault and Filling", systemImage: "rectangle.and.hand.point.up.left") }
-                .tag(SettingsTab.filling)
-            Group {
-                if let bridge = model.browserBridge {
-                    SettingsPane {
-                        BrowserSection(bridge: bridge)
-                        CommandLineSection()
-                    }
-                } else {
-                    SettingsPane {
-                        Section {
-                            Text("Unavailable in this mode.")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
+            SettingsPane {
+                CommandLineSection()
+                DiagnosticsSection()
             }
-            .tabItem { Label("Browsers and Terminal", systemImage: "terminal") }
-            .tag(SettingsTab.integrations)
+            .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
+            .tag(SettingsTab.advanced)
         }
         .frame(width: 500)
     }
 }
 
-enum SettingsTab: String {
-    case general, security, account, filling, integrations
+enum SettingsTab: String, CaseIterable {
+    case general, autofill, security, vault, account, advanced
 }
 
 /// Form of a tab: fixed width, height fitted to the content.
@@ -114,9 +106,6 @@ private struct GeneralSettings: View {
             }
 
             UpdatesSection()
-            AppAutofillSection()
-            SystemAutofillSection()
-            DiagnosticsSection()
         }
     }
 
@@ -125,7 +114,7 @@ private struct GeneralSettings: View {
         if LaunchAtLogin.needsApproval {
             return String(localized: "To allow in System Settings → General → Login Items.")
         }
-        return String(localized: "Icons come from your Vaultwarden server, which only receives the names of the sites; they are not kept on disk.")
+        return String(localized: "Site icons come from your Vaultwarden server, which only sees the site names.")
     }
 
     private func setLaunchAtLogin(_ wanted: Bool) {
@@ -157,7 +146,7 @@ private struct SecuritySettings: View {
                     Text("After 10 minutes").tag(600)
                 }
             } footer: {
-                Text("Copied secrets are hidden from clipboard managers and cleared after this delay, if the clipboard still holds them.")
+                Text("Hidden from clipboard managers, then cleared after this delay.")
                     .foregroundStyle(.secondary)
             }
             if model.account == nil || model.mode == .demo {
@@ -209,7 +198,7 @@ private struct SecuritySettings: View {
         if model.touchIDWanted && !model.biometricEnrolled {
             return "Turns on at the next password unlock."
         }
-        return "The vault key is sealed by the Secure Enclave: adding or removing a fingerprint turns off Touch ID."
+        return "Adding or removing a fingerprint turns Touch ID off."
     }
 }
 
@@ -240,7 +229,7 @@ private struct AccountSettings: View {
                             .disabled(!model.canEdit)
                     }
                 } footer: {
-                    Text("Exports from Apple Passwords (CSV), 1Password (1PUX or CSV) or Proton Pass (unencrypted ZIP or CSV). Duplicates are spotted before the import; Vault → Clean Up Duplicates… handles those of the vault.")
+                    Text("From Apple Passwords, 1Password or Proton Pass. Duplicates are spotted before importing.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -250,7 +239,7 @@ private struct AccountSettings: View {
                         confirmLogout = true
                     }
                 } footer: {
-                    Text("Erases the cache, the tokens and the changes not yet synced from this Mac. The vault stays intact on the server.")
+                    Text("Erases this Mac's copy and unsynced changes. The vault stays on the server.")
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -444,16 +433,15 @@ struct BrowserSection: View {
     private var footer: String {
         if let error = bridge.error { return error }
         if !bridge.enabled {
-            return String(localized: "The Verrou extension fills your logins in Brave or Firefox, site by site; the “verrou” command and its SSH agent read the vault from the terminal, with your approval. Nothing leaves the Mac.")
+            return String(localized: "Verrou's extension fills Brave and Firefox; the “verrou” command reads the vault from the terminal, with your approval.")
         }
-        let terminal = String(localized: "Terminal: “verrou link”, then each secret or SSH signature asks for Touch ID.")
         if let note = bridge.browserNote, bridge.clients.isEmpty {
-            return "\(note). \(terminal)"
+            return "\(note)."
         }
         if bridge.clients.isEmpty {
-            return String(localized: "In Brave: brave://extensions, “Developer mode”, “Load unpacked”, then ⌘⇧G and paste the path. In Firefox: about:debugging, “This Firefox”, “Load Temporary Add-on…”, then ⌘⇧G and paste the manifest path (to redo at each Firefox start, see the guide). Then click the browser's Verrou icon to link the extension. \(terminal)")
+            return String(localized: "Load the extension in your browser (see the guide), then click its Verrou icon to link it. Terminal: “verrou link”.")
         }
-        return String(localized: "The extension only receives the logins of the open site, over HTTPS, with the vault unlocked. The terminal searches without seeing the secrets; each one asks for Touch ID.")
+        return String(localized: "The extension only gets the open site's logins; each terminal secret asks for Touch ID.")
     }
 }
 
@@ -484,7 +472,7 @@ private struct UpdatesControls: View {
         } header: {
             Text("Updates")
         } footer: {
-            Text("An update is installed when you quit Verrou, never while it's running. Verrou checks its signature first: only an update published by Verrou's developers installs.")
+            Text("Installed when you quit Verrou, once its signature is checked.")
                 .foregroundStyle(.secondary)
         }
     }
@@ -525,7 +513,7 @@ struct CommandLineSection: View {
             } header: {
                 Text("Command line")
             } footer: {
-                Text("Paste the command in Terminal (it asks for your Mac password): it links “verrou” to the app, so the command updates with Verrou.")
+                Text("Paste it in Terminal: “verrou” then updates with the app.")
                     .foregroundStyle(.secondary)
             }
         }
@@ -540,15 +528,32 @@ private struct NewPasswordBreachSection: View {
         Section {
             Toggle("Check new passwords in known leaks", isOn: $checkNewPasswords)
         } footer: {
-            Text("For each password created or changed in Verrou (editor, Brave, import), Have I Been Pwned is queried in the background. Only the first 5 characters of its SHA-1 hash leave this Mac.")
+            Text("Asks Have I Been Pwned with only the first 5 characters of the password's SHA-1 hash.")
                 .foregroundStyle(.secondary)
         }
     }
 }
 
-/// Filter opened on unlock, site match rules (this Mac's default, folders)
-/// and the account's equivalent domains.
-private struct FillingSettings: View {
+private struct AutoFillSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        SettingsPane {
+            SystemAutofillSection()
+            AppAutofillSection()
+            if let bridge = model.browserBridge {
+                BrowserSection(bridge: bridge)
+            }
+            EmailAliasSection(settings: model.aliasSettings) { domain, includeSite in
+                try model.setAliasSettings(domain: domain, includeSite: includeSite)
+            }
+            .onAppear { model.refreshAliasSettings() }
+        }
+    }
+}
+
+/// Filter opened on unlock, sort, site match rules.
+private struct VaultSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -566,7 +571,7 @@ private struct FillingSettings: View {
                     }
                 }
             } footer: {
-                Text("Kept on this Mac. “Last used” follows what you fill, copy or show here: only item IDs and dates, never sent to the server.")
+                Text("Kept on this Mac, never sent to the server.")
                     .foregroundStyle(.secondary)
             }
 
@@ -577,83 +582,77 @@ private struct FillingSettings: View {
                     }
                 }
                 .layoutMark("default-match")
+                DisclosureGroup("By folder") {
+                    folderRules
+                }
+                DisclosureGroup("Equivalent domains") {
+                    equivalentDomains
+                }
             } header: {
                 Text("Site matching")
             } footer: {
-                Text("For sites that don't have their own rule (chosen when editing a login). \(defaultRule.wrappedValue.explanation)")
+                Text("For sites without their own rule. \(defaultRule.wrappedValue.explanation)")
                     .foregroundStyle(.secondary)
             }
-
-            Section {
-                ForEach(model.matchSettings?.folderRules ?? [], id: \.folderId) { rule in
-                    HStack {
-                        Label(rule.folderName.isEmpty ? String(localized: "Deleted folder") : rule.folderName, systemImage: "folder")
-                        Spacer()
-                        Picker(rule.folderName, selection: folderRule(rule.folderId)) {
-                            ForEach(UriMatchRule.all) { option in
-                                Text(option.label).tag(option)
-                            }
-                        }
-                        .labelsHidden()
-                        .fixedSize()
-                        Button {
-                            model.setFolderMatchRule(rule.folderId, nil)
-                        } label: {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
-                                .accessibilityLabel("Go back to the default rule for this folder")
-                        }
-                        .buttonStyle(.plain)
-                        .help("Go back to the default rule for this folder")
-                    }
-                }
-                let free = model.folders.filter { folder in
-                    !(model.matchSettings?.folderRules.contains { $0.folderId == folder.id } ?? false)
-                }
-                Menu {
-                    ForEach(free, id: \.id) { folder in
-                        Button(folder.name) { model.setFolderMatchRule(folder.id, .host) }
-                    }
-                } label: {
-                    Label("Rule for a Folder…", systemImage: "plus.circle.fill")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(free.isEmpty)
-            } header: {
-                Text("By folder")
-            } footer: {
-                Text("Bitwarden has no per-folder rule: this one stays on this Mac, and only applies to sites without their own rule (for example “Host” for the Work folder).")
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                let groups = model.matchSettings?.equivalentDomains ?? []
-                if groups.isEmpty {
-                    Text(model.mode == .vaultwarden ? "Read at the next sync." : "None in the mock vault.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    DisclosureGroup(groups.count > 1 ? String(localized: "\(groups.count) domain groups")
-                                                      : String(localized: "\(groups.count) domain group")) {
-                        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                            Text(group.joined(separator: " · "))
-                                .font(.callout)
-                                .lineLimit(2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            } header: {
-                Text("Equivalent domains")
-            } footer: {
-                Text("Settings of your account, read from the server (web vault → Settings → Domains): the “Base domain” rule also offers the login on the domains of the same group.")
-                    .foregroundStyle(.secondary)
-            }
-
-            EmailAliasSection(settings: model.aliasSettings) { domain, includeSite in
-                try model.setAliasSettings(domain: domain, includeSite: includeSite)
-            }
-            .onAppear { model.refreshAliasSettings() }
         }
+    }
+
+    @ViewBuilder private var folderRules: some View {
+        ForEach(model.matchSettings?.folderRules ?? [], id: \.folderId) { rule in
+            HStack {
+                Label(rule.folderName.isEmpty ? String(localized: "Deleted folder") : rule.folderName, systemImage: "folder")
+                Spacer()
+                Picker(rule.folderName, selection: folderRule(rule.folderId)) {
+                    ForEach(UriMatchRule.all) { option in
+                        Text(option.label).tag(option)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Button {
+                    model.setFolderMatchRule(rule.folderId, nil)
+                } label: {
+                    Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                        .accessibilityLabel("Go back to the default rule for this folder")
+                }
+                .buttonStyle(.plain)
+                .help("Go back to the default rule for this folder")
+            }
+        }
+        let free = model.folders.filter { folder in
+            !(model.matchSettings?.folderRules.contains { $0.folderId == folder.id } ?? false)
+        }
+        Menu {
+            ForEach(free, id: \.id) { folder in
+                Button(folder.name) { model.setFolderMatchRule(folder.id, .host) }
+            }
+        } label: {
+            Label("Rule for a Folder…", systemImage: "plus.circle.fill")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(free.isEmpty)
+        Text("Kept on this Mac: Bitwarden has no per-folder rule.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder private var equivalentDomains: some View {
+        let groups = model.matchSettings?.equivalentDomains ?? []
+        if groups.isEmpty {
+            Text(model.mode == .vaultwarden ? "Read at the next sync." : "None in the mock vault.")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                Text(group.joined(separator: " · "))
+                    .font(.callout)
+                    .lineLimit(2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        Text("From your account (web vault → Settings → Domains), for the “Base domain” rule.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private var defaultRule: Binding<UriMatchRule> {

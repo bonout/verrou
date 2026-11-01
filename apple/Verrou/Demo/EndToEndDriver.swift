@@ -127,7 +127,7 @@ final class EndToEndDriver {
         }
         let saved = UserDefaults.standard.string(forKey: "settingsTab")
         let limit = (settings.screen ?? NSScreen.main)?.visibleFrame.height
-        for tab in [SettingsTab.general, .security, .account, .integrations] {
+        for tab in SettingsTab.allCases {
             UserDefaults.standard.set(tab.rawValue, forKey: "settingsTab")
             try? await Task.sleep(for: .seconds(0.8))
             layoutResult("settings, tab \(tab.rawValue)",
