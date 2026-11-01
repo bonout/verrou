@@ -49,11 +49,22 @@ enum SettingsTab: String {
 /// Form of a tab: fixed width, height fitted to the content.
 private struct SettingsPane<Content: View>: View {
     @ViewBuilder var content: Content
+    @State private var contentHeight: CGFloat = 320
 
     var body: some View {
         Form { content }
             .formStyle(.grouped)
-            .fixedSize(horizontal: false, vertical: true)
+            .scrollBounceBehavior(.basedOnSize)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+            } action: { _, height in
+                contentHeight = height
+            }
+            .frame(height: min(contentHeight, Self.maxHeight))
+    }
+
+    private static var maxHeight: CGFloat {
+        max(320, (NSScreen.main?.visibleFrame.height ?? 800) - 140)
     }
 }
 
