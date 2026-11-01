@@ -12433,6 +12433,34 @@
         }
       }
     },
+    "It is saved in your Vaultwarden vault: your other devices find it.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il est enregistré dans votre coffre Vaultwarden : vos autres appareils le retrouvent."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es wird in deinem Vaultwarden-Tresor gesichert: Deine anderen Geräte finden es."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se guarda en tu bóveda de Vaultwarden: tus otros dispositivos lo encuentran."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "È salvato nella tua cassaforte Vaultwarden: i tuoi altri dispositivi lo trovano."
+          }
+        }
+      }
+    },
     "It may have been deleted elsewhere.": {
       "localizations": {
         "fr": {
@@ -13521,6 +13549,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Login creato con il suo codice"
+          }
+        }
+      }
+    },
+    "Login saved": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Identifiant enregistré"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Login gesichert"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inicio de sesión guardado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Login salvato"
           }
         }
       }
@@ -15093,6 +15149,34 @@
         }
       }
     },
+    "New login for %@": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouvel identifiant pour %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Login für %@"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuevo inicio de sesión para %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuovo login per %@"
+          }
+        }
+      }
+    },
     "New name at %@: %@": {
       "localizations": {
         "fr": {
@@ -15229,6 +15313,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nuova passkey per %@"
+          }
+        }
+      }
+    },
+    "New password for “%@”": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nouveau mot de passe pour « %@ »"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neues Passwort für „%@“"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nueva contraseña para “%@”"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nuova password per “%@”"
           }
         }
       }
@@ -15873,6 +15985,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nessuno nella cassaforte demo."
+          }
+        }
+      }
+    },
+    "Not Now": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plus tard"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicht jetzt"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora no"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non ora"
           }
         }
       }
@@ -19541,6 +19681,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Salva 1 account"
+          }
+        }
+      }
+    },
+    "Save Login": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistrer l'identifiant"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Login sichern"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardar inicio de sesión"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva login"
           }
         }
       }
@@ -24273,6 +24441,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seed illeggibile (previsto un link Base32 o otpauth://)"
+          }
+        }
+      }
+    },
+    "Update Password": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mettre à jour le mot de passe"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Passwort aktualisieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar contraseña"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna password"
           }
         }
       }

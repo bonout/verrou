@@ -327,6 +327,7 @@ targets:
               SupportsConditionalPasskeyRegistration: true
               # Signals from sites (iOS 26, ASCredentialUpdater).
               SupportsCredentialUpdate: true
+              SupportsSavePasswordCredentials: true
             ASCredentialProviderExtensionShowsConfigurationUI: false
     settings:
       base:

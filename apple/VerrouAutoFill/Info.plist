@@ -38,6 +38,8 @@
 				<true/>
 				<key>SupportsCredentialUpdate</key>
 				<true/>
+				<key>SupportsSavePasswordCredentials</key>
+				<true/>
 			</dict>
 			<key>ASCredentialProviderExtensionShowsConfigurationUI</key>
 			<false/>

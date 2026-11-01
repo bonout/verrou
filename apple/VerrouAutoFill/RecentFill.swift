@@ -52,6 +52,11 @@ enum RecentFill {
         return (entry.user, entry.password)
     }
 
+    static func isLogin(user: String, password: String, site: String) -> Bool {
+        guard let entry = current(), let sites = entry.sites else { return false }
+        return entry.user == user && entry.password == password && sites.contains { sameSite(site, $0) }
+    }
+
     /// The login filled less than 90 seconds ago on one of these sites (a
     /// list request's): its identifier and user, not its password, read
     /// again when the user chooses it.

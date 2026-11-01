@@ -36,11 +36,18 @@ final class AutoFillModel {
         /// Creation of a passkey.
         case register(ASPasskeyCredentialRequest)
         case alias
+        case save(LoginToSave)
         /// Nothing (configuration).
         case none
     }
 
     /// A passkey request from the site (`prepareCredentialList(for:requestParameters:)`).
+    struct LoginToSave {
+        let site: String
+        let user: String
+        let password: String
+    }
+
     struct PasskeyQuery {
         let rpID: String
         let clientDataHash: Data
@@ -56,6 +63,7 @@ final class AutoFillModel {
         case registration(ASPasskeyRegistrationCredential)
         case oneTimeCode(String)
         case text(String)
+        case saved
         case cancel
         case failed(String)
     }
@@ -78,6 +86,8 @@ final class AutoFillModel {
     var aliasSite = ""
     private(set) var aliasSettings: EmailAliasSettings?
     private(set) var alias = ""
+    private(set) var saveCheck: AutofillSaveCheck?
+    private(set) var loginSaved = false
 
     /// The site's logins (or codes), from most to least specific.
     private(set) var matches: [ItemSummary] = []
@@ -126,6 +136,7 @@ final class AutoFillModel {
         case .register: String(localized: "Save a passkey")
         case .oneTimeCodes: String(localized: "One-time codes")
         case .alias: String(localized: "Email alias")
+        case .save: saveCheck?.action == .update ? String(localized: "Update Password") : String(localized: "Save Login")
         default: "Verrou"
         }
     }
@@ -136,6 +147,7 @@ final class AutoFillModel {
         case .list(let services, let passkeys): passkeys?.rpID ?? services.first.map(Self.host)
         case .oneTimeCodes(let services): services.first.map(Self.host)
         case .register(let request): (request.credentialIdentity as? ASPasskeyCredentialIdentity)?.relyingPartyIdentifier
+        case .save(let login): login.site
         case .provide, .alias, .none: nil
         }
     }
@@ -276,7 +288,7 @@ final class AutoFillModel {
         case .list(_, let passkeys): passkeys != nil
         case .provide(let request): request.type != .password && !Self.isOneTimeCode(request)
         case .register: true
-        case .oneTimeCodes, .alias, .none: false
+        case .oneTimeCodes, .alias, .save, .none: false
         }
     }
 
@@ -371,6 +383,14 @@ final class AutoFillModel {
             if let identity = request.credentialIdentity as? ASPasskeyCredentialIdentity {
                 targets = (try? session.autofillPasskeyTargets(rpId: identity.relyingPartyIdentifier)) ?? []
             }
+        case .save(let login):
+            do {
+                let check = try session.autofillSaveCheck(service: login.site, username: login.user, password: login.password)
+                saveCheck = check
+                if check.action == .known { finish(.saved) }
+            } catch {
+                finish(.failed(ErrorText.describe(error)))
+            }
         case .provide, .alias, .none:
             break
         }
@@ -423,6 +443,51 @@ final class AutoFillModel {
     }
 
     func cancel() { finish(.cancel) }
+
+    func saveLogin() {
+        guard case .save(let login) = request, let check = saveCheck else { return }
+        if check.action == .update, let id = check.itemId {
+            guarded(id, title: check.title ?? login.site) { [weak self] in await self?.store(login, into: id) }
+        } else {
+            Task { await store(login, into: nil) }
+        }
+    }
+
+    func saveWithoutInteraction(_ login: LoginToSave) async -> Completion? {
+        #if os(iOS)
+        if RecentFill.isLogin(user: login.user, password: login.password, site: login.site) { return .saved }
+        guard let key = AutofillSession.userKey(), let vault else { return nil }
+        let session = vault.session
+        do {
+            _ = try await session.unlockWithUserKey(userKey: key)
+        } catch {
+            AutofillSession.forget()
+            return nil
+        }
+        defer { vault.lock() }
+        let check = try? session.autofillSaveCheck(service: login.site, username: login.user, password: login.password)
+        return check?.action == .known ? .saved : nil
+        #else
+        return nil
+        #endif
+    }
+
+    private func store(_ login: LoginToSave, into item: String?) async {
+        guard let session = vault?.session else { return }
+        phase = .working
+        do {
+            _ = try await session.autofillSave(service: login.site, username: login.user, password: login.password, itemId: item)
+            if let identities = try? session.autofillIdentities() {
+                await CredentialIdentities.publish(identities)
+            }
+            loginSaved = true
+            try? await Task.sleep(for: .milliseconds(650))
+            finish(.saved)
+        } catch {
+            phase = .ready
+            actionError = ErrorText.describe(error)
+        }
+    }
 
     /// A tapped suggestion (QuickType, Safari's list): the request already
     /// designates the item.
