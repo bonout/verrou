@@ -716,6 +716,7 @@ final class PhoneModel {
         switch phase {
         case .background:
             backgroundedAt = Date()
+            GeneratorSettings.shareWithAutoFill()
             syncLoop?.cancel()
             syncLoop = nil
             live.stop(session: session)
