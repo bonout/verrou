@@ -36,7 +36,7 @@ struct AuditView: View {
                         ForEach(Array(audit.reused.enumerated()), id: \.offset) { _, group in
                             Text("Same password on \(group.count) items")
                                 .font(.caption).foregroundStyle(.secondary)
-                                .padding(.horizontal, 8).padding(.top, 6)
+                                .padding(.horizontal, 8).padding(.top, 8)
                             ForEach(group, id: \.id) { row($0, change: true).id("reused-\($0.id)") }
                         }
                     }
@@ -62,7 +62,7 @@ struct AuditView: View {
                 WatchtowerSections(row: { row($0, note: $1, change: $2) })
             }
             .padding(.horizontal, 8)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
         }
         .background(Color(nsColor: .controlBackgroundColor))
         .task(id: model.watchtower.focus) {
@@ -75,7 +75,7 @@ struct AuditView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("Security Audit").font(.title3.weight(.semibold))
                 .layoutMark("pane-title")
             if let audit = model.audit {
@@ -84,7 +84,7 @@ struct AuditView: View {
             }
         }
         .padding(.horizontal, 8)
-        .padding(.bottom, 6)
+        .padding(.bottom, 8)
     }
 
     private func summaryLine(_ audit: AuditReport) -> String {
@@ -121,9 +121,9 @@ struct AuditView: View {
                     Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
-            .padding(10)
+            .padding(8)
             .background(Theme.wash(0.04), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .padding(.bottom, 6)
+            .padding(.bottom, 8)
         }
     }
 
@@ -137,7 +137,7 @@ struct AuditView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 8)
-        .padding(.top, 14)
+        .padding(.top, 16)
         .padding(.bottom, 2)
     }
 
@@ -158,7 +158,7 @@ struct AuditView: View {
             }
         }
         .padding(.horizontal, 8)
-        .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .background(selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: Theme.radiusMedium, style: .continuous))
         .contentShape(Rectangle())
         .onTapGesture { model.selection = summary.id }
         .contextMenu { RowMenu(summary: summary) }
@@ -217,12 +217,12 @@ private struct WatchtowerSections<Row: View>: View {
                 }
             }
         } else if watchtower.loadingTwoFactor {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
                 Text("Looking for sites that offer two-factor authentication…")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 8).padding(.top, 14)
+            .padding(.horizontal, 8).padding(.top, 16)
         } else if let error = watchtower.twoFactorError, model.mode == .vaultwarden {
             title("Two-factor authentication available", count: 0,
                   detail: String(localized: "Category skipped: the 2fa.directory list could not be downloaded (\(error))."))
@@ -262,12 +262,12 @@ private struct WatchtowerSections<Row: View>: View {
                     .padding(.horizontal, 8).padding(.top, 4)
             }
         } else if watchtower.loadingPasskeys {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
                 Text("Looking for sites that accept passkeys…")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 8).padding(.top, 14)
+            .padding(.horizontal, 8).padding(.top, 16)
         } else if let error = watchtower.passkeysError, model.mode == .vaultwarden {
             title("Passkey available", count: 0,
                   detail: String(localized: "Category skipped: the passkeys.2fa.directory directory could not be downloaded (\(error))."))
@@ -329,7 +329,7 @@ private struct WatchtowerSections<Row: View>: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 8)
-        .padding(.top, 14)
+        .padding(.top, 16)
         .padding(.bottom, 2)
     }
 }

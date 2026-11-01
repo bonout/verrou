@@ -538,7 +538,7 @@ enum AutofillHUD {
     static func show(_ message: String, detail: String? = nil, failure: Bool = false) {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        let view = HStack(spacing: 10) {
+        let view = HStack(spacing: 8) {
             Image(systemName: failure ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
                 .accessibilityHidden(true)
                 .foregroundStyle(failure ? Color.orange : Color.green)

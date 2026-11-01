@@ -210,7 +210,7 @@ struct MasterPasswordField: View {
     let submit: () -> Void
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 26, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Theme.panelRadius, style: .continuous)
         HStack(spacing: 8) {
             Image(systemName: "key.fill")
                 .foregroundStyle(.secondary)
@@ -236,8 +236,8 @@ struct MasterPasswordField: View {
             .disabled(password.isEmpty)
             .accessibilityLabel("Unlock")
         }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
         .frame(minHeight: 52)
         .modifier(PasswordFieldSurface(shape: shape, focused: focused.wrappedValue))
     }

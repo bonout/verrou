@@ -55,7 +55,7 @@ struct QuickActionsView: View {
 
     var body: some View {
         if family == .systemMedium {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(QuickAction.all) { action in
                     tile(action, vertical: true)
                 }
@@ -95,12 +95,12 @@ struct QuickActionsView: View {
                                 .minimumScaleFactor(0.7)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 10)
+                        .padding(.horizontal, 8)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .foregroundStyle(Color.accentColor)
-                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }

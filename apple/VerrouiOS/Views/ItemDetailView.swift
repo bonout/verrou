@@ -360,7 +360,7 @@ struct ItemDetailView: View {
                     }
                 }
                 if let activity = model.attachmentActivity {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         ProgressView()
                         Text(activity).font(.callout).foregroundStyle(.secondary)
                     }
@@ -375,7 +375,7 @@ struct ItemDetailView: View {
 
     private func metadata(_ detail: ItemDetail) -> some View {
         let format = Date.FormatStyle(date: .long, time: .shortened)
-        return VStack(alignment: .leading, spacing: 3) {
+        return VStack(alignment: .leading, spacing: 4) {
             Text("Modified \(Date(timeIntervalSince1970: TimeInterval(detail.summary.modified)).formatted(format))")
             Text("Created \(Date(timeIntervalSince1970: TimeInterval(detail.created)).formatted(format))")
             if let used = detail.summary.lastUsedLabel {
@@ -400,14 +400,14 @@ private struct DetailHeader: View {
             : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
         layout {
             ItemIcon(summary: summary, size: 68)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text(summary.title)
                     .font(.title2.weight(.bold))
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityAddTraits(.isHeader)
                 // The chips wrap, without ever cutting their text.
-                FlowLayout(spacing: 6, lineSpacing: 6) {
+                FlowLayout(spacing: 8, lineSpacing: 6) {
                     ForEach(chips, id: \.text) { chip in
                         Chip(text: chip.text, symbol: chip.symbol, tint: chip.tint)
                     }
@@ -468,8 +468,8 @@ private struct QuickCopyBar: View {
     @State private var copyToken = 0
 
     var body: some View {
-        GlassGroup(spacing: 10) {
-            HStack(spacing: 10) {
+        GlassGroup(spacing: 8) {
+            HStack(spacing: 8) {
                 if summary.category == .login, fields.contains(where: { $0.fieldType == .username || $0.id == "username" }) {
                     action(String(localized: "Username"), id: "username", symbol: "person.fill") { model.copyUsername(of: summary.id) }
                 }
@@ -515,8 +515,8 @@ private struct StackedLabelStyle: LabelStyle {
     func makeBody(configuration: Configuration) -> some View {
         VStack(spacing: 4) {
             configuration.icon
-                .font(.system(size: 17, weight: .semibold))
-                .frame(height: 22)
+                .font(.body.weight(.semibold))
+                .frame(minHeight: 22)
             configuration.title
                 .font(.caption.weight(.semibold))
                 .lineLimit(2)
@@ -695,13 +695,13 @@ private struct WebsiteRow: View {
 
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
                     Text(primary ? "Main site" : "Site").font(.caption.weight(.medium)).foregroundStyle(.secondary)
                     if let rule {
                         Text(rule.label)
                             .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, 8)
                             .padding(.vertical, 1)
                             .background((rule == .never ? Color.orange : Color.secondary).opacity(0.15), in: Capsule())
                             .foregroundStyle(rule == .never ? Color.warningText : Color.secondary)
@@ -801,7 +801,7 @@ struct WifiQRSheet: View {
                     .scaledToFit()
                     .frame(maxWidth: 260)
                     .padding(16)
-                    .background(.white, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .background(.white, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
                     .accessibilityLabel("QR code of the “\(sheet.title)” network")
                 Text("Scan with another phone's camera to join “\(sheet.title)”.")
                     .font(.callout)

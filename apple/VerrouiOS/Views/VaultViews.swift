@@ -115,9 +115,9 @@ struct VaultHomeView: View {
             }
             Group {
                 if typeSize.isAccessibilitySize {
-                    VStack(spacing: 10) { tiles }
+                    VStack(spacing: 8) { tiles }
                 } else {
-                    HStack(spacing: 10) { tiles }
+                    HStack(spacing: 8) { tiles }
                 }
             }
             .animation(reduceMotion ? nil : .snappy(duration: 0.3), value: hasFavorites)
@@ -290,7 +290,7 @@ private struct VaultStatusFooter: View {
                 Text(detail).font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(.top, 10)
+        .padding(.top, 8)
         .accessibilityElement(children: .combine)
     }
 

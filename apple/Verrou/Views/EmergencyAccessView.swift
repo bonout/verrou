@@ -81,13 +81,13 @@ private struct ContactRow: View {
     let trusted: Bool
 
     var body: some View {
-        HStack(spacing: 11) {
+        HStack(spacing: 12) {
             Image(systemName: contact.accessType == .view ? "eye" : "key")
                 .accessibilityHidden(true)
                 .font(.system(size: 16))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(contact.displayName).lineLimit(1)
                 Text(contact.status(trusted: trusted)).font(.callout).foregroundStyle(.secondary).lineLimit(2)
             }
@@ -111,12 +111,12 @@ struct EmergencyDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 header
                 Text(contact.status(trusted: trusted))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     if trusted { trustedActions } else { grantedActions }
                     Spacer()
                     if trusted {
@@ -136,10 +136,10 @@ struct EmergencyDetailView: View {
                 SectionTitle(trusted ? String(localized: "What this contact can do") : String(localized: "What is entrusted to you"))
                 FieldCard {
                     line("Access", contact.accessType.label)
-                    Divider().padding(.leading, 14)
+                    Divider().padding(.leading, 16)
                     line("Wait period", days(contact.waitTimeDays))
                     if let email = contact.email {
-                        Divider().padding(.leading, 14)
+                        Divider().padding(.leading, 16)
                         line("Email", email)
                     }
                 }
@@ -166,10 +166,10 @@ struct EmergencyDetailView: View {
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.accent)
                 .frame(width: 64, height: 64)
-                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            VStack(alignment: .leading, spacing: 5) {
+                .background(Theme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+            VStack(alignment: .leading, spacing: 4) {
                 Text(contact.displayName)
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.title.bold())
                     .textSelection(.enabled)
                     .layoutMark("detail-title")
                 HStack(spacing: 8) {
@@ -233,8 +233,8 @@ struct EmergencyDetailView: View {
             Text(value).textSelection(.enabled)
                 .multilineTextAlignment(.trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 }
 
@@ -395,7 +395,7 @@ struct GrantorVaultView: View {
                         .textFieldStyle(.roundedBorder)
                         .padding(8)
                     List(vault.rows, id: \.id, selection: $vault.selection) { summary in
-                        HStack(spacing: 9) {
+                        HStack(spacing: 8) {
                             ItemIcon(summary: summary, size: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(summary.title).lineLimit(1)
@@ -431,7 +431,7 @@ private struct GrantorItemView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
                     ItemIcon(summary: detail.summary, size: 40)
                     VStack(alignment: .leading) {

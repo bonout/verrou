@@ -175,9 +175,9 @@ struct QuickAccessView: View {
                 // it that, nor an explicit height, it is cut off at the bottom.
                 TextField("", text: $model.quickQuery,
                           prompt: Text("Search for a login, a card, a code…")
-                              .font(.system(size: 22, weight: .regular)))
+                              .font(.title))
                     .textFieldStyle(.plain)
-                    .font(.system(size: 22, weight: .regular))
+                    .font(.title)
                     .frame(height: 30)
                     .focused($focused)
                     .onSubmit(primaryAction)
@@ -197,7 +197,7 @@ struct QuickAccessView: View {
             } else if autofill?.target != nil, !AccessibilityPermission.isGranted {
                 AccessibilityRequestView()
             } else if hits.isEmpty {
-                VStack(spacing: 14) {
+                VStack(spacing: 16) {
                     Text(emptyMessage)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -312,7 +312,7 @@ struct QuickAccessView: View {
         VStack(spacing: 2) {
             ForEach(Array(hits.enumerated()), id: \.element.id) { index, hit in
                 let summary = hit.summary
-                HStack(spacing: 11) {
+                HStack(spacing: 12) {
                     ItemIcon(summary: summary, size: 30)
                     VStack(alignment: .leading, spacing: 1) {
                         HighlightedText(text: summary.title, highlights: hit.highlights,
@@ -325,8 +325,8 @@ struct QuickAccessView: View {
                             .accessibilityLabel("One-time code")
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
                 .foregroundStyle(index == selected ? Color.white : Color.primary)
                 .background(index == selected ? Theme.selection : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
@@ -348,7 +348,7 @@ struct QuickAccessView: View {
     }
 
     private var lockedState: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             Image(systemName: "lock.fill").font(.largeTitle).foregroundStyle(.secondary)
                 .accessibilityHidden(true)
             Text("Verrou is locked").font(.headline)
@@ -428,8 +428,8 @@ struct QuickDetail: View {
     var copyCode: () -> Void = {}
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 8) {
                 ItemIcon(summary: summary, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summary.title).font(.headline).lineLimit(2)
@@ -462,7 +462,7 @@ struct QuickDetail: View {
     private func labeled(_ label: LocalizedStringKey, copy: (() -> Void)?, help: LocalizedStringKey,
                          @ViewBuilder content: () -> some View) -> some View {
         HStack(alignment: .bottom) {
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(label).font(.caption).foregroundStyle(.secondary)
                 content()
             }

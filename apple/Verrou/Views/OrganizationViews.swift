@@ -270,7 +270,7 @@ struct CollectionEditorView: View {
             set: { draft[keyPath: path][id] = $0 })
         return HStack {
             Toggle(isOn: granted) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Image(systemName: systemImage).foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                     Text(title).lineLimit(1)
@@ -558,7 +558,7 @@ struct PendingFingerprintView: View {
     @State private var fingerprint: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Waiting for \(pending.name)").font(.headline)
             Text("Read this fingerprint phrase to the administrator who confirms you: they must see the same one. It guarantees that the organization's key will be encrypted for you, and for nobody else.")
                 .font(.callout).foregroundStyle(.secondary)

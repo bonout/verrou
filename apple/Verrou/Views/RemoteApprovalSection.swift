@@ -57,7 +57,7 @@ private struct PairingSheet: View {
     let remote: RemoteApprovals
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Text("Pair an iPhone")
                 .font(.title2.weight(.semibold))
             switch remote.pairing?.state {
@@ -72,7 +72,7 @@ private struct PairingSheet: View {
                         .resizable()
                         .frame(width: 220, height: 220)
                         .padding(12)
-                        .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                        .background(.white, in: RoundedRectangle(cornerRadius: Theme.cardRadius))
                         .accessibilityLabel("Pairing QR code")
                 }
                 Text("In Verrou on the iPhone: Settings › Approve from the Mac › Pair with a Mac, then scan this code. Both devices must use the same iCloud account.")

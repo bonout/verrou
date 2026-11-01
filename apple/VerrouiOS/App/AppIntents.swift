@@ -180,7 +180,7 @@ private struct SecretSnippet: View {
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -202,7 +202,7 @@ private struct CodeSnippet: View {
     var body: some View {
         HStack(spacing: 12) {
             Text(code.grouped)
-                .font(.system(size: 34, weight: .semibold, design: .monospaced))
+                .font(.system(.largeTitle, design: .monospaced, weight: .semibold))
                 .accessibilityLabel(Text("Code \(code.value)"))
             Spacer(minLength: 0)
             Text(timerInterval: code.start...code.end, countsDown: true)

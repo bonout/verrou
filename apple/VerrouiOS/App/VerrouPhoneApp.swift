@@ -235,7 +235,7 @@ struct PrivacyCover: View {
                     .transition(.identity)
             }
             Rectangle().fill(.regularMaterial)
-            VStack(spacing: 14) {
+            VStack(spacing: 16) {
                 AppMark(size: 76, glow: false)
                 Text("Verrou")
                     .font(.system(.title2, design: .rounded, weight: .bold))
@@ -403,7 +403,7 @@ private struct PhoneToast: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .glassSurface(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: LiquidGlass.isAvailable ? .clear : .black.opacity(0.15), radius: 12, y: 4)
+        .shadow(color: LiquidGlass.isAvailable ? .clear : .black.opacity(0.12), radius: 8, y: 3)
         .accessibilityElement(children: .contain)
     }
 }

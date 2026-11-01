@@ -128,7 +128,7 @@ struct EditItemView: View {
             .formStyle(.grouped)
 
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if !isNew {
                     Button("Move to Trash…", role: .destructive) { confirmTrash = true }
                         .disabled(model.editorBusy)
@@ -377,7 +377,7 @@ struct GeneratorView: View {
     @State private var bits: Double?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             if showsTitle {
                 Text("Generator").font(.headline)
             }
@@ -389,7 +389,7 @@ struct GeneratorView: View {
             PasswordText(value: password, size: 14)
                 .lineLimit(6)
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .padding(10)
+                .padding(8)
                 .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
             switch shownMode.wrappedValue {
             case .password:

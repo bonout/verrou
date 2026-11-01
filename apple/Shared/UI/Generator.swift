@@ -187,7 +187,7 @@ struct StrengthMeter: View {
     var body: some View {
         let bits = bits ?? passwordStrength(password: password)
         let (label, color, fraction) = Self.grade(bits)
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Theme.faintFill())

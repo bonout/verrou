@@ -8,7 +8,7 @@ struct MultiSelectionView: View {
     var body: some View {
         let ids = model.selectedIDs
         let available = model.availability(of: ids)
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             Image(systemName: "square.stack.3d.up.fill")
                 .accessibilityHidden(true)
                 .font(.system(size: 46))
@@ -42,7 +42,7 @@ struct MultiSelectionView: View {
                 Text("Mock vault: read-only").font(.caption).foregroundStyle(.secondary)
             }
         }
-        .padding(30)
+        .padding(32)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
@@ -164,7 +164,7 @@ struct MoveToFolderView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
     }
 
     private func move(to folder: String?, name: String?) {

@@ -226,7 +226,7 @@ private struct RectangularCode: View {
                 .widgetAccentable()
                 .lineLimit(1)
             Text(code.grouped)
-                .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                .font(.system(.title2, design: .monospaced, weight: .semibold))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
                 .privacySensitive()
@@ -253,7 +253,7 @@ private struct CircularCode: View {
                     Text(half)
                 }
             }
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+            .font(.system(.caption, design: .monospaced, weight: .semibold))
             .privacySensitive()
         }
         .progressViewStyle(.circular)

@@ -110,7 +110,7 @@ struct UnsharePresentation: ViewModifier {
                 if model.unshareBusy {
                     ProgressView("Removing from sharing…")
                         .padding(20)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
                         .accessibilityIdentifier("unshare-progress")
                 }
             }
