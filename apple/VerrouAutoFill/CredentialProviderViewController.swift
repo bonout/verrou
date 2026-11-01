@@ -147,6 +147,19 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     @available(iOS 26.2, *)
+    override func performWithoutUserInteraction(generatePasswordsRequest: ASGeneratePasswordsRequest) {
+        let rules = [generatePasswordsRequest.passwordFieldPasswordRules, generatePasswordsRequest.passwordRulesFromQuirks]
+            .compactMap { $0 }.joined(separator: ";")
+        let site = AutoFillModel.host(of: generatePasswordsRequest.serviceIdentifier)
+        if let signUp = RecentFill.password(forSite: site) {
+            return extensionContext.completeGeneratePasswordRequest(results: [ASGeneratedPassword(kind: .strong, value: signUp)])
+        }
+        let settings = GeneratorSettings.forAutoFill
+        let kind: ASGeneratedPassword.Kind = settings.mode == .passphrase && rules.isEmpty ? .passphrase : .strong
+        extensionContext.completeGeneratePasswordRequest(results: [ASGeneratedPassword(kind: kind, value: settings.password(rules: rules))])
+    }
+
+    @available(iOS 26.2, *)
     private static func login(_ request: ASSavePasswordRequest) -> AutoFillModel.LoginToSave {
         AutoFillModel.LoginToSave(site: AutoFillModel.host(of: request.serviceIdentifier),
                                   user: request.credential.user, password: request.credential.password)

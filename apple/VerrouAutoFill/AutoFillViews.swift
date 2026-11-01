@@ -54,7 +54,7 @@ struct AutoFillRootView: View {
             SaveLoginView()
         case .list, .oneTimeCodes:
             if model.phase == .working {
-                WorkingView(label: "Signing…")
+                WorkingView(label: model.matches.isEmpty && model.passkeys.isEmpty ? "Saving to the server…" : "Signing…")
             } else {
                 CredentialListView()
             }
@@ -133,24 +133,35 @@ private struct AliasInsertView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
                 }
-                if model.aliasUsesSite {
-                    Section {
-                        TextField("Site", text: $model.aliasSite, prompt: Text(verbatim: "netflix.com"))
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-                            .accessibilityIdentifier("autofill-alias-site")
-                    } footer: {
+                Section {
+                    TextField("Site", text: $model.aliasSite, prompt: Text(verbatim: "netflix.com"))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.done)
+                        .accessibilityIdentifier("autofill-alias-site")
+                } footer: {
+                    if model.aliasUsesSite {
                         Text("The alias starts with the site's name. Without a site, it is random.")
                     }
+                }
+                Section {
+                    Button {
+                        model.signUpWithInsertedAlias()
+                    } label: {
+                        Label("Sign Up with This Alias", systemImage: "person.crop.circle.badge.plus")
+                            .font(.body.weight(.semibold))
+                    }
+                    .disabled(!model.canSignUpWithInsertedAlias || model.phase == .working)
+                    .accessibilityIdentifier("autofill-alias-signup")
+                } footer: {
+                    Text("Saves a login for the site with this alias and a strong password, then inserts the alias. In the password field, the strong password iOS suggests is that one.")
                 }
                 Section {
                     Button {
                         model.insertAlias()
                     } label: {
                         Label("Insert Alias", systemImage: "text.insert")
-                            .font(.body.weight(.semibold))
                     }
                     .disabled(model.alias.isEmpty)
                     .accessibilityIdentifier("autofill-alias-insert")
@@ -274,12 +285,24 @@ private struct CredentialListView: View {
                 }
                 Section {
                     if model.matches.isEmpty {
-                        Text("No login for this site: search the vault.")
-                            .foregroundStyle(.secondary)
+                        if model.canSignUpWithAlias {
+                            Button { model.signUpWithAlias() } label: {
+                                Label("Sign Up with an Email Alias", systemImage: "at.badge.plus")
+                                    .font(.body.weight(.semibold))
+                            }
+                            .accessibilityIdentifier("autofill-signup-alias")
+                        } else {
+                            Text("No login for this site: search the vault.")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     ForEach(model.matches, id: \.id) { item in itemButton(item) }
                 } header: {
                     SectionHeader(model.site.map { String(localized: "For \($0)") } ?? String(localized: "Suggestions"))
+                } footer: {
+                    if model.matches.isEmpty, model.canSignUpWithAlias {
+                        Text("A new address at your alias domain and a strong password, saved in Verrou, then filled.")
+                    }
                 }
                 Section {
                     ForEach(model.everything.prefix(Self.listLimit), id: \.id) { item in itemButton(item) }

@@ -3557,6 +3557,34 @@
         }
       }
     },
+    "A new address at your alias domain and a strong password, saved in Verrou, then filled.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Une nouvelle adresse sur votre domaine d'alias et un mot de passe robuste, enregistrés dans Verrou, puis remplis."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eine neue Adresse an deiner Alias-Domain und ein starkes Passwort, in Verrou gesichert und dann ausgefüllt."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Una nueva dirección en tu dominio de alias y una contraseña segura, guardadas en Verrou y luego rellenadas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un nuovo indirizzo sul tuo dominio alias e una password robusta, salvati in Verrou, poi compilati."
+          }
+        }
+      }
+    },
     "A personal copy is created (history, passkeys, codes, fields and attachments included), then the item is permanently deleted %@: its members will no longer see it.": {
       "localizations": {
         "fr": {
@@ -19797,6 +19825,34 @@
         }
       }
     },
+    "Saves a login for the site with this alias and a strong password, then inserts the alias. In the password field, the strong password iOS suggests is that one.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enregistre un identifiant pour le site avec cet alias et un mot de passe robuste, puis insère l'alias. Dans le champ du mot de passe, le mot de passe robuste proposé par iOS est celui-là."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sichert ein Login für die Website mit diesem Alias und einem starken Passwort und fügt dann den Alias ein. Im Passwortfeld schlägt iOS genau dieses starke Passwort vor."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guarda un inicio de sesión para el sitio con este alias y una contraseña segura, y luego inserta el alias. En el campo de la contraseña, la contraseña segura que sugiere iOS es esa."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Salva un login per il sito con questo alias e una password robusta, poi inserisce l'alias. Nel campo della password, la password robusta suggerita da iOS è proprio quella."
+          }
+        }
+      }
+    },
     "Saving to the server…": {
       "localizations": {
         "fr": {
@@ -21249,6 +21305,62 @@
           "stringUnit": {
             "state": "translated",
             "value": "Mostrati i primi %1$lld risultati su %2$lld: affina la ricerca."
+          }
+        }
+      }
+    },
+    "Sign Up with This Alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S'inscrire avec cet alias"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit diesem Alias registrieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrarse con este alias"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrati con questo alias"
+          }
+        }
+      }
+    },
+    "Sign Up with an Email Alias": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S'inscrire avec un alias e-mail"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mit E-Mail-Alias registrieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrarse con un alias de correo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registrati con un alias email"
           }
         }
       }

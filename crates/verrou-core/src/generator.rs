@@ -36,6 +36,42 @@ impl Default for PasswordOptions {
 
 /// Random password, with at least one character from each requested
 /// class.
+impl PasswordOptions {
+    #[must_use]
+    pub fn following_rules(&self, rules: &str) -> Self {
+        let mut options = self.clone();
+        let mut classes = Vec::new();
+        for clause in rules.split(';') {
+            let Some((name, value)) = clause.split_once(':') else {
+                continue;
+            };
+            let value = value.trim();
+            match name.trim().to_ascii_lowercase().as_str() {
+                "minlength" => {
+                    if let Ok(min) = value.parse::<usize>() {
+                        options.length = options.length.max(min);
+                    }
+                }
+                "maxlength" => {
+                    if let Ok(max) = value.parse::<usize>() {
+                        options.length = options.length.min(max);
+                    }
+                }
+                "required" | "allowed" => {
+                    classes.extend(value.split(',').map(|c| c.trim().to_ascii_lowercase()));
+                }
+                _ => {}
+            }
+        }
+        if !classes.is_empty() {
+            let any = |names: &[&str]| classes.iter().any(|c| names.contains(&c.as_str()));
+            options.digits &= any(&["digit", "unicode", "ascii-printable"]);
+            options.symbols &= any(&["special", "unicode", "ascii-printable"]);
+        }
+        options
+    }
+}
+
 pub fn password(options: &PasswordOptions) -> String {
     password_with(&mut rand::rngs::OsRng, options)
 }
@@ -99,6 +135,34 @@ pub fn entropy_bits(password: &str) -> f64 {
 mod tests {
     use super::*;
     use rand::SeedableRng;
+
+    #[test]
+    fn site_rules_bound_the_length_and_the_characters() {
+        let mine = PasswordOptions {
+            length: 20,
+            digits: true,
+            symbols: true,
+            avoid_ambiguous: true,
+        };
+        assert_eq!(mine.following_rules(""), mine);
+        let capped = mine.following_rules("minlength: 8; maxlength: 16; required: lower; required: upper; required: digit; required: special;");
+        assert_eq!(
+            (capped.length, capped.digits, capped.symbols),
+            (16, true, true)
+        );
+        let plain = mine.following_rules("required: lower, upper; required: digit; minlength: 24");
+        assert_eq!(
+            (plain.length, plain.digits, plain.symbols),
+            (24, true, false)
+        );
+        let custom = mine.following_rules("required: [-().&@?'#,/+]; allowed: lower, upper, digit");
+        assert!(!custom.symbols);
+        let printable = mine.following_rules("allowed: ascii-printable; max-consecutive: 2");
+        assert_eq!(printable, mine);
+        let generated = password(&mine.following_rules("maxlength: 12; allowed: lower, upper"));
+        assert_eq!(generated.chars().count(), 12);
+        assert!(generated.chars().all(|c| c.is_ascii_alphabetic()));
+    }
 
     #[test]
     fn every_requested_class_is_present() {

@@ -163,6 +163,25 @@ struct GeneratorSettings {
         return settings
     }
 
+    private static let keys = ["generatorMode", "generatorLength", "generatorDigits", "generatorSymbols", "generatorWords",
+                               "generatorSeparator", "generatorCapitalize", "generatorNumber", "generatorLanguage"]
+
+    private static var group: UserDefaults? {
+        VerrouStorage.appGroupID.flatMap(UserDefaults.init(suiteName:))
+    }
+
+    static func shareWithAutoFill() {
+        guard let group else { return }
+        for key in keys { group.set(UserDefaults.standard.object(forKey: key), forKey: key) }
+    }
+
+    static var forAutoFill: GeneratorSettings { saved(in: group ?? .standard) }
+
+    func password(rules: String) -> String {
+        if mode == .passphrase, rules.isEmpty { return generate().value }
+        return generatePasswordForRules(length: UInt32(length), digits: digits, symbols: symbols, rules: rules)
+    }
+
     func generate() -> (value: String, bits: Double?) {
         switch mode {
         case .password, .alias:
