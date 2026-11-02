@@ -481,7 +481,7 @@ async fn invite_register_confirm_and_manage_members() {
     // her account (Settings → Verrou account).
     let fingerprint = admin.member_fingerprint(&org, &member_id).await.unwrap();
     assert_eq!(fingerprint, lea.own_fingerprint().unwrap());
-    assert!(common::is_fingerprint(&fingerprint), "{fingerprint}");
+    assert!(common::is_fingerprint(&fingerprint));
     // Another fingerprint (key swapped in the meantime): nothing is sent.
     let refused = admin
         .confirm_member(&org, &member_id, "turban-deftly-anime-chatroom-unselfish")

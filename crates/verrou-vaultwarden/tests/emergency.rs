@@ -153,7 +153,7 @@ async fn invite_confirm_request_approve_and_view() {
         .emergency_contact_fingerprint(&grantee_id)
         .await
         .unwrap();
-    assert!(common::is_fingerprint(&fingerprint), "{fingerprint}");
+    assert!(common::is_fingerprint(&fingerprint));
     assert!(matches!(
         camille
             .confirm_emergency_contact(&contact.id, &grantee_id, "faux-faux-faux-faux-faux")
