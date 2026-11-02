@@ -4,6 +4,11 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## 0.6.3
+
+**Mac**
+- Switching tabs in Settings no longer quits the app (0.6.2).
+
 ## 0.6.2
 
 **Mac**
