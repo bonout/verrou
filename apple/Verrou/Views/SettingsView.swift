@@ -48,7 +48,7 @@ private struct SettingsPane<Content: View>: View {
             .formStyle(.grouped)
             .scrollBounceBehavior(.basedOnSize)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                geometry.contentSize.height + geometry.contentInsets.top + geometry.contentInsets.bottom
+                geometry.contentSize.height.rounded()
             } action: { _, height in
                 contentHeight = height
             }
