@@ -4,6 +4,8 @@
 //! The test server has no mail: Vaultwarden then accepts the invitation
 //! of an existing account immediately.
 
+mod common;
+
 use std::num::NonZeroU32;
 
 use bitwarden_core::Client;
@@ -151,7 +153,7 @@ async fn invite_confirm_request_approve_and_view() {
         .emergency_contact_fingerprint(&grantee_id)
         .await
         .unwrap();
-    assert_eq!(fingerprint.split('-').count(), 5, "{fingerprint}");
+    assert!(common::is_fingerprint(&fingerprint), "{fingerprint}");
     assert!(matches!(
         camille
             .confirm_emergency_contact(&contact.id, &grantee_id, "faux-faux-faux-faux-faux")

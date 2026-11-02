@@ -19,6 +19,8 @@
 //! logs in without the master password. A Bitwarden SDK client,
 //! independent of Verrou, also decrypts the key approved by Verrou.
 
+mod common;
+
 use std::num::NonZeroU32;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -143,7 +145,11 @@ async fn a_known_device_logs_in_after_approval() {
     assert_eq!(request.answer_now().await.unwrap(), Answer::Pending);
     let shown = pending(&mut approver, request.id()).await;
     assert_eq!(shown.fingerprint, request.fingerprint());
-    assert_eq!(shown.fingerprint.split('-').count(), 5);
+    assert!(
+        common::is_fingerprint(&shown.fingerprint),
+        "{}",
+        shown.fingerprint
+    );
     assert_eq!(shown.device, "Mac (desktop app)", "{shown:?}");
     assert_ne!(shown.ip, "");
     assert!(shown.created_at.abs_diff(now().cast_signed()) < 60);
