@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.6.2
 
 **Mac**
 - Settings are simpler: six tabs (General, AutoFill, Security, Vault,
@@ -25,6 +25,8 @@ tagging (docs/RELEASING.md).
 - The strong passwords iOS suggests in new-password fields come from
   Verrou's generator, with your settings and the site's password rules
   (iOS 26.2 and later).
+- A smaller app: 44 MB instead of 65, the AutoFill extension and the app
+  now share one copy of Verrou's core.
 
 ## 0.6.1
 
