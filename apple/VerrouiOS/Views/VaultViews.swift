@@ -868,6 +868,9 @@ struct ItemRowLink: View {
             if summary.hasTotp {
                 Button("Copy code", systemImage: "clock") { model.copyCode(of: summary.id) }
             }
+            if summary.host != nil {
+                Button("Copy website", systemImage: "link") { model.copyWebsite(of: summary.id) }
+            }
         }
     }
 }

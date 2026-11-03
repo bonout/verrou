@@ -91,7 +91,7 @@ struct ItemDetailView: View {
             if !detail.urls.isEmpty {
                 Section {
                     ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
-                        WebsiteRow(url: url, primary: index == 0,
+                        WebsiteRow(itemID: itemID, url: url, primary: index == 0,
                                    rule: detail.urlMatches.indices.contains(index) ? detail.urlMatches[index] : nil)
                     }
                 } header: {
@@ -213,6 +213,9 @@ struct ItemDetailView: View {
                 }
                 if summary.hasTotp {
                     Button("Copy code", systemImage: "clock") { model.copyCode(of: itemID) }
+                }
+                if summary.host != nil {
+                    Button("Copy website", systemImage: "link") { model.copyWebsite(of: itemID) }
                 }
                 if model.canModify(summary) {
                     Divider()
@@ -688,10 +691,12 @@ private struct TotpFieldValue: View {
 private struct WebsiteRow: View {
     @Environment(PhoneModel.self) private var model
     @Environment(\.openURL) private var openURL
+    let itemID: String
     let url: String
     let primary: Bool
     /// The site's own match rule (`nil`: the default one).
     var rule: UriMatchRule?
+    @State private var copied = false
 
     var body: some View {
         HStack {
@@ -714,6 +719,9 @@ private struct WebsiteRow: View {
             if let link = webLink {
                 RowIconButton(symbol: "safari", label: "Open in Safari") { openURL(link) }
             }
+            RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copy",
+                          tint: copied ? .green : Theme.accent, action: copy)
+                .animation(.snappy(duration: 0.3), value: copied)
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: copy)
@@ -727,6 +735,13 @@ private struct WebsiteRow: View {
                 Button("Open in Safari") { openURL(link) }
             }
         }
+        .contextMenu {
+            Button("Copy", systemImage: "doc.on.doc", action: copy)
+            if let link = webLink {
+                Button("Open in Safari", systemImage: "safari") { openURL(link) }
+            }
+        }
+        .modifier(CopiedFlag(copied: $copied))
     }
 
     private var webLink: URL? {
@@ -735,7 +750,8 @@ private struct WebsiteRow: View {
     }
 
     private func copy() {
-        model.copy(url, label: String(localized: "Site"), secret: false)
+        model.copyWebsite(of: itemID, url: url)
+        copied = true
     }
 }
 
@@ -763,6 +779,7 @@ private struct PasskeyRow: View {
 private struct NotesRow: View {
     @Environment(PhoneModel.self) private var model
     let itemID: String
+    @State private var copied = false
 
     var body: some View {
         let notes = model.revealedValue("notes", of: itemID)
@@ -782,8 +799,20 @@ private struct NotesRow: View {
                           label: notes == nil ? "Show note" : "Hide note") {
                 model.toggleReveal("notes", of: itemID)
             }
+            RowIconButton(symbol: copied ? "checkmark" : "doc.on.doc", label: "Copy note",
+                          tint: copied ? .green : Theme.accent, action: copy)
+                .animation(.snappy(duration: 0.3), value: copied)
         }
         .animation(.snappy(duration: 0.2), value: notes)
+        .modifier(CopiedFlag(copied: $copied))
+    }
+
+    private func copy() {
+        let before = model.copies
+        model.copyNotes(of: itemID)
+        if model.copies != before {
+            copied = true
+        }
     }
 }
 

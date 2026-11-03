@@ -1205,6 +1205,18 @@ final class PhoneModel {
         copyField(field, of: itemID)
     }
 
+    func copyWebsite(of itemID: String, url: String? = nil) {
+        guard let url = url ?? detail(id: itemID)?.urls.first else { return }
+        session.recordItemUse(id: itemID)
+        copy(url, label: String(localized: "Site"), secret: false)
+    }
+
+    func copyNotes(of itemID: String) {
+        if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyNotes(of: itemID) }) { return }
+        guard let notes = reveal("notes", of: itemID) else { return }
+        copy(notes, label: String(localized: "Notes"), secret: true)
+    }
+
     func copyPassword(of itemID: String) {
         if summary(id: itemID)?.sharing?.hidePasswords == true {
             toast = Toast(message: String(localized: "Hidden password"), detail: String(localized: "The organization hides it from your account"), failure: true)
