@@ -4,6 +4,22 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**Mac**
+- Each website of an item has a copy button, like the other fields: a
+  click or Space on the row copies it, and its right-click menu offers
+  *Copy* and *Open*. *Copy Website* is also in the list's right-click menu.
+- The note has a copy button next to the eye. A protected item asks
+  first, and the note leaves the clipboard like a password.
+
+**iPhone**
+- Each website of an item has a copy button, and a long press offers *Copy*
+  and *Open in Safari*. *Copy website* is also in the item's ⋯ menu and in
+  the list's long-press menu.
+- The note has a copy button next to the eye. A protected item asks
+  first, and the note leaves the clipboard like a password.
+
 ## 0.6.3
 
 **Mac**
