@@ -45,7 +45,7 @@ struct ItemDetailView: View {
                     FieldCard {
                         ForEach(Array(detail.urls.enumerated()), id: \.offset) { index, url in
                             if index > 0 { Divider().padding(.leading, 16) }
-                            WebsiteRow(url: url, primary: index == 0,
+                            WebsiteRow(itemID: detail.summary.id, url: url, primary: index == 0,
                                        rule: detail.urlMatches.indices.contains(index) ? detail.urlMatches[index] : nil)
                         }
                     }
@@ -386,14 +386,18 @@ struct IconButton: View {
 }
 
 struct WebsiteRow: View {
+    @Environment(AppModel.self) private var model
+    let itemID: String
     let url: String
     let primary: Bool
     /// The site's own match rule (`nil`: the default one).
     var rule: UriMatchRule?
     @State private var hovering = false
+    @FocusState private var focused: Bool
 
     var body: some View {
-        HStack {
+        let active = hovering || focused
+        HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(primary ? "Main website" : "Website").font(.caption).foregroundStyle(.secondary)
                 Text(url).foregroundStyle(Theme.accent).lineLimit(1).truncationMode(.middle)
@@ -403,16 +407,41 @@ struct WebsiteRow: View {
                 Chip(text: rule.label, symbol: "scope", tint: rule == .never ? .orange : .secondary)
                     .help("Matching: \(rule.explanation)")
             }
-            if let link = URL(string: url) {
+            if let link {
                 Button("Open") { NSWorkspace.shared.open(link) }
                     .controlSize(.small)
-                    .opacity(hovering ? 1 : 0.4)
+                    .opacity(active ? 1 : 0.4)
             }
+            IconButton(symbol: "doc.on.doc", help: "Copy", action: copy)
+                .opacity(active ? 1 : 0.4)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
+        .background(active ? Theme.wash(0.035) : ContrastStyle(Color.clear))
         .onHover { hovering = $0 }
+        .onTapGesture(perform: copy)
+        .focusable()
+        .focused($focused)
+        .onKeyPress(.space) {
+            copy()
+            return .handled
+        }
+        .contextMenu {
+            Button("Copy", action: copy)
+            if let link {
+                Button("Open") { NSWorkspace.shared.open(link) }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Space copies")
+        .accessibilityAction(named: "Copy", copy)
+    }
+
+    private var link: URL? { URL(string: url) }
+
+    private func copy() {
+        model.copyWebsite(of: itemID, url: url)
     }
 }
 
@@ -434,6 +463,9 @@ struct NotesRow: View {
             IconButton(symbol: model.revealed["notes"] == nil ? "eye" : "eye.slash",
                        help: model.revealed["notes"] == nil ? "Show the note" : "Hide the note") {
                 withAnimation(.snappy(duration: 0.18)) { model.toggleReveal("notes", of: itemID) }
+            }
+            IconButton(symbol: "doc.on.doc", help: "Copy the note") {
+                model.copyNotes(of: itemID)
             }
         }
         .padding(16)

@@ -12657,6 +12657,34 @@
         }
       }
     },
+    "Copy the note": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copier la note"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notiz kopieren"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copiar la nota"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copia la nota"
+          }
+        }
+      }
+    },
     "Copy the one-time code after filling": {
       "localizations": {
         "fr": {

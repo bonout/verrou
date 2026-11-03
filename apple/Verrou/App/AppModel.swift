@@ -1506,11 +1506,17 @@ final class AppModel {
         copy(summary.subtitle, label: String(localized: "Username"), secret: false, item: summary.title)
     }
 
-    /// The first website, in full (not only its host).
-    func copyWebsite(of itemID: String) {
-        guard let url = (try? session.detail(id: itemID))?.urls.first else { return }
+    /// A website, in full (not only its host): the first one by default.
+    func copyWebsite(of itemID: String, url: String? = nil) {
+        guard let url = url ?? (try? session.detail(id: itemID))?.urls.first else { return }
         session.recordItemUse(id: itemID)
         copy(url, label: String(localized: "Website"), secret: false, item: title(of: itemID))
+    }
+
+    func copyNotes(of itemID: String) {
+        if awaitsConfirmation(itemID, retry: { [weak self] in self?.copyNotes(of: itemID) }) { return }
+        guard let notes = revealed["notes"] ?? (try? session.reveal(id: itemID, fieldId: "notes")) else { return }
+        copy(notes, label: String(localized: "Notes"), secret: true, item: title(of: itemID))
     }
 
     func copyPassword(of itemID: String) {

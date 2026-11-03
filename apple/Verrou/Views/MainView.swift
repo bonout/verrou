@@ -827,6 +827,7 @@ struct RowMenu: View {
             Button("Copy Public Key") { model.copyPublicKey(of: summary.id) }
         }
         if let host = summary.host, let url = URL(string: "https://\(host)") {
+            Button("Copy Website") { model.copyWebsite(of: summary.id) }
             Button("Open \(host)") { NSWorkspace.shared.open(url) }
         }
         if summary.canChangePassword {
