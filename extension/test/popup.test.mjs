@@ -31,6 +31,7 @@ function openPopup(handle, { timeout = 100 } = {}) {
     runtime: {
       id: "extension",
       getManifest: () => ({}),
+      getURL: (path) => `chrome-extension://extension/${path}`,
       sendMessage: async (message) => {
         messages.push(message);
         return handle(message);
