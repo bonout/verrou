@@ -50793,34 +50793,6 @@
         }
       }
     },
-    "neither Brave nor Firefox is installed (or ever launched) on this Mac": {
-      "localizations": {
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ni Brave ni Firefox ne sont installés (ou jamais lancés) sur ce Mac"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "weder Brave noch Firefox ist auf diesem Mac installiert (oder wurde je gestartet)"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ni Brave ni Firefox están instalados (o nunca se han abierto) en este Mac"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "né Brave né Firefox sono installati (o mai avviati) su questo Mac"
-          }
-        }
-      }
-    },
     "never": {
       "localizations": {
         "fr": {
@@ -50929,6 +50901,34 @@
           "stringUnit": {
             "state": "translated",
             "value": "nessun sito"
+          }
+        }
+      }
+    },
+    "no supported browser (Brave, Chrome, Firefox, Safira) is installed (or ever launched) on this Mac": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "aucun navigateur pris en charge (Brave, Chrome, Firefox, Safira) n'est installé (ou jamais lancé) sur ce Mac"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "kein unterstützter Browser (Brave, Chrome, Firefox, Safira) ist auf diesem Mac installiert (oder wurde je gestartet)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "no hay ningún navegador compatible (Brave, Chrome, Firefox, Safira) instalado (o abierto alguna vez) en este Mac"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "nessun browser supportato (Brave, Chrome, Firefox, Safira) è installato (o mai avviato) su questo Mac"
           }
         }
       }

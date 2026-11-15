@@ -44,7 +44,7 @@ pub const DEFAULT_PORT: u16 = 41_738;
 /// Name of the Native Messaging host, declared to the browser.
 pub const HOST_NAME: &str = "app.verrou.bridge";
 
-/// The extension's identifier in Brave and Chrome, set by the key in
+/// The extension's identifier in Brave, Chrome and Safira, set by the key in
 /// `extension/manifest.json` (an extension test checks they match).
 pub const CHROMIUM_EXTENSION_ID: &str = "pmdlgnpbjfdnmpeadbecmgfoojmocibg";
 
@@ -54,7 +54,7 @@ pub const FIREFOX_EXTENSION_ID: &str = "verrou@verrou.app";
 
 /// Who launched the Native Messaging host, according to its arguments.
 ///
-/// - Brave, Chrome: one argument, the extension's origin
+/// - Brave, Chrome, Safira: one argument, the extension's origin
 ///   (`chrome-extension://<id>/`); on Windows, `--parent-window=…` is
 ///   added.
 /// - Firefox: two arguments, the path of the host manifest

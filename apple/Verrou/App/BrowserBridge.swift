@@ -174,7 +174,7 @@ final class BrowserBridge {
     /// as in the app (Touch ID or master password).
     fileprivate func confirmRequested(id: String, clientName: String, purpose: AccessPurpose, item: String, title: String,
                                       site: String, reason motive: String, changes: String) {
-        // The name announced at pairing ("Brave", "Firefox").
+        // The name announced at pairing ("Brave", "Chrome", "Firefox", "Safira").
         let browser = clientName.isEmpty ? String(localized: "the browser") : clientName
         let reason = switch purpose {
         case .reveal: String(localized: "allow the terminal to read “\(title)”")
@@ -242,7 +242,9 @@ final class BrowserBridge {
     /// `NativeMessagingHosts/app.verrou.bridge.json`: the browser only agrees
     /// to launch the host for Verrou's extension. Brave reads Google Chrome's
     /// folder (observed on a separate profile) and its own: we write both,
-    /// which also serves Chrome. Firefox reads `Mozilla/NativeMessagingHosts`,
+    /// which also serves Chrome. Safira reads `Safira/NativeMessagingHosts`
+    /// the way Chrome does, and derives the same extension ID from the
+    /// manifest's key. Firefox reads `Mozilla/NativeMessagingHosts`,
     /// with `allowed_extensions` (its extension ID) instead of
     /// `allowed_origins`.
     private func installHostManifest() throws {
@@ -255,7 +257,7 @@ final class BrowserBridge {
         }
         var targets: [(directory: URL, allowed: [String: Any])] = []
         let chromium = ["allowed_origins": ["chrome-extension://\(Self.extensionID)/"]]
-        for browser in ["BraveSoftware/Brave-Browser", "Google/Chrome"] where exists(browser) {
+        for browser in ["BraveSoftware/Brave-Browser", "Google/Chrome", "Safira"] where exists(browser) {
             targets.append((support.appending(path: "\(browser)/NativeMessagingHosts", directoryHint: .isDirectory), chromium))
         }
         // Firefox (and its Developer, Nightly editions) keeps its profiles in
@@ -265,7 +267,7 @@ final class BrowserBridge {
                             ["allowed_extensions": [Self.firefoxExtensionID]]))
         }
         guard !targets.isEmpty else {
-            throw Failure(String(localized: "neither Brave nor Firefox is installed (or ever launched) on this Mac"))
+            throw Failure(String(localized: "no supported browser (Brave, Chrome, Firefox, Safira) is installed (or ever launched) on this Mac"))
         }
         var failures: [String] = []
         for target in targets {
