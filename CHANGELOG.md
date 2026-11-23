@@ -4,7 +4,7 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
-## Unreleased
+## 0.6.5
 
 **Brave and Firefox**
 - A sign-in in several steps needs one click: after you pick a login, the
