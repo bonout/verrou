@@ -66,9 +66,16 @@ around a Rust core.
   *Sign in* fills the username and password (or the one-time code) and,
   like 1Password, submits the form when nothing is left to type: no other
   empty field and no visible captcha (an invisible reCAPTCHA v3 badge does
-  not count). A username-only first step is submitted too; the pill comes
-  back on the password step and waits for your click again. Cards, addresses
-  and generated passwords are never submitted. The popup's *Submit the
+  not count). While it fills, a light runs around the pill, then it says
+  *Filled* for a moment. A sign-in in several steps needs one click: once
+  you pick a login, the next steps in the same tab and on the same site
+  (the password after a username-only page, then the one-time code if the
+  login has one) fill by themselves with that login and are submitted the
+  same way, whether the site changes page or not. What the page already
+  shows (its username) stays. Each step fills once: a password the site
+  refuses brings back the pill, not another try. ✕ on the pill stops it,
+  and it ends three minutes after the last step. Cards, addresses and
+  generated passwords are never submitted. The popup's *Submit the
   form after filling* checkbox (on by default) turns this off:
   the cursor then lands on the submit button and Enter sends it. The *Other logins ⌄* tab under the pill lists the
   site's other logins and passkeys, *Fill with another login…*
