@@ -321,8 +321,66 @@ async function neverSave(sender) {
 }
 
 ext.tabs.onRemoved.addListener((tabId) => {
-  ext.storage.session.remove([pendingKey(tabId), usernameKey(tabId)]).catch(() => {});
+  ext.storage.session.remove([pendingKey(tabId), usernameKey(tabId), flowKey(tabId)]).catch(() => {});
 });
+
+// MARK: Sign-in in several steps
+//
+// Once the user picked a login (pill or popup), the next steps of the same
+// sign-in in this tab (password after the username, then the verification
+// code) fill by themselves, like 1Password. The flow holds the item, never
+// a secret, and the kinds of fields already filled: each kind at most once,
+// so a password the site refuses isn't filled and submitted in a loop. It
+// ends three minutes after the last step, when the tab closes, or with the
+// ✕ of the pill. Verrou still checks that the item belongs to the page's
+// address at each fill (`fill`).
+
+const FLOW_MS = 3 * 60_000;
+const FLOW_KINDS = new Set(["username", "password", "otp"]);
+const flowKey = (tabId) => `flow:${tabId}`;
+// The site, roughly (the last two labels of the name): the steps of a
+// sign-in may cross subdomains (www, then login). Verrou checks the real
+// match of the item at each fill.
+const siteKey = (url) => siteOf(url).split(".").slice(-2).join(".");
+const kindsOf = (list) => (Array.isArray(list) ? list.filter((kind) => FLOW_KINDS.has(kind)) : []);
+
+async function flowFor(tabId) {
+  if (tabId === undefined) return null;
+  const flow = await sessionGet(flowKey(tabId));
+  return flow && Date.now() - flow.at < FLOW_MS ? flow : null;
+}
+
+// A step was just filled with `item`: the flow goes on (same item) or
+// starts again (another login chosen).
+async function signInFilled(sender, message) {
+  const tabId = sender.tab?.id;
+  const item = typeof message.item === "string" ? message.item : null;
+  const kinds = kindsOf(message.kinds);
+  if (tabId === undefined || !item || !kinds.length) return;
+  const previous = await flowFor(tabId);
+  const same = previous?.item === item;
+  await ext.storage.session.set({
+    [flowKey(tabId)]: {
+      item,
+      title: String(message.title ?? (same ? previous.title : "")).slice(0, 256),
+      username: String(message.username ?? (same ? previous.username : "")).slice(0, 512),
+      totp: Boolean(message.totp) || (same && previous.totp),
+      site: siteKey(sender.url ?? ""),
+      done: [...new Set([...(same ? previous.done : []), ...kinds])],
+      at: Date.now(),
+    },
+  });
+}
+
+// The step the page shows now (`kinds`: its empty sign-in fields): the
+// flow's login if it has something new to fill there.
+async function signInNext(sender, message) {
+  const flow = await flowFor(sender.tab?.id);
+  if (!flow || !flow.site || flow.site !== siteKey(sender.url ?? "")) return {};
+  const fresh = kindsOf(message.kinds).filter((kind) => !flow.done.includes(kind) && (kind !== "otp" || flow.totp));
+  if (!fresh.length) return {};
+  return { item: flow.item, title: flow.title, username: flow.username };
+}
 
 // MARK: Verification code (QR code)
 
@@ -440,7 +498,7 @@ const originOf = (url) => {
 
 const fromPage = new Set([
   "suggest", "fill", "unlock", "forms", "fillForm", "openLinkSite", "alias",
-  "capture", "rememberUsername", "pendingSave", "confirmSave", "dismissSave", "neverSave",
+  "capture", "rememberUsername", "signInFilled", "signInNext", "signInCancel", "pendingSave", "confirmSave", "dismissSave", "neverSave",
   "passkeyList", "passkeyGet", "passkeyTargets", "passkeyCreate",
 ]);
 
@@ -478,6 +536,14 @@ async function handle(message, sender) {
       return { ok: true };
     case "rememberUsername":
       if (sender.tab?.id !== undefined) await rememberUsername(sender.tab.id, String(message.username).slice(0, 512));
+      return { ok: true };
+    case "signInFilled":
+      await signInFilled(sender, message);
+      return { ok: true };
+    case "signInNext":
+      return signInNext(sender, message);
+    case "signInCancel":
+      if (sender.tab?.id !== undefined) await ext.storage.session.remove(flowKey(sender.tab.id));
       return { ok: true };
     case "pendingSave": {
       const pending = await pendingFor(sender);
@@ -520,7 +586,8 @@ async function handle(message, sender) {
       if (!tab?.url) return { ok: false };
       const credentials = await fill(tab.url, message.item);
       if (!credentials.ok) return credentials;
-      await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials, origin: originOf(tab.url) }, { frameId: 0 });
+      await ext.tabs.sendMessage(tab.id, { kind: "apply", credentials, item: message.item, origin: originOf(tab.url) },
+        { frameId: 0 });
       return { ok: true };
     }
     case "setTotpTab": {
@@ -560,7 +627,8 @@ async function handle(message, sender) {
       }
       const credentials = await fill(target.url, message.item);
       if (credentials.ok) {
-        await ext.tabs.sendMessage(target.tabId, { kind: "apply", credentials, origin: originOf(target.url) },
+        await ext.tabs.sendMessage(target.tabId,
+          { kind: "apply", credentials, item: message.item, origin: originOf(target.url) },
           { frameId: target.frameId }).catch(() => {});
       }
       return { ok: true };
