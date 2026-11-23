@@ -23,6 +23,17 @@ ignore = [
     { id = "RUSTSEC-2021-0127", reason = "serde_cbor unmaintained, no vulnerability; used by authenticator" },
     # Unmaintained, build time only: UniFFI's templates generating the Swift binding.
     { id = "RUSTSEC-2026-0374", reason = "basic-toml unmaintained; build-time only (uniffi_bindgen)" },
+    # Unmaintained, no known vulnerability: chrono, throughout Bitwarden's SDK
+    # (and Verrou's own dates in verrou-ffi and verrou-vaultwarden). No
+    # maintained release exists; to replace with jiff or time once the SDK
+    # moves.
+    { id = "RUSTSEC-2026-0543", reason = "chrono unmaintained, no vulnerability; used by Bitwarden's SDK; no fixed version" },
+    # Bundled SQLite (rusqlite, through bitwarden-state): uninitialized memory
+    # when opening a database whose -wal file a less trusted party wrote.
+    # Verrou never opens the SDK's database (no SqliteDatabase is
+    # initialized), and bitwarden-state caps rusqlite below the release that
+    # bundles the fixed SQLite (libsqlite3-sys 0.39).
+    { id = "RUSTSEC-2026-0459", reason = "the SDK's SQLite database is never opened; fixed libsqlite3-sys out of reach of bitwarden-state's rusqlite <0.41" },
 ]
 
 [licenses]
