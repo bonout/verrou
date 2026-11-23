@@ -39,6 +39,7 @@ export function fakeBackground({ state = "unlocked", items = LOGINS, cards = [],
     state,
     items,
     aliasDomain,
+    flow: null,
     messages: [],
     async handle(message) {
       background.messages.push(message);
@@ -53,6 +54,26 @@ export function fakeBackground({ state = "unlocked", items = LOGINS, cards = [],
           return { ok: true, data: { kind: "card", cardholder: "Camille Martin", number: "4000000000000005", exp_month: "9", exp_year: "2029", code: "321" } };
         case "pendingSave":
           return {};
+        // The sign-in in progress (background.js, tested in
+        // background.test.mjs): the same rules, in short.
+        case "signInFilled": {
+          const same = background.flow?.item === message.item;
+          background.flow = {
+            item: message.item, title: message.title || (same ? background.flow.title : ""),
+            username: message.username || (same ? background.flow.username : ""),
+            totp: message.totp || (same && background.flow.totp),
+            done: [...new Set([...(same ? background.flow.done : []), ...message.kinds])],
+          };
+          return { ok: true };
+        }
+        case "signInNext": {
+          const flow = background.flow;
+          const fresh = flow ? message.kinds.filter((kind) => !flow.done.includes(kind) && (kind !== "otp" || flow.totp)) : [];
+          return fresh.length ? { item: flow.item, title: flow.title, username: flow.username } : {};
+        }
+        case "signInCancel":
+          background.flow = null;
+          return { ok: true };
         case "alias":
           aliases += 1;
           return background.aliasDomain
@@ -111,6 +132,8 @@ export function openPage(build, background, { origin = "https://connect.maif.fr"
     host,
     pillNode,
     pillText,
+    shell: () => pillNode()?.querySelector(".shell") ?? null,
+    background,
     button,
     // A real click on a button of the pill.
     press: (label, trusted = true) => dom.fire(button(label), "click", { trusted }),

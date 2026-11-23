@@ -370,31 +370,36 @@
   // Fills the form of `anchor` (or the page) with `credentials`, then puts
   // the cursor on the submit button. With `autoSubmit` (explicit choice of
   // the user: pill or extension's popup) and the setting on, the form is
-  // submitted if nothing is left to type.
-  function apply(credentials, anchor, { autoSubmit = false } = {}) {
+  // submitted if nothing is left to type. `onlyEmpty` (next step of a
+  // sign-in): what the page already shows (its username) stays. Returns the
+  // kinds of fields filled.
+  function apply(credentials, anchor, { autoSubmit = false, onlyEmpty = false } = {}) {
     let scope;
     let button;
     const filled = [];
-    const fill = (input, value) => {
+    const kinds = [];
+    const fill = (input, value, kind) => {
+      if (onlyEmpty && input.value) return;
       setValue(input, value);
       filled.push([input, input.value]);
+      kinds.push(kind);
     };
     withFilling(() => {
       scope = anchor ? scopeOf(anchor) : document;
       const inputs = inputsOf(scope);
       let last = null;
       if (anchor && classify(anchor) === "otp") {
-        if (credentials.totp) fill(anchor, credentials.totp);
+        if (credentials.totp) fill(anchor, credentials.totp, "otp");
         last = anchor;
       } else {
         const username = inputs.find((i) => classify(i) === "username");
         const password = inputs.find(isLoginPassword);
-        if (credentials.username && username) fill(username, credentials.username);
-        if (credentials.password && password) fill(password, credentials.password);
+        if (credentials.username && username) fill(username, credentials.username, "username");
+        if (credentials.password && password) fill(password, credentials.password, "password");
         last = password ?? username;
         if (!username && !password) {
           const otp = inputs.find((i) => classify(i) === "otp");
-          if (otp && credentials.totp) fill(otp, credentials.totp);
+          if (otp && credentials.totp) fill(otp, credentials.totp, "otp");
           last = otp ?? null;
         }
         // Form without <form>: the one of the filled field.
@@ -404,13 +409,22 @@
       button = submitButtonOf(scope, last);
       (button ?? last)?.focus({ preventScroll: true });
     });
-    if (!autoSubmit || !filled.length || (scope === document && !button)) return;
+    if (!autoSubmit || !filled.length || (scope === document && !button)) return kinds;
     // Let the frameworks process the input, then check again.
     (async () => {
       const enabled = await autoSubmitEnabled();
       await sleep(150);
       if (enabled && readyToSubmit(scope, filled, button)) submit(scope, button);
     })();
+    return kinds;
+  }
+
+  // A step of a sign-in filled with `item`: the next ones (password, code)
+  // will fill by themselves with the same login (background.js).
+  function filledStep(item, credentials, kinds) {
+    if (!item || !kinds.length) return;
+    send({ kind: "signInFilled", item: item.id, title: item.title ?? "", username: credentials.username ?? "",
+      totp: Boolean(credentials.totp), kinds });
   }
 
   function emailField(input) {
@@ -471,6 +485,8 @@
   const SITE = location.hostname.replace(/^www\./, "");
   const ANNOUNCE_DELAY_MS = 150;
   const NOTICE_MS = 6000;
+  // "Filled": the pill stays a moment, then goes away.
+  const FILLED_MS = 1600;
   const FIELD_TARGET_PX = 24;
 
   // MARK: Shared style
@@ -551,13 +567,45 @@
       position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
       overflow: hidden; clip-path: inset(50%); white-space: nowrap;
     }
+    /* Filling, like 1Password: a light runs around the capsule while Verrou
+       fetches the login and fills; once filled, the ring stays lit a
+       moment. The ring is the shell's padding, over a turning gradient
+       that the shell's rounded edge clips; the inside covers the rest. */
+    .shell { --bg: #1b1b20; }
+    .shell.filling, .shell.filled {
+      position: relative; isolation: isolate; border-width: 0; padding: 2px;
+      background: #4b4bc8;
+    }
+    .shell.filling::before {
+      content: ""; position: absolute; z-index: -2; left: 50%; top: 50%;
+      width: 200%; aspect-ratio: 1; transform: translate(-50%, -50%);
+      background: conic-gradient(from 0turn, #4b4bc8 0turn 40%, #8f8fff 58%, #e0e0ff 70%, #fff 75%, #7dd3fc 82%, #4b4bc8 95%);
+      animation: spin 1.2s linear infinite;
+    }
+    .shell.filling::after, .shell.filled::after {
+      content: ""; position: absolute; z-index: -1; inset: 2px; border-radius: inherit; background: var(--bg);
+    }
+    .shell.filling { animation: glow 1.2s ease-in-out infinite alternate; }
+    .shell.filled { background: #8f8fff; box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(143,143,255,.3); }
+    .done {
+      flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+      background: #5b5bd6; color: #fff; font-weight: 700; animation: pop .2s ease-out;
+    }
     @keyframes drop { from { opacity: 0; transform: translateY(-6px); } }
+    @keyframes spin { to { transform: translate(-50%, -50%) rotate(1turn); } }
+    @keyframes glow {
+      from { box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(108,108,240,.18); }
+      to { box-shadow: 0 12px 34px rgba(0,0,0,.38), 0 0 0 4px rgba(108,108,240,.18), 0 0 24px 2px rgba(143,143,255,.5); }
+    }
+    @keyframes pop { from { opacity: 0; transform: scale(.6); } }
     @media (prefers-reduced-motion: reduce) {
-      .pill, .banner { animation: none; }
+      .pill, .banner, .done, .shell.filling { animation: none; }
+      .shell.filling::before { animation: none; background: #8f8fff; }
       .chev { transition: none; }
     }
     @media (prefers-color-scheme: dark) {
       .shell, .tab, .banner { background: #222228; }
+      .shell { --bg: #222228; }
     }
   `;
 
@@ -794,6 +842,29 @@
       this.render();
     },
 
+    // Verrou fetches the login and fills: the ring turns around the pill.
+    // `onCancel`: what the cross also stops (the steps to come).
+    filling(title, subtitle, onCancel = null) {
+      this.token += 1;
+      this.wait(title, subtitle);
+      this.view.status = "filling";
+      this.view.onCancel = onCancel;
+      this.render();
+    },
+
+    // Filled: the ring stays lit a moment, then the pill goes away, unless
+    // something else took its place (the next step's offer).
+    filled(title, subtitle) {
+      this.busy = false;
+      this.view = { title, subtitle, primary: null, others: [], status: "filled" };
+      this.expanded = false;
+      this.render();
+      const { token, view } = this;
+      setTimeout(() => {
+        if (this.token === token && this.view === view) this.hide();
+      }, FILLED_MS);
+    },
+
     render() {
       ui.attach();
       const focused = ui.root.activeElement?.getAttribute?.("data-key") ?? null;
@@ -803,6 +874,11 @@
       const { view } = this;
       const capsule = div("capsule");
       capsule.append(icon(), textBlock(view.title, view.subtitle));
+      if (view.status === "filled") {
+        const done = span("done", "✓");
+        done.setAttribute("aria-hidden", "true");
+        capsule.append(done);
+      }
       if (view.primary) {
         const primary = trustedButton(view.primary.label, "primary", view.primary.run);
         primary.setAttribute("data-key", "primary");
@@ -813,7 +889,8 @@
       close.setAttribute("title", t("close"));
       close.setAttribute("data-key", "close");
       capsule.append(close);
-      const shell = div(`shell${this.expanded && view.others?.length ? " open" : ""}`);
+      const shell = div(["shell", this.expanded && view.others?.length ? "open" : "", view.status ?? ""]
+        .filter(Boolean).join(" "));
       shell.append(capsule);
       area.append(shell);
       if (view.others?.length) {
@@ -867,6 +944,7 @@
     dismiss() {
       const anchor = this.anchor;
       const inside = Boolean(ui.root?.activeElement);
+      this.view?.onCancel?.();
       dismissed = true;
       observer?.disconnect();
       this.hide();
@@ -928,21 +1006,35 @@
     return null;
   }
 
-  async function fillLogin(item, kind, anchor) {
+  // The login chosen in the pill (real click), or, `next`, the one of the
+  // sign-in in progress for the step the page now shows: the ring turns
+  // while Verrou answers, then "Filled", and the form can be submitted.
+  async function fillLogin(item, kind, anchor, { next = false } = {}) {
+    const who = item.username || item.title || SITE;
+    pill.filling(next ? t("pillNextStep") : t("pillFilling"), who,
+      next ? () => send({ kind: "signInCancel" }) : null);
     const token = pill.token;
     let credentials = await send({ kind: "fill", item: item.id });
     if (credentials?.state === "confirm") {
-      pill.wait(t("confirmInVerrou"), t("pillProtected", item.title));
+      pill.wait(t("confirmInVerrou"), t("pillProtected", item.title || SITE));
       credentials = await retryUntilConfirmed("fill", item.id, token);
     }
     if (pill.token !== token) return;
     const target = fillTarget(kind, anchor);
-    pill.hide();
-    // Explicit choice in the pill (real click): the form can be submitted.
-    if (credentials?.ok) apply(credentials, target, { autoSubmit: true });
+    if (!credentials?.ok) {
+      pill.hide();
+      // The step's own offer, as without a sign-in in progress.
+      if (next && target) offer(target, classify(target) ?? kind);
+      return;
+    }
+    const kinds = apply(credentials, target, { autoSubmit: true, onlyEmpty: next });
+    filledStep(item, credentials, kinds);
+    if (kinds.length) pill.filled(t("pillFilled"), credentials.username || who);
+    else pill.hide();
   }
 
   async function fillCardOrIdentity(item, kind, anchor) {
+    pill.filling(t("pillFilling"), item.title);
     const token = pill.token;
     let reply = await send({ kind: "fillForm", item: item.id });
     if (reply?.state === "confirm") {
@@ -951,8 +1043,12 @@
     }
     if (pill.token !== token) return;
     const target = fillTarget(kind, anchor) ?? anchor;
-    pill.hide();
-    if (reply?.ok && target) applyForm(reply.data, target);
+    if (!reply?.ok || !target) {
+      pill.hide();
+      return;
+    }
+    applyForm(reply.data, target);
+    pill.filled(t("pillFilled"), item.title);
   }
 
   // After "Unlock" or "Open Verrou": the pill fills in as soon as Verrou
@@ -1223,17 +1319,31 @@
     else if (!found.has("new") && found.has("username") && strongUsername(found.get("username"))) anchor = found.get("username");
     else if (found.has("otp")) anchor = found.get("otp");
     const kinds = [...found.keys()].filter((kind) => LOGIN_KINDS.has(kind)).sort();
-    return { anchor, kind: anchor ? classify(anchor) : null, signature: `login:${kinds.join("+")}` };
+    // The fields left to fill, for the next step of a sign-in in progress.
+    const empty = kinds.filter((kind) => !found.get(kind).value);
+    return { anchor, kind: anchor ? classify(anchor) : null, signature: `login:${kinds.join("+")}`, empty };
   }
 
-  // Looks for a sign-in form and, the first time for this step, offers the
+  // Looks for a sign-in form and, the first time for this step, fills it if
+  // it is the next step of a sign-in in progress, otherwise offers the
   // site's logins.
   function scan() {
     if (dismissed || filling) return;
-    const { anchor, kind, signature } = loginFields();
+    const { anchor, kind, signature, empty } = loginFields();
     if (!anchor || queried.has(signature) || pill.busy) return;
     queried.add(signature);
-    offer(anchor, kind);
+    nextStepOrOffer(anchor, kind, empty);
+  }
+
+  async function nextStepOrOffer(anchor, kind, empty) {
+    const seq = ++offerSeq;
+    const next = empty.length ? await send({ kind: "signInNext", kinds: empty }) : null;
+    if (seq !== offerSeq) return;
+    if (typeof next?.item !== "string" || dismissed || pill.busy || !anchor.isConnected) {
+      offer(anchor, kind);
+      return;
+    }
+    fillLogin({ id: next.item, title: next.title, username: next.username }, kind, anchor, { next: true });
   }
 
   let scanTimer = null;
@@ -1598,9 +1708,11 @@
     if (message?.kind === "apply" && forThisPage(message)) {
       const active = document.activeElement;
       // Choice made in the extension's popup: the form can be submitted.
-      apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null,
+      const kinds = apply(message.credentials, active instanceof HTMLInputElement && classify(active) ? active : null,
         { autoSubmit: true });
-      pill.hide();
+      if (typeof message.item === "string") filledStep({ id: message.item }, message.credentials, kinds);
+      if (kinds.length) pill.filled(t("pillFilled"), message.credentials.username || SITE);
+      else pill.hide();
     }
     // Form submitted without changing page (single-page application).
     if (message?.kind === "offerSave" && window === top) showOffer();

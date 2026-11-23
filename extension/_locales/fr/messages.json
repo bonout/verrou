@@ -152,6 +152,15 @@
   "pillSignIn": {
     "message": "Se connecter"
   },
+  "pillFilling": {
+    "message": "Remplissage…"
+  },
+  "pillFilled": {
+    "message": "Rempli"
+  },
+  "pillNextStep": {
+    "message": "Étape suivante, remplissage…"
+  },
   "pillNoCode": {
     "message": "Aucun code pour ce site"
   },

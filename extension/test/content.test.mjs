@@ -119,11 +119,15 @@ test("\"Sign in\" fills the username and the password, then submits the form", a
   });
   await eventually(() => page.pillText().includes("Sign in"), "pill");
   page.press("Sign in");
+  assert.match(page.pillText(), /Filling…/, "at once, while Verrou answers");
+  assert.match(page.shell().className, /\bfilling\b/, "the ring turns");
   await eventually(() => page.byId("password").value, "fill");
   assert.deepEqual(background.sent("fill").map((m) => m.item), ["camille"]);
   assert.equal(page.byId("email").value, "camille@exemple.fr");
   assert.equal(page.byId("password").value, "mot-de-passe-camille");
-  assert.equal(page.pillNode(), null, "the pill goes away");
+  assert.match(page.pillText(), /Filled/);
+  assert.match(page.shell().className, /\bfilled\b/);
+  assert.deepEqual(background.sent("signInFilled").map((m) => [m.item, [...m.kinds]]), [["camille", ["username", "password"]]]);
   const submit = buttonById(page, "submit");
   assert.equal(page.document.activeElement, submit, "the submit button has the focus");
   assert.equal(seen.length, 0, "not right away: the page processes the input first");
@@ -132,6 +136,8 @@ test("\"Sign in\" fills the username and the password, then submits the form", a
   // Credentials from Verrou, unchanged: nothing to offer to save.
   await sleep(30);
   assert.equal(background.sent("capture").length, 0);
+  await eventually(() => !page.pillNode(), "then the pill goes away", 2500);
+  assert.equal(page.host("verrou-pill"), undefined);
 });
 
 test("setting off: filled, the cursor on the submit button, nothing is submitted", async () => {
@@ -246,22 +252,109 @@ test("credentials changed before submitting: the banner can offer to save", asyn
   assert.deepEqual(background.sent("capture").map((m) => m.password), ["nouveau-mot-de-passe"]);
 });
 
-test("two-step sign-in: the pill comes back for the next step", async () => {
+// MARK: Sign-in in several steps
+
+const usernameStep = (h) => h("form", { id: "step" },
+  h("input", { id: "user", type: "email", name: "username", autocomplete: "username" }),
+  h("button", { type: "submit" }, "Suivant"));
+const passwordStep = (h) => h("form", { id: "step" },
+  h("input", { id: "pass", type: "password", autocomplete: "current-password" }),
+  h("button", { type: "submit" }, "Se connecter"));
+
+test("two-step sign-in in the same page: the password step fills by itself", async () => {
   const background = fakeBackground();
-  const page = openPage((h) => h("form", { id: "step" },
-    h("input", { id: "user", type: "email", name: "username", autocomplete: "username" }),
-    h("button", { type: "submit" }, "Suivant")), background);
+  // Verrou takes its time for the second step: the ring is seen turning.
+  const handle = background.handle;
+  background.handle = async (message) => {
+    if (message.kind === "fill" && background.sent("fill").length) await sleep(150);
+    return handle(message);
+  };
+  const page = openPage(usernameStep, background);
   await eventually(() => page.pillText().includes("Sign in"), "pill of step 1");
   page.press("Sign in");
-  await eventually(() => page.byId("user").value === "camille@exemple.fr", "username filled");
+  await eventually(() => formOf(page).submissions.length === 1, "username filled and submitted");
   // The application replaces the step: the password.
-  const form = page.document.documentElement.querySelector("form");
+  const form = formOf(page);
   form.textContent = "";
-  form.append(page.h("input", { id: "pass", type: "password", autocomplete: "current-password" }), page.h("button", { type: "submit" }, "Se connecter"));
+  form.append(page.h("input", { id: "pass", type: "password", autocomplete: "current-password" }),
+    page.h("button", { type: "submit" }, "Se connecter"));
   page.mutate();
-  await eventually(() => page.pillText().includes("Sign in"), "pill of step 2");
+  await eventually(() => page.pillText().includes("Next step, filling…"), "the ring for step 2");
+  assert.match(page.pillText(), /camille@exemple\.fr/);
+  await eventually(() => page.byId("pass").value === "mot-de-passe-camille", "password filled without a click");
+  assert.match(page.pillText(), /Filled/);
+  assert.deepEqual(background.sent("fill").map((m) => m.item), ["camille", "camille"]);
+  assert.deepEqual([...background.sent("signInNext").at(-1).kinds], ["password"]);
+  await eventually(() => form.submissions.length === 2, "both steps submitted");
+});
+
+test("two-step sign-in over two pages: the password page fills by itself, the username stays", async () => {
+  const background = fakeBackground();
+  const first = openPage(usernameStep, background);
+  await eventually(() => first.pillText().includes("Sign in"), "pill of step 1");
+  first.press("Sign in");
+  await eventually(() => formOf(first).submissions.length, "step 1 submitted");
+
+  // Next page: the username shown again (read-only or changed by hand), the password to type.
+  const second = openPage((h) => h("form", { id: "step" },
+    h("input", { id: "user", type: "email", name: "username", autocomplete: "username", value: "camille.m@exemple.fr" }),
+    h("input", { id: "pass", type: "password", autocomplete: "current-password" }),
+    h("button", { type: "submit" }, "Se connecter")), background);
+  await eventually(() => second.byId("pass").value === "mot-de-passe-camille", "password filled");
+  assert.equal(second.byId("user").value, "camille.m@exemple.fr", "what the page shows stays");
+  await eventually(() => formOf(second).submissions.length, "step 2 submitted");
+
+  // The site refuses the password: the same step comes back, Verrou offers instead of looping.
+  const again = openPage(passwordStep, background);
+  await eventually(() => again.pillText().includes("Sign in"), "the usual offer");
+  await sleep(250);
+  assert.equal(again.byId("pass").value, "");
+  assert.equal(background.sent("fill").length, 2);
+});
+
+test("the verification code after the password, only for a login with a code", async () => {
+  const otpStep = (h) => h("form", {}, h("input", { id: "otp", autocomplete: "one-time-code", maxLength: 6 }), h("button", { type: "submit" }, "Valider"));
+  const background = fakeBackground();
+  const first = openPage(loginForm, background);
+  await eventually(() => first.pillText().includes("Other logins"), "pill");
+  first.press("Other logins");
+  first.press("MAIF pro");
+  await eventually(() => formOf(first).submissions.length, "submitted");
+  const code = openPage(otpStep, background);
+  await eventually(() => code.byId("otp").value === "123456", "code filled by itself");
+  await eventually(() => formOf(code).submissions.length, "code submitted");
+
+  // A login without a code: the code step is offered, not filled.
+  const other = fakeBackground();
+  const page = openPage(loginForm, other);
+  await eventually(() => page.pillText().includes("Sign in"), "pill");
   page.press("Sign in");
-  await eventually(() => page.byId("pass").value === "mot-de-passe-camille", "password filled");
+  await eventually(() => formOf(page).submissions.length, "submitted");
+  const quiet = openPage(otpStep, other);
+  await eventually(() => quiet.pillText().includes("Fill the code"), "offered");
+  assert.equal(quiet.byId("otp").value, "");
+});
+
+test("✕ during the next step: nothing filled, the sign-in in progress ends", async () => {
+  const background = fakeBackground();
+  const handle = background.handle;
+  let release;
+  background.handle = (message) => (message.kind === "fill" && background.sent("fill").length
+    ? new Promise((resolve) => { release = () => resolve(handle(message)); })
+    : handle(message));
+  const first = openPage(usernameStep, background);
+  await eventually(() => first.pillText().includes("Sign in"), "pill of step 1");
+  first.press("Sign in");
+  await eventually(() => formOf(first).submissions.length, "step 1 submitted");
+  const second = openPage(passwordStep, background);
+  await eventually(() => second.pillText().includes("Next step"), "the ring for step 2");
+  await eventually(() => release, "Verrou asked");
+  second.press("✕");
+  release();
+  await sleep(250);
+  assert.equal(second.byId("pass").value, "");
+  assert.equal(background.flow, null, "the next pages fill nothing");
+  assert.equal(second.pillNode(), null);
 });
 
 test("other logins: the list under the tab, and the choice of another one", async () => {
@@ -309,7 +402,7 @@ test("protected item: the pill waits for the confirmation in Verrou", async () =
   page.press("Sign in");
   await eventually(() => page.pillText().includes("Confirm in Verrou"), "waiting");
   await eventually(() => page.byId("password").value === "mot-de-passe-camille", "filled after confirmation", 3000);
-  assert.equal(page.pillNode(), null);
+  assert.match(page.pillText(), /Filled/);
 });
 
 // MARK: Passkeys
@@ -536,9 +629,19 @@ test("fill from the extension's popup: only for the filled address", async () =>
   assert.equal(page.byId("password").value, "", "another address, or none: nothing");
   await sleep(300);
   assert.equal(formOf(page).submissions.length, 0, "nothing submitted either");
-  page.deliver({ kind: "apply", credentials, origin: "https://connect.maif.fr" });
+  page.deliver({ kind: "apply", credentials, item: "camille", origin: "https://connect.maif.fr" });
   assert.equal(page.byId("password").value, "secret");
+  assert.match(page.pillText(), /Filled/);
   await eventually(() => formOf(page).submissions.length === 1, "submitted after the fill");
+  assert.deepEqual(page.background.sent("signInFilled").map((m) => m.item), ["camille"], "the next steps will follow");
+});
+
+test("the filling ring: drawn in the pill, still under \"reduce motion\"", () => {
+  const style = /const STYLE = `([^`]*)`/.exec(source("content.js"))[1];
+  assert.match(style, /\.shell\.filling::before \{[^}]*conic-gradient[^}]*animation: spin/);
+  const reduced = /prefers-reduced-motion: reduce\) \{([^@]*)\}/.exec(style)[1];
+  assert.match(reduced, /\.shell\.filling::before \{ animation: none;/, "the ring stops turning");
+  assert.match(reduced, /\.shell\.filling\b[^{]*\{ animation: none; \}/, "nor glows");
 });
 
 // MARK: Sign-up, cards, codes
