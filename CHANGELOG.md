@@ -4,6 +4,19 @@ What changes for you in each release. The release workflow publishes the
 section of the tagged version as the GitHub release notes: write it before
 tagging (docs/RELEASING.md).
 
+## Unreleased
+
+**Brave and Firefox**
+- A sign-in in several steps needs one click: after you pick a login, the
+  password page that follows a username-only page, then the one-time code
+  (if the login has one), fill by themselves with the same login and are
+  submitted, like 1Password. It stays in the same tab and on the same site,
+  never fills a step twice (a refused password brings back the pill), and
+  ✕ stops it.
+- While Verrou fills, a light runs around the pill, then it says *Filled*
+  for a moment. Cards and addresses too. With "reduce motion", the ring is
+  lit without turning.
+
 ## 0.6.4
 
 **Mac**
