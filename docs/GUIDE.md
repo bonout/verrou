@@ -969,7 +969,7 @@ Verrou from the Accessibility list and allow it again.
 ## Brave extension
 
 1. In Verrou: Settings (⌘,) → *Brave, Firefox and the terminal*. Verrou registers its Native Messaging host with Brave
-   (and Chrome, and Firefox if installed). *Brave extension* → *Copy
+   (and Chrome, Safira, and Firefox if installed). *Brave extension* → *Copy
    Path* copies the extension's path.
 2. In Brave: `brave://extensions`, *Developer mode*, *Load unpacked*, ⌘⇧G and
    paste the path (the extension ships inside `Verrou.app` and updates with
@@ -1007,7 +1007,8 @@ manifest:
 
 The scripts pick `browser` (Firefox) or `chrome` (Brave) themselves
 (`extension/browser.js`); the extension announces itself as "Firefox" when
-pairing, so Verrou's settings list it as *Firefox*. Both folders get the same
+pairing, so Verrou's settings list it as *Firefox* (Brave, Chrome, Safira and
+the others as themselves). Both folders get the same
 content-derived version.
 
 Native Messaging: Verrou writes

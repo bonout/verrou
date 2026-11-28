@@ -167,7 +167,7 @@ signature (Settings → General → Updates).
 
 Optional, from Verrou's Settings:
 
-- **Brave, Chrome or Firefox extension**: *AutoFill* → *Brave, Firefox and the
+- **Brave, Chrome, Firefox or Safira extension**: *AutoFill* → *Brave, Firefox and the
   terminal*, then load the extension as described in docs/GUIDE.md (*Brave
   extension*, *Firefox extension*). The release also has `verrou-<version>-chromium.zip`
   (load it unpacked) and `verrou-<version>-firefox.xpi`, signed by Mozilla:

@@ -329,14 +329,14 @@ extension ──Native Messaging──▶ verrou-native-host ──TCP 127.0.0.1
   extension gives. Settings → *Unlink* revokes a client.
 - **Declaration to the browser**: `NativeMessagingHosts/app.verrou.bridge.json`
   allows only the identifier of Verrou's extension: `allowed_origins`
-  for Brave and Chrome (identifier set by its manifest's key),
+  for Brave, Chrome and Safira (identifier set by its manifest's key),
   `allowed_extensions` for Firefox (`verrou@verrou.app`, set by
   `browser_specific_settings.gecko.id`); a test checks that app, host and
   manifests agree. The host also refuses to be launched for another
   extension (`unknown_extension`), based on its arguments: the extension's
-  origin (Brave), or the manifest path then the identifier (Firefox).
+  origin (Brave, Chrome, Safira), or the manifest path then the identifier (Firefox).
   Sandbox entitlements limited to the `NativeMessagingHosts` folders of
-  Brave, Chrome and Firefox (`Mozilla`).
+  Brave, Chrome, Firefox (`Mozilla`) and Safira.
 - **Firefox**: the same extension (`scripts/firefox-extension.sh` changes
   only the manifest); Firefox 128 at least, for the passkey script in the
   page's world. Site access (`host_permissions`) is granted or revoked by
